@@ -14,19 +14,25 @@ pub type Stake = u64;
 pub type KeyPair = u64;
 pub type PublicKey = crate::crypto::PublicKey;
 
-use crate::committee::{Committee, VoteRangeBuilder};
-use crate::crypto::{AsBytes, CryptoHash, SignatureBytes, Signer};
-use crate::data::Data;
-use crate::threshold_clock::threshold_clock_valid_non_genesis;
+use std::{
+    fmt,
+    hash::{Hash, Hasher},
+    ops::Range,
+    time::Duration,
+};
+
 use digest::Digest;
 use eyre::{bail, ensure};
 use serde::{Deserialize, Serialize};
-use std::fmt;
-use std::hash::{Hash, Hasher};
-use std::ops::Range;
-use std::time::Duration;
 #[cfg(test)]
 pub use test::Dag;
+
+use crate::{
+    committee::{Committee, VoteRangeBuilder},
+    crypto::{AsBytes, CryptoHash, SignatureBytes, Signer},
+    data::Data,
+    threshold_clock::threshold_clock_valid_non_genesis,
+};
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub enum Vote {
@@ -631,11 +637,14 @@ impl AsBytes for Transaction {
 
 #[cfg(test)]
 mod test {
+    use std::{
+        collections::{HashMap, HashSet},
+        sync::Arc,
+    };
+
+    use rand::{prelude::SliceRandom, Rng};
+
     use super::*;
-    use rand::prelude::SliceRandom;
-    use rand::Rng;
-    use std::collections::{HashMap, HashSet};
-    use std::sync::Arc;
 
     pub struct Dag(HashMap<BlockReference, Data<StatementBlock>>);
 

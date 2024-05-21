@@ -3,12 +3,14 @@
 
 use std::collections::HashSet;
 
-use crate::block_handler::BlockHandler;
-use crate::data::Data;
-use crate::syncer::{CommitObserver, Syncer, SyncerSignals};
-use crate::types::BlockReference;
-use crate::types::{AuthorityIndex, RoundNumber, StatementBlock};
 use parking_lot::Mutex;
+
+use crate::{
+    block_handler::BlockHandler,
+    data::Data,
+    syncer::{CommitObserver, Syncer, SyncerSignals},
+    types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
+};
 
 pub struct CoreThreadDispatcher<H: BlockHandler, S: SyncerSignals, C: CommitObserver> {
     syncer: Mutex<Syncer<H, S, C>>,

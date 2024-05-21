@@ -1,3 +1,6 @@
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -7,17 +10,9 @@
 
 //! Implement common traits for [`Bytes`] and [`Text`].
 
-use std::ascii::escape_default;
-use std::borrow;
-use std::cmp;
-use std::fmt;
-use std::hash;
-use std::ops;
+use std::{ascii::escape_default, borrow, cmp, fmt, hash, ops};
 
-use crate::Bytes;
-use crate::BytesOwner;
-use crate::Text;
-use crate::TextOwner;
+use crate::{Bytes, BytesOwner, Text, TextOwner};
 
 impl<T: BytesOwner> From<T> for Bytes {
     fn from(value: T) -> Self {

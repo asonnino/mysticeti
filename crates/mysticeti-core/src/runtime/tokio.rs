@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::time::{Duration, SystemTime};
-pub use tokio::runtime::Handle;
-pub use tokio::task::JoinError;
-pub use tokio::task::JoinHandle;
-pub use tokio::time::{sleep, Instant};
+
 use tokio::time::{Interval, MissedTickBehavior};
+pub use tokio::{
+    runtime::Handle,
+    task::{JoinError, JoinHandle},
+    time::{sleep, Instant},
+};
 
 #[allow(dead_code)]
 #[derive(Clone)]

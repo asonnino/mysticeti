@@ -1,17 +1,20 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::{
+    collections::{btree_map::Entry, BTreeMap},
+    fmt,
+    fs::{File, OpenOptions},
+    io,
+    io::{IoSlice, Seek, SeekFrom, Write},
+    os::fd::{AsRawFd, RawFd},
+    path::Path,
+};
+
 use memmap2::{Mmap, MmapOptions};
 use minibytes::Bytes;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use std::collections::btree_map::Entry;
-use std::collections::BTreeMap;
-use std::fs::{File, OpenOptions};
-use std::io::{IoSlice, Seek, SeekFrom, Write};
-use std::os::fd::{AsRawFd, RawFd};
-use std::path::Path;
-use std::{fmt, io};
 
 pub struct WalWriter {
     file: File,

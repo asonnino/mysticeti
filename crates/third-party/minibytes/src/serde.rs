@@ -1,3 +1,6 @@
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -7,11 +10,7 @@
 
 use std::fmt;
 
-use serde::de;
-use serde::Deserialize;
-use serde::Deserializer;
-use serde::Serialize;
-use serde::Serializer;
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::Bytes;
 

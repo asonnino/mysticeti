@@ -27,7 +27,7 @@ pub struct SynchronizerParameters {
     pub batch_size: usize,
     /// The sampling precision with which to re-evaluate the sync strategy.
     pub sample_precision: Duration,
-    /// The grace period ofter which to eagerly sync missing blocks.
+    /// The grace period with which to eagerly sync missing blocks.
     pub grace_period: Duration,
     /// The interval at which to send stream blocks authored by other nodes.
     pub stream_interval: Duration,

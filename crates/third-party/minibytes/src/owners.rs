@@ -1,3 +1,6 @@
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -7,8 +10,7 @@
 
 //! Implement [`BytesOwner`] and [`TextOwner`] for common types.
 
-use crate::BytesOwner;
-use crate::TextOwner;
+use crate::{BytesOwner, TextOwner};
 
 impl BytesOwner for Vec<u8> {}
 impl BytesOwner for Box<[u8]> {}

@@ -10,9 +10,7 @@ use std::{
 
 use futures::future::try_join_all;
 use ssh2::{Channel, Session};
-use tokio::runtime::Handle;
-use tokio::task::JoinHandle;
-use tokio::{net::TcpStream, time::sleep};
+use tokio::{net::TcpStream, runtime::Handle, task::JoinHandle, time::sleep};
 
 use crate::{
     client::Instance,

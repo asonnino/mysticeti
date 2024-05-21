@@ -7,6 +7,7 @@ use futures::future::try_join_all;
 use prettytable::{row, Table};
 use tokio::time::{self, Instant};
 
+use super::client::Instance;
 use crate::{
     client::ServerProviderClient,
     display,
@@ -14,8 +15,6 @@ use crate::{
     settings::Settings,
     ssh::SshConnection,
 };
-
-use super::client::Instance;
 
 /// Represents a testbed running on a cloud provider.
 pub struct Testbed<C> {

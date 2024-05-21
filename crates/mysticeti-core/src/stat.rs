@@ -1,8 +1,8 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::ops::AddAssign;
-use std::time::Duration;
+use std::{ops::AddAssign, time::Duration};
+
 use tokio::sync::mpsc;
 
 pub struct PreciseHistogram<T> {

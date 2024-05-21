@@ -1,8 +1,13 @@
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+use std::{
+    collections::{btree_map::Entry, BTreeMap},
+    fmt,
+    ops::Range,
+};
+
 use serde::{Deserialize, Serialize};
-use std::collections::btree_map::Entry;
-use std::collections::BTreeMap;
-use std::fmt;
-use std::ops::Range;
 
 /// Range map is semantically similar to BTreeMap as it maps some ordered keys to values.
 /// However, range map efficiently compacts the range of keys with same value into a single entry.

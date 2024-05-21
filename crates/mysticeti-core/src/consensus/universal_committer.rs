@@ -3,6 +3,7 @@
 
 use std::{collections::VecDeque, sync::Arc};
 
+use super::{base_committer::BaseCommitter, LeaderStatus, DEFAULT_WAVE_LENGTH};
 use crate::{
     block_store::BlockStore,
     committee::Committee,
@@ -10,8 +11,6 @@ use crate::{
     metrics::Metrics,
     types::{format_authority_round, AuthorityIndex, BlockReference, RoundNumber},
 };
-
-use super::{base_committer::BaseCommitter, LeaderStatus, DEFAULT_WAVE_LENGTH};
 
 /// A universal committer uses a collection of committers to commit a sequence of leaders.
 /// It can be configured to use a combination of different commit strategies, including

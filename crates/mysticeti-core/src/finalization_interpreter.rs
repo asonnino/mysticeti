@@ -1,12 +1,23 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
 
-use crate::block_store::BlockStore;
-use crate::types::{AuthorityIndex, BaseStatement, TransactionLocator, Vote};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
+
 use crate::{
+    block_store::BlockStore,
     committee::{Committee, QuorumThreshold, StakeAggregator},
     data::Data,
-    types::{BlockReference, StatementBlock},
+    types::{
+        AuthorityIndex,
+        BaseStatement,
+        BlockReference,
+        StatementBlock,
+        TransactionLocator,
+        Vote,
+    },
 };
 
 #[allow(dead_code)]

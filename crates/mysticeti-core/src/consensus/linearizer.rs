@@ -1,11 +1,10 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::collections::HashSet;
-use std::fmt;
+use std::{collections::HashSet, fmt};
 
-use crate::block_store::BlockStore;
 use crate::{
+    block_store::BlockStore,
     data::Data,
     types::{BlockReference, StatementBlock},
 };

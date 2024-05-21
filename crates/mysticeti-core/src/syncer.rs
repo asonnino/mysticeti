@@ -1,17 +1,20 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::consensus::linearizer::CommittedSubDag;
-use crate::core::Core;
-use crate::data::Data;
-use crate::metrics::UtilizationTimerVecExt;
-use crate::runtime::timestamp_utc;
-use crate::types::{BlockReference, RoundNumber, StatementBlock};
-use crate::{block_handler::BlockHandler, metrics::Metrics};
-use crate::{block_store::BlockStore, types::AuthorityIndex};
+use std::{collections::HashSet, sync::Arc};
+
 use minibytes::Bytes;
-use std::collections::HashSet;
-use std::sync::Arc;
+
+use crate::{
+    block_handler::BlockHandler,
+    block_store::BlockStore,
+    consensus::linearizer::CommittedSubDag,
+    core::Core,
+    data::Data,
+    metrics::{Metrics, UtilizationTimerVecExt},
+    runtime::timestamp_utc,
+    types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
+};
 
 pub struct Syncer<H: BlockHandler, S: SyncerSignals, C: CommitObserver> {
     core: Core<H>,
@@ -145,14 +148,17 @@ impl SyncerSignals for bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::block_handler::{TestBlockHandler, TestCommitHandler};
-    use crate::data::Data;
-    use crate::simulator::{Scheduler, Simulator, SimulatorState};
-    use crate::test_util::{check_commits, committee_and_syncers, rng_at_seed};
+    use std::{ops::Range, time::Duration};
+
     use rand::Rng;
-    use std::ops::Range;
-    use std::time::Duration;
+
+    use super::*;
+    use crate::{
+        block_handler::{TestBlockHandler, TestCommitHandler},
+        data::Data,
+        simulator::{Scheduler, Simulator, SimulatorState},
+        test_util::{check_commits, committee_and_syncers, rng_at_seed},
+    };
 
     const ROUND_TIMEOUT: Duration = Duration::from_millis(1000);
     const LATENCY_RANGE: Range<Duration> = Duration::from_millis(100)..Duration::from_millis(1800);

@@ -7,12 +7,11 @@ use reqwest::{Client as NetworkClient, Response, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use super::{Instance, ServerProviderClient};
 use crate::{
     error::{CloudProviderError, CloudProviderResult},
     settings::Settings,
 };
-
-use super::{Instance, ServerProviderClient};
 
 /// Make a network error.
 impl From<reqwest::Error> for CloudProviderError {

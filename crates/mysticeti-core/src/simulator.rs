@@ -1,13 +1,9 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use rand::prelude::StdRng;
-use rand::SeedableRng;
-use std::any::Any;
-use std::cell::RefCell;
-use std::cmp::Ordering;
-use std::collections::BinaryHeap;
-use std::time::Duration;
+use std::{any::Any, cell::RefCell, cmp::Ordering, collections::BinaryHeap, time::Duration};
+
+use rand::{prelude::StdRng, SeedableRng};
 
 pub struct Simulator<S: SimulatorState>
 where

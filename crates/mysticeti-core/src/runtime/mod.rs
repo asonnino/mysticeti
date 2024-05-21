@@ -7,8 +7,7 @@ mod simulated;
 #[path = "tokio.rs"]
 mod tokio_mod;
 
-#[cfg(not(feature = "simulator"))]
-pub use tokio_mod::*;
-
 #[cfg(feature = "simulator")]
 pub use simulated::*;
+#[cfg(not(feature = "simulator"))]
+pub use tokio_mod::*;

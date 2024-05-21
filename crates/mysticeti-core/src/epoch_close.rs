@@ -1,10 +1,17 @@
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
 
-use crate::committee::{Committee, QuorumThreshold, StakeAggregator};
-use crate::data::Data;
-use crate::runtime::timestamp_utc;
-use crate::types::{InternalEpochStatus, StatementBlock};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
+
+use crate::{
+    committee::{Committee, QuorumThreshold, StakeAggregator},
+    data::Data,
+    runtime::timestamp_utc,
+    types::{InternalEpochStatus, StatementBlock},
+};
 
 pub struct EpochManager {
     epoch_status: InternalEpochStatus,
@@ -32,8 +39,7 @@ impl EpochManager {
         if block.epoch_changed() {
             let is_quorum = self.change_aggregator.add(block.author(), committee);
             if is_quorum && (self.epoch_status != InternalEpochStatus::SafeToClose) {
-                assert!(self.epoch_status == InternalEpochStatus::BeginChange); // Agreement and total ordering property of BA
-                self.epoch_status = InternalEpochStatus::SafeToClose;
+                assert!(self.epoch_status == InternalEpochStatus::BeginChange);
                 self.epoch_close_time
                     .store(timestamp_utc().as_millis() as u64, Ordering::Relaxed);
                 tracing::info!("Epoch is now safe to close");

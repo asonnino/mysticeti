@@ -1,21 +1,36 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::metrics::{Metrics, UtilizationTimerExt};
-use crate::state::{RecoveredState, RecoveredStateBuilder};
-use crate::types::{AuthorityIndex, BlockDigest, BlockReference, RoundNumber, StatementBlock};
-use crate::wal::{Tag, WalPosition, WalReader, WalWriter};
-use crate::{committee::Committee, types::TransactionLocator};
-use crate::{consensus::linearizer::CommittedSubDag, types::Transaction};
-use crate::{data::Data, types::BaseStatement};
+use std::{
+    cmp::max,
+    collections::{BTreeMap, HashMap},
+    io::IoSlice,
+    sync::Arc,
+    time::Instant,
+};
+
 use minibytes::Bytes;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use std::cmp::max;
-use std::collections::{BTreeMap, HashMap};
-use std::io::IoSlice;
-use std::sync::Arc;
-use std::time::Instant;
+
+use crate::{
+    committee::Committee,
+    consensus::linearizer::CommittedSubDag,
+    data::Data,
+    metrics::{Metrics, UtilizationTimerExt},
+    state::{RecoveredState, RecoveredStateBuilder},
+    types::{
+        AuthorityIndex,
+        BaseStatement,
+        BlockDigest,
+        BlockReference,
+        RoundNumber,
+        StatementBlock,
+        Transaction,
+        TransactionLocator,
+    },
+    wal::{Tag, WalPosition, WalReader, WalWriter},
+};
 
 #[derive(Clone)]
 pub struct BlockStore {

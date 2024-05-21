@@ -1,7 +1,12 @@
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 use std::cmp::Ordering;
 
-use crate::committee::{Committee, QuorumThreshold, StakeAggregator};
-use crate::types::{BlockReference, RoundNumber, StatementBlock};
+use crate::{
+    committee::{Committee, QuorumThreshold, StakeAggregator},
+    types::{BlockReference, RoundNumber, StatementBlock},
+};
 
 // A block is threshold clock valid if:
 // - all included blocks have a round number lower than the block round number.
@@ -76,9 +81,8 @@ impl ThresholdClockAggregator {
 #[cfg(test)]
 mod tests {
 
-    use crate::types::Dag;
-
     use super::*;
+    use crate::types::Dag;
 
     // Make a committee with 4 authorities each with Stake 1, and a block with 3 includes at round number zero
     // check that if the includes are blocks the threshold_clock_valid returns false, but if it is only base statements

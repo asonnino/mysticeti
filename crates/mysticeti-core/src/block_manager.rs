@@ -1,16 +1,17 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::block_store::{BlockStore, BlockWriter};
-use crate::data::Data;
-use crate::wal::WalPosition;
-use crate::{
-    committee::Committee,
-    types::{BlockReference, StatementBlock},
-};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     sync::Arc,
+};
+
+use crate::{
+    block_store::{BlockStore, BlockWriter},
+    committee::Committee,
+    data::Data,
+    types::{BlockReference, StatementBlock},
+    wal::WalPosition,
 };
 
 /// Block manager suspends incoming blocks until they are connected to the existing graph,
@@ -113,11 +114,10 @@ impl BlockManager {
 
 #[cfg(test)]
 mod tests {
+    use rand::{prelude::StdRng, SeedableRng};
+
     use super::*;
-    use crate::test_util::TestBlockWriter;
-    use crate::types::Dag;
-    use rand::prelude::StdRng;
-    use rand::SeedableRng;
+    use crate::{test_util::TestBlockWriter, types::Dag};
 
     #[test]
     fn test_block_manager_add_block() {

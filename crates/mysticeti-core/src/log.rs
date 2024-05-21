@@ -1,11 +1,16 @@
-use crate::committee::ProcessedTransactionHandler;
-use crate::runtime;
-use crate::types::TransactionLocator;
-use std::fs::{File, OpenOptions};
-use std::io;
-use std::io::Write;
-use std::path::Path;
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+use std::{
+    fs::{File, OpenOptions},
+    io,
+    io::Write,
+    path::Path,
+};
+
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+
+use crate::{committee::ProcessedTransactionHandler, runtime, types::TransactionLocator};
 
 pub struct TransactionLog {
     ch: UnboundedSender<Vec<TransactionLocator>>,

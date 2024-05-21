@@ -1,24 +1,38 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::committee::Committee;
-use crate::data::{IN_MEMORY_BLOCKS, IN_MEMORY_BLOCKS_BYTES};
-use crate::runtime;
-use crate::stat::{histogram, DivUsize, HistogramSender, PreciseHistogram};
-use crate::types::{format_authority_index, AuthorityIndex};
-use prometheus::{
-    register_counter_vec_with_registry, register_histogram_vec_with_registry,
-    register_int_counter_vec_with_registry, register_int_counter_with_registry,
-    register_int_gauge_vec_with_registry, register_int_gauge_with_registry, CounterVec,
-    HistogramVec, IntCounter, IntCounterVec, IntGauge, IntGaugeVec, Registry,
+use std::{
+    net::SocketAddr,
+    ops::AddAssign,
+    sync::{atomic::Ordering, Arc},
+    time::Duration,
 };
-use std::net::SocketAddr;
-use std::ops::AddAssign;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::time::Duration;
+
+use prometheus::{
+    register_counter_vec_with_registry,
+    register_histogram_vec_with_registry,
+    register_int_counter_vec_with_registry,
+    register_int_counter_with_registry,
+    register_int_gauge_vec_with_registry,
+    register_int_gauge_with_registry,
+    CounterVec,
+    HistogramVec,
+    IntCounter,
+    IntCounterVec,
+    IntGauge,
+    IntGaugeVec,
+    Registry,
+};
 use tabled::{Table, Tabled};
 use tokio::time::Instant;
+
+use crate::{
+    committee::Committee,
+    data::{IN_MEMORY_BLOCKS, IN_MEMORY_BLOCKS_BYTES},
+    runtime,
+    stat::{histogram, DivUsize, HistogramSender, PreciseHistogram},
+    types::{format_authority_index, AuthorityIndex},
+};
 
 const LATENCY_SEC_BUCKETS: &[f64] = &[
     0.1, 0.25, 0.5, 0.75, 1., 1.25, 1.5, 1.75, 2., 2.5, 5., 10., 20., 30., 60., 90.,
@@ -109,8 +123,8 @@ impl Metrics {
         let (proposed_block_transaction_count_hist, proposed_block_transaction_count) = histogram();
         let (proposed_block_vote_count_hist, proposed_block_vote_count) = histogram();
 
-        let commitee_size = committee.map(Committee::len).unwrap_or_default();
-        let (connection_latency_hist, connection_latency_sender) = (0..commitee_size)
+        let committee_size = committee.map(Committee::len).unwrap_or_default();
+        let (connection_latency_hist, connection_latency_sender) = (0..committee_size)
             .map(|peer| {
                 let (hist, sender) = histogram();
                 (

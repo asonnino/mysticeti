@@ -1,3 +1,6 @@
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -7,8 +10,7 @@
 
 use quickcheck::quickcheck;
 
-use crate::Bytes;
-use crate::Text;
+use crate::{Bytes, Text};
 
 quickcheck! {
     fn test_shallow_clone(v: Vec<u8>) -> bool {

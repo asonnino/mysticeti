@@ -3,6 +3,7 @@
 
 use std::{fmt::Display, sync::Arc};
 
+use super::{LeaderStatus, DEFAULT_WAVE_LENGTH};
 use crate::{
     block_store::BlockStore,
     committee::{Committee, QuorumThreshold, StakeAggregator},
@@ -10,8 +11,6 @@ use crate::{
     data::Data,
     types::{format_authority_round, AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
 };
-
-use super::{LeaderStatus, DEFAULT_WAVE_LENGTH};
 
 /// The consensus protocol operates in 'waves'. Each wave is composed of a leader round, at least one
 /// voting round, and one decision round.

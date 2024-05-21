@@ -1,10 +1,17 @@
-use crate::block_store::{BlockStore, CommitData, OwnBlockData};
-use crate::core::MetaStatement;
-use crate::data::Data;
-use crate::types::{BlockReference, StatementBlock};
-use crate::wal::WalPosition;
-use minibytes::Bytes;
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 use std::collections::{BTreeMap, HashSet, VecDeque};
+
+use minibytes::Bytes;
+
+use crate::{
+    block_store::{BlockStore, CommitData, OwnBlockData},
+    core::MetaStatement,
+    data::Data,
+    types::{BlockReference, StatementBlock},
+    wal::WalPosition,
+};
 
 pub struct RecoveredState {
     pub block_store: BlockStore,

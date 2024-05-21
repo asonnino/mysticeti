@@ -1,10 +1,12 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::metrics::{UtilizationTimer, UtilizationTimerExt};
+use std::ops::{Deref, DerefMut};
+
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use prometheus::IntCounter;
-use std::ops::{Deref, DerefMut};
+
+use crate::metrics::{UtilizationTimer, UtilizationTimerExt};
 
 pub struct MonitoredRwLock<V> {
     lock: RwLock<V>,

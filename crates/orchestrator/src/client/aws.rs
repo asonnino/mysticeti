@@ -9,19 +9,24 @@ use std::{
 use aws_config::profile::profile_file::{ProfileFileKind, ProfileFiles};
 use aws_sdk_ec2::{
     model::{
-        block_device_mapping, ebs_block_device, filter, tag, tag_specification,
-        EphemeralNvmeSupport, ResourceType, VolumeType,
+        block_device_mapping,
+        ebs_block_device,
+        filter,
+        tag,
+        tag_specification,
+        EphemeralNvmeSupport,
+        ResourceType,
+        VolumeType,
     },
     types::{Blob, SdkError},
 };
 use serde::Serialize;
 
+use super::{Instance, ServerProviderClient};
 use crate::{
     error::{CloudProviderError, CloudProviderResult},
     settings::Settings,
 };
-
-use super::{Instance, ServerProviderClient};
 
 // Make a request error from an AWS error message.
 impl<T> From<SdkError<T>> for CloudProviderError

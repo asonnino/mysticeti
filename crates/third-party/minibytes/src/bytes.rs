@@ -1,3 +1,6 @@
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -5,10 +8,11 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-use std::any::Any;
-use std::ops::Range;
-use std::ops::RangeBounds;
-use std::sync::Arc;
+use std::{
+    any::Any,
+    ops::{Range, RangeBounds},
+    sync::Arc,
+};
 
 pub type Bytes = AbstractBytes<[u8]>;
 pub trait BytesOwner: AsRef<[u8]> + Send + Sync + 'static {}

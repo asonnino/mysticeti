@@ -104,9 +104,8 @@ pub mod test_client {
 
     use serde::Serialize;
 
-    use crate::{error::CloudProviderResult, settings::Settings};
-
     use super::{Instance, ServerProviderClient};
+    use crate::{error::CloudProviderResult, settings::Settings};
 
     pub struct TestClient {
         settings: Settings,

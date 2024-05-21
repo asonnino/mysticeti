@@ -1,9 +1,9 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::{fmt, marker::PhantomData};
+
 use serde::de;
-use std::fmt;
-use std::marker::PhantomData;
 
 pub trait ByteRepr: Sized {
     fn try_copy_from_slice<E: de::Error>(v: &[u8]) -> Result<Self, E>;

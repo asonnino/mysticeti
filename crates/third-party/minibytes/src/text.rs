@@ -1,3 +1,6 @@
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -7,9 +10,7 @@
 
 use std::any::Any;
 
-use super::bytes::AbstractBytes;
-use super::bytes::AbstractOwner;
-use super::bytes::SliceLike;
+use super::bytes::{AbstractBytes, AbstractOwner, SliceLike};
 
 pub type Text = AbstractBytes<str>;
 pub trait TextOwner: AsRef<str> + Send + Sync + 'static {}

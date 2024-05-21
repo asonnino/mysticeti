@@ -1,3 +1,6 @@
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /*
  * Portions Copyright (c) Meta Platforms, Inc. and affiliates.
  *

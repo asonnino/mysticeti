@@ -1,3 +1,6 @@
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -25,8 +28,6 @@ mod text;
 #[cfg(test)]
 mod tests;
 
-pub use text::Text;
-pub use text::TextOwner;
+pub use text::{Text, TextOwner};
 
-pub use crate::bytes::Bytes;
-pub use crate::bytes::BytesOwner;
+pub use crate::bytes::{Bytes, BytesOwner};

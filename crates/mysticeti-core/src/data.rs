@@ -1,14 +1,24 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::{
+    fmt,
+    hash::{Hash, Hasher},
+    ops::Deref,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+};
+
 use minibytes::Bytes;
-use serde::de::{DeserializeOwned, Error};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::fmt;
-use std::hash::{Hash, Hasher};
-use std::ops::Deref;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use serde::{
+    de::{DeserializeOwned, Error},
+    Deserialize,
+    Deserializer,
+    Serialize,
+    Serializer,
+};
 
 /// Data<T> carries both the value and it's serialized bytes.
 /// When Data is created, it's value is serialized into a cache variable.

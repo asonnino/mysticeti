@@ -1,9 +1,10 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::net::SocketAddr;
+
 use axum::{http::StatusCode, routing::get, Extension, Router, Server};
 use prometheus::{Registry, TextEncoder};
-use std::net::SocketAddr;
 
 use crate::runtime::{Handle, JoinHandle};
 

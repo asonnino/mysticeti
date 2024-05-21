@@ -1,15 +1,17 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::committee::Committee;
-use crate::future_simulator::SimulatorContext;
-use crate::network::{Connection, Network};
-use crate::runtime;
+use std::{fmt::Debug, ops::Range, time::Duration};
+
 use rand::Rng;
-use std::fmt::Debug;
-use std::ops::Range;
-use std::time::Duration;
 use tokio::sync::mpsc;
+
+use crate::{
+    committee::Committee,
+    future_simulator::SimulatorContext,
+    network::{Connection, Network},
+    runtime,
+};
 
 pub struct SimulatedNetwork {
     senders: Vec<mpsc::Sender<Connection>>,

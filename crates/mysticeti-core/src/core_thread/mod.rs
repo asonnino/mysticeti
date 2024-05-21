@@ -6,8 +6,7 @@ mod simulated;
 #[cfg(not(feature = "simulator"))]
 mod spawned;
 
-#[cfg(not(feature = "simulator"))]
-pub use spawned::*;
-
 #[cfg(feature = "simulator")]
 pub use simulated::*;
+#[cfg(not(feature = "simulator"))]
+pub use spawned::*;

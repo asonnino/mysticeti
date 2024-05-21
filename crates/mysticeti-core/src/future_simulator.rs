@@ -1,20 +1,27 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::simulator::{Scheduler, Simulator, SimulatorState};
-use crate::types::AuthorityIndex;
+use std::{
+    cell::RefCell,
+    collections::{hash_map::Entry, HashMap},
+    future::Future,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll, Wake},
+    time::Duration,
+};
+
 use futures::FutureExt;
 use rand::prelude::StdRng;
-use std::cell::RefCell;
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
-use std::task::{Context, Poll, Wake};
-use std::time::Duration;
-use tokio::select;
-use tokio::sync::{oneshot, Notify};
+use tokio::{
+    select,
+    sync::{oneshot, Notify},
+};
+
+use crate::{
+    simulator::{Scheduler, Simulator, SimulatorState},
+    types::AuthorityIndex,
+};
 
 #[derive(Default)]
 pub struct SimulatedExecutorState {

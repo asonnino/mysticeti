@@ -1,11 +1,10 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-pub use crate::future_simulator::JoinError;
-pub use crate::future_simulator::JoinHandle;
+use std::{future::Future, time::Duration};
+
+pub use crate::future_simulator::{JoinError, JoinHandle};
 use crate::future_simulator::{SimulatorContext, Sleep};
-use std::future::Future;
-use std::time::Duration;
 
 pub struct Handle;
 
