@@ -31,7 +31,7 @@ def ramp_up(scraper, ramp_up_threshold=120):
 def aggregate_tps(measurement, workload):
     if workload not in measurement['data']:
         return 0
-    
+
     max_duration = 0
     for data in measurement['data'][workload].values():
         ramp_up_duration, _, _, _ = ramp_up(data)
@@ -49,7 +49,7 @@ def aggregate_tps(measurement, workload):
 def aggregate_average_latency(measurement, workload):
     if workload not in measurement['data']:
         return 0
-     
+
     latency = []
     for data in measurement['data'][workload].values():
         _, ramp_up_count, ramp_up_sum, _ = ramp_up(data)
@@ -63,7 +63,7 @@ def aggregate_average_latency(measurement, workload):
 def aggregate_stdev_latency(measurement, workload):
     if workload not in measurement['data']:
         return 0
-     
+
     stdev = []
     for data in measurement['data'][workload].values():
         _, ramp_up_count, ramp_up_sum, ramp_up_square_sum = ramp_up(data)
@@ -87,7 +87,7 @@ def aggregate_stdev_latency(measurement, workload):
 def aggregate_p_latency(measurement, workload, p=50, i=-1):
     if workload not in measurement['data']:
         return 0
-     
+
     latency = []
     for data in measurement['data'][workload].values():
         last = data[i]
@@ -353,7 +353,7 @@ class Plotter:
                             ]
                     plot_lines_data += [(filenames, l)]
 
-            
+
             for measurements, max_latency in plot_lines_data:
                 x_values, y_values, e_values = [], [], []
                 for measurement in measurements:
