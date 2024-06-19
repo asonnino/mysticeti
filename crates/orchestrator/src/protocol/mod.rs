@@ -1,29 +1,48 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::path::PathBuf;
+use std::{
+    fmt::{Debug, Display},
+    path::{Path, PathBuf},
+};
+
+use eyre::Context;
+use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{benchmark::BenchmarkParameters, client::Instance};
 
 pub mod mysticeti;
 
-pub const CARGO_FLAGS: &str = "--release";
-pub const RUST_FLAGS: &str = "RUSTFLAGS=-C\\ target-cpu=native";
+pub const BINARY_PATH: &str = "target/release";
+
+pub trait ProtocolParameters:
+    Default + Clone + Serialize + DeserializeOwned + Debug + Display
+{
+    /// Load the configuration from a YAML file located at the provided path.
+    fn load<P: AsRef<Path>>(path: P) -> Result<Self, eyre::Error> {
+        let path = path.as_ref();
+        let error_message = format!("Unable to load config from {}", path.display());
+        let reader = std::fs::File::open(path).wrap_err(error_message)?;
+        Ok(serde_yaml::from_reader(reader)?)
+    }
+}
 
 /// The minimum interface that the protocol should implement to allow benchmarks from
 /// the orchestrator.
-pub trait ProtocolCommands<N, C> {
+pub trait ProtocolCommands {
     /// The list of dependencies to install (e.g., through apt-get).
     fn protocol_dependencies(&self) -> Vec<&'static str>;
 
     /// The directories of all databases (that should be erased before each run).
     fn db_directories(&self) -> Vec<PathBuf>;
 
-    fn cleanup_commands(&self) -> Vec<String>;
-
     /// The command to generate the genesis and all configuration files. This command
     /// is run on each remote machine.
-    fn genesis_command<'a, I>(&self, instances: I, parameters: &BenchmarkParameters) -> String
+    async fn genesis_command<'a, I>(
+        &self,
+        instances: I,
+        parameters: &BenchmarkParameters,
+    ) -> String
     where
         I: Iterator<Item = &'a Instance>;
 
@@ -34,10 +53,6 @@ pub trait ProtocolCommands<N, C> {
         instances: I,
         parameters: &BenchmarkParameters,
     ) -> Vec<(Instance, String)>
-    where
-        I: IntoIterator<Item = Instance>;
-
-    fn monitor_command<I>(&self, instances: I) -> Vec<(Instance, String)>
     where
         I: IntoIterator<Item = Instance>;
 
@@ -52,12 +67,12 @@ pub trait ProtocolCommands<N, C> {
         I: IntoIterator<Item = Instance>;
 }
 
-/// The names of the minimum metrics exposed by the load generators that are required to
+/// The names of the minimum metrics exposed by the protocol that are required to
 /// compute performance.
 pub trait ProtocolMetrics {
     /// The name of the metric reporting the total duration of the benchmark (in seconds).
     const BENCHMARK_DURATION: &'static str;
-    /// The name of the metric reporting the total number of finalized transactions/
+    /// The name of the metric reporting the total number of finalized transactions.
     const TOTAL_TRANSACTIONS: &'static str;
     /// The name of the metric reporting the latency buckets.
     const LATENCY_BUCKETS: &'static str;
@@ -69,30 +84,48 @@ pub trait ProtocolMetrics {
     const LATENCY_SQUARED_SUM: &'static str;
 
     /// The network path where the nodes expose prometheus metrics.
-    fn nodes_metrics_path<I>(&self, instances: I) -> Vec<(Instance, String)>
+    fn nodes_metrics_path<I>(
+        &self,
+        instances: I,
+        parameters: &BenchmarkParameters,
+    ) -> Vec<(Instance, String)>
     where
         I: IntoIterator<Item = Instance>;
+
+    /// The network path where the clients expose prometheus metrics.
+    fn clients_metrics_path<I>(
+        &self,
+        instances: I,
+        parameters: &BenchmarkParameters,
+    ) -> Vec<(Instance, String)>
+    where
+        I: IntoIterator<Item = Instance>;
+
     /// The command to retrieve the metrics from the nodes.
-    fn nodes_metrics_command<I>(&self, instances: I) -> Vec<(Instance, String)>
+    fn nodes_metrics_command<I>(
+        &self,
+        instances: I,
+        parameters: &BenchmarkParameters,
+    ) -> Vec<(Instance, String)>
     where
         I: IntoIterator<Item = Instance>,
     {
-        self.nodes_metrics_path(instances)
+        self.nodes_metrics_path(instances, parameters)
             .into_iter()
             .map(|(instance, path)| (instance, format!("curl {path}")))
             .collect()
     }
 
-    /// The network path where the clients expose prometheus metrics.
-    fn clients_metrics_path<I>(&self, instances: I) -> Vec<(Instance, String)>
-    where
-        I: IntoIterator<Item = Instance>;
     /// The command to retrieve the metrics from the clients.
-    fn clients_metrics_command<I>(&self, instances: I) -> Vec<(Instance, String)>
+    fn clients_metrics_command<I>(
+        &self,
+        instances: I,
+        parameters: &BenchmarkParameters,
+    ) -> Vec<(Instance, String)>
     where
         I: IntoIterator<Item = Instance>,
     {
-        self.clients_metrics_path(instances)
+        self.clients_metrics_path(instances, parameters)
             .into_iter()
             .map(|(instance, path)| (instance, format!("curl {path}")))
             .collect()
@@ -102,7 +135,7 @@ pub trait ProtocolMetrics {
 #[cfg(test)]
 pub mod test_protocol_metrics {
     use super::ProtocolMetrics;
-    use crate::client::Instance;
+    use crate::{benchmark::BenchmarkParameters, client::Instance};
 
     pub struct TestProtocolMetrics;
 
@@ -113,7 +146,11 @@ pub mod test_protocol_metrics {
         const LATENCY_SUM: &'static str = "latency_s_sum";
         const LATENCY_SQUARED_SUM: &'static str = "latency_squared_s";
 
-        fn nodes_metrics_path<I>(&self, instances: I) -> Vec<(Instance, String)>
+        fn nodes_metrics_path<I>(
+            &self,
+            instances: I,
+            _parameters: &BenchmarkParameters,
+        ) -> Vec<(Instance, String)>
         where
             I: IntoIterator<Item = Instance>,
         {
@@ -124,7 +161,11 @@ pub mod test_protocol_metrics {
                 .collect()
         }
 
-        fn clients_metrics_path<I>(&self, instances: I) -> Vec<(Instance, String)>
+        fn clients_metrics_path<I>(
+            &self,
+            instances: I,
+            _parameters: &BenchmarkParameters,
+        ) -> Vec<(Instance, String)>
         where
             I: IntoIterator<Item = Instance>,
         {

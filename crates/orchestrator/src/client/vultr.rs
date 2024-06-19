@@ -53,7 +53,7 @@ impl From<VultrInstance> for Instance {
             main_ip: instance.main_ip,
             tags: instance.tags,
             specs: instance.plan,
-            status: instance.power_status,
+            status: instance.power_status.as_str().into(),
         }
     }
 }
@@ -82,7 +82,7 @@ impl Display for VultrClient {
 }
 
 impl VultrClient {
-    const BASE_URL: &str = "https://api.vultr.com/v2/";
+    const BASE_URL: &'static str = "https://api.vultr.com/v2/";
     const DEFAULT_OS: u16 = 1743; // Ubuntu 22.04 x64
 
     /// Make a new Vultr client.
@@ -132,28 +132,8 @@ impl VultrClient {
             .into_iter()
             .find(|x| x.name == self.settings.testbed_id))
     }
-
-    /// Delete all copies of the public key.
-    #[allow(dead_code)]
-    pub async fn remove_key(&self) -> CloudProviderResult<()> {
-        while let Some(key) = self.get_key().await? {
-            let url = self.base_url.join(&format!("ssh-keys/{}", key.id)).unwrap();
-
-            let response = self
-                .client
-                .delete(url)
-                .bearer_auth(&self.token)
-                .send()
-                .await?;
-
-            let json: Value = response.json().await?;
-            Self::check_response(&json)?;
-        }
-        Ok(())
-    }
 }
 
-#[async_trait::async_trait]
 impl ServerProviderClient for VultrClient {
     const USERNAME: &'static str = "root";
 

@@ -3,31 +3,19 @@
 
 use std::{fs, net::SocketAddr, path::PathBuf};
 
-use tokio::sync::mpsc;
-
 use crate::{
+    benchmark::BenchmarkParameters,
     client::Instance,
     error::{MonitorError, MonitorResult},
     protocol::ProtocolMetrics,
     ssh::{CommandContext, SshConnectionManager},
 };
 
-#[must_use]
-pub struct NodeMonitorHandle(mpsc::Sender<()>);
-
-impl NodeMonitorHandle {
-    pub fn new() -> (Self, mpsc::Receiver<()>) {
-        let (sender, receiver) = mpsc::channel(1);
-        (Self(sender), receiver)
-    }
-}
-
 pub struct Monitor {
     instance: Instance,
     clients: Vec<Instance>,
     nodes: Vec<Instance>,
     ssh_manager: SshConnectionManager,
-    dedicated_clients: bool,
 }
 
 impl Monitor {
@@ -37,44 +25,38 @@ impl Monitor {
         clients: Vec<Instance>,
         nodes: Vec<Instance>,
         ssh_manager: SshConnectionManager,
-        dedicated_clients: bool,
     ) -> Self {
         Self {
             instance,
             clients,
             nodes,
             ssh_manager,
-            dedicated_clients,
         }
     }
 
     /// Dependencies to install.
-    pub fn dependencies() -> Vec<&'static str> {
-        let mut commands = Vec::new();
-        commands.extend(Prometheus::install_commands());
-        commands.extend(Grafana::install_commands());
+    pub fn dependencies() -> Vec<String> {
+        let mut commands: Vec<String> = Vec::new();
+        commands.extend(Prometheus::install_commands().into_iter().map(String::from));
+        commands.extend(Grafana::install_commands().into_iter().map(String::from));
+        commands.extend(NodeExporter::install_commands());
         commands
     }
 
-    /// Start a prometheus instance on each remote machine.
+    /// Start a prometheus instance on the dedicated motoring machine.
     pub async fn start_prometheus<P: ProtocolMetrics>(
         &self,
         protocol_commands: &P,
+        parameters: &BenchmarkParameters,
     ) -> MonitorResult<()> {
-        // Select the instances to monitor.
-        let instances: Vec<_> = if self.dedicated_clients {
-            self.clients
-                .iter()
-                .cloned()
-                .chain(self.nodes.iter().cloned())
-                .collect()
-        } else {
-            self.nodes.clone()
-        };
-
         // Configure and reload prometheus.
-        let instance = std::iter::once(self.instance.clone());
-        let commands = Prometheus::setup_commands(instances, protocol_commands);
+        let instance = [self.instance.clone()];
+        let commands = Prometheus::setup_commands(
+            self.nodes.clone(),
+            self.clients.clone(),
+            protocol_commands,
+            parameters,
+        );
         self.ssh_manager
             .execute(instance, commands, CommandContext::default())
             .await?;
@@ -82,7 +64,7 @@ impl Monitor {
         Ok(())
     }
 
-    /// Start grafana on the local host.
+    /// Start grafana on the dedicated motoring machine.
     pub async fn start_grafana(&self) -> MonitorResult<()> {
         // Configure and reload grafana.
         let instance = std::iter::once(self.instance.clone());
@@ -101,7 +83,6 @@ impl Monitor {
 }
 
 /// Generate the commands to setup prometheus on the given instances.
-/// TODO: Modify the configuration to also get client metrics.
 pub struct Prometheus;
 
 impl Prometheus {
@@ -119,7 +100,12 @@ impl Prometheus {
     }
 
     /// Generate the commands to update the prometheus configuration and restart prometheus.
-    pub fn setup_commands<I, P>(instances: I, protocol: &P) -> String
+    pub fn setup_commands<I, P>(
+        nodes: I,
+        clients: I,
+        protocol: &P,
+        parameters: &BenchmarkParameters,
+    ) -> String
     where
         I: IntoIterator<Item = Instance>,
         P: ProtocolMetrics,
@@ -127,22 +113,26 @@ impl Prometheus {
         // Generate the prometheus configuration.
         let mut config = vec![Self::global_configuration()];
 
-        let nodes_metrics_path = protocol.nodes_metrics_path(instances);
+        let nodes_metrics_path = protocol.nodes_metrics_path(nodes, parameters);
         for (i, (_, nodes_metrics_path)) in nodes_metrics_path.into_iter().enumerate() {
-            let scrape_config = Self::scrape_configuration(i, &nodes_metrics_path);
+            let id = format!("node-{i}");
+            let scrape_config = Self::scrape_configuration(&id, &nodes_metrics_path);
+            config.push(scrape_config);
+        }
+
+        let clients_metrics_path = protocol.clients_metrics_path(clients, parameters);
+        for (i, (_, client_metrics_path)) in clients_metrics_path.into_iter().enumerate() {
+            let id = format!("client-{i}");
+            let scrape_config = Self::scrape_configuration(&id, &client_metrics_path);
             config.push(scrape_config);
         }
 
         // Make the command to configure and restart prometheus.
-        [
-            &format!(
-                "sudo echo \"{}\" > {}",
-                config.join("\n"),
-                Self::DEFAULT_PROMETHEUS_CONFIG_PATH
-            ),
-            "sudo service prometheus restart",
-        ]
-        .join(" && ")
+        format!(
+            "sudo echo \"{}\" > {} && sudo service prometheus restart",
+            config.join("\n"),
+            Self::DEFAULT_PROMETHEUS_CONFIG_PATH
+        )
     }
 
     /// Generate the global prometheus configuration.
@@ -159,7 +149,7 @@ impl Prometheus {
 
     /// Generate the prometheus configuration from the given metrics path.
     /// NOTE: The configuration file is a yaml file so spaces are important.
-    fn scrape_configuration(index: usize, nodes_metrics_path: &str) -> String {
+    fn scrape_configuration(id: &str, nodes_metrics_path: &str) -> String {
         let parts: Vec<_> = nodes_metrics_path.split('/').collect();
         let address = parts[0].parse::<SocketAddr>().unwrap();
         let ip = address.ip();
@@ -167,12 +157,12 @@ impl Prometheus {
         let path = parts[1];
 
         [
-            &format!("  - job_name: instance-{index}"),
+            &format!("  - job_name: instance-{id}"),
             &format!("    metrics_path: /{path}"),
             "    static_configs:",
             "      - targets:",
             &format!("        - {ip}:{port}"),
-            &format!("  - job_name: instance-node-exporter-{index}"),
+            &format!("  - job_name: instance-node-exporter-{id}"),
             "    static_configs:",
             "      - targets:",
             &format!("        - {ip}:9200"),
@@ -193,9 +183,12 @@ impl Grafana {
     pub fn install_commands() -> Vec<&'static str> {
         vec![
             "sudo apt-get install -y apt-transport-https software-properties-common wget",
-            "sudo wget -q -O /usr/share/keyrings/grafana.key https://apt.grafana.com/gpg.key",
+            "sudo wget -q -O /etc/apt/keyrings/grafana.key https://apt.grafana.com/gpg.key",
             "(sudo rm /etc/apt/sources.list.d/grafana.list || true)",
-            "echo \"deb [signed-by=/usr/share/keyrings/grafana.key] https://apt.grafana.com stable main\" | sudo tee -a /etc/apt/sources.list.d/grafana.list",
+            "echo \
+                \"deb [signed-by=/etc/apt/keyrings/grafana.key] \
+                https://apt.grafana.com stable main\" \
+                | sudo tee -a /etc/apt/sources.list.d/grafana.list",
             "sudo apt-get update",
             "sudo apt-get install -y grafana",
             "sudo chmod 777 -R /etc/grafana/",
@@ -238,14 +231,15 @@ impl Grafana {
     }
 }
 
-#[allow(dead_code)]
+#[allow(dead_code)] // TODO: Will be used to observe local testbeds (#8)
 /// Bootstrap the grafana with datasource to connect to the given instances.
-/// NOTE: Only for macOS. Grafana must be installed through homebrew (and not from source). Deeper grafana
-/// configuration can be done through the grafana.ini file (/opt/homebrew/etc/grafana/grafana.ini) or the
-/// plist file (~/Library/LaunchAgents/homebrew.mxcl.grafana.plist).
+/// NOTE: Only for macOS. Grafana must be installed through homebrew (and not from source).
+/// Deeper grafana configuration can be done through the grafana.ini file
+/// (/opt/homebrew/etc/grafana/grafana.ini) or the plist file
+/// (~/Library/LaunchAgents/homebrew.mxcl.grafana.plist).
 pub struct LocalGrafana;
 
-#[allow(dead_code)]
+#[allow(dead_code)] // TODO: Will be used to observe local testbeds (#8)
 impl LocalGrafana {
     /// The default grafana home directory (macOS, homebrew install).
     const DEFAULT_GRAFANA_HOME: &'static str = "/opt/homebrew/opt/grafana/share/grafana/";
@@ -288,8 +282,8 @@ impl LocalGrafana {
         Ok(())
     }
 
-    /// Generate the content of the datasource file for the given instance. This grafana instance takes
-    /// one datasource per instance and assumes one prometheus server runs per instance.
+    /// Generate the content of the datasource file for the given instance. This grafana instance
+    /// takes one datasource per instance and assumes one prometheus server runs per instance.
     /// NOTE: The datasource file is a yaml file so spaces are important.
     fn datasource(instance: &Instance, index: usize) -> String {
         [
@@ -309,6 +303,67 @@ impl LocalGrafana {
             ),
             "    editable: true",
             &format!("    uid: UID-{index}"),
+        ]
+        .join("\n")
+    }
+}
+
+/// Generate the commands to setup node exporter on the given instances.
+struct NodeExporter;
+
+impl NodeExporter {
+    const RELEASE: &'static str = "0.18.1";
+    const DEFAULT_PORT: u16 = 9200;
+    const SERVICE_PATH: &'static str = "/etc/systemd/system/node_exporter.service";
+
+    pub fn install_commands() -> Vec<String> {
+        let build = format!("node_exporter-{}.linux-amd64", Self::RELEASE);
+        let source = format!(
+            "https://github.com/prometheus/node_exporter/releases/download/v{}/{build}.tar.gz",
+            Self::RELEASE
+        );
+
+        [
+            "(sudo systemctl status node_exporter && exit 0)",
+            &format!("curl -LO {source}"),
+            &format!(
+                "tar -xvf node_exporter-{}.linux-amd64.tar.gz",
+                Self::RELEASE
+            ),
+            &format!(
+                "sudo mv node_exporter-{}.linux-amd64/node_exporter /usr/local/bin/",
+                Self::RELEASE
+            ),
+            "sudo useradd -rs /bin/false node_exporter || true",
+            "sudo chmod 777 -R /etc/systemd/system/",
+            &format!(
+                "sudo echo \"{}\" > {}",
+                Self::service_config(),
+                Self::SERVICE_PATH
+            ),
+            "sudo systemctl daemon-reload",
+            "sudo systemctl start node_exporter",
+            "sudo systemctl enable node_exporter",
+        ]
+        .map(|x| x.to_string())
+        .to_vec()
+    }
+
+    fn service_config() -> String {
+        [
+            "[Unit]",
+            "Description=Node Exporter",
+            "After=network.target",
+            "[Service]",
+            "User=node_exporter",
+            "Group=node_exporter",
+            "Type=simple",
+            &format!(
+                "ExecStart=/usr/local/bin/node_exporter --web.listen-address=:{}",
+                Self::DEFAULT_PORT
+            ),
+            "[Install]",
+            "WantedBy=multi-user.target",
         ]
         .join("\n")
     }

@@ -14,12 +14,7 @@ use prettytable::{row, Table};
 use prometheus_parse::Scrape;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    benchmark::BenchmarkParameters,
-    display,
-    protocol::ProtocolMetrics,
-    settings::Settings,
-};
+use crate::{benchmark::BenchmarkParameters, display, protocol::ProtocolMetrics};
 
 /// The identifier of prometheus latency buckets.
 type BucketId = String;
@@ -37,12 +32,13 @@ pub struct Measurement {
     sum: Duration,
     /// Total number of finalized transactions
     count: usize,
-    /// Square of the latencies of all finalized transactions.
-    squared_sum: Duration,
+    /// Sum of the squares of the latencies of all finalized transactions
+    squared_sum: f64,
 }
 
 impl Measurement {
-    /// Make new measurements from the text exposed by prometheus. Every measurement is identified by a unique label.
+    /// Make new measurements from the text exposed by prometheus.
+    /// Every measurement is identified by a unique label.
     pub fn from_prometheus<M: ProtocolMetrics>(text: &str) -> HashMap<Label, Self> {
         let br = std::io::BufReader::new(text.as_bytes());
         let parsed = Scrape::parse(br.lines()).unwrap();
@@ -56,9 +52,9 @@ impl Measurement {
                 .collect::<Vec<_>>()
                 .join(",");
 
-            if sample.metric == M::LATENCY_BUCKETS {
-                let measurement = measurements.entry(label).or_insert_with(Self::default);
-                match &sample.value {
+            let measurement = measurements.entry(label).or_insert_with(Self::default);
+            match &sample.metric {
+                x if x == M::LATENCY_BUCKETS => match &sample.value {
                     prometheus_parse::Value::Histogram(values) => {
                         for value in values {
                             let bucket_id = value.less_than.to_string();
@@ -67,25 +63,26 @@ impl Measurement {
                         }
                     }
                     _ => panic!("Unexpected scraped value"),
+                },
+                x if x == M::LATENCY_SUM => {
+                    measurement.sum = match sample.value {
+                        prometheus_parse::Value::Untyped(value) => Duration::from_secs_f64(value),
+                        _ => panic!("Unexpected scraped value"),
+                    };
                 }
-            } else if sample.metric == M::LATENCY_SUM {
-                let measurement = measurements.entry(label).or_insert_with(Self::default);
-                measurement.sum = match sample.value {
-                    prometheus_parse::Value::Untyped(value) => Duration::from_secs_f64(value),
-                    _ => panic!("Unexpected scraped value"),
-                };
-            } else if sample.metric == M::TOTAL_TRANSACTIONS {
-                let measurement = measurements.entry(label).or_insert_with(Self::default);
-                measurement.count = match sample.value {
-                    prometheus_parse::Value::Untyped(value) => value as usize,
-                    _ => panic!("Unexpected scraped value"),
-                };
-            } else if sample.metric == M::LATENCY_SQUARED_SUM {
-                let measurement = measurements.entry(label).or_insert_with(Self::default);
-                measurement.squared_sum = match sample.value {
-                    prometheus_parse::Value::Counter(value) => Duration::from_secs_f64(value),
-                    _ => panic!("Unexpected scraped value"),
-                };
+                x if x == M::TOTAL_TRANSACTIONS => {
+                    measurement.count = match sample.value {
+                        prometheus_parse::Value::Untyped(value) => value as usize,
+                        _ => panic!("Unexpected scraped value"),
+                    };
+                }
+                x if x == M::LATENCY_SQUARED_SUM => {
+                    measurement.squared_sum = match sample.value {
+                        prometheus_parse::Value::Counter(value) => value,
+                        _ => panic!("Unexpected scraped value"),
+                    };
+                }
+                _ => (),
             }
         }
 
@@ -106,12 +103,6 @@ impl Measurement {
         measurements
     }
 
-    /// Compute the tps.
-    pub fn tps(&self, duration: &Duration) -> u64 {
-        let tps = self.count.checked_div(duration.as_secs() as usize);
-        tps.unwrap_or_default() as u64
-    }
-
     /// Compute the average latency.
     pub fn average_latency(&self) -> Duration {
         self.sum.checked_div(self.count as u32).unwrap_or_default()
@@ -122,13 +113,13 @@ impl Measurement {
     pub fn stdev_latency(&self) -> Duration {
         // Compute `squared_sum / count`.
         let first_term = if self.count == 0 {
-            0.0
+            return Duration::from_secs(0);
         } else {
-            self.squared_sum.as_secs_f64() / self.count as f64
+            self.squared_sum / self.count as f64
         };
 
         // Compute `avg^2`.
-        let squared_avg = self.average_latency().as_secs_f64().powf(2.0);
+        let squared_avg = self.average_latency().as_secs_f64().powi(2_i32);
 
         // Compute `squared_sum / count - avg^2`.
         let variance = if squared_avg > first_term {
@@ -141,20 +132,6 @@ impl Measurement {
         let stdev = variance.sqrt();
         Duration::from_secs_f64(stdev)
     }
-
-    #[cfg(test)]
-    pub fn new_for_test() -> (Label, Self) {
-        (
-            "owned".to_string(),
-            Self {
-                timestamp: Duration::from_secs(30),
-                buckets: HashMap::new(),
-                sum: Duration::from_secs(1265),
-                count: 1860,
-                squared_sum: Duration::from_secs(952),
-            },
-        )
-    }
 }
 
 /// The identifier of the scrapers collecting the prometheus metrics.
@@ -162,10 +139,6 @@ type ScraperId = usize;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct MeasurementsCollection {
-    /// The machine / instance type.
-    pub machine_specs: String,
-    /// The commit of the codebase.
-    pub commit: String,
     /// The benchmark parameters of the current run.
     pub parameters: BenchmarkParameters,
     /// The data collected by each scraper.
@@ -174,10 +147,11 @@ pub struct MeasurementsCollection {
 
 impl MeasurementsCollection {
     /// Create a new (empty) collection of measurements.
-    pub fn new(settings: &Settings, parameters: BenchmarkParameters) -> Self {
+    pub fn new(mut parameters: BenchmarkParameters) -> Self {
+        // Remove the access token from the parameters.
+        parameters.settings.repository.remove_access_token();
+
         Self {
-            machine_specs: settings.specs.clone(),
-            commit: settings.repository.commit.clone(),
             parameters,
             data: HashMap::new(),
         }
@@ -194,9 +168,9 @@ impl MeasurementsCollection {
     pub fn add(&mut self, scraper_id: ScraperId, label: String, measurement: Measurement) {
         self.data
             .entry(label)
-            .or_insert_with(HashMap::new)
+            .or_default()
             .entry(scraper_id)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(measurement);
     }
 
@@ -213,41 +187,33 @@ impl MeasurementsCollection {
         self.data.keys()
     }
 
-    /// Return the transaction (input) load of the benchmark.
-    pub fn transaction_load(&self) -> usize {
-        self.parameters.load
+    /// Get the maximum result of a function applied to the measurements.
+    fn max_result<T: Default + Ord>(
+        &self,
+        label: &Label,
+        function: impl Fn(&Measurement) -> T,
+    ) -> T {
+        self.all_measurements(label)
+            .iter()
+            .filter_map(|x| x.last())
+            .map(function)
+            .max()
+            .unwrap_or_default()
     }
 
     /// Aggregate the benchmark duration of multiple data points by taking the max.
     pub fn benchmark_duration(&self) -> Duration {
         self.labels()
-            .map(|label| {
-                self.all_measurements(label)
-                    .iter()
-                    .filter_map(|x| x.last())
-                    .map(|x| x.timestamp)
-                    .max()
-                    .unwrap_or_default()
-            })
+            .map(|label| self.max_result(label, |x| x.timestamp))
             .max()
             .unwrap_or_default()
     }
 
     /// Aggregate the tps of multiple data points.
     pub fn aggregate_tps(&self, label: &Label) -> u64 {
-        let duration = self
-            .all_measurements(label)
-            .iter()
-            .filter_map(|x| x.last())
-            .map(|x| x.timestamp)
-            .max()
-            .unwrap_or_default();
-        self.all_measurements(label)
-            .iter()
-            .filter_map(|x| x.last())
-            .map(|x| x.tps(&duration))
-            .max()
-            .unwrap_or_default()
+        self.max_result(label, |x| x.count)
+            .checked_div(self.max_result(label, |x| x.timestamp.as_secs_f64() as usize))
+            .unwrap_or_default() as u64
     }
 
     /// Aggregate the average latency of multiple data points by taking the average.
@@ -263,13 +229,8 @@ impl MeasurementsCollection {
     }
 
     /// Aggregate the stdev latency of multiple data points by taking the max.
-    pub fn aggregate_stdev_latency(&self, label: &Label) -> Duration {
-        self.all_measurements(label)
-            .iter()
-            .filter_map(|x| x.last())
-            .map(|x| x.stdev_latency())
-            .max()
-            .unwrap_or_default()
+    pub fn max_stdev_latency(&self, label: &Label) -> Duration {
+        self.max_result(label, |x| x.stdev_latency())
     }
 
     /// Save the collection of measurements as a json file.
@@ -291,7 +252,7 @@ impl MeasurementsCollection {
         table.add_row(row![b->"Benchmark type:", self.parameters.node_parameters]);
         table.add_row(row![bH2->""]);
         table.add_row(row![b->"Nodes:", self.parameters.nodes]);
-        table.add_row(row![b->"Faults:", self.parameters.faults]);
+        table.add_row(row![b->"Faults:", self.parameters.settings.faults]);
         table.add_row(row![b->"Load:", format!("{} tx/s", self.parameters.load)]);
         table.add_row(row![b->"Duration:", format!("{} s", duration.as_secs())]);
 
@@ -300,7 +261,7 @@ impl MeasurementsCollection {
         for label in labels {
             let total_tps = self.aggregate_tps(label);
             let average_latency = self.aggregate_average_latency(label);
-            let stdev_latency = self.aggregate_stdev_latency(label);
+            let stdev_latency = self.max_stdev_latency(label);
 
             table.add_row(row![bH2->""]);
             table.add_row(row![b->"Workload:", label]);
@@ -320,7 +281,7 @@ mod test {
     use std::{collections::HashMap, time::Duration};
 
     use super::{BenchmarkParameters, Measurement, MeasurementsCollection};
-    use crate::{protocol::test_protocol_metrics::TestProtocolMetrics, settings::Settings};
+    use crate::protocol::test_protocol_metrics::TestProtocolMetrics;
 
     #[test]
     fn average_latency() {
@@ -329,7 +290,7 @@ mod test {
             buckets: HashMap::new(),
             sum: Duration::from_secs(2),
             count: 100,
-            squared_sum: Duration::from_secs(0),
+            squared_sum: 0.0,
         };
 
         assert_eq!(data.average_latency(), Duration::from_millis(20));
@@ -342,14 +303,11 @@ mod test {
             buckets: HashMap::new(),
             sum: Duration::from_secs(50),
             count: 100,
-            squared_sum: Duration::from_secs(75),
+            squared_sum: 75.0,
         };
 
         // squared_sum / count
-        assert_eq!(
-            data.squared_sum.checked_div(data.count as u32),
-            Some(Duration::from_secs_f64(0.75))
-        );
+        assert_eq!(data.squared_sum / data.count as f64, 0.75);
         // avg^2
         assert_eq!(data.average_latency().as_secs_f64().powf(2.0), 0.25);
         // sqrt( squared_sum / count - avg^2 )
@@ -409,56 +367,59 @@ mod test {
         "#;
 
         let measurements = Measurement::from_prometheus::<TestProtocolMetrics>(report);
-        let settings = Settings::new_for_test();
-        let mut aggregator =
-            MeasurementsCollection::new(&settings, BenchmarkParameters::new_for_tests());
+        let mut aggregator = MeasurementsCollection::new(BenchmarkParameters::new_for_tests());
         let scraper_id = 1;
         for (label, measurement) in measurements {
             aggregator.add(scraper_id, label, measurement);
         }
 
-        assert_eq!(aggregator.data.len(), 2);
-        for label in &["owned".to_string(), "shared".to_string()] {
-            let data_points = aggregator
-                .data
-                .get(label)
-                .expect("Unable to find label")
-                .get(&scraper_id)
-                .unwrap();
-            assert_eq!(data_points.len(), 1);
+        assert_eq!(aggregator.data.keys().filter(|x| !x.is_empty()).count(), 2);
 
-            if label == "owned" {
-                let data = &data_points[0];
-                assert_eq!(
-                    data.buckets,
-                    ([
-                        ("0.1".into(), 0),
-                        ("0.25".into(), 0),
-                        ("0.5".into(), 506),
-                        ("0.75".into(), 1282),
-                        ("1".into(), 1693),
-                        ("1.25".into(), 1816),
-                        ("1.5".into(), 1860),
-                        ("1.75".into(), 1860),
-                        ("2".into(), 1860),
-                        ("2.5".into(), 1860),
-                        ("5".into(), 1860),
-                        ("10".into(), 1860),
-                        ("20".into(), 1860),
-                        ("30".into(), 1860),
-                        ("60".into(), 1860),
-                        ("90".into(), 1860),
-                        ("inf".into(), 1860)
-                    ])
-                    .iter()
-                    .cloned()
-                    .collect()
-                );
-                assert_eq!(data.sum.as_secs(), 1265);
-                assert_eq!(data.count, 1860);
-                assert_eq!(data.timestamp.as_secs(), 30);
-                assert_eq!(data.squared_sum.as_secs(), 952);
-            }
-        }
+        let owned_workload_data_points = aggregator
+            .data
+            .get("owned")
+            .expect("The `owned` label is defined above")
+            .get(&scraper_id)
+            .unwrap();
+        assert_eq!(owned_workload_data_points.len(), 1);
+
+        let data = &owned_workload_data_points[0];
+        assert_eq!(
+            data.buckets,
+            ([
+                ("0.1".into(), 0),
+                ("0.25".into(), 0),
+                ("0.5".into(), 506),
+                ("0.75".into(), 1282),
+                ("1".into(), 1693),
+                ("1.25".into(), 1816),
+                ("1.5".into(), 1860),
+                ("1.75".into(), 1860),
+                ("2".into(), 1860),
+                ("2.5".into(), 1860),
+                ("5".into(), 1860),
+                ("10".into(), 1860),
+                ("20".into(), 1860),
+                ("30".into(), 1860),
+                ("60".into(), 1860),
+                ("90".into(), 1860),
+                ("inf".into(), 1860)
+            ])
+            .iter()
+            .cloned()
+            .collect()
+        );
+        assert_eq!(data.sum.as_secs(), 1265);
+        assert_eq!(data.count, 1860);
+        assert_eq!(data.timestamp.as_secs(), 30);
+        assert_eq!(data.squared_sum as u64, 952);
+
+        let shared_workload_data_points = aggregator
+            .data
+            .get("shared")
+            .expect("Unable to find label")
+            .get(&scraper_id)
+            .unwrap();
+        assert_eq!(shared_workload_data_points.len(), 1);
     }
 }

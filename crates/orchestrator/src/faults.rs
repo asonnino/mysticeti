@@ -57,6 +57,17 @@ impl Display for FaultsType {
     }
 }
 
+impl FaultsType {
+    /// The interval between crashes. If the type is `Permanent`, the interval is 1s
+    /// to crash the nodes as fast as possible.
+    pub fn crash_interval(&self) -> Duration {
+        match self {
+            Self::Permanent { .. } => Duration::from_secs(1),
+            Self::CrashRecovery { interval, .. } => *interval,
+        }
+    }
+}
+
 /// The actions to apply to the testbed, i.e., which instances to crash and recover.
 #[derive(Default)]
 pub struct CrashRecoveryAction {
@@ -82,17 +93,17 @@ impl Display for CrashRecoveryAction {
 }
 
 impl CrashRecoveryAction {
-    pub fn boot(instances: Vec<Instance>) -> Self {
+    pub fn boot(instances: impl Iterator<Item = Instance>) -> Self {
         Self {
-            boot: instances,
+            boot: instances.collect(),
             kill: Vec::new(),
         }
     }
 
-    pub fn kill(instances: Vec<Instance>) -> Self {
+    pub fn kill(instances: impl Iterator<Item = Instance>) -> Self {
         Self {
             boot: Vec::new(),
-            kill: instances,
+            kill: instances.collect(),
         }
     }
 
@@ -119,12 +130,14 @@ impl CrashRecoverySchedule {
         }
     }
     pub fn update(&mut self) -> CrashRecoveryAction {
+        let mut instances = self.instances.clone();
+
         match &self.faults_type {
             // Permanently crash the specified number of nodes.
             FaultsType::Permanent { faults } => {
                 if self.dead == 0 {
                     self.dead = *faults;
-                    CrashRecoveryAction::kill(self.instances.clone().drain(0..*faults).collect())
+                    CrashRecoveryAction::kill(instances.drain(0..*faults))
                 } else {
                     CrashRecoveryAction::no_op()
                 }
@@ -136,9 +149,9 @@ impl CrashRecoverySchedule {
 
                 // Recover all nodes if we already crashed them all.
                 if self.dead == *max_faults {
-                    let instances: Vec<_> = self.instances.clone().drain(0..*max_faults).collect();
+                    let to_recover = instances.drain(0..*max_faults);
                     self.dead = 0;
-                    CrashRecoveryAction::boot(instances)
+                    CrashRecoveryAction::boot(to_recover)
                 }
                 // Otherwise crash a few nodes at the time.
                 else {
@@ -150,9 +163,9 @@ impl CrashRecoverySchedule {
                         (2 * min_faults, *max_faults)
                     };
 
-                    let instances: Vec<_> = self.instances.clone().drain(l..h).collect();
+                    let to_kill = instances.drain(l..h);
                     self.dead += h - l;
-                    CrashRecoveryAction::kill(instances)
+                    CrashRecoveryAction::kill(to_kill)
                 }
             }
         }
