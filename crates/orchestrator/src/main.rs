@@ -218,7 +218,7 @@ async fn run<C: ServerProviderClient>(
                 .await
                 .wrap_err("Failed to load testbed setup commands")?;
 
-            let protocol_commands = Protocol {};
+            let protocol_commands = Protocol::new(&settings);
             let node_parameters = match &settings.node_parameters_path {
                 Some(path) => {
                     NodeParameters::load(path).wrap_err("Failed to load node's parameters")?

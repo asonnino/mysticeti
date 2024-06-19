@@ -26,12 +26,16 @@ pub struct BenchmarkParametersGeneric<N, C> {
     pub load: usize,
 }
 
-impl<N: Debug, C> Debug for BenchmarkParametersGeneric<N, C> {
+impl<N: Debug, C: Debug> Debug for BenchmarkParametersGeneric<N, C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{:?}-{:?}-{}-{}",
-            self.node_parameters, self.settings.faults, self.nodes, self.load
+            "{:?}-{:?}-{:?}-{}-{}",
+            self.node_parameters,
+            self.client_parameters,
+            self.settings.faults,
+            self.nodes,
+            self.load
         )
     }
 }

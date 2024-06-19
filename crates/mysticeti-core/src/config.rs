@@ -33,23 +33,23 @@ pub trait ImportExport: Serialize + DeserializeOwned {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NodeParameters {
-    #[serde(default = "defaults::default_wave_length")]
+    #[serde(default = "node_defaults::default_wave_length")]
     pub wave_length: RoundNumber,
-    #[serde(default = "defaults::default_leader_timeout")]
+    #[serde(default = "node_defaults::default_leader_timeout")]
     pub leader_timeout: Duration,
-    #[serde(default = "defaults::default_rounds_in_epoch")]
+    #[serde(default = "node_defaults::default_rounds_in_epoch")]
     pub rounds_in_epoch: RoundNumber,
-    #[serde(default = "defaults::default_shutdown_grace_period")]
+    #[serde(default = "node_defaults::default_shutdown_grace_period")]
     pub shutdown_grace_period: Duration,
-    #[serde(default = "defaults::default_number_of_leaders")]
+    #[serde(default = "node_defaults::default_number_of_leaders")]
     pub number_of_leaders: usize,
-    #[serde(default = "defaults::default_enable_pipelining")]
+    #[serde(default = "node_defaults::default_enable_pipelining")]
     pub enable_pipelining: bool,
-    #[serde(default = "defaults::default_consensus_only")]
+    #[serde(default = "node_defaults::default_consensus_only")]
     pub consensus_only: bool,
 }
 
-pub mod defaults {
+pub mod node_defaults {
     pub fn default_wave_length() -> super::RoundNumber {
         3
     }
@@ -82,13 +82,13 @@ pub mod defaults {
 impl Default for NodeParameters {
     fn default() -> Self {
         Self {
-            wave_length: defaults::default_wave_length(),
-            leader_timeout: defaults::default_leader_timeout(),
-            rounds_in_epoch: defaults::default_rounds_in_epoch(),
-            shutdown_grace_period: defaults::default_shutdown_grace_period(),
-            number_of_leaders: defaults::default_number_of_leaders(),
-            enable_pipelining: defaults::default_enable_pipelining(),
-            consensus_only: defaults::default_consensus_only(),
+            wave_length: node_defaults::default_wave_length(),
+            leader_timeout: node_defaults::default_leader_timeout(),
+            rounds_in_epoch: node_defaults::default_rounds_in_epoch(),
+            shutdown_grace_period: node_defaults::default_shutdown_grace_period(),
+            number_of_leaders: node_defaults::default_number_of_leaders(),
+            enable_pipelining: node_defaults::default_enable_pipelining(),
+            consensus_only: node_defaults::default_consensus_only(),
         }
     }
 }
@@ -236,19 +236,38 @@ impl ImportExport for NodePrivateConfig {}
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ClientParameters {
     /// The number of transactions to send to the network per second.
+    #[serde(default = "client_defaults::default_load")]
     pub load: usize,
     /// The size of transactions to send to the network in bytes.
+    #[serde(default = "client_defaults::default_transaction_size")]
     pub transaction_size: usize,
     /// The initial delay before starting to send transactions.
+    #[serde(default = "client_defaults::default_initial_delay")]
     pub initial_delay: Duration,
+}
+
+mod client_defaults {
+    use super::Duration;
+
+    pub fn default_load() -> usize {
+        10
+    }
+
+    pub fn default_transaction_size() -> usize {
+        512
+    }
+
+    pub fn default_initial_delay() -> Duration {
+        Duration::from_secs(30)
+    }
 }
 
 impl Default for ClientParameters {
     fn default() -> Self {
         Self {
-            load: 10,
-            transaction_size: 512,
-            initial_delay: Duration::from_secs(10),
+            load: client_defaults::default_load(),
+            transaction_size: client_defaults::default_transaction_size(),
+            initial_delay: client_defaults::default_initial_delay(),
         }
     }
 }
