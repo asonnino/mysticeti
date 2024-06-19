@@ -79,7 +79,7 @@ pub struct MysticetiProtocol {
 
 impl ProtocolCommands for MysticetiProtocol {
     fn protocol_dependencies(&self) -> Vec<&'static str> {
-        vec![]
+        vec!["sudo apt -y install libfontconfig1-dev"]
     }
 
     fn db_directories(&self) -> Vec<std::path::PathBuf> {
