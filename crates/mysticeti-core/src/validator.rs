@@ -96,6 +96,7 @@ impl Validator {
             block_handler,
             authority,
             committee.clone(),
+            private_config,
             public_config,
             metrics.clone(),
             recovered,
@@ -214,7 +215,7 @@ mod smoke_tests {
             .all_metric_addresses()
             .map(|address| address.to_owned())
             .collect();
-        let timeout = config::defaults::default_leader_timeout() * 5;
+        let timeout = config::node_defaults::default_leader_timeout() * 5;
 
         tokio::select! {
             _ = await_for_commits(addresses) => (),
@@ -261,7 +262,7 @@ mod smoke_tests {
             .skip(1)
             .map(|address| address.to_owned())
             .collect();
-        let timeout = config::defaults::default_leader_timeout() * 5;
+        let timeout = config::node_defaults::default_leader_timeout() * 5;
         tokio::select! {
             _ = await_for_commits(addresses) => (),
             _ = time::sleep(timeout) => panic!("Failed to gather commits within a few timeouts"),
@@ -288,7 +289,7 @@ mod smoke_tests {
             .next()
             .map(|address| address.to_owned())
             .unwrap();
-        let timeout = config::defaults::default_leader_timeout() * 5;
+        let timeout = config::node_defaults::default_leader_timeout() * 5;
         tokio::select! {
             _ = await_for_commits(vec![address]) => (),
             _ = time::sleep(timeout) => panic!("Failed to gather commits within a few timeouts"),
@@ -333,7 +334,7 @@ mod smoke_tests {
             .skip(1)
             .map(|address| address.to_owned())
             .collect();
-        let timeout = config::defaults::default_leader_timeout() * 15;
+        let timeout = config::node_defaults::default_leader_timeout() * 15;
 
         tokio::select! {
             _ = await_for_commits(addresses) => (),

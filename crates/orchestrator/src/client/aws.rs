@@ -6,19 +6,25 @@ use std::{
     fmt::{Debug, Display},
 };
 
-use aws_config::profile::profile_file::{ProfileFileKind, ProfileFiles};
+use aws_config::{BehaviorVersion, Region};
+use aws_runtime::env_config::file::{EnvConfigFileKind, EnvConfigFiles};
 use aws_sdk_ec2::{
-    model::{
-        block_device_mapping,
-        ebs_block_device,
-        filter,
-        tag,
-        tag_specification,
+    error::SdkError,
+    meta::PKG_VERSION,
+    primitives::Blob,
+    types::{
+        builders::{
+            BlockDeviceMappingBuilder,
+            EbsBlockDeviceBuilder,
+            FilterBuilder,
+            TagBuilder,
+            TagSpecificationBuilder,
+        },
         EphemeralNvmeSupport,
+        Instance as AwsInstance,
         ResourceType,
         VolumeType,
     },
-    types::{Blob, SdkError},
 };
 use serde::Serialize;
 
@@ -38,7 +44,7 @@ where
     }
 }
 
-/// A AWS client.
+/// An AWS client.
 pub struct AwsClient {
     /// The settings of the testbed.
     settings: Settings,
@@ -48,25 +54,26 @@ pub struct AwsClient {
 
 impl Display for AwsClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "AWS EC2 client v{}", aws_sdk_ec2::PKG_VERSION)
+        write!(f, "AWS EC2 client v{}", PKG_VERSION)
     }
 }
 
 impl AwsClient {
     const OS_IMAGE: &'static str =
         "Canonical, Ubuntu, 22.04 LTS, amd64 jammy image build on 2023-02-16";
+    const DEFAULT_EBS_SIZE_GB: i32 = 500; // Default size of the EBS volume in GB.
 
     /// Make a new AWS client.
     pub async fn new(settings: Settings) -> Self {
-        let profile_files = ProfileFiles::builder()
-            .with_file(ProfileFileKind::Credentials, &settings.token_file)
-            .with_contents(ProfileFileKind::Config, "[default]\noutput=json")
+        let profile_files = EnvConfigFiles::builder()
+            .with_file(EnvConfigFileKind::Credentials, &settings.token_file)
+            .with_contents(EnvConfigFileKind::Config, "[default]\noutput=json")
             .build();
 
         let mut clients = HashMap::new();
         for region in settings.regions.clone() {
-            let sdk_config = aws_config::from_env()
-                .region(aws_sdk_ec2::Region::new(region.clone()))
+            let sdk_config = aws_config::defaults(BehaviorVersion::v2024_03_28())
+                .region(Region::new(region.clone()))
                 .profile_files(profile_files.clone())
                 .load()
                 .await;
@@ -94,11 +101,7 @@ impl AwsClient {
     }
 
     /// Convert an AWS instance into an orchestrator instance (used in the rest of the codebase).
-    fn make_instance(
-        &self,
-        region: String,
-        aws_instance: &aws_sdk_ec2::model::Instance,
-    ) -> Instance {
+    fn make_instance(&self, region: String, aws_instance: &AwsInstance) -> Instance {
         Instance {
             id: aws_instance
                 .instance_id()
@@ -124,7 +127,9 @@ impl AwsClient {
                     .expect("AWS instance should have a state")
                     .name()
                     .expect("AWS status should have a name")
-            ),
+            )
+            .as_str()
+            .into(),
         }
     }
 
@@ -133,7 +138,7 @@ impl AwsClient {
     async fn find_image_id(&self, client: &aws_sdk_ec2::Client) -> CloudProviderResult<String> {
         // Query all images that match the description.
         let request = client.describe_images().filters(
-            filter::Builder::default()
+            FilterBuilder::default()
                 .name("description")
                 .values(Self::OS_IMAGE)
                 .build(),
@@ -143,7 +148,7 @@ impl AwsClient {
         // Parse the response to select the first returned image id.
         response
             .images()
-            .and_then(|images| images.first())
+            .first()
             .ok_or_else(|| CloudProviderError::RequestError("Cannot find image id".into()))?
             .image_id
             .clone()
@@ -171,7 +176,7 @@ impl AwsClient {
                 .authorize_security_group_ingress()
                 .group_name(&self.settings.testbed_id)
                 .ip_protocol(protocol)
-                .cidr_ip("0.0.0.0/0"); // todo - allowing 0.0.0.0 seem a bit wild?
+                .cidr_ip("0.0.0.0/0");
             if protocol == "icmp" || protocol == "icmpv6" {
                 request = request.from_port(-1).to_port(-1);
             } else {
@@ -202,8 +207,8 @@ impl AwsClient {
 
     /// Check whether the instance type specified in the settings supports NVMe drives.
     async fn check_nvme_support(&self) -> CloudProviderResult<bool> {
-        // Get the client for the first region. A given instance type should either have NVMe support
-        // in all regions or in none.
+        // Get the client for the first region. A given instance type should either have NVMe
+        // support in all regions or in none.
         let client = match self
             .settings
             .regions
@@ -223,7 +228,7 @@ impl AwsClient {
         let response = request.send().await?;
 
         // Return true if the response contains references to NVMe drives.
-        if let Some(info) = response.instance_types().and_then(|x| x.first()) {
+        if let Some(info) = response.instance_types().first() {
             if let Some(info) = info.instance_storage_info() {
                 if info.nvme_support() == Some(&EphemeralNvmeSupport::Required) {
                     return Ok(true);
@@ -234,12 +239,11 @@ impl AwsClient {
     }
 }
 
-#[async_trait::async_trait]
 impl ServerProviderClient for AwsClient {
     const USERNAME: &'static str = "ubuntu";
 
     async fn list_instances(&self) -> CloudProviderResult<Vec<Instance>> {
-        let filter = filter::Builder::default()
+        let filter = FilterBuilder::default()
             .name("tag:Name")
             .values(self.settings.testbed_id.clone())
             .build();
@@ -247,13 +251,9 @@ impl ServerProviderClient for AwsClient {
         let mut instances = Vec::new();
         for (region, client) in &self.clients {
             let request = client.describe_instances().filters(filter.clone());
-            if let Some(reservations) = request.send().await?.reservations() {
-                for reservation in reservations {
-                    if let Some(aws_instances) = reservation.instances() {
-                        for instance in aws_instances {
-                            instances.push(self.make_instance(region.clone(), instance));
-                        }
-                    }
+            for reservation in request.send().await?.reservations() {
+                for instance in reservation.instances() {
+                    instances.push(self.make_instance(region.clone(), instance));
                 }
             }
         }
@@ -325,22 +325,17 @@ impl ServerProviderClient for AwsClient {
         let image_id = self.find_image_id(client).await?;
 
         // Create a new instance.
-        let tags = tag_specification::Builder::default()
+        let tags = TagSpecificationBuilder::default()
             .resource_type(ResourceType::Instance)
-            .tags(
-                tag::Builder::default()
-                    .key("Name")
-                    .value(testbed_id)
-                    .build(),
-            )
+            .tags(TagBuilder::default().key("Name").value(testbed_id).build())
             .build();
 
-        let storage = block_device_mapping::Builder::default()
+        let storage = BlockDeviceMappingBuilder::default()
             .device_name("/dev/sda1")
             .ebs(
-                ebs_block_device::Builder::default()
+                EbsBlockDeviceBuilder::default()
                     .delete_on_termination(true)
-                    .volume_size(500)
+                    .volume_size(Self::DEFAULT_EBS_SIZE_GB)
                     .volume_type(VolumeType::Gp2)
                     .build(),
             )
@@ -360,7 +355,7 @@ impl ServerProviderClient for AwsClient {
         let response = request.send().await?;
         let instance = &response
             .instances()
-            .and_then(|x| x.first())
+            .first()
             .expect("AWS instances list should contain instances");
 
         Ok(self.make_instance(region, instance))

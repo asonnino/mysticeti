@@ -215,7 +215,7 @@ pub fn simulated_network_syncers_with_epoch_duration(
 }
 
 pub async fn network_syncers(n: usize) -> Vec<NetworkSyncer<TestBlockHandler, TestCommitHandler>> {
-    network_syncers_with_epoch_duration(n, config::defaults::default_rounds_in_epoch()).await
+    network_syncers_with_epoch_duration(n, config::node_defaults::default_rounds_in_epoch()).await
 }
 
 pub async fn network_syncers_with_epoch_duration(
@@ -237,7 +237,7 @@ pub async fn network_syncers_with_epoch_duration(
             core,
             3,
             commit_handler,
-            config::defaults::default_shutdown_grace_period(),
+            config::node_defaults::default_shutdown_grace_period(),
             test_metrics(),
         );
         network_syncers.push(network_syncer);
