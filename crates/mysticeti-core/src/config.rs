@@ -12,7 +12,7 @@ use std::{
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::{
-    crypto::{dummy_public_key, Signer},
+    crypto::Signer,
     types::{AuthorityIndex, PublicKey, RoundNumber},
 };
 
