@@ -8,7 +8,10 @@ use std::{
     path::PathBuf,
 };
 
-use mysticeti_core::config::{self, ClientParameters, NodeParameters};
+use mysticeti_core::{
+    config::{self, ClientParameters, NodeParameters},
+    types::AuthorityIndex,
+};
 use serde::{Deserialize, Serialize};
 
 use super::{ProtocolCommands, ProtocolMetrics, ProtocolParameters, BINARY_PATH};
@@ -97,7 +100,7 @@ impl ProtocolCommands for MysticetiProtocol {
 
         let node_parameters = parameters.node_parameters.clone();
         let node_parameters_string = serde_yaml::to_string(&node_parameters).unwrap();
-        let node_parameters_path = self.working_dir.join("node-parameters.yml");
+        let node_parameters_path = self.working_dir.join("node-parameters.yaml");
         let upload_node_parameters = format!(
             "echo -e '{node_parameters_string}' > {}",
             node_parameters_path.display()
@@ -120,12 +123,41 @@ impl ProtocolCommands for MysticetiProtocol {
     fn node_command<I>(
         &self,
         instances: I,
-        parameters: &BenchmarkParameters,
+        _parameters: &BenchmarkParameters,
     ) -> Vec<(Instance, String)>
     where
         I: IntoIterator<Item = Instance>,
     {
-        vec![]
+        instances
+            .into_iter()
+            .enumerate()
+            .map(|(i, instance)| {
+                let authority = i as AuthorityIndex;
+                let committee_path = self.working_dir.join("committee.yaml");
+                let node_parameters_path = self.working_dir.join("node-parameters.yml");
+                let private_config_path = self
+                    .working_dir
+                    .join(format!("private-config-{authority}.yml"));
+                let client_parameters_path = self.working_dir.join("client-parameters.yml");
+
+                let run = [
+                    &format!("./{BINARY_PATH}/mysticeti"),
+                    "run",
+                    &format!("--authority {authority}"),
+                    &format!("--committee_path {}", committee_path.display()),
+                    &format!("--node-parameters-path {}", node_parameters_path.display()),
+                    &format!("--private-config-path {}", private_config_path.display()),
+                    &format!(
+                        "--client-parameters-path {}",
+                        client_parameters_path.display()
+                    ),
+                ]
+                .join(" ");
+
+                let command = ["source $HOME/.cargo/env", &run].join(" && ");
+                (instance, command)
+            })
+            .collect()
     }
 
     fn client_command<I>(
