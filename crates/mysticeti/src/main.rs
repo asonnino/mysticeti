@@ -245,6 +245,9 @@ async fn run(
         "Failed to load client parameters file '{client_parameters_path}'"
     ))?;
 
+    let string = serde_yaml::to_string(&private_config.keypair.public_key()).unwrap();
+    tracing::info!("public key:{string}");
+
     let committee = Arc::new(committee);
 
     let network_address = public_config

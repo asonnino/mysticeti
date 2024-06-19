@@ -1813,6 +1813,7 @@ dependencies = [
  "eyre",
  "futures",
  "mysticeti-core",
+ "serde_yaml",
  "tokio",
  "tracing",
  "tracing-subscriber",

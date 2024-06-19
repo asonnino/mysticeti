@@ -189,7 +189,7 @@ impl ImportExport for NodePublicConfig {}
 #[derive(Serialize, Deserialize)]
 pub struct NodePrivateConfig {
     authority: AuthorityIndex,
-    keypair: Signer,
+    pub keypair: Signer,
     pub storage_path: PathBuf,
 }
 

@@ -9,7 +9,7 @@ clap = { workspace = true }
 color-eyre = { workspace = true }
 eyre = { workspace = true }
 futures = { workspace = true }
-
+serde_yaml = "0.9.34+deprecated"
 mysticeti-core = { path = "../mysticeti-core" }
 tokio = { workspace = true }
 tracing = { workspace = true }

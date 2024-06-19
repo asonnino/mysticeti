@@ -232,6 +232,8 @@ async fn run<C: ServerProviderClient>(
                 None => ClientParameters::default(),
             };
 
+            println!("---> loads: {:?}", loads);
+
             let set_of_benchmark_parameters = BenchmarkParameters::new_from_loads(
                 settings.clone(),
                 node_parameters,
