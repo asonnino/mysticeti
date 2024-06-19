@@ -152,15 +152,15 @@ mod defaults {
     }
 
     pub fn default_working_dir() -> PathBuf {
-        "working_dir".into()
+        ["~", "working_dir"].iter().collect()
     }
 
     pub fn default_results_dir() -> PathBuf {
-        ["./", "results"].iter().collect()
+        [".", "results"].iter().collect()
     }
 
     pub fn default_logs_dir() -> PathBuf {
-        ["./", "logs"].iter().collect()
+        [".", "logs"].iter().collect()
     }
 
     pub fn default_use_nvme() -> bool {

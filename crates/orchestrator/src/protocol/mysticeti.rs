@@ -97,7 +97,7 @@ impl ProtocolCommands for MysticetiProtocol {
 
         let node_parameters = parameters.node_parameters.clone();
         let node_parameters_string = serde_yaml::to_string(&node_parameters).unwrap();
-        let node_parameters_path = self.working_dir.join("node-parameters.yaml");
+        let node_parameters_path = self.working_dir.join("node-parameters.yml");
         let upload_node_parameters = format!(
             "echo -e '{node_parameters_string}' > {}",
             node_parameters_path.display()
