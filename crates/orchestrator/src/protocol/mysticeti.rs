@@ -144,7 +144,7 @@ impl ProtocolCommands for MysticetiProtocol {
                     &format!("./{BINARY_PATH}/mysticeti"),
                     "run",
                     &format!("--authority {authority}"),
-                    &format!("--committee_path {}", committee_path.display()),
+                    &format!("--committee-path {}", committee_path.display()),
                     &format!("--node-parameters-path {}", node_parameters_path.display()),
                     &format!("--private-config-path {}", private_config_path.display()),
                     &format!(
