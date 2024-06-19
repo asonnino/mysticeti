@@ -52,6 +52,7 @@ impl Display for MysticetiNodeParameters {
 impl ProtocolParameters for MysticetiNodeParameters {}
 
 #[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(transparent)]
 pub struct MysticetiClientParameters(ClientParameters);
 
 impl Deref for MysticetiClientParameters {
@@ -106,18 +107,32 @@ impl ProtocolCommands for MysticetiProtocol {
             node_parameters_path.display()
         );
 
+        let client_parameters = parameters.client_parameters.clone();
+        let client_parameters_string = serde_yaml::to_string(&client_parameters).unwrap();
+        let client_parameters_path = self.working_dir.join("client-parameters.yaml");
+        let upload_client_parameters = format!(
+            "echo -e '{client_parameters_string}' > {}",
+            client_parameters_path.display()
+        );
+
         let genesis = [
             &format!("./{BINARY_PATH}/mysticeti"),
             "benchmark-genesis",
             &format!(
                 "--ips {ips} --working-directory {} --node-parameters-path {}",
                 self.working_dir.display(),
-                node_parameters_path.display()
+                node_parameters_path.display(),
             ),
         ]
         .join(" ");
 
-        ["source $HOME/.cargo/env", &upload_node_parameters, &genesis].join(" && ")
+        [
+            "source $HOME/.cargo/env",
+            &upload_node_parameters,
+            &upload_client_parameters,
+            &genesis,
+        ]
+        .join(" && ")
     }
 
     fn node_command<I>(
@@ -134,18 +149,18 @@ impl ProtocolCommands for MysticetiProtocol {
             .map(|(i, instance)| {
                 let authority = i as AuthorityIndex;
                 let committee_path = self.working_dir.join("committee.yaml");
-                let node_parameters_path = self.working_dir.join("node-parameters.yml");
+                let public_config_path = self.working_dir.join("public-config.yaml");
                 let private_config_path = self
                     .working_dir
-                    .join(format!("private-config-{authority}.yml"));
-                let client_parameters_path = self.working_dir.join("client-parameters.yml");
+                    .join(format!("private-config-{authority}.yaml"));
+                let client_parameters_path = self.working_dir.join("client-parameters.yaml");
 
                 let run = [
                     &format!("./{BINARY_PATH}/mysticeti"),
                     "run",
                     &format!("--authority {authority}"),
                     &format!("--committee-path {}", committee_path.display()),
-                    &format!("--node-parameters-path {}", node_parameters_path.display()),
+                    &format!("--public-config-path {}", public_config_path.display()),
                     &format!("--private-config-path {}", private_config_path.display()),
                     &format!(
                         "--client-parameters-path {}",
