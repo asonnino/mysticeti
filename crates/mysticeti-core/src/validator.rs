@@ -96,6 +96,7 @@ impl Validator {
             block_handler,
             authority,
             committee.clone(),
+            private_config,
             public_config,
             metrics.clone(),
             recovered,

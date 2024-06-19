@@ -22,12 +22,12 @@ use crate::{
         WAL_ENTRY_STATE,
     },
     committee::Committee,
-    config::NodePublicConfig,
+    config::{NodePrivateConfig, NodePublicConfig},
     consensus::{
         linearizer::CommittedSubDag,
         universal_committer::{UniversalCommitter, UniversalCommitterBuilder},
     },
-    crypto::{dummy_signer, Signer},
+    crypto::Signer,
     data::Data,
     epoch_close::EpochManager,
     metrics::{Metrics, UtilizationTimerVecExt},
@@ -75,7 +75,8 @@ impl<H: BlockHandler> Core<H> {
         mut block_handler: H,
         authority: AuthorityIndex,
         committee: Arc<Committee>,
-        config: &NodePublicConfig,
+        private_config: NodePrivateConfig,
+        public_config: &NodePublicConfig,
         metrics: Arc<Metrics>,
         recovered: RecoveredState,
         mut wal_writer: WalWriter,
@@ -131,11 +132,17 @@ impl<H: BlockHandler> Core<H> {
 
         let committer =
             UniversalCommitterBuilder::new(committee.clone(), block_store.clone(), metrics.clone())
-                .with_number_of_leaders(config.parameters.number_of_leaders)
-                .with_pipeline(config.parameters.enable_pipelining)
+                .with_number_of_leaders(public_config.parameters.number_of_leaders)
+                .with_pipeline(public_config.parameters.enable_pipelining)
                 .build();
-        tracing::info!("Pipeline enabled: {}", config.parameters.enable_pipelining);
-        tracing::info!("Number of leaders: {}", config.parameters.number_of_leaders);
+        tracing::info!(
+            "Pipeline enabled: {}",
+            public_config.parameters.enable_pipelining
+        );
+        tracing::info!(
+            "Number of leaders: {}",
+            public_config.parameters.number_of_leaders
+        );
 
         let mut this = Self {
             block_manager,
@@ -150,10 +157,10 @@ impl<H: BlockHandler> Core<H> {
             block_store,
             metrics,
             options,
-            signer: dummy_signer(), // todo - load from config
+            signer: private_config.keypair,
             recovered_committed_blocks: Some((committed_blocks, committed_state)),
             epoch_manager,
-            rounds_in_epoch: config.parameters.rounds_in_epoch,
+            rounds_in_epoch: public_config.parameters.rounds_in_epoch,
             committer,
         };
 
