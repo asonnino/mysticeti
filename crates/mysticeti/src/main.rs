@@ -67,12 +67,6 @@ enum Operation {
         #[clap(long, value_name = "INT")]
         committee_size: usize,
     },
-    /// Deploy a local testbed.
-    Testbed {
-        /// The number of authorities in the committee.
-        #[clap(long, value_name = "INT")]
-        committee_size: usize,
-    },
 }
 
 #[tokio::main]
@@ -107,7 +101,6 @@ async fn main() -> Result<()> {
             )
             .await?
         }
-        Operation::Testbed { committee_size } => testbed(committee_size).await?,
         Operation::DryRun {
             authority,
             committee_size,
@@ -173,56 +166,6 @@ fn benchmark_genesis(
     Ok(())
 }
 
-// /// Generate all the genesis files required for benchmarks.
-// fn benchmark_genesis(
-//     ips: Vec<IpAddr>,
-//     working_directory: PathBuf,
-//     disable_pipeline: bool,
-//     number_of_leaders: usize,
-// ) -> Result<()> {
-//     tracing::info!("Generating benchmark genesis files");
-//     fs::create_dir_all(&working_directory).wrap_err(format!(
-//         "Failed to create directory '{}'",
-//         working_directory.display()
-//     ))?;
-
-//     let committee_size = ips.len();
-//     let mut committee_path = working_directory.clone();
-//     committee_path.push(Committee::DEFAULT_FILENAME);
-//     Committee::new_for_benchmarks(committee_size)
-//         .print(&committee_path)
-//         .wrap_err("Failed to print committee file")?;
-//     tracing::info!("Generated committee file: {}", committee_path.display());
-
-//     let mut parameters_path = working_directory.clone();
-//     parameters_path.push(ValidatorPublicParameters::DEFAULT_FILENAME);
-//     ValidatorPublicParameters::new_for_tests(ips)
-//         .with_pipeline(!disable_pipeline)
-//         .with_number_of_leaders(number_of_leaders)
-//         .print(&parameters_path)
-//         .wrap_err("Failed to print parameters file")?;
-//     tracing::info!(
-//         "Generated (public) parameters file: {}",
-//         parameters_path.display()
-//     );
-
-//     for i in 0..committee_size {
-//         let mut path = working_directory.clone();
-//         path.push(PrivateConfig::default_filename(i as AuthorityIndex));
-//         let parent_directory = path.parent().unwrap();
-//         fs::create_dir_all(parent_directory).wrap_err(format!(
-//             "Failed to create directory '{}'",
-//             parent_directory.display()
-//         ))?;
-//         PrivateConfig::new_for_benchmarks(parent_directory, i as AuthorityIndex)
-//             .print(&path)
-//             .wrap_err("Failed to print private config file")?;
-//         tracing::info!("Generated private config file: {}", path.display());
-//     }
-
-//     Ok(())
-// }
-
 /// Boot a single validator node.
 async fn run(
     authority: AuthorityIndex,
@@ -275,87 +218,50 @@ async fn run(
     Ok(())
 }
 
-async fn testbed(committee_size: usize) -> Result<()> {
-    tracing::info!("Starting testbed with committee size {committee_size}");
-
-    todo!();
-
-    // let committee = Committee::new_for_benchmarks(committee_size);
-    // let public_config = NodePublicConfig::new_for_tests(committee_size);
-    // let client_parameters = ClientParameters::default();
-
-    // let dir = PathBuf::from("local-testbed");
-    // match fs::remove_dir_all(&dir) {
-    //     Ok(_) => {}
-    //     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-    //     Err(e) => {
-    //         return Err(e).wrap_err(format!("Failed to remove directory '{}'", dir.display()))
-    //     }
-    // }
-    // match fs::create_dir_all(&dir) {
-    //     Ok(_) => {}
-    //     Err(e) => {
-    //         return Err(e).wrap_err(format!("Failed to create directory '{}'", dir.display()))
-    //     }
-    // }
-
-    // let mut handles = Vec::new();
-    // for i in 0..committee_size {
-    //     let authority = i as AuthorityIndex;
-    //     let private_config = NodePrivateConfig::new_for_benchmarks(&dir, authority);
-
-    //     let validator = Validator::start(
-    //         authority,
-    //         committee.clone(),
-    //         &public_config,
-    //         private_config,
-    //         client_parameters.clone(),
-    //     )
-    //     .await?;
-    //     handles.push(validator.await_completion());
-    // }
-
-    // future::join_all(handles).await;
-    // Ok(())
-}
-
 async fn dryrun(authority: AuthorityIndex, committee_size: usize) -> Result<()> {
     tracing::warn!(
         "Starting validator {authority} in dryrun mode (committee size: {committee_size})"
     );
+    let ips = vec![IpAddr::V4(Ipv4Addr::LOCALHOST); committee_size];
+    let committee = Committee::new_for_benchmarks(committee_size);
+    let client_parameters = ClientParameters::default();
+    let node_parameters = NodeParameters::default();
+    let public_config = NodePublicConfig::new_for_benchmarks(ips, Some(node_parameters));
 
-    todo!()
+    let working_dir = PathBuf::from(format!("dryrun-validator-{authority}"));
+    let mut all_private_config =
+        NodePrivateConfig::new_for_benchmarks(&working_dir, committee_size);
+    let private_config = all_private_config.remove(authority as usize);
+    match fs::remove_dir_all(&working_dir) {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            return Err(e).wrap_err(format!(
+                "Failed to remove directory '{}'",
+                working_dir.display()
+            ))
+        }
+    }
+    match fs::create_dir_all(&private_config.storage_path) {
+        Ok(_) => {}
+        Err(e) => {
+            return Err(e).wrap_err(format!(
+                "Failed to create directory '{}'",
+                working_dir.display()
+            ))
+        }
+    }
 
-    // let committee = Committee::new_for_benchmarks(committee_size);
-    // let public_config = NodePublicConfig::new_for_tests(committee_size);
-    // let client_parameters = ClientParameters::default();
+    let validator = Validator::start(
+        authority,
+        committee,
+        &public_config,
+        private_config,
+        client_parameters,
+    )
+    .await?;
+    let (network_result, _metrics_result) = validator.await_completion().await;
+    network_result.expect("Validator crashed");
 
-    // let dir = PathBuf::from(format!("dryrun-validator-{authority}"));
-    // match fs::remove_dir_all(&dir) {
-    //     Ok(_) => {}
-    //     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-    //     Err(e) => {
-    //         return Err(e).wrap_err(format!("Failed to remove directory '{}'", dir.display()))
-    //     }
-    // }
-    // match fs::create_dir_all(&dir) {
-    //     Ok(_) => {}
-    //     Err(e) => {
-    //         return Err(e).wrap_err(format!("Failed to create directory '{}'", dir.display()))
-    //     }
-    // }
-    // let private_config = NodePrivateConfig::new_for_benchmarks(&dir, authority);
-
-    // Validator::start(
-    //     authority,
-    //     committee.clone(),
-    //     &public_config,
-    //     private_config,
-    //     client_parameters,
-    // )
-    // .await?
-    // .await_completion()
-    // .await
-    // .0
-    // .expect("Validator failed");
+    Ok(())
 }
