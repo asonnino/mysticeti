@@ -19,7 +19,7 @@ use crate::{
     block_handler::{BlockHandler, TestBlockHandler, TestCommitHandler},
     block_store::{BlockStore, BlockWriter, OwnBlockData, WAL_ENTRY_BLOCK},
     committee::Committee,
-    config::{self, NodePublicConfig},
+    config::{self, NodePrivateConfig, NodePublicConfig},
     core::{Core, CoreOptions},
     data::Data,
     metrics::{MetricReporter, Metrics},
@@ -75,7 +75,7 @@ pub fn committee_and_cores_persisted(
 pub fn committee_and_cores_persisted_epoch_duration(
     n: usize,
     path: Option<&Path>,
-    parameters: &NodePublicConfig,
+    public_config: &NodePublicConfig,
 ) -> (
     Arc<Committee>,
     Vec<Core<TestBlockHandler>>,
@@ -108,12 +108,15 @@ pub fn committee_and_cores_persisted_epoch_duration(
                 &committee,
             );
 
+            let private_config = NodePrivateConfig::new_for_tests(authority);
+
             println!("Opening core {authority}");
             let core = Core::open(
                 block_handler,
                 authority,
                 committee.clone(),
-                parameters,
+                private_config,
+                public_config,
                 metrics,
                 recovered,
                 wal_writer,

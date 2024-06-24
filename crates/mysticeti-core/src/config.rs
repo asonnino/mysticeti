@@ -12,7 +12,7 @@ use std::{
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::{
-    crypto::Signer,
+    crypto::{dummy_signer, Signer},
     types::{AuthorityIndex, PublicKey, RoundNumber},
 };
 
@@ -37,6 +37,8 @@ pub struct NodeParameters {
     pub wave_length: RoundNumber,
     #[serde(default = "node_defaults::default_leader_timeout")]
     pub leader_timeout: Duration,
+    #[serde(default = "node_defaults::default_max_block_size")]
+    pub max_block_size: usize,
     #[serde(default = "node_defaults::default_rounds_in_epoch")]
     pub rounds_in_epoch: RoundNumber,
     #[serde(default = "node_defaults::default_shutdown_grace_period")]
@@ -56,6 +58,10 @@ pub mod node_defaults {
 
     pub fn default_leader_timeout() -> std::time::Duration {
         std::time::Duration::from_secs(2)
+    }
+
+    pub fn default_max_block_size() -> usize {
+        4 * 1024 * 1024
     }
 
     pub fn default_rounds_in_epoch() -> super::RoundNumber {
@@ -84,6 +90,7 @@ impl Default for NodeParameters {
         Self {
             wave_length: node_defaults::default_wave_length(),
             leader_timeout: node_defaults::default_leader_timeout(),
+            max_block_size: node_defaults::default_max_block_size(),
             rounds_in_epoch: node_defaults::default_rounds_in_epoch(),
             shutdown_grace_period: node_defaults::default_shutdown_grace_period(),
             number_of_leaders: node_defaults::default_number_of_leaders(),
@@ -195,6 +202,14 @@ pub struct NodePrivateConfig {
 }
 
 impl NodePrivateConfig {
+    pub fn new_for_tests(index: AuthorityIndex) -> Self {
+        Self {
+            authority: index,
+            keypair: dummy_signer(),
+            storage_path: PathBuf::from("storage"),
+        }
+    }
+
     pub fn new_for_benchmarks(working_dir: &Path, committee_size: usize) -> Vec<Self> {
         Signer::new_for_test(committee_size)
             .into_iter()

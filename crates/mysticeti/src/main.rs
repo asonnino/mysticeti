@@ -208,7 +208,7 @@ async fn run(
     let validator = Validator::start(
         authority,
         committee,
-        &public_config,
+        public_config.clone(),
         private_config,
         client_parameters,
     )
@@ -255,7 +255,7 @@ async fn dryrun(authority: AuthorityIndex, committee_size: usize) -> Result<()> 
     let validator = Validator::start(
         authority,
         committee,
-        &public_config,
+        public_config,
         private_config,
         client_parameters,
     )

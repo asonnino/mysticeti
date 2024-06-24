@@ -7,7 +7,7 @@ use rand::{rngs::StdRng, Rng, SeedableRng};
 use tokio::sync::mpsc;
 
 use crate::{
-    config::ClientParameters,
+    config::{ClientParameters, NodePublicConfig},
     crypto::AsBytes,
     runtime::{self, timestamp_utc},
     types::{AuthorityIndex, Transaction},
@@ -17,6 +17,7 @@ pub struct TransactionGenerator {
     sender: mpsc::Sender<Vec<Transaction>>,
     rng: StdRng,
     client_parameters: ClientParameters,
+    node_public_config: NodePublicConfig,
 }
 
 impl TransactionGenerator {
@@ -26,6 +27,7 @@ impl TransactionGenerator {
         sender: mpsc::Sender<Vec<Transaction>>,
         seed: AuthorityIndex,
         client_parameters: ClientParameters,
+        node_public_config: NodePublicConfig,
     ) {
         assert!(client_parameters.transaction_size > 8 + 8); // 8 bytes timestamp + 8 bytes random
         tracing::info!(
@@ -38,6 +40,7 @@ impl TransactionGenerator {
                 sender,
                 rng: StdRng::seed_from_u64(seed),
                 client_parameters,
+                node_public_config,
             }
             .run(),
         );
@@ -46,7 +49,7 @@ impl TransactionGenerator {
     pub async fn run(mut self) {
         let load = self.client_parameters.load;
         let transactions_per_block_interval = (load + 9) / 10;
-        let max_block_size = 4 * 1024 * 1024;
+        let max_block_size = self.node_public_config.parameters.max_block_size;
         let target_block_size = min(max_block_size, transactions_per_block_interval);
 
         let mut counter = 0;

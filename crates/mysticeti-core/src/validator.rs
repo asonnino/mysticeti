@@ -35,7 +35,7 @@ impl Validator {
     pub async fn start(
         authority: AuthorityIndex,
         committee: Arc<Committee>,
-        public_config: &NodePublicConfig,
+        public_config: NodePublicConfig,
         private_config: NodePrivateConfig,
         client_parameters: ClientParameters,
     ) -> Result<Self> {
@@ -82,7 +82,12 @@ impl Validator {
             metrics.clone(),
         );
 
-        TransactionGenerator::start(block_sender, authority, client_parameters);
+        TransactionGenerator::start(
+            block_sender,
+            authority,
+            client_parameters,
+            public_config.clone(),
+        );
         let committed_transaction_log =
             TransactionLog::start(private_config.committed_transactions_log())
                 .expect("Failed to open committed transaction log for write");
@@ -97,14 +102,14 @@ impl Validator {
             authority,
             committee.clone(),
             private_config,
-            public_config,
+            &public_config,
             metrics.clone(),
             recovered,
             wal_writer,
             CoreOptions::default(),
         );
         let network = Network::load(
-            public_config,
+            &public_config,
             authority,
             binding_network_address,
             metrics.clone(),
@@ -202,7 +207,7 @@ mod smoke_tests {
             let validator = Validator::start(
                 authority,
                 committee.clone(),
-                &public_config,
+                public_config.clone(),
                 private_config,
                 client_parameters.clone(),
             )
@@ -247,7 +252,7 @@ mod smoke_tests {
             let validator = Validator::start(
                 authority,
                 committee.clone(),
-                &public_config,
+                public_config.clone(),
                 private_config,
                 client_parameters.clone(),
             )
@@ -275,7 +280,7 @@ mod smoke_tests {
         let validator = Validator::start(
             authority as AuthorityIndex,
             committee.clone(),
-            &public_config,
+            public_config.clone(),
             private_config,
             client_parameters,
         )
@@ -320,7 +325,7 @@ mod smoke_tests {
             let validator = Validator::start(
                 authority,
                 committee.clone(),
-                &public_config,
+                public_config.clone(),
                 private_config,
                 client_parameters.clone(),
             )
