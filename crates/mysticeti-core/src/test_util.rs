@@ -181,7 +181,10 @@ pub fn simulated_network_syncers(
     Vec<NetworkSyncer<TestBlockHandler, TestCommitHandler>>,
     Vec<MetricReporter>,
 ) {
-    simulated_network_syncers_with_epoch_duration(n, NodePublicConfig::DEFAULT_ROUNDS_IN_EPOCH)
+    simulated_network_syncers_with_epoch_duration(
+        n,
+        config::node_defaults::default_rounds_in_epoch(),
+    )
 }
 
 #[cfg(feature = "simulator")]
@@ -208,7 +211,7 @@ pub fn simulated_network_syncers_with_epoch_duration(
             core,
             3,
             commit_handler,
-            NodePublicConfig::DEFAULT_SHUTDOWN_GRACE_PERIOD,
+            config::node_defaults::default_shutdown_grace_period(),
             test_metrics(),
         );
         drop(node_context);

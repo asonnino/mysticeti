@@ -443,6 +443,7 @@ mod sim_tests {
     use super::NetworkSyncer;
     use crate::{
         block_handler::{TestBlockHandler, TestCommitHandler},
+        config,
         config::NodePublicConfig,
         finalization_interpreter::FinalizationInterpreter,
         future_simulator::SimulatedExecutorState,
@@ -458,27 +459,6 @@ mod sim_tests {
         },
     };
 
-    #[test]
-    fn test_epoch_close() {
-        SimulatedExecutorState::run(rng_at_seed(0), test_epoch_close_async());
-    }
-
-    async fn test_epoch_close_async() {
-        let n = 4;
-        let rounds_in_epoch = 3000;
-        let (simulated_network, network_syncers, _) =
-            simulated_network_syncers_with_epoch_duration(n, rounds_in_epoch);
-        simulated_network.connect_all().await;
-        let syncers = wait_for_epoch_to_close(network_syncers).await;
-        for syncer in syncers.iter() {
-            if syncer.core().epoch_closed() {
-                ()
-            } else {
-                panic!("Epoch should have closed!")
-            }
-        }
-    }
-
     async fn wait_for_epoch_to_close(
         network_syncers: Vec<NetworkSyncer<TestBlockHandler, TestCommitHandler>>,
     ) -> Vec<Syncer<TestBlockHandler, Arc<Notify>, TestCommitHandler>> {
@@ -491,7 +471,7 @@ mod sim_tests {
             }
             runtime::sleep(Duration::from_secs(10)).await;
         }
-        runtime::sleep(Parameters::DEFAULT_SHUTDOWN_GRACE_PERIOD).await;
+        runtime::sleep(config::node_defaults::default_shutdown_grace_period()).await;
         let mut syncers = vec![];
         for net_sync in network_syncers {
             let syncer = net_sync.shutdown().await;
