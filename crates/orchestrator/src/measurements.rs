@@ -87,7 +87,7 @@ impl Measurement {
                 _ => (),
             }
 
-            if measurement != &Self::default() {
+            if measurement == &Self::default() {
                 measurements.remove(&label);
             }
         }
@@ -427,5 +427,189 @@ mod test {
             .get(&scraper_id)
             .unwrap();
         assert_eq!(shared_workload_data_points.len(), 1);
+    }
+
+    #[test]
+    fn prometheus_parse_large() {
+        let report = r#"
+            # HELP benchmark_duration Duration of the benchmark
+            # TYPE benchmark_duration counter
+            benchmark_duration 260
+            # HELP block_handler_cleanup_util block_handler_cleanup_util
+            # TYPE block_handler_cleanup_util counter
+            block_handler_cleanup_util 2440
+            # HELP block_handler_pending_certificates Number of pending certificates in block handler
+            # TYPE block_handler_pending_certificates gauge
+            block_handler_pending_certificates 0
+            # HELP block_store_cleanup_util block_store_cleanup_util
+            # TYPE block_store_cleanup_util counter
+            block_store_cleanup_util 20856
+            # HELP block_store_entries Number of entries in block store
+            # TYPE block_store_entries counter
+            block_store_entries 19506
+            # HELP block_store_loaded_blocks Blocks loaded from wal position in the block store
+            # TYPE block_store_loaded_blocks counter
+            block_store_loaded_blocks 0
+            # HELP block_store_unloaded_blocks Blocks unloaded from wal position during cleanup
+            # TYPE block_store_unloaded_blocks counter
+            block_store_unloaded_blocks 19088
+            # HELP commit_handler_pending_certificates Number of pending certificates in commit handler
+            # TYPE commit_handler_pending_certificates gauge
+            commit_handler_pending_certificates 7749
+            # HELP committed_leaders_total Total number of (direct or indirect) committed leaders per authority
+            # TYPE committed_leaders_total counter
+            committed_leaders_total{authority="0",commit_type="direct-commit"} 4871
+            committed_leaders_total{authority="0",commit_type="indirect-skip"} 1
+            committed_leaders_total{authority="1",commit_type="direct-commit"} 4878
+            committed_leaders_total{authority="2",commit_type="direct-commit"} 4874
+            committed_leaders_total{authority="2",commit_type="indirect-skip"} 1
+            committed_leaders_total{authority="3",commit_type="direct-commit"} 4875
+            # HELP connection_latency connection_latency
+            # TYPE connection_latency gauge
+            connection_latency{peer="B",v="count"} 7
+            connection_latency{peer="B",v="p50"} 65820
+            connection_latency{peer="B",v="p90"} 65820
+            connection_latency{peer="B",v="p99"} 65820
+            connection_latency{peer="B",v="sum"} 544275
+            connection_latency{peer="C",v="count"} 7
+            connection_latency{peer="C",v="p50"} 141796
+            connection_latency{peer="C",v="p90"} 141796
+            connection_latency{peer="C",v="p99"} 141796
+            connection_latency{peer="C",v="sum"} 992113
+            connection_latency{peer="D",v="count"} 7
+            connection_latency{peer="D",v="p50"} 116833
+            connection_latency{peer="D",v="p90"} 116833
+            connection_latency{peer="D",v="p99"} 116833
+            connection_latency{peer="D",v="sum"} 1045331
+            # HELP core_lock_dequeued Number of dequeued core requests
+            # TYPE core_lock_dequeued counter
+            core_lock_dequeued 14708
+            # HELP core_lock_enqueued Number of enqueued core requests
+            # TYPE core_lock_enqueued counter
+            core_lock_enqueued 14708
+            # HELP core_lock_util Utilization of core write lock
+            # TYPE core_lock_util counter
+            core_lock_util 2977016
+            # HELP global_in_memory_blocks Number of blocks loaded in memory
+            # TYPE global_in_memory_blocks gauge
+            global_in_memory_blocks 1166
+            # HELP global_in_memory_blocks_bytes Total size of blocks loaded in memory
+            # TYPE global_in_memory_blocks_bytes gauge
+            global_in_memory_blocks_bytes 2020910
+            # HELP inter_block_latency_s Buckets measuring the inter-block latency in seconds
+            # TYPE inter_block_latency_s histogram
+            inter_block_latency_s_bucket{workload="shared",le="0.1"} 0
+            inter_block_latency_s_bucket{workload="shared",le="0.25"} 9760
+            inter_block_latency_s_bucket{workload="shared",le="0.5"} 9990
+            inter_block_latency_s_bucket{workload="shared",le="0.75"} 9990
+            inter_block_latency_s_bucket{workload="shared",le="1"} 9990
+            inter_block_latency_s_bucket{workload="shared",le="1.25"} 12995
+            inter_block_latency_s_bucket{workload="shared",le="1.5"} 12995
+            inter_block_latency_s_bucket{workload="shared",le="1.75"} 12995
+            inter_block_latency_s_bucket{workload="shared",le="2"} 12995
+            inter_block_latency_s_bucket{workload="shared",le="2.5"} 12995
+            inter_block_latency_s_bucket{workload="shared",le="5"} 12995
+            inter_block_latency_s_bucket{workload="shared",le="10"} 12995
+            inter_block_latency_s_bucket{workload="shared",le="20"} 12995
+            inter_block_latency_s_bucket{workload="shared",le="30"} 12995
+            inter_block_latency_s_bucket{workload="shared",le="60"} 12995
+            inter_block_latency_s_bucket{workload="shared",le="90"} 12995
+            inter_block_latency_s_bucket{workload="shared",le="+Inf"} 12995
+            inter_block_latency_s_sum{workload="shared"} 5316.488885883012
+            inter_block_latency_s_count{workload="shared"} 12995
+            # HELP latency_s Buckets measuring the end-to-end latency of a workload in seconds
+            # TYPE latency_s histogram
+            latency_s_bucket{workload="shared",le="0.1"} 0
+            latency_s_bucket{workload="shared",le="0.25"} 28035
+            latency_s_bucket{workload="shared",le="0.5"} 39840
+            latency_s_bucket{workload="shared",le="0.75"} 39900
+            latency_s_bucket{workload="shared",le="1"} 42955
+            latency_s_bucket{workload="shared",le="1.25"} 46025
+            latency_s_bucket{workload="shared",le="1.5"} 46070
+            latency_s_bucket{workload="shared",le="1.75"} 46130
+            latency_s_bucket{workload="shared",le="2"} 49160
+            latency_s_bucket{workload="shared",le="2.5"} 49195
+            latency_s_bucket{workload="shared",le="5"} 52205
+            latency_s_bucket{workload="shared",le="10"} 52205
+            latency_s_bucket{workload="shared",le="20"} 52205
+            latency_s_bucket{workload="shared",le="30"} 52205
+            latency_s_bucket{workload="shared",le="60"} 52205
+            latency_s_bucket{workload="shared",le="90"} 52205
+            latency_s_bucket{workload="shared",le="+Inf"} 52205
+            latency_s_sum{workload="shared"} 28514.81023401533
+            latency_s_count{workload="shared"} 52205
+            # HELP latency_squared_s Square of total end-to-end latency of a workload in seconds
+            # TYPE latency_squared_s counter
+            latency_squared_s{workload="shared"} 38892.65516746515
+            # HELP leader_timeout_total Total number of leader timeouts
+            # TYPE leader_timeout_total counter
+            leader_timeout_total 3
+            # HELP missing_blocks Number of missing blocks per authority
+            # TYPE missing_blocks gauge
+            missing_blocks{authority="0"} 0
+            missing_blocks{authority="1"} 0
+            missing_blocks{authority="2"} 0
+            missing_blocks{authority="3"} 0
+            # HELP proposed_block_size_bytes proposed_block_size_bytes
+            # TYPE proposed_block_size_bytes gauge
+            proposed_block_size_bytes{v="count"} 4494
+            proposed_block_size_bytes{v="p50"} 2949
+            proposed_block_size_bytes{v="p90"} 3005
+            proposed_block_size_bytes{v="p99"} 5569
+            proposed_block_size_bytes{v="sum"} 7892302
+            # HELP proposed_block_transaction_count proposed_block_transaction_count
+            # TYPE proposed_block_transaction_count gauge
+            proposed_block_transaction_count{v="count"} 4494
+            proposed_block_transaction_count{v="p50"} 5
+            proposed_block_transaction_count{v="p90"} 5
+            proposed_block_transaction_count{v="p99"} 10
+            proposed_block_transaction_count{v="sum"} 12000
+            # HELP proposed_block_vote_count proposed_block_vote_count
+            # TYPE proposed_block_vote_count gauge
+            proposed_block_vote_count{v="count"} 4494
+            proposed_block_vote_count{v="p50"} 0
+            proposed_block_vote_count{v="p90"} 0
+            proposed_block_vote_count{v="p99"} 0
+            proposed_block_vote_count{v="sum"} 0
+            # HELP submitted_transactions Number of submitted transactions
+            # TYPE submitted_transactions counter
+            submitted_transactions 0
+            # HELP transaction_committed_latency transaction_committed_latency
+            # TYPE transaction_committed_latency gauge
+            transaction_committed_latency{v="count"} 11995
+            transaction_committed_latency{v="p50"} 244395
+            transaction_committed_latency{v="p90"} 245314
+            transaction_committed_latency{v="p99"} 245563
+            transaction_committed_latency{v="sum"} 5108276856
+            # HELP utilization_timer Utilization timer
+            # TYPE utilization_timer counter
+            utilization_timer{proc="BlockHandler::handle_blocks"} 1273
+            utilization_timer{proc="Core::add_blocks"} 167115
+            utilization_timer{proc="Core::run_block_handler"} 45864
+            utilization_timer{proc="Core::try_new_block"} 261001
+            utilization_timer{proc="Syncer::add_blocks"} 2871082
+            utilization_timer{proc="Syncer::try_new_block"} 2690931
+            # HELP wal_mappings Number of mappings retained by the wal
+            # TYPE wal_mappings gauge
+            wal_mappings 0
+        "#;
+
+        let measurements = Measurement::from_prometheus::<TestProtocolMetrics>(report);
+        let mut aggregator = MeasurementsCollection::new(BenchmarkParameters::new_for_tests());
+        let scraper_id = 1;
+        for (label, measurement) in measurements {
+            println!("{:?}", label);
+            aggregator.add(scraper_id, label, measurement);
+        }
+
+        let shared_workload_data_points = aggregator
+            .data
+            .get("shared")
+            .expect("Unable to find label")
+            .get(&scraper_id)
+            .unwrap();
+
+        let data = &shared_workload_data_points[shared_workload_data_points.len() - 1];
+        assert_ne!(data, &Measurement::default());
     }
 }
