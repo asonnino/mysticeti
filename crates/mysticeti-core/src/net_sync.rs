@@ -20,6 +20,7 @@ use crate::{
     block_handler::BlockHandler,
     block_store::BlockStore,
     committee::Committee,
+    config::NodePublicConfig,
     core::Core,
     core_thread::CoreThreadDispatcher,
     metrics::Metrics,
@@ -59,6 +60,7 @@ impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncer<H, C>
         mut commit_observer: C,
         shutdown_grace_period: Duration,
         metrics: Arc<Metrics>,
+        public_config: &NodePublicConfig,
     ) -> Self {
         let authority_index = core.authority();
         let handle = Handle::current();
@@ -96,6 +98,7 @@ impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncer<H, C>
             authority_index,
             inner.clone(),
             metrics.clone(),
+            public_config.parameters.enable_synchronizer,
         ));
         let main_task = handle.spawn(Self::run(
             network,

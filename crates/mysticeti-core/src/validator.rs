@@ -123,6 +123,7 @@ impl Validator {
             commit_handler,
             public_config.parameters.shutdown_grace_period,
             metrics,
+            &public_config,
         );
 
         tracing::info!("Validator {authority} listening on {network_address}");

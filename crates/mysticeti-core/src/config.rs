@@ -49,6 +49,8 @@ pub struct NodeParameters {
     pub enable_pipelining: bool,
     #[serde(default = "node_defaults::default_consensus_only")]
     pub consensus_only: bool,
+    #[serde(default = "node_defaults::default_enable_synchronizer")]
+    pub enable_synchronizer: bool,
 }
 
 pub mod node_defaults {
@@ -83,6 +85,10 @@ pub mod node_defaults {
     pub fn default_consensus_only() -> bool {
         true
     }
+
+    pub fn default_enable_synchronizer() -> bool {
+        false
+    }
 }
 
 impl Default for NodeParameters {
@@ -96,6 +102,7 @@ impl Default for NodeParameters {
             number_of_leaders: node_defaults::default_number_of_leaders(),
             enable_pipelining: node_defaults::default_enable_pipelining(),
             consensus_only: node_defaults::default_consensus_only(),
+            enable_synchronizer: node_defaults::default_enable_synchronizer(),
         }
     }
 }

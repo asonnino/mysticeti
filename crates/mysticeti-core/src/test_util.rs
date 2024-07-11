@@ -245,6 +245,7 @@ pub async fn network_syncers_with_epoch_duration(
             commit_handler,
             config::node_defaults::default_shutdown_grace_period(),
             test_metrics(),
+            &NodePublicConfig::new_for_tests(n),
         );
         network_syncers.push(network_syncer);
     }

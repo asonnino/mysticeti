@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::HashMap, env, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use futures::future::join_all;
 use rand::{seq::SliceRandom, thread_rng};
@@ -211,13 +211,14 @@ impl BlockFetcher {
         id: AuthorityIndex,
         inner: Arc<NetworkSyncerInner<B, C>>,
         metrics: Arc<Metrics>,
+        enable: bool,
     ) -> Self
     where
         B: BlockHandler + 'static,
         C: CommitObserver + 'static,
     {
         let (sender, receiver) = mpsc::channel(100);
-        let worker = BlockFetcherWorker::new(id, inner, receiver, metrics);
+        let worker = BlockFetcherWorker::new(id, inner, receiver, metrics, enable);
         let handle = Handle::current().spawn(worker.run());
         Self { sender, handle }
     }
@@ -268,8 +269,8 @@ where
         inner: Arc<NetworkSyncerInner<B, C>>,
         receiver: mpsc::Receiver<BlockFetcherMessage>,
         metrics: Arc<Metrics>,
+        enable: bool,
     ) -> Self {
-        let enable = env::var("USE_SYNCER").is_ok();
         Self {
             id,
             inner,

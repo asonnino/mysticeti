@@ -16,10 +16,7 @@ use tokio::sync::mpsc;
 use crate::{
     block_store::BlockStore,
     committee::{Committee, ProcessedTransactionHandler, QuorumThreshold, TransactionAggregator},
-    consensus::{
-        self,
-        linearizer::{CommittedSubDag, Linearizer},
-    },
+    consensus::linearizer::{CommittedSubDag, Linearizer},
     data::Data,
     log::TransactionLog,
     metrics::{Metrics, UtilizationTimerExt, UtilizationTimerVecExt},
