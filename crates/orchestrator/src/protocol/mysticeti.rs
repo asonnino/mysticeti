@@ -107,7 +107,8 @@ impl ProtocolCommands for MysticetiProtocol {
             node_parameters_path.display()
         );
 
-        let client_parameters = parameters.client_parameters.clone();
+        let mut client_parameters = parameters.client_parameters.clone();
+        client_parameters.0.load = parameters.load / parameters.nodes;
         let client_parameters_string = serde_yaml::to_string(&client_parameters).unwrap();
         let client_parameters_path = self.working_dir.join("client-parameters.yaml");
         let upload_client_parameters = format!(
@@ -189,11 +190,11 @@ impl ProtocolCommands for MysticetiProtocol {
 }
 
 impl ProtocolMetrics for MysticetiProtocol {
-    const BENCHMARK_DURATION: &'static str = "benchmark_duration";
-    const TOTAL_TRANSACTIONS: &'static str = "total_transactions";
-    const LATENCY_BUCKETS: &'static str = "latency_buckets";
-    const LATENCY_SUM: &'static str = "latency_sum";
-    const LATENCY_SQUARED_SUM: &'static str = "latency_squared_sum";
+    const BENCHMARK_DURATION: &'static str = mysticeti_core::metrics::BENCHMARK_DURATION;
+    const TOTAL_TRANSACTIONS: &'static str = "latency_s_count";
+    const LATENCY_BUCKETS: &'static str = "latency_s";
+    const LATENCY_SUM: &'static str = "latency_s_sum";
+    const LATENCY_SQUARED_SUM: &'static str = mysticeti_core::metrics::LATENCY_SQUARED_S;
 
     fn nodes_metrics_path<I>(
         &self,
@@ -219,14 +220,14 @@ impl ProtocolMetrics for MysticetiProtocol {
 
     fn clients_metrics_path<I>(
         &self,
-        _instances: I,
-        _parameters: &BenchmarkParameters,
+        instances: I,
+        parameters: &BenchmarkParameters,
     ) -> Vec<(Instance, String)>
     where
         I: IntoIterator<Item = Instance>,
     {
-        // TODO: Implement this when the client metrics are available (#9).
-        vec![]
+        // NOTE: Hack to avoid clients metrics.
+        self.nodes_metrics_path(instances, parameters)
     }
 }
 

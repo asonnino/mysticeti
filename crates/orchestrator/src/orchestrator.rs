@@ -113,13 +113,12 @@ impl<P> Orchestrator<P> {
                 .push_back(instance);
         }
 
-        // Select the instance to host the monitoring stack. We select this instance from the region
-        // with the most instances.
+        // Select the instance to host the monitoring stack.
         let mut monitoring_instance = None;
         if self.settings.monitoring {
+            let region = &self.settings.regions[0];
             monitoring_instance = instances_by_regions
-                .values_mut()
-                .max_by_key(|instances| instances.len())
+                .get_mut(region)
                 .map(|instances| instances.pop_front().unwrap().clone());
         }
 
@@ -253,10 +252,16 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
 
     /// Configure the instances with the appropriate configuration files.
     pub async fn configure(&self, parameters: &BenchmarkParameters) -> TestbedResult<()> {
-        display::action("\nConfiguring instances");
+        display::config("Configuring instances", "");
 
         // Select instances to configure.
         let (clients, nodes, _) = self.select_instances(parameters)?;
+        for (i, node) in nodes.iter().enumerate() {
+            display::config(format!("  - node {i}"), &node.ssh_address());
+        }
+        for (i, client) in clients.iter().enumerate() {
+            display::config(format!("  - client {i}"), &client.ssh_address());
+        }
 
         // Generate the genesis configuration file and the keystore allowing access to gas objects.
         let command = self
@@ -282,7 +287,6 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
             .wait_for_command(instances, id, CommandStatus::Terminated)
             .await?;
 
-        display::done();
         Ok(())
     }
 
@@ -358,7 +362,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
 
     /// Deploy the nodes.
     pub async fn run_nodes(&self, parameters: &BenchmarkParameters) -> TestbedResult<()> {
-        display::action("Deploying validators");
+        display::action("\nDeploying validators");
 
         // Select the instances to run.
         let (_, nodes, _) = self.select_instances(parameters)?;
@@ -449,9 +453,10 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
                         .ssh_manager
                         .execute_per_instance(instances, CommandContext::default())
                         .await?;
+
                     for (i, (stdout, _stderr)) in stdio.iter().enumerate() {
                         for (label, measurement) in Measurement::from_prometheus::<P>(stdout) {
-                            aggregator.add(i, label,measurement);
+                            aggregator.add(i, label, measurement);
                         }
                     }
 

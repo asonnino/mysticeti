@@ -22,7 +22,7 @@ type BucketId = String;
 type Label = String;
 
 /// A snapshot measurement at a given time.
-#[derive(Serialize, Deserialize, Default, Clone, Debug)]
+#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
 pub struct Measurement {
     /// Duration since the beginning of the benchmark.
     timestamp: Duration,
@@ -52,7 +52,9 @@ impl Measurement {
                 .collect::<Vec<_>>()
                 .join(",");
 
-            let measurement = measurements.entry(label).or_insert_with(Self::default);
+            let measurement = measurements
+                .entry(label.clone())
+                .or_insert_with(Self::default);
             match &sample.metric {
                 x if x == M::LATENCY_BUCKETS => match &sample.value {
                     prometheus_parse::Value::Histogram(values) => {
@@ -62,27 +64,31 @@ impl Measurement {
                             measurement.buckets.insert(bucket_id, count);
                         }
                     }
-                    _ => panic!("Unexpected scraped value"),
+                    _ => panic!("Unexpected scraped value: '{x}'"),
                 },
                 x if x == M::LATENCY_SUM => {
                     measurement.sum = match sample.value {
                         prometheus_parse::Value::Untyped(value) => Duration::from_secs_f64(value),
-                        _ => panic!("Unexpected scraped value"),
+                        _ => panic!("Unexpected scraped value: '{x}'"),
                     };
                 }
                 x if x == M::TOTAL_TRANSACTIONS => {
                     measurement.count = match sample.value {
                         prometheus_parse::Value::Untyped(value) => value as usize,
-                        _ => panic!("Unexpected scraped value"),
+                        _ => panic!("Unexpected scraped value: '{x}'"),
                     };
                 }
                 x if x == M::LATENCY_SQUARED_SUM => {
                     measurement.squared_sum = match sample.value {
                         prometheus_parse::Value::Counter(value) => value,
-                        _ => panic!("Unexpected scraped value"),
+                        _ => panic!("Unexpected scraped value: '{x}'"),
                     };
                 }
                 _ => (),
+            }
+
+            if measurement != &Self::default() {
+                measurements.remove(&label);
             }
         }
 
