@@ -80,6 +80,7 @@ impl Validator {
             &private_config.certified_transactions_log(),
             recovered.block_store.clone(),
             metrics.clone(),
+            public_config.parameters.consensus_only,
         );
 
         TransactionGenerator::start(

@@ -16,12 +16,14 @@ use tokio::sync::mpsc;
 use crate::{
     block_store::BlockStore,
     committee::{Committee, ProcessedTransactionHandler, QuorumThreshold, TransactionAggregator},
-    consensus::linearizer::{CommittedSubDag, Linearizer},
+    consensus::{
+        self,
+        linearizer::{CommittedSubDag, Linearizer},
+    },
     data::Data,
     log::TransactionLog,
     metrics::{Metrics, UtilizationTimerExt, UtilizationTimerVecExt},
-    runtime,
-    runtime::TimeInstant,
+    runtime::{self, TimeInstant},
     syncer::CommitObserver,
     transactions_generator::TransactionGenerator,
     types::{
@@ -84,12 +86,12 @@ impl RealBlockHandler {
         certified_transactions_log_path: &Path,
         block_store: BlockStore,
         metrics: Arc<Metrics>,
+        consensus_only: bool,
     ) -> (Self, mpsc::Sender<Vec<Transaction>>) {
         let (sender, receiver) = mpsc::channel(1024);
         let transaction_log = TransactionLog::start(certified_transactions_log_path)
             .expect("Failed to open certified transaction log for write");
 
-        let consensus_only = env::var("CONSENSUS_ONLY").is_ok();
         let this = Self {
             transaction_votes: TransactionAggregator::with_handler(transaction_log),
             transaction_time: Default::default(),
