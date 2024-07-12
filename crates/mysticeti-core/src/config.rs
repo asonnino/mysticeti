@@ -67,7 +67,7 @@ pub mod node_defaults {
     }
 
     pub fn default_rounds_in_epoch() -> super::RoundNumber {
-        3_600_000
+        super::RoundNumber::MAX
     }
 
     pub fn default_shutdown_grace_period() -> std::time::Duration {
