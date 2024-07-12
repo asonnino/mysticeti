@@ -102,7 +102,7 @@ impl Prometheus {
     /// Generate the commands to update the prometheus configuration and restart prometheus.
     pub fn setup_commands<I, P>(
         nodes: I,
-        clients: I,
+        _clients: I,
         protocol: &P,
         parameters: &BenchmarkParameters,
     ) -> String
