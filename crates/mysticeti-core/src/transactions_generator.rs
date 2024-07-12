@@ -49,6 +49,10 @@ impl TransactionGenerator {
     pub async fn run(mut self) {
         let load = self.client_parameters.load;
         let transactions_per_block_interval = (load + 9) / 10;
+        tracing::info!(
+            "Generating {transactions_per_block_interval} transactions per {} ms",
+            Self::TARGET_BLOCK_INTERVAL.as_millis()
+        );
         let max_block_size = self.node_public_config.parameters.max_block_size;
         let target_block_size = min(max_block_size, transactions_per_block_interval);
 
