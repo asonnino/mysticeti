@@ -67,7 +67,6 @@ impl TransactionGenerator {
             for _ in 0..transactions_per_block_interval {
                 random += counter;
                 tracing::info!("Generating transaction {counter}");
-                panic!("TEST PANIC: Generating transaction {counter}");
 
                 let mut transaction = Vec::with_capacity(self.client_parameters.transaction_size);
                 transaction.extend_from_slice(&timestamp); // 8 bytes
