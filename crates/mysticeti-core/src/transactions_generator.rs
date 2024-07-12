@@ -51,6 +51,7 @@ impl TransactionGenerator {
         let transactions_per_block_interval = (load + 9) / 10;
         let max_block_size = self.node_public_config.parameters.max_block_size;
         let target_block_size = min(max_block_size, transactions_per_block_interval);
+        tracing::info!("Generating {} tx/s", load);
 
         let mut counter = 0;
         let mut random: u64 = self.rng.gen(); // 8 bytes
