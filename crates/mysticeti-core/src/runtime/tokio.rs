@@ -39,7 +39,7 @@ pub struct TimeInterval(Interval);
 impl TimeInterval {
     pub fn new(duration: Duration) -> Self {
         let mut interval = tokio::time::interval(duration);
-        interval.set_missed_tick_behavior(MissedTickBehavior::Burst);
+        interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
         Self(interval)
     }
 
