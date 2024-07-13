@@ -88,6 +88,7 @@ impl Validator {
             authority,
             client_parameters,
             public_config.clone(),
+            metrics.clone(),
         );
         let committed_transaction_log =
             TransactionLog::start(private_config.committed_transactions_log())

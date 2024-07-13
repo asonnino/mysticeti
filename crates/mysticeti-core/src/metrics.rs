@@ -225,6 +225,12 @@ impl Metrics {
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry,
             ).unwrap(),
+            submitted_transactions: register_int_counter_with_registry!(
+                "submitted_transactions",
+                "Total number of submitted transactions",
+                registry,
+            )
+            .unwrap(),
             leader_timeout_total: register_int_counter_with_registry!(
                 "leader_timeout_total",
                 "Total number of leader timeouts",
@@ -332,12 +338,6 @@ impl Metrics {
                 registry,
             )
             .unwrap(),
-
-            submitted_transactions: register_int_counter_with_registry!(
-                "submitted_transactions",
-                "Number of submitted transactions",
-                registry,
-            ).unwrap(),
 
             transaction_certified_latency,
             certificate_committed_latency,
