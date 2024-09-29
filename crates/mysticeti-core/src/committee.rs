@@ -163,8 +163,8 @@ impl Committee {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Authority {
-    stake: Stake,
-    public_key: PublicKey,
+    pub stake: Stake,
+    pub public_key: PublicKey,
 }
 
 impl Authority {

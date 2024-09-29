@@ -24,6 +24,7 @@ use tokio::{
 };
 
 use crate::{
+    aux_node::aux_message::PartialAuxiliaryCertificate,
     config::NodePublicConfig,
     data::Data,
     metrics::{print_network_address_table, Metrics},
@@ -42,6 +43,13 @@ pub enum NetworkMessage {
     RequestBlocks(Vec<BlockReference>),
     /// Indicate that a requested block is not found.
     BlockNotFound(Vec<BlockReference>),
+
+    // Aux messages
+    AuxiliaryBlock(Data<StatementBlock>),
+    /// A completed certificate over an auxiliary block.
+    AuxiliaryCertificate(Data<PartialAuxiliaryCertificate>),
+    /// Indicates a partial certificate over an auxiliary block.
+    AuxiliaryVote(Data<PartialAuxiliaryCertificate>),
 }
 
 pub struct Network {

@@ -237,6 +237,18 @@ impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncer<H, C>
                 NetworkMessage::BlockNotFound(_references) => {
                     // TODO: leverage this signal to request blocks from other peers
                 }
+                NetworkMessage::AuxiliaryBlock(_) => {
+                    tracing::warn!("Received unexpected AuxiliaryBlock from {peer}");
+                    break;
+                }
+                NetworkMessage::AuxiliaryCertificate(_) => {
+                    tracing::warn!("Received unexpected AuxiliaryCertificate from {peer}");
+                    break;
+                }
+                NetworkMessage::AuxiliaryVote(_) => {
+                    tracing::warn!("Received unexpected AuxiliaryVote from {peer}");
+                    break;
+                }
             }
         }
         inner.syncer.authority_connection(id, false).await;

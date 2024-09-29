@@ -4,7 +4,6 @@
 use std::fmt;
 
 use digest::Digest;
-#[cfg(not(test))]
 use ed25519_consensus::Signature;
 use rand::{rngs::StdRng, SeedableRng};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
@@ -13,6 +12,7 @@ use zeroize::Zeroize;
 #[cfg(not(test))]
 use crate::types::Vote;
 use crate::{
+    aux_node::aux_message::PartialAuxiliaryCertificate,
     serde::{ByteRepr, BytesVisitor},
     types::{
         AuthorityIndex,
@@ -38,10 +38,9 @@ pub struct PublicKey(ed25519_consensus::VerificationKey);
 pub struct SignatureBytes([u8; SIGNATURE_SIZE]);
 
 // Box ensures value is not copied in memory when Signer itself is moved around for better security
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Signer(Box<ed25519_consensus::SigningKey>);
 
-#[cfg(not(test))]
 type BlockHasher = blake2::Blake2b<digest::consts::U32>;
 
 impl BlockDigest {
@@ -197,6 +196,24 @@ impl PublicKey {
     pub fn verify_block(&self, _block: &StatementBlock) -> Result<(), ed25519_consensus::Error> {
         Ok(())
     }
+
+    pub fn verify_certificate(
+        certificate: &PartialAuxiliaryCertificate,
+        authority_signatures: &[(&Self, &SignatureBytes)],
+    ) -> Result<(), ed25519_consensus::Error> {
+        let mut hasher = BlockHasher::default();
+        certificate.author().crypto_hash(&mut hasher);
+        certificate.round().crypto_hash(&mut hasher);
+        certificate.block_digest().crypto_hash(&mut hasher);
+
+        let digest: [u8; BLOCK_DIGEST_SIZE] = hasher.finalize().into();
+        for (public_key, signature) in authority_signatures {
+            public_key
+                .0
+                .verify(&Signature::from(signature.0), digest.as_ref())?;
+        }
+        Ok(())
+    }
 }
 
 impl Signer {
@@ -243,6 +260,25 @@ impl Signer {
         _epoch_marker: EpochStatus,
     ) -> SignatureBytes {
         Default::default()
+    }
+
+    pub fn new_for_test_with_offset(n: usize, offset: usize) -> Vec<Self> {
+        let mut rng = StdRng::seed_from_u64(0);
+        (0..n)
+            .map(|_| Self(Box::new(ed25519_consensus::SigningKey::new(&mut rng))))
+            .skip(offset)
+            .collect()
+    }
+
+    pub fn counter_sign_block(&self, reference: &BlockReference) -> SignatureBytes {
+        let mut hasher = BlockHasher::default();
+        reference.authority.crypto_hash(&mut hasher);
+        reference.round.crypto_hash(&mut hasher);
+        reference.digest.crypto_hash(&mut hasher);
+
+        let digest: [u8; BLOCK_DIGEST_SIZE] = hasher.finalize().into();
+        let signature = self.0.sign(digest.as_ref());
+        SignatureBytes(signature.to_bytes())
     }
 
     pub fn public_key(&self) -> PublicKey {
