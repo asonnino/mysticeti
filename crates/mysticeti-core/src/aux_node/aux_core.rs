@@ -199,6 +199,7 @@ impl AuxCore {
                             inner.authority,
                             block.round() + 1,
                             references,
+                            Vec::new(), // aux includes
                             inner
                                 .pending_transactions
                                 .write()
@@ -207,7 +208,6 @@ impl AuxCore {
                             timestamp_utc().as_nanos(),
                             false, // epoch_marker
                             &inner.signer,
-                            //Vec::new(), // weak_links
                         );
                         tracing::debug!(
                             "{} Created block {:?}",

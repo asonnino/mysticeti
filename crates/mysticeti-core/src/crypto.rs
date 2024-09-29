@@ -49,6 +49,7 @@ impl BlockDigest {
         authority: AuthorityIndex,
         round: RoundNumber,
         includes: &[BlockReference],
+        aux_includes: &[BlockReference],
         statements: &[BaseStatement],
         meta_creation_time_ns: TimestampNs,
         epoch_marker: EpochStatus,
@@ -60,6 +61,7 @@ impl BlockDigest {
             authority,
             round,
             includes,
+            aux_includes,
             statements,
             meta_creation_time_ns,
             epoch_marker,
@@ -73,6 +75,7 @@ impl BlockDigest {
         _authority: AuthorityIndex,
         _round: RoundNumber,
         _includes: &[BlockReference],
+        _aux_includes: &[BlockReference],
         _statements: &[BaseStatement],
         _meta_creation_time_ns: TimestampNs,
         _epoch_marker: EpochStatus,
@@ -94,6 +97,7 @@ impl BlockDigest {
         authority: AuthorityIndex,
         round: RoundNumber,
         includes: &[BlockReference],
+        aux_includes: &[BlockReference],
         statements: &[BaseStatement],
         meta_creation_time_ns: TimestampNs,
         epoch_marker: EpochStatus,
@@ -102,6 +106,9 @@ impl BlockDigest {
         round.crypto_hash(hasher);
         for include in includes {
             include.crypto_hash(hasher);
+        }
+        for aux_include in aux_includes {
+            aux_include.crypto_hash(hasher);
         }
         for statement in statements {
             match statement {
@@ -184,6 +191,7 @@ impl PublicKey {
             block.author(),
             block.round(),
             block.includes(),
+            block.aux_includes(),
             block.statements(),
             block.meta_creation_time_ns(),
             block.epoch_changed(),
@@ -230,6 +238,7 @@ impl Signer {
         authority: AuthorityIndex,
         round: RoundNumber,
         includes: &[BlockReference],
+        aux_includes: &[BlockReference],
         statements: &[BaseStatement],
         meta_creation_time_ns: TimestampNs,
         epoch_marker: EpochStatus,
@@ -240,6 +249,7 @@ impl Signer {
             authority,
             round,
             includes,
+            aux_includes,
             statements,
             meta_creation_time_ns,
             epoch_marker,
@@ -255,6 +265,7 @@ impl Signer {
         _authority: AuthorityIndex,
         _round: RoundNumber,
         _includes: &[BlockReference],
+        _aux_includes: &[BlockReference],
         _statements: &[BaseStatement],
         _meta_creation_time_ns: TimestampNs,
         _epoch_marker: EpochStatus,

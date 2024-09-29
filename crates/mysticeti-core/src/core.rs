@@ -278,6 +278,7 @@ impl<H: BlockHandler> Core<H> {
             self.authority,
             clock_round,
             includes,
+            vec![], // todo - add aux_includes
             statements,
             time_ns,
             self.epoch_changing(),

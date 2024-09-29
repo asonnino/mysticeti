@@ -85,6 +85,9 @@ pub struct StatementBlock {
     //  are included, then the first reference is the one that this block conceptually votes for.
     includes: Vec<BlockReference>,
 
+    // Same as normal includes but from aux validators.
+    aux_includes: Vec<BlockReference>,
+
     // A list of base statements in order.
     statements: Vec<BaseStatement>,
 
@@ -124,6 +127,7 @@ impl StatementBlock {
             GENESIS_ROUND,
             vec![],
             vec![],
+            vec![],
             0,
             false,
             SignatureBytes::default(),
@@ -134,6 +138,7 @@ impl StatementBlock {
         authority: AuthorityIndex,
         round: RoundNumber,
         includes: Vec<BlockReference>,
+        aux_includes: Vec<BlockReference>,
         statements: Vec<BaseStatement>,
         meta_creation_time_ns: TimestampNs,
         epoch_marker: EpochStatus,
@@ -143,6 +148,7 @@ impl StatementBlock {
             authority,
             round,
             &includes,
+            &aux_includes,
             &statements,
             meta_creation_time_ns,
             epoch_marker,
@@ -151,6 +157,7 @@ impl StatementBlock {
             authority,
             round,
             includes,
+            aux_includes,
             statements,
             meta_creation_time_ns,
             epoch_marker,
@@ -162,6 +169,7 @@ impl StatementBlock {
         authority: AuthorityIndex,
         round: RoundNumber,
         includes: Vec<BlockReference>,
+        aux_includes: Vec<BlockReference>,
         statements: Vec<BaseStatement>,
         meta_creation_time_ns: TimestampNs,
         epoch_marker: EpochStatus,
@@ -175,6 +183,7 @@ impl StatementBlock {
                     authority,
                     round,
                     &includes,
+                    &aux_includes,
                     &statements,
                     meta_creation_time_ns,
                     epoch_marker,
@@ -182,6 +191,7 @@ impl StatementBlock {
                 ),
             },
             includes,
+            aux_includes,
             statements,
             meta_creation_time_ns,
             epoch_marker,
@@ -194,6 +204,10 @@ impl StatementBlock {
     }
 
     pub fn includes(&self) -> &Vec<BlockReference> {
+        &self.includes
+    }
+
+    pub fn aux_includes(&self) -> &Vec<BlockReference> {
         &self.includes
     }
 
@@ -277,6 +291,7 @@ impl StatementBlock {
             self.author(),
             round,
             &self.includes,
+            &self.aux_includes,
             &self.statements,
             self.meta_creation_time_ns,
             self.epoch_marker,
@@ -681,6 +696,7 @@ mod test {
             StatementBlock {
                 reference,
                 includes,
+                aux_includes: vec![],
                 statements: vec![],
                 meta_creation_time_ns: 0,
                 epoch_marker: false,

@@ -434,6 +434,7 @@ pub fn build_dag(
                     authority,
                     round,
                     includes.clone(),
+                    vec![], // aux_includes
                     vec![],
                     0,
                     false,
@@ -462,6 +463,7 @@ pub fn build_dag_layer(
             authority,
             round,
             parents,
+            vec![], // aux_includes
             vec![],
             0,
             false,
