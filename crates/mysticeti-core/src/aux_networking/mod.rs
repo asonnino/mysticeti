@@ -33,18 +33,15 @@ mod tests {
         let cloned_transactions = transactions.clone();
         let server = async move {
             let (tx_client_connections, mut rx_client_connections) = mpsc::channel(1);
-            let (tx_transactions, mut rx_transactions) = mpsc::channel(100);
-
-            let server =
-                NetworkServer::<_, ()>::new(server_address, tx_client_connections, tx_transactions);
+            let server = NetworkServer::<_, ()>::new(server_address, tx_client_connections);
             let _server_handle = server.spawn();
 
             // Wait for a client connection and hold it (to avoid closing the channel).
-            let _connection = rx_client_connections.recv().await.unwrap();
+            let mut connection = rx_client_connections.recv().await.unwrap();
 
             // Wait for the result.
             for i in cloned_transactions {
-                let t: u32 = rx_transactions.recv().await.unwrap();
+                let t: u32 = connection.recv().await.unwrap();
                 assert_eq!(t, i);
             }
         };
@@ -78,17 +75,16 @@ mod tests {
         let cloned_result = result.clone();
         let server = async move {
             let (tx_proxy_connections, mut rx_proxy_connections) = mpsc::channel(1);
-            let (tx_proxy_results, mut rx_proxy_results) = mpsc::channel(1);
 
-            let server = NetworkServer::new(server_address, tx_proxy_connections, tx_proxy_results);
+            let server = NetworkServer::new(server_address, tx_proxy_connections);
             let _server_handle = server.spawn();
 
             // Wait for a proxy connection and send a transaction.
-            let connection = rx_proxy_connections.recv().await.unwrap();
+            let mut connection = rx_proxy_connections.recv().await.unwrap();
             connection.send(cloned_transaction).await.unwrap();
 
             // Wait for the result.
-            let r: String = rx_proxy_results.recv().await.unwrap();
+            let r: String = connection.recv().await.unwrap();
             assert_eq!(r, cloned_result);
         };
 

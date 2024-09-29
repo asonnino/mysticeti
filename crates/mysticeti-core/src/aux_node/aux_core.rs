@@ -142,23 +142,59 @@ impl AuxCore {
             }
         });
 
+        // Drive dissemination controller.
+        let (tx_new_disseminator, rx_new_disseminator) = mpsc::channel(100);
+        let (tx_notification, rx_notification) = mpsc::channel(100);
+        tokio::spawn(Self::dissemination_controller(
+            rx_new_disseminator,
+            rx_notification,
+        ));
+
         // Drive networking.
         for (peer, address) in self.node_public_config.all_network_addresses().enumerate() {
             let (tx_send_through_network, rx_send_through_network) = mpsc::channel(1000);
             let (tx_receive_from_network, rx_receive_from_network) = mpsc::channel(1000);
-
             NetworkClient::new(address, tx_receive_from_network, rx_send_through_network).spawn();
 
             let inner = self.inner.clone();
+            let (disseminator, notifier) = AuxDisseminator::new(
+                tx_send_through_network.clone(),
+                inner.clone(),
+                peer as AuthorityIndex,
+            );
+            tokio::spawn(async move { disseminator.run().await });
+            tx_new_disseminator.send(notifier).await.ok();
+
+            let tx_notification_clone = tx_notification.clone();
             tokio::spawn(async move {
                 Self::connection_handler(
                     peer as AuthorityIndex,
                     inner,
                     tx_send_through_network,
                     rx_receive_from_network,
+                    tx_notification_clone,
                 )
                 .await;
             });
+        }
+    }
+
+    async fn dissemination_controller(
+        mut rx_new_disseminator: mpsc::Receiver<mpsc::Sender<DisseminatorMessage>>,
+        mut rx_notification: mpsc::Receiver<DisseminatorMessage>,
+    ) {
+        let mut disseminators = Vec::new();
+        loop {
+            tokio::select! {
+                Some(tx_disseminator) = rx_new_disseminator.recv() => {
+                    disseminators.push(tx_disseminator);
+                }
+                Some(notification) = rx_notification.recv() => {
+                    for tx_disseminator in &disseminators {
+                        tx_disseminator.send(notification.clone()).await.ok();
+                    }
+                }
+            }
         }
     }
 
@@ -167,14 +203,9 @@ impl AuxCore {
         inner: Arc<AuxCoreInner>,
         tx_send_through_network: mpsc::Sender<NetworkMessage>,
         mut rx_receive_from_network: mpsc::Receiver<NetworkMessage>,
+        tx_notification: mpsc::Sender<DisseminatorMessage>,
     ) {
         let core_committee = &inner.core_committee;
-
-        let (disseminator, notifier) =
-            AuxDisseminator::new(tx_send_through_network.clone(), inner.clone(), peer);
-        let handle = tokio::spawn(async move { disseminator.run().await });
-        let mut disseminator_controller = Some((handle, notifier));
-
         while let Some(message) = rx_receive_from_network.recv().await {
             match message {
                 NetworkMessage::Block(block) => {
@@ -195,16 +226,22 @@ impl AuxCore {
                     let round = if let Some(references) =
                         inner.threshold_clock.write().update(*reference)
                     {
+                        let max_block_size = inner.aux_node_parameters.max_block_size;
+                        let transactions = {
+                            let mut guard = inner.pending_transactions.write();
+                            if guard.len() > max_block_size {
+                                guard.drain(..max_block_size).collect()
+                            } else {
+                                guard.drain(..).collect()
+                            }
+                        };
+
                         let block = StatementBlock::new_with_signer(
                             inner.authority,
                             block.round() + 1,
                             references,
                             Vec::new(), // aux includes
-                            inner
-                                .pending_transactions
-                                .write()
-                                .drain(..inner.aux_node_parameters.max_block_size)
-                                .collect(),
+                            transactions,
                             timestamp_utc().as_nanos(),
                             false, // epoch_marker
                             &inner.signer,
@@ -224,12 +261,10 @@ impl AuxCore {
 
                     // Notify block disseminator.
                     if let Some(round) = round {
-                        if let Some((_, notifier)) = &disseminator_controller {
-                            notifier
-                                .send(DisseminatorMessage::NotifyAuxBlock(round))
-                                .await
-                                .ok();
-                        }
+                        tx_notification
+                            .send(DisseminatorMessage::NotifyAuxBlock(round))
+                            .await
+                            .ok();
                     }
                 }
                 NetworkMessage::RequestBlocks(references) => {
@@ -252,24 +287,6 @@ impl AuxCore {
                             .await
                             .ok();
                     }
-                }
-                NetworkMessage::SubscribeOwnFrom(_round) => {
-                    tracing::debug!(
-                        "{} Received SubscribeOwnFrom from {peer}",
-                        format_authority_index(inner.authority),
-                    );
-
-                    // Stop previous disseminator.
-                    if let Some((handle, notifier)) = disseminator_controller.take() {
-                        let _ = notifier.send(DisseminatorMessage::Stop).await;
-                        handle.await.ok();
-                    }
-
-                    // Create new disseminator.
-                    let (disseminator, notifier) =
-                        AuxDisseminator::new(tx_send_through_network.clone(), inner.clone(), peer);
-                    let handle = tokio::spawn(async move { disseminator.run().await });
-                    disseminator_controller = Some((handle, notifier));
                 }
                 NetworkMessage::AuxiliaryVote(vote) => {
                     tracing::debug!(
@@ -301,13 +318,14 @@ impl AuxCore {
                         inner.certificates.write().insert(round, data);
 
                         // Notify disseminator of new certificate.
-                        if let Some((_, notifier)) = &disseminator_controller {
-                            notifier
-                                .send(DisseminatorMessage::NotifyAuxCertificate(round))
-                                .await
-                                .ok();
-                        }
+                        tx_notification
+                            .send(DisseminatorMessage::NotifyAuxCertificate(round))
+                            .await
+                            .ok();
                     }
+                }
+                NetworkMessage::SubscribeOwnFrom(_) => {
+                    // Ignore
                 }
                 NetworkMessage::BlockNotFound(_) => {
                     // Ignore

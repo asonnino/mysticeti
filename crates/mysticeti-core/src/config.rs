@@ -269,6 +269,16 @@ pub struct ClientParameters {
     pub initial_delay: Duration,
 }
 
+impl ClientParameters {
+    pub fn new_for_tests() -> Self {
+        Self {
+            load: 10,
+            transaction_size: 512,
+            initial_delay: Duration::from_secs(1),
+        }
+    }
+}
+
 mod client_defaults {
     use super::Duration;
 

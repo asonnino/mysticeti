@@ -57,7 +57,11 @@ where
             match socket.connect(self.server_address).await {
                 Ok(stream) => break stream,
                 Err(e) => {
-                    tracing::info!("Failed to connect to server (retrying): {e}");
+                    tracing::info!(
+                        "Failed to connect to server {} (retrying): {e}",
+                        self.server_address,
+                        e = e
+                    );
                     sleep(Duration::from_secs(1)).await;
                 }
             }

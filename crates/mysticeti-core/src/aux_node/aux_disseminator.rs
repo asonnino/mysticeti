@@ -11,6 +11,7 @@ use crate::{
     types::{format_authority_index, AuthorityIndex, RoundNumber},
 };
 
+#[derive(Debug, Clone)]
 pub enum DisseminatorMessage {
     Stop,
     NotifyAuxBlock(RoundNumber),

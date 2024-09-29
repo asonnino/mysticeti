@@ -28,6 +28,7 @@ use serde::{Deserialize, Serialize};
 pub use test::Dag;
 
 use crate::{
+    aux_node::aux_config::AuxiliaryCommittee,
     committee::{Committee, VoteRangeBuilder},
     crypto::{AsBytes, CryptoHash, SignatureBytes, Signer},
     data::Data,
@@ -342,6 +343,69 @@ impl StatementBlock {
         Ok(())
     }
 
+    /// Verify a block that is produced by an auxiliary committee member.
+    pub fn verify_auxiliary(
+        &self,
+        core_committee: &Committee,
+        aux_committee: &AuxiliaryCommittee,
+    ) -> eyre::Result<()> {
+        let round = self.round();
+        let digest = BlockDigest::new(
+            self.author(),
+            round,
+            &self.includes,
+            &self.aux_includes,
+            &self.statements,
+            self.meta_creation_time_ns,
+            self.epoch_marker,
+            &self.signature,
+        );
+        ensure!(
+            digest == self.digest(),
+            "Digest does not match, calculated {:?}, provided {:?}",
+            digest,
+            self.digest()
+        );
+        let pub_key = aux_committee.get_public_key(self.author());
+        let Some(pub_key) = pub_key else {
+            bail!("Unknown block author {}", self.author())
+        };
+        if round == GENESIS_ROUND {
+            bail!("Genesis block should not go through verification");
+        }
+        if let Err(e) = pub_key.verify_block(self) {
+            bail!("Block signature verification has failed: {:?}", e);
+        }
+        for include in &self.includes {
+            // Also check duplicate includes?
+            ensure!(
+                core_committee.known_authority(include.authority),
+                "Include {include:?} references unknown authority",
+            );
+            ensure!(
+                include.round < round,
+                "Include {include:?} round is greater or equal to own round {round}"
+            );
+        }
+        ensure!(
+            self.aux_includes.is_empty(),
+            "Auxiliary blocks cannot have weak links"
+        );
+        for statement in &self.statements {
+            // Also check duplicate statements?
+            match statement {
+                BaseStatement::Share(_) => {}
+                BaseStatement::Vote(_, _) => {}
+                BaseStatement::VoteRange(range) => range.verify()?,
+            }
+        }
+        ensure!(
+            threshold_clock_valid_non_genesis(self, &core_committee),
+            "Threshold clock is not valid"
+        );
+        Ok(())
+    }
+
     pub fn detailed(&self) -> Detailed {
         Detailed(self)
     }
@@ -501,7 +565,11 @@ impl AuthoritySet {
 }
 
 pub fn format_authority_index(i: AuthorityIndex) -> char {
-    ('A' as u64 + i) as u8 as char
+    if i < 1000 {
+        ('A' as u64 + i) as u8 as char
+    } else {
+        'X'
+    }
 }
 
 pub fn format_authority_round(i: AuthorityIndex, r: RoundNumber) -> String {

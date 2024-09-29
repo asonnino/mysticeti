@@ -29,7 +29,7 @@ pub const SIGNATURE_SIZE: usize = 64;
 pub const BLOCK_DIGEST_SIZE: usize = 32;
 
 #[derive(Clone, Copy, Eq, Ord, PartialOrd, PartialEq, Default, Hash)]
-pub struct BlockDigest([u8; BLOCK_DIGEST_SIZE]);
+pub struct BlockDigest(pub [u8; BLOCK_DIGEST_SIZE]);
 
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub struct PublicKey(ed25519_consensus::VerificationKey);
@@ -275,7 +275,7 @@ impl Signer {
 
     pub fn new_for_test_with_offset(n: usize, offset: usize) -> Vec<Self> {
         let mut rng = StdRng::seed_from_u64(0);
-        (0..n)
+        (0..n + offset)
             .map(|_| Self(Box::new(ed25519_consensus::SigningKey::new(&mut rng))))
             .skip(offset)
             .collect()
