@@ -84,6 +84,8 @@ pub struct Metrics {
 
     pub utilization_timer: IntCounterVec,
     pub submitted_transactions: IntCounter,
+
+    pub aux_blocks: IntCounterVec,
 }
 
 pub struct MetricReporter {
@@ -335,6 +337,14 @@ impl Metrics {
                 "utilization_timer",
                 "Utilization timer",
                 &["proc"],
+                registry,
+            )
+            .unwrap(),
+
+            aux_blocks: register_int_counter_vec_with_registry!(
+                "aux_blocks",
+                "Number of committed blocks that are authored by auxiliary validators",
+                &["author"],
                 registry,
             )
             .unwrap(),

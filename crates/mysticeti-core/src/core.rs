@@ -361,6 +361,14 @@ impl<H: BlockHandler> Core<H> {
             .try_commit(self.last_commit_leader)
             .into_iter()
             .filter_map(|leader| leader.into_decided_block())
+            .map(|block| {
+                // Update metrics with number of auxiliary blocks committed.
+                for aux_link in block.aux_includes() {
+                    let author = aux_link.authority.to_string();
+                    self.metrics.aux_blocks.with_label_values(&[&author]).inc();
+                }
+                block
+            })
             .collect();
 
         if let Some(last) = sequence.last() {
