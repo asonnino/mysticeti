@@ -209,7 +209,7 @@ impl StatementBlock {
     }
 
     pub fn aux_includes(&self) -> &Vec<BlockReference> {
-        &self.includes
+        &self.aux_includes
     }
 
     pub fn statements(&self) -> &Vec<BaseStatement> {

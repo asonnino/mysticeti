@@ -82,25 +82,25 @@ impl BlockManager {
             }
             self.missing[block_reference.authority as usize].remove(block_reference);
 
-            // // Check if the block has any weak links that are missing.
-            // for aux_link in block.aux_includes() {
-            //     if !self.aux_block_store.block_exists(aux_link) {
-            //         processed = false;
-            //         self.block_references_waiting
-            //             .entry(*aux_link)
-            //             .or_default()
-            //             .insert(*block_reference);
-            //         if !self.blocks_pending.contains_key(aux_link) {
-            //             self.aux_missing
-            //                 .entry(aux_link.authority)
-            //                 .or_insert_with(HashSet::new)
-            //                 .insert(*aux_link);
-            //         }
-            //     }
-            // }
-            // self.aux_missing
-            //     .get_mut(&block_reference.authority)
-            //     .map(|x| x.remove(block_reference));
+            // Check if the block has any weak links that are missing.
+            for aux_link in block.aux_includes() {
+                if !self.aux_block_store.block_exists(aux_link) {
+                    processed = false;
+                    self.block_references_waiting
+                        .entry(*aux_link)
+                        .or_default()
+                        .insert(*block_reference);
+                    if !self.blocks_pending.contains_key(aux_link) {
+                        self.aux_missing
+                            .entry(aux_link.authority)
+                            .or_insert_with(HashSet::new)
+                            .insert(*aux_link);
+                    }
+                }
+            }
+            self.aux_missing
+                .get_mut(&block_reference.authority)
+                .map(|x| x.remove(block_reference));
 
             if !processed {
                 self.blocks_pending.insert(*block_reference, block);
