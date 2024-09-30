@@ -310,8 +310,26 @@ where
 
         let now = timestamp_utc();
         let mut to_request = Vec::new();
-        let missing_blocks = self.inner.syncer.get_missing_blocks().await;
-        for (authority, missing) in missing_blocks.into_iter().enumerate() {
+
+        let mut missing_blocks: Vec<_> = self
+            .inner
+            .syncer
+            .get_missing_blocks()
+            .await
+            .into_iter()
+            .enumerate()
+            .map(|(i, x)| (i as AuthorityIndex, x))
+            .collect();
+        missing_blocks.extend(
+            self.inner
+                .syncer
+                .get_aux_missing_blocks()
+                .await
+                .into_iter()
+                .collect::<Vec<_>>(),
+        );
+
+        for (authority, missing) in missing_blocks {
             self.metrics
                 .missing_blocks
                 .with_label_values(&[&authority.to_string()])
