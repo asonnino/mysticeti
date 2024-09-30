@@ -10,6 +10,7 @@ use ::prometheus::Registry;
 use eyre::{eyre, Context, Result};
 
 use crate::{
+    aux_helper::aux_block_store::AuxiliaryBlockStore,
     aux_node::aux_config::{AuxNodePublicConfig, AuxiliaryCommittee},
     block_handler::{RealBlockHandler, TestCommitHandler},
     block_store::BlockStore,
@@ -35,7 +36,7 @@ pub struct Validator {
 impl Validator {
     pub async fn start(
         authority: AuthorityIndex,
-        committee: Arc<Committee>,
+        core_committee: Arc<Committee>,
         aux_committee: Arc<AuxiliaryCommittee>,
         public_config: NodePublicConfig,
         private_config: NodePrivateConfig,
@@ -56,9 +57,11 @@ impl Validator {
         let mut binding_metrics_address = metrics_address;
         binding_metrics_address.set_ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
 
+        let signer = Arc::new(private_config.keypair.clone());
+
         // Boot the prometheus server.
         let registry = Registry::new();
-        let (metrics, reporter) = Metrics::new(&registry, Some(&committee));
+        let (metrics, reporter) = Metrics::new(&registry, Some(&core_committee));
         reporter.start();
 
         let metrics_handle =
@@ -73,12 +76,16 @@ impl Validator {
             Arc::new(wal_reader),
             &wal_writer,
             metrics.clone(),
-            &committee,
+            &core_committee,
         );
+
+        // Create the auxiliary block store.
+        // TODO - recover aux blob store from disk
+        let aux_block_store = AuxiliaryBlockStore::new(aux_committee, aux_public_config.parameters);
 
         // Boot the validator node.
         let (block_handler, block_sender) = RealBlockHandler::new(
-            committee.clone(),
+            core_committee.clone(),
             authority,
             &private_config.certified_transactions_log(),
             recovered.block_store.clone(),
@@ -97,7 +104,7 @@ impl Validator {
             TransactionLog::start(private_config.committed_transactions_log())
                 .expect("Failed to open committed transaction log for write");
         let commit_handler = TestCommitHandler::new_with_handler(
-            committee.clone(),
+            core_committee.clone(),
             block_handler.transaction_time.clone(),
             metrics.clone(),
             committed_transaction_log,
@@ -105,15 +112,14 @@ impl Validator {
         let core = Core::open(
             block_handler,
             authority,
-            committee.clone(),
-            aux_committee.clone(),
+            core_committee.clone(),
             private_config,
             &public_config,
             metrics.clone(),
             recovered,
             wal_writer,
             CoreOptions::default(),
-            aux_public_config.parameters,
+            aux_block_store.clone(),
         );
         let network = Network::load(
             &public_config,
@@ -131,6 +137,18 @@ impl Validator {
             metrics,
             &public_config,
         );
+
+        // Boot the aux helper service.
+        // let _aux_helper_handle = AuxHelperServer::start (
+        //     server_address: SocketAddr,
+        //     authority,
+        //     signe,
+        //     core_committee,
+        //     aux_committee,
+        //     network_synchronizer.inner.block_store.clone(),
+        //     aux_block_store,
+        //     network_synchronizer.inner.syncer.clone()
+        // );
 
         tracing::info!("Validator {authority} listening on {network_address}");
         tracing::info!("Validator {authority} exposing metrics on {metrics_address}");

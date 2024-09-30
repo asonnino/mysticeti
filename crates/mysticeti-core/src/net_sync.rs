@@ -43,7 +43,7 @@ pub struct NetworkSyncer<H: BlockHandler, C: CommitObserver> {
 }
 
 pub struct NetworkSyncerInner<H: BlockHandler, C: CommitObserver> {
-    pub syncer: CoreThreadDispatcher<H, Arc<Notify>, C>,
+    pub syncer: Arc<CoreThreadDispatcher<H, Arc<Notify>, C>>,
     pub block_store: BlockStore,
     pub notify: Arc<Notify>,
     committee: Arc<Committee>,
@@ -80,7 +80,7 @@ impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncer<H, C>
             metrics.clone(),
         );
         syncer.force_new_block(0);
-        let syncer = CoreThreadDispatcher::start(syncer);
+        let syncer = Arc::new(CoreThreadDispatcher::start(syncer));
         let (stop_sender, stop_receiver) = mpsc::channel(1);
         stop_sender.try_send(()).unwrap(); // occupy the only available permit, so that all other calls to send() will block
         let (epoch_sender, epoch_receiver) = mpsc::channel(1);
@@ -125,7 +125,10 @@ impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncer<H, C>
         let Ok(inner) = Arc::try_unwrap(self.inner) else {
             panic!("Shutdown failed - not all resources are freed after main task is completed");
         };
-        inner.syncer.stop()
+        let Ok(syncer) = Arc::try_unwrap(inner.syncer) else {
+            panic!("Shutdown failed - not all resources are freed after main task is completed");
+        };
+        syncer.stop()
     }
 
     async fn run(
