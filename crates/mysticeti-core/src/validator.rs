@@ -428,7 +428,6 @@ mod aux_tests {
         let route = prometheus::METRICS_ROUTE;
         let res = reqwest::get(format! {"http://{address}{route}"}).await?;
         let string = res.text().await?;
-        println!("Metrics: {string}");
         let commit = string.contains("aux_blocks_committed");
         Ok(commit)
     }

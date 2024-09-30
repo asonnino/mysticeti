@@ -43,6 +43,9 @@ impl AuxDisseminator {
 
     pub async fn run(mut self) {
         while let Some(message) = self.notification_receiver.recv().await {
+            // Wait a bit to avoid eager synchronization.
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
             match message {
                 DisseminatorMessage::Stop => {
                     tracing::warn!("Received Stop message, stopping AuxDisseminator");

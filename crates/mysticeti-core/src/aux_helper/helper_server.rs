@@ -136,6 +136,12 @@ impl AuxHelperServer {
                             break;
                         }
 
+                        // Do not sign conflicting blocks for this authority.
+                        if !inner.aux_block_store.safe_to_vote(&reference) {
+                            tracing::warn!("[{id}] Received conflicting block from {peer}");
+                            break;
+                        }
+
                         // Ensure we have the references. Otherwise, request them from the sender.
                         let missing: Vec<_> = block
                             .includes()
@@ -150,8 +156,9 @@ impl AuxHelperServer {
                                 .await
                             {
                                 tracing::warn!("[{id}] Failed to send sync request to {peer}: {e:?}");
+                                break;
                             }
-                            break;
+                            continue;
                         }
 
                         // Add block to auxiliary block store.
@@ -163,12 +170,6 @@ impl AuxHelperServer {
 
                         // Reply with a vote if the sender is an auxiliary validator.
                         if !inner.aux_committee.exists(author) {
-                            break;
-                        }
-
-                        // Do not sign conflicting blocks for this authority.
-                        if !inner.aux_block_store.safe_to_vote(&reference) {
-                            tracing::warn!("[{id}] Received conflicting block from {peer}");
                             break;
                         }
 

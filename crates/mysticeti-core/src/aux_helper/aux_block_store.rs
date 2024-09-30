@@ -149,13 +149,24 @@ impl AuxiliaryBlockStore {
 
     pub fn safe_to_vote(&self, reference: &BlockReference) -> bool {
         let inner = self.inner.read();
-        let (_, block_data) = inner
-            .blocks
-            .get(&reference.round)
-            .expect("Block should exist");
+        let (_, block_data) = match inner.blocks.get(&reference.round) {
+            Some(v) => v,
+            None => return true,
+        };
         let equivocation = block_data
-            .keys()
-            .find(|(authority, _)| authority == &reference.authority);
-        equivocation.is_none()
+            .iter()
+            .find(|((authority, _), _)| authority == &reference.authority)
+            .map(|(_, v)| v.reference());
+
+        if equivocation.is_none() {
+            true
+        } else {
+            tracing::warn!(
+                "Equivocation detected: {:?} and {:?}",
+                equivocation.unwrap(),
+                reference
+            );
+            false
+        }
     }
 }
