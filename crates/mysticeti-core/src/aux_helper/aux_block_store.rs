@@ -102,18 +102,13 @@ impl AuxiliaryBlockStore {
         }
     }
 
-    pub fn get_weak_links(&self, round: RoundNumber) -> Option<Vec<BlockReference>> {
+    pub fn get_weak_links(&self, round: RoundNumber) -> Vec<BlockReference> {
+        // Only include aux blocks about `include_period` rounds after they have been created
         if !self.aux_node_parameters.inclusion_round(round) {
-            return Some(vec![]);
+            return vec![];
         }
-
         let inner = self.inner.read();
-        // NOTE: Do not ebforce weak links.
-        // if inner.highest_threshold_round == 0 || round < inner.highest_threshold_round {
-        //     return None;
-        // }
-
-        Some(inner.next_weak_links.clone())
+        inner.next_weak_links.clone()
     }
 
     pub fn block_exists(&self, reference: &BlockReference) -> bool {

@@ -404,7 +404,7 @@ mod smoke_tests {
     async fn validator_commit_with_aux_validators_dead() {
         let committee_size = 4;
         let committee = Committee::new_for_benchmarks(committee_size);
-        let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(0);
+        let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(300);
         let client_parameters = ClientParameters::default();
 
         let aux_committee_size = 10;

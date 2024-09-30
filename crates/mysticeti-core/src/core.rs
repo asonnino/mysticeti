@@ -58,6 +58,7 @@ pub struct Core<H: BlockHandler> {
     epoch_manager: EpochManager,
     rounds_in_epoch: RoundNumber,
     committer: UniversalCommitter,
+    aux_block_store: AuxiliaryBlockStore,
 }
 
 pub struct CoreOptions {
@@ -125,7 +126,8 @@ impl<H: BlockHandler> Core<H> {
             own_block_data
         };
 
-        let block_manager = BlockManager::new(block_store.clone(), &committee, aux_block_store);
+        let block_manager =
+            BlockManager::new(block_store.clone(), &committee, aux_block_store.clone());
 
         if let Some(state) = state {
             block_handler.recover_state(&state);
@@ -165,6 +167,7 @@ impl<H: BlockHandler> Core<H> {
             epoch_manager,
             rounds_in_epoch: public_config.parameters.rounds_in_epoch,
             committer,
+            aux_block_store,
         };
 
         if !unprocessed_blocks.is_empty() {
@@ -281,7 +284,7 @@ impl<H: BlockHandler> Core<H> {
             self.authority,
             clock_round,
             includes,
-            vec![], // todo - add aux_includes
+            self.aux_block_store.get_weak_links(clock_round),
             statements,
             time_ns,
             self.epoch_changing(),
