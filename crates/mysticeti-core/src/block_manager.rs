@@ -82,6 +82,26 @@ impl BlockManager {
             }
             self.missing[block_reference.authority as usize].remove(block_reference);
 
+            // // Check if the block has any weak links that are missing.
+            // for aux_link in block.aux_includes() {
+            //     if !self.aux_block_store.block_exists(aux_link) {
+            //         processed = false;
+            //         self.block_references_waiting
+            //             .entry(*aux_link)
+            //             .or_default()
+            //             .insert(*block_reference);
+            //         if !self.blocks_pending.contains_key(aux_link) {
+            //             self.aux_missing
+            //                 .entry(aux_link.authority)
+            //                 .or_insert_with(HashSet::new)
+            //                 .insert(*aux_link);
+            //         }
+            //     }
+            // }
+            // self.aux_missing
+            //     .get_mut(&block_reference.authority)
+            //     .map(|x| x.remove(block_reference));
+
             if !processed {
                 self.blocks_pending.insert(*block_reference, block);
             } else {
@@ -131,29 +151,28 @@ impl BlockManager {
         aux_block_reference: BlockReference,
         block_writer: &mut impl BlockWriter,
     ) {
-        todo!();
-        // if let Some(waiting_references) = self.block_references_waiting.remove(&aux_block_reference)
-        // {
-        //     // For each reference see if its unblocked.
-        //     for waiting_block_reference in waiting_references {
-        //         let block_pointer = self.blocks_pending.get(&waiting_block_reference).expect(
-        //             "Safe since we ensure the block waiting reference has a valid primary key.",
-        //         );
+        if let Some(waiting_references) = self.block_references_waiting.remove(&aux_block_reference)
+        {
+            // For each reference see if its unblocked.
+            for waiting_block_reference in waiting_references {
+                let block_pointer = self.blocks_pending.get(&waiting_block_reference).expect(
+                    "Safe since we ensure the block waiting reference has a valid primary key.",
+                );
 
-        //         if block_pointer
-        //             .weak_links()
-        //             .iter()
-        //             .all(|item_ref| !self.block_references_waiting.contains_key(item_ref))
-        //         {
-        //             // No dependencies are left unprocessed, so remove from unprocessed list, and add to the
-        //             // blocks we are processing now.
-        //             let block = self.blocks_pending.remove(&waiting_block_reference).expect(
-        //                 "Safe since we ensure the block waiting reference has a valid primary key.",
-        //             );
-        //             self.add_blocks(vec![block], block_writer);
-        //         }
-        //     }
-        // }
+                if block_pointer
+                    .aux_includes()
+                    .iter()
+                    .all(|item_ref| !self.block_references_waiting.contains_key(item_ref))
+                {
+                    // No dependencies are left unprocessed, so remove from unprocessed list, and add to the
+                    // blocks we are processing now.
+                    let block = self.blocks_pending.remove(&waiting_block_reference).expect(
+                        "Safe since we ensure the block waiting reference has a valid primary key.",
+                    );
+                    self.add_blocks(vec![block], block_writer);
+                }
+            }
+        }
     }
 }
 
