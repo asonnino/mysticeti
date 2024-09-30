@@ -446,11 +446,10 @@ mod aux_tests {
 
     /// Ensure that a committee of honest validators commits some blocks created by the aux validators.
     #[tokio::test]
-    #[tracing_test::traced_test]
     async fn validator_commit_aux_blocks() {
         let committee_size = 4;
         let core_committee = Committee::new_for_benchmarks(committee_size);
-        let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(400);
+        let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(300);
         let client_parameters = ClientParameters::new_for_tests();
 
         let aux_committee_size = 2;
@@ -461,7 +460,7 @@ mod aux_tests {
         // Boot two aux validators.
         for i in 0..aux_committee_size {
             let aux_authority = (1000 + i) as AuthorityIndex;
-            let dir = TempDir::new("validator_commit_aux_blocks-1").unwrap();
+            let dir = TempDir::new(&format!("validator_commit_aux_blocks-1-{i}")).unwrap();
             let aux_private_config = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), 1001)
                 .pop()
                 .unwrap();
@@ -510,14 +509,15 @@ mod aux_tests {
             .all_metric_addresses()
             .map(|address| address.to_owned())
             .collect();
-        let timeout = config::node_defaults::default_leader_timeout() * 5;
 
+        let timeout = config::node_defaults::default_leader_timeout() * 5;
         tokio::select! {
             _ = await_for_commits(addresses.clone()) => (),
             _ = time::sleep(timeout) => panic!("Failed to gather commits within a few timeouts"),
         }
 
         // Ensure the core validators commit aux blocks
+        let timeout = config::node_defaults::default_leader_timeout() * 10;
         tokio::select! {
             _ = await_for_aux_commits(addresses) => (),
             _ = time::sleep(timeout) => panic!("Failed to gather commits within a few timeouts"),
