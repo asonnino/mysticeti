@@ -80,6 +80,7 @@ impl AuxHelperServer {
         let server_handle = NetworkServer::new(server_address, tx_connections).spawn();
 
         while let Some(connection) = rx_connections.recv().await {
+            // TODO: authenticate connection
             tokio::spawn(Self::handle_connection(inner.clone(), connection));
         }
 
