@@ -89,7 +89,7 @@ impl Validator {
         // Create the auxiliary block store.
         // TODO - recover aux blob store from disk
         let aux_block_store =
-            AuxiliaryBlockStore::new(aux_committee.clone(), aux_public_config.parameters);
+            AuxiliaryBlockStore::new(aux_committee.clone(), aux_public_config.parameters.clone());
 
         // Boot the validator node.
         let (block_handler, block_sender) = RealBlockHandler::new(
@@ -155,7 +155,9 @@ impl Validator {
             aux_committee,
             network_synchronizer.inner.block_store.clone(),
             aux_block_store,
+            aux_public_config.parameters,
             network_synchronizer.inner.syncer.clone(),
+            network_synchronizer.inner.notify.clone(),
         );
 
         tracing::info!("Validator {authority} listening on {network_address}");
