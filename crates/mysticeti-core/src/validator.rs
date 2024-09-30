@@ -398,4 +398,52 @@ mod smoke_tests {
             _ = time::sleep(timeout) => panic!("Failed to gather commits within a few timeouts"),
         }
     }
+
+    /// Ensure that a committee of honest validators commits while aux validators are dead.
+    #[tokio::test]
+    async fn validator_commit_with_aux_validators_dead() {
+        let committee_size = 4;
+        let committee = Committee::new_for_benchmarks(committee_size);
+        let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(0);
+        let client_parameters = ClientParameters::default();
+
+        let aux_committee_size = 10;
+        let aux_committee = AuxiliaryCommittee::new_for_benchmarks(aux_committee_size);
+        let aux_public_config = AuxNodePublicConfig::new_for_tests(aux_committee_size);
+
+        let mut handles = Vec::new();
+        let dir = TempDir::new("validator_commit").unwrap();
+        let private_configs = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size);
+        private_configs.iter().for_each(|private_config| {
+            fs::create_dir_all(&private_config.storage_path).unwrap();
+        });
+
+        for (i, private_config) in private_configs.into_iter().enumerate() {
+            let authority = i as AuthorityIndex;
+
+            let validator = Validator::start(
+                authority,
+                committee.clone(),
+                aux_committee.clone(),
+                public_config.clone(),
+                private_config,
+                client_parameters.clone(),
+                aux_public_config.clone(),
+            )
+            .await
+            .unwrap();
+            handles.push(validator.await_completion());
+        }
+
+        let addresses = public_config
+            .all_metric_addresses()
+            .map(|address| address.to_owned())
+            .collect();
+        let timeout = config::node_defaults::default_leader_timeout() * 5;
+
+        tokio::select! {
+            _ = await_for_commits(addresses) => (),
+            _ = time::sleep(timeout) => panic!("Failed to gather commits within a few timeouts"),
+        }
+    }
 }
