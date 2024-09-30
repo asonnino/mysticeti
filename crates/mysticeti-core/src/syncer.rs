@@ -134,6 +134,10 @@ impl<H: BlockHandler, S: SyncerSignals, C: CommitObserver> Syncer<H, S, C> {
         &self.core
     }
 
+    pub fn core_mut(&mut self) -> &mut Core<H> {
+        &mut self.core
+    }
+
     #[cfg(test)]
     pub fn scheduler_state_id(&self) -> usize {
         self.core.authority() as usize

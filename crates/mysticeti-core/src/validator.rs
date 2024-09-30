@@ -10,6 +10,7 @@ use ::prometheus::Registry;
 use eyre::{eyre, Context, Result};
 
 use crate::{
+    aux_node::aux_config::{AuxNodePublicConfig, AuxiliaryCommittee},
     block_handler::{RealBlockHandler, TestCommitHandler},
     block_store::BlockStore,
     committee::Committee,
@@ -35,9 +36,11 @@ impl Validator {
     pub async fn start(
         authority: AuthorityIndex,
         committee: Arc<Committee>,
+        aux_committee: Arc<AuxiliaryCommittee>,
         public_config: NodePublicConfig,
         private_config: NodePrivateConfig,
         client_parameters: ClientParameters,
+        aux_public_config: AuxNodePublicConfig,
     ) -> Result<Self> {
         let network_address = public_config
             .network_address(authority)
@@ -103,12 +106,14 @@ impl Validator {
             block_handler,
             authority,
             committee.clone(),
+            aux_committee.clone(),
             private_config,
             &public_config,
             metrics.clone(),
             recovered,
             wal_writer,
             CoreOptions::default(),
+            aux_public_config.parameters,
         );
         let network = Network::load(
             &public_config,
@@ -162,6 +167,7 @@ mod smoke_tests {
 
     use super::Validator;
     use crate::{
+        aux_node::aux_config::{AuxNodePublicConfig, AuxiliaryCommittee},
         committee::Committee,
         config::{self, ClientParameters, NodePrivateConfig, NodePublicConfig},
         prometheus,
@@ -197,6 +203,9 @@ mod smoke_tests {
         let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(0);
         let client_parameters = ClientParameters::default();
 
+        let aux_committee = AuxiliaryCommittee::new_for_benchmarks(0);
+        let aux_public_config = AuxNodePublicConfig::new_for_tests(0);
+
         let mut handles = Vec::new();
         let dir = TempDir::new("validator_commit").unwrap();
         let private_configs = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size);
@@ -210,9 +219,11 @@ mod smoke_tests {
             let validator = Validator::start(
                 authority,
                 committee.clone(),
+                aux_committee.clone(),
                 public_config.clone(),
                 private_config,
                 client_parameters.clone(),
+                aux_public_config.clone(),
             )
             .await
             .unwrap();
@@ -239,6 +250,9 @@ mod smoke_tests {
         let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(100);
         let client_parameters = ClientParameters::default();
 
+        let aux_committee = AuxiliaryCommittee::new_for_benchmarks(0);
+        let aux_public_config = AuxNodePublicConfig::new_for_tests(0);
+
         let mut handles = Vec::new();
         let dir = TempDir::new("validator_sync").unwrap();
         let private_configs = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size);
@@ -255,9 +269,11 @@ mod smoke_tests {
             let validator = Validator::start(
                 authority,
                 committee.clone(),
+                aux_committee.clone(),
                 public_config.clone(),
                 private_config,
                 client_parameters.clone(),
+                aux_public_config.clone(),
             )
             .await
             .unwrap();
@@ -283,9 +299,11 @@ mod smoke_tests {
         let validator = Validator::start(
             authority as AuthorityIndex,
             committee.clone(),
+            aux_committee.clone(),
             public_config.clone(),
             private_config,
             client_parameters,
+            aux_public_config,
         )
         .await
         .unwrap();
@@ -312,6 +330,9 @@ mod smoke_tests {
         let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(200);
         let client_parameters = ClientParameters::default();
 
+        let aux_committee = AuxiliaryCommittee::new_for_benchmarks(0);
+        let aux_public_config = AuxNodePublicConfig::new_for_tests(0);
+
         let mut handles = Vec::new();
         let dir = TempDir::new("validator_crash_faults").unwrap();
         let private_configs = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size);
@@ -328,9 +349,11 @@ mod smoke_tests {
             let validator = Validator::start(
                 authority,
                 committee.clone(),
+                aux_committee.clone(),
                 public_config.clone(),
                 private_config,
                 client_parameters.clone(),
+                aux_public_config.clone(),
             )
             .await
             .unwrap();

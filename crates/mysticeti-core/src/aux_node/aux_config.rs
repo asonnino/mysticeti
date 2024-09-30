@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     committee::Authority,
-    config::NodeIdentifier,
+    config::{ImportExport, NodeIdentifier},
     crypto::{PublicKey, Signer},
     types::{AuthorityIndex, RoundNumber, Stake},
 };
@@ -67,6 +67,8 @@ impl AuxiliaryCommittee {
     }
 }
 
+impl ImportExport for AuxiliaryCommittee {}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AuxNodeParameters {
     /// The minimum auxiliary stake required for liveness. When core validators include
@@ -103,6 +105,8 @@ impl Default for AuxNodeParameters {
         }
     }
 }
+
+impl ImportExport for AuxNodeParameters {}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AuxNodePublicConfig {
@@ -159,3 +163,5 @@ impl AuxNodePublicConfig {
             .map(|id| id.metrics_address)
     }
 }
+
+impl ImportExport for AuxNodePublicConfig {}

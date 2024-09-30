@@ -11,6 +11,7 @@ use std::{
 use clap::{command, Parser};
 use eyre::{eyre, Context, Result};
 use mysticeti_core::{
+    aux_node::aux_config::{AuxNodePublicConfig, AuxiliaryCommittee},
     committee::Committee,
     config::{ClientParameters, ImportExport, NodeParameters, NodePrivateConfig, NodePublicConfig},
     types::AuthorityIndex,
@@ -57,6 +58,13 @@ enum Operation {
         /// Path to the file holding the client parameters (for benchmarks).
         #[clap(long, value_name = "FILE")]
         client_parameters_path: String,
+
+        /// Path to the file holding the public aux committee information.
+        #[clap(long, value_name = "FILE")]
+        aux_committee_path: Option<String>,
+        /// Path to the file holding the public validator configurations (such as network addresses).
+        #[clap(long, value_name = "FILE")]
+        aux_public_config_path: Option<String>,
     },
     /// Deploy a local validator for test. Dryrun mode uses default keys and committee configurations.
     DryRun {
@@ -88,16 +96,20 @@ async fn main() -> Result<()> {
         Operation::Run {
             authority,
             committee_path,
+            aux_committee_path,
             public_config_path,
             private_config_path,
             client_parameters_path,
+            aux_public_config_path,
         } => {
             run(
                 authority,
                 committee_path,
+                aux_committee_path,
                 public_config_path,
                 private_config_path,
                 client_parameters_path,
+                aux_public_config_path,
             )
             .await?
         }
@@ -170,9 +182,11 @@ fn benchmark_genesis(
 async fn run(
     authority: AuthorityIndex,
     committee_path: String,
+    aux_committee_path: Option<String>,
     public_config_path: String,
     private_config_path: String,
     client_parameters_path: String,
+    aux_public_config_path: Option<String>,
 ) -> Result<()> {
     tracing::info!("Starting validator {authority}");
 
@@ -187,6 +201,19 @@ async fn run(
     let client_parameters = ClientParameters::load(&client_parameters_path).wrap_err(format!(
         "Failed to load client parameters file '{client_parameters_path}'"
     ))?;
+
+    let aux_committee = match aux_committee_path {
+        Some(path) => Arc::new(
+            AuxiliaryCommittee::load(&path)
+                .wrap_err(format!("Failed to load aux committee file '{path}'"))?,
+        ),
+        None => AuxiliaryCommittee::new_for_benchmarks(0),
+    };
+    let aux_public_config = match aux_public_config_path {
+        Some(path) => AuxNodePublicConfig::load(&path)
+            .wrap_err(format!("Failed to load aux parameters file '{path}'"))?,
+        None => AuxNodePublicConfig::new_for_tests(0),
+    };
 
     let committee = Arc::new(committee);
 
@@ -208,9 +235,11 @@ async fn run(
     let validator = Validator::start(
         authority,
         committee,
+        aux_committee,
         public_config.clone(),
         private_config,
         client_parameters,
+        aux_public_config,
     )
     .await?;
     let (network_result, _metrics_result) = validator.await_completion().await;
@@ -227,6 +256,9 @@ async fn dryrun(authority: AuthorityIndex, committee_size: usize) -> Result<()> 
     let client_parameters = ClientParameters::default();
     let node_parameters = NodeParameters::default();
     let public_config = NodePublicConfig::new_for_benchmarks(ips, Some(node_parameters));
+
+    let aux_committee = AuxiliaryCommittee::new_for_benchmarks(0);
+    let aux_public_config = AuxNodePublicConfig::new_for_tests(0);
 
     let working_dir = PathBuf::from(format!("dryrun-validator-{authority}"));
     let mut all_private_config =
@@ -255,9 +287,11 @@ async fn dryrun(authority: AuthorityIndex, committee_size: usize) -> Result<()> 
     let validator = Validator::start(
         authority,
         committee,
+        aux_committee,
         public_config,
         private_config,
         client_parameters,
+        aux_public_config,
     )
     .await?;
     let (network_result, _metrics_result) = validator.await_completion().await;

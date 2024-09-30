@@ -10,6 +10,8 @@ use std::{
 use minibytes::Bytes;
 
 use crate::{
+    aux_helper::aux_block_store::AuxiliaryBlockStore,
+    aux_node::aux_config::{AuxNodeParameters, AuxiliaryCommittee},
     block_handler::BlockHandler,
     block_manager::BlockManager,
     block_store::{
@@ -75,12 +77,14 @@ impl<H: BlockHandler> Core<H> {
         mut block_handler: H,
         authority: AuthorityIndex,
         committee: Arc<Committee>,
+        aux_committee: Arc<AuxiliaryCommittee>,
         private_config: NodePrivateConfig,
         public_config: &NodePublicConfig,
         metrics: Arc<Metrics>,
         recovered: RecoveredState,
         mut wal_writer: WalWriter,
         options: CoreOptions,
+        aux_node_parameters: AuxNodeParameters,
     ) -> Self {
         let RecoveredState {
             block_store,
@@ -122,7 +126,9 @@ impl<H: BlockHandler> Core<H> {
             block_writer.insert_own_block(&own_block_data);
             own_block_data
         };
-        let block_manager = BlockManager::new(block_store.clone(), &committee);
+
+        let aux_block_store = AuxiliaryBlockStore::new(aux_committee, aux_node_parameters); // TODO - recover aux blob store from disk
+        let block_manager = BlockManager::new(block_store.clone(), &committee, aux_block_store);
 
         if let Some(state) = state {
             block_handler.recover_state(&state);
@@ -448,6 +454,11 @@ impl<H: BlockHandler> Core<H> {
         self.recovered_committed_blocks
             .take()
             .expect("take_recovered_committed_blocks called twice")
+    }
+
+    pub fn notify_aux_block_reception(&mut self, reference: BlockReference) {
+        self.block_manager
+            .unlock_pending_block(reference, &mut (&mut self.wal_writer, &self.block_store));
     }
 
     pub fn block_store(&self) -> &BlockStore {

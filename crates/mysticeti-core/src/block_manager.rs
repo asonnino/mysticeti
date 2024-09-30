@@ -7,10 +7,11 @@ use std::{
 };
 
 use crate::{
+    aux_helper::aux_block_store::AuxiliaryBlockStore,
     block_store::{BlockStore, BlockWriter},
     committee::Committee,
     data::Data,
-    types::{BlockReference, StatementBlock},
+    types::{AuthorityIndex, BlockReference, StatementBlock},
     wal::WalPosition,
 };
 
@@ -25,15 +26,24 @@ pub struct BlockManager {
     /// blocks. The indices of the vector correspond the authority indices.
     missing: Vec<HashSet<BlockReference>>,
     block_store: BlockStore,
+
+    aux_missing: HashMap<AuthorityIndex, HashSet<BlockReference>>,
+    aux_block_store: AuxiliaryBlockStore,
 }
 
 impl BlockManager {
-    pub fn new(block_store: BlockStore, committee: &Arc<Committee>) -> Self {
+    pub fn new(
+        block_store: BlockStore,
+        committee: &Arc<Committee>,
+        aux_block_store: AuxiliaryBlockStore,
+    ) -> Self {
         Self {
             blocks_pending: Default::default(),
             block_references_waiting: Default::default(),
             missing: (0..committee.len()).map(|_| HashSet::new()).collect(),
             block_store,
+            aux_missing: Default::default(),
+            aux_block_store,
         }
     }
 
@@ -110,6 +120,41 @@ impl BlockManager {
     pub fn missing_blocks(&self) -> &[HashSet<BlockReference>] {
         &self.missing
     }
+
+    pub fn aux_missing_blocks(&self) -> &HashMap<AuthorityIndex, HashSet<BlockReference>> {
+        &self.aux_missing
+    }
+
+    /// Unblock the processing of core blocks upon receiving a new auxiliary block (that was potentially used as a weak link).
+    pub fn unlock_pending_block(
+        &mut self,
+        aux_block_reference: BlockReference,
+        block_writer: &mut impl BlockWriter,
+    ) {
+        todo!();
+        // if let Some(waiting_references) = self.block_references_waiting.remove(&aux_block_reference)
+        // {
+        //     // For each reference see if its unblocked.
+        //     for waiting_block_reference in waiting_references {
+        //         let block_pointer = self.blocks_pending.get(&waiting_block_reference).expect(
+        //             "Safe since we ensure the block waiting reference has a valid primary key.",
+        //         );
+
+        //         if block_pointer
+        //             .weak_links()
+        //             .iter()
+        //             .all(|item_ref| !self.block_references_waiting.contains_key(item_ref))
+        //         {
+        //             // No dependencies are left unprocessed, so remove from unprocessed list, and add to the
+        //             // blocks we are processing now.
+        //             let block = self.blocks_pending.remove(&waiting_block_reference).expect(
+        //                 "Safe since we ensure the block waiting reference has a valid primary key.",
+        //             );
+        //             self.add_blocks(vec![block], block_writer);
+        //         }
+        //     }
+        // }
+    }
 }
 
 #[cfg(test)]
@@ -117,18 +162,27 @@ mod tests {
     use rand::{prelude::StdRng, SeedableRng};
 
     use super::*;
-    use crate::{test_util::TestBlockWriter, types::Dag};
+    use crate::{aux_node::aux_config::AuxiliaryCommittee, test_util::TestBlockWriter, types::Dag};
 
     #[test]
     fn test_block_manager_add_block() {
         let dag =
             Dag::draw("A1:[A0, B0]; B1:[A0, B0]; B2:[A0, B1]; A2:[A1, B2]").add_genesis_blocks();
         assert_eq!(dag.len(), 6); // 4 blocks in dag + 2 genesis
+
+        let aux_committee = Arc::new(AuxiliaryCommittee::default());
+        let aux_node_parameters = Default::default();
+        let aux_block_store = AuxiliaryBlockStore::new(aux_committee, aux_node_parameters);
+
         for seed in 0..100u8 {
             let mut block_writer = TestBlockWriter::new(&dag.committee());
             println!("Seed {seed}");
             let iter = dag.random_iter(&mut rng(seed));
-            let mut bm = BlockManager::new(block_writer.block_store(), &dag.committee());
+            let mut bm = BlockManager::new(
+                block_writer.block_store(),
+                &dag.committee(),
+                aux_block_store.clone(),
+            );
             let mut processed_blocks = HashSet::new();
             for block in iter {
                 let processed = bm.add_blocks(vec![block.clone()], &mut block_writer);

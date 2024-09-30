@@ -1,6 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+pub mod aux_helper;
 mod aux_networking;
 pub mod aux_node;
 pub mod block_handler;

@@ -16,6 +16,7 @@ use crate::future_simulator::OverrideNodeContext;
 #[cfg(feature = "simulator")]
 use crate::simulated_network::SimulatedNetwork;
 use crate::{
+    aux_node::aux_config::{AuxNodePublicConfig, AuxiliaryCommittee},
     block_handler::{BlockHandler, TestBlockHandler, TestCommitHandler},
     block_store::{BlockStore, BlockWriter, OwnBlockData, WAL_ENTRY_BLOCK},
     committee::Committee,
@@ -82,6 +83,10 @@ pub fn committee_and_cores_persisted_epoch_duration(
     Vec<MetricReporter>,
 ) {
     let committee = committee(n);
+
+    let aux_committee = AuxiliaryCommittee::new_for_benchmarks(0);
+    let aux_public_config = AuxNodePublicConfig::new_for_tests(0);
+
     let cores: Vec<_> = committee
         .authorities()
         .map(|authority| {
@@ -115,12 +120,14 @@ pub fn committee_and_cores_persisted_epoch_duration(
                 block_handler,
                 authority,
                 committee.clone(),
+                aux_committee.clone(),
                 private_config,
                 public_config,
                 metrics,
                 recovered,
                 wal_writer,
                 CoreOptions::test(),
+                aux_public_config.parameters.clone(),
             );
             (core, reporter)
         })

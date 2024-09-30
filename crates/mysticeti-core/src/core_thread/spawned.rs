@@ -1,7 +1,11 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::HashSet, sync::Arc, thread};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    thread,
+};
 
 use tokio::sync::{mpsc, oneshot};
 
@@ -34,6 +38,10 @@ enum CoreThreadCommand {
     ConnectionEstablished(AuthorityIndex, oneshot::Sender<()>),
     /// Indicate that a connection to an authority was dropped.
     ConnectionDropped(AuthorityIndex, oneshot::Sender<()>),
+
+    // Handle auxiliary blocks.
+    GetAuxMissing(oneshot::Sender<HashMap<AuthorityIndex, HashSet<BlockReference>>>),
+    NotifyAuxBlock(BlockReference),
 }
 
 impl<H: BlockHandler + 'static, S: SyncerSignals + 'static, C: CommitObserver + 'static>
@@ -83,6 +91,17 @@ impl<H: BlockHandler + 'static, S: SyncerSignals + 'static, C: CommitObserver + 
         let (sender, receiver) = oneshot::channel();
         self.send(CoreThreadCommand::GetMissing(sender)).await;
         receiver.await.expect("core thread is not expected to stop")
+    }
+
+    pub async fn get_aux_missing_blocks(&self) -> HashMap<AuthorityIndex, HashSet<BlockReference>> {
+        let (sender, receiver) = oneshot::channel();
+        self.send(CoreThreadCommand::GetAuxMissing(sender)).await;
+        receiver.await.expect("core thread is not expected to stop")
+    }
+
+    pub async fn notify_aux_block_reception(&self, reference: BlockReference) {
+        self.send(CoreThreadCommand::NotifyAuxBlock(reference))
+            .await;
     }
 
     /// Update the syncer with the connection status of an authority. This function must be called
@@ -137,6 +156,13 @@ impl<H: BlockHandler, S: SyncerSignals, C: CommitObserver> CoreThread<H, S, C> {
                 CoreThreadCommand::ConnectionDropped(authority, sender) => {
                     self.syncer.connected_authorities.remove(&authority);
                     sender.send(()).ok();
+                }
+                CoreThreadCommand::GetAuxMissing(sender) => {
+                    let missing = self.syncer.core().block_manager().aux_missing_blocks();
+                    sender.send(missing.clone()).ok();
+                }
+                CoreThreadCommand::NotifyAuxBlock(reference) => {
+                    self.syncer.core_mut().notify_aux_block_reception(reference);
                 }
             }
         }
