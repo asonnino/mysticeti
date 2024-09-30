@@ -97,18 +97,21 @@ pub struct AuxCoreInner {
 }
 
 pub struct AuxCore {
-    inner: Arc<AuxCoreInner>,
-    node_public_config: NodePublicConfig,
-    aux_node_parameters: AuxNodeParameters,
+    _inner: Arc<AuxCoreInner>,
+    _node_public_config: NodePublicConfig,
+    _aux_node_parameters: AuxNodeParameters,
+    _tx_new_disseminator: mpsc::Sender<mpsc::Sender<DisseminatorMessage>>,
+    _tx_notification: mpsc::Sender<DisseminatorMessage>,
 }
 
 impl AuxCore {
-    pub fn new(
+    pub async fn start(
         core_committee: Arc<Committee>,
         authority: AuthorityIndex,
         signer: Arc<Signer>,
         node_public_config: NodePublicConfig,
         aux_node_parameters: AuxNodeParameters,
+        mut transactions_receiver: mpsc::Receiver<Vec<Transaction>>,
     ) -> Self {
         let inner = Arc::new(AuxCoreInner {
             authority,
@@ -122,19 +125,12 @@ impl AuxCore {
             aux_node_parameters: aux_node_parameters.clone(),
         });
 
-        Self {
-            inner,
-            node_public_config,
-            aux_node_parameters,
-        }
-    }
-    pub async fn run(&mut self, mut transactions_receiver: mpsc::Receiver<Vec<Transaction>>) {
         // Collect transactions.
-        let inner = self.inner.clone();
-        let max_pending_transactions = self.aux_node_parameters.max_block_size * 10;
+        let inner_clone = inner.clone();
+        let max_pending_transactions = aux_node_parameters.max_block_size * 10;
         tokio::spawn(async move {
             while let Some(transactions) = transactions_receiver.recv().await {
-                let mut guard = inner.pending_transactions.write();
+                let mut guard = inner_clone.pending_transactions.write();
                 // Drop transactions if the buffer is full. (Auxiliary validators are unreliable.)
                 if guard.len() < max_pending_transactions {
                     guard.extend(transactions.into_iter().map(BaseStatement::Share));
@@ -151,12 +147,18 @@ impl AuxCore {
         ));
 
         // Drive networking.
-        for (peer, address) in self.node_public_config.all_network_addresses().enumerate() {
+        for (peer, address) in node_public_config.all_aux_helper_addresses().enumerate() {
+            tracing::debug!("[{authority}] Starting connection with {peer} ({address})");
             let (tx_send_through_network, rx_send_through_network) = mpsc::channel(1000);
             let (tx_receive_from_network, rx_receive_from_network) = mpsc::channel(1000);
-            NetworkClient::new(address, tx_receive_from_network, rx_send_through_network).spawn();
+            NetworkClient::new(
+                authority as usize,
+                address,
+                tx_receive_from_network,
+                rx_send_through_network,
+            )
+            .spawn();
 
-            let inner = self.inner.clone();
             let (disseminator, notifier) = AuxDisseminator::new(
                 tx_send_through_network.clone(),
                 inner.clone(),
@@ -166,16 +168,25 @@ impl AuxCore {
             tx_new_disseminator.send(notifier).await.ok();
 
             let tx_notification_clone = tx_notification.clone();
+            let inner_clone = inner.clone();
             tokio::spawn(async move {
                 Self::connection_handler(
                     peer as AuthorityIndex,
-                    inner,
+                    inner_clone,
                     tx_send_through_network,
                     rx_receive_from_network,
                     tx_notification_clone,
                 )
                 .await;
             });
+        }
+
+        Self {
+            _inner: inner,
+            _node_public_config: node_public_config,
+            _aux_node_parameters: aux_node_parameters,
+            _tx_new_disseminator: tx_new_disseminator,
+            _tx_notification: tx_notification,
         }
     }
 
@@ -193,6 +204,10 @@ impl AuxCore {
                     for tx_disseminator in &disseminators {
                         tx_disseminator.send(notification.clone()).await.ok();
                     }
+                }
+                else => {
+                    tracing::warn!("Dissemination controller terminated");
+                    break;
                 }
             }
         }

@@ -33,7 +33,7 @@ mod tests {
         let cloned_transactions = transactions.clone();
         let server = async move {
             let (tx_client_connections, mut rx_client_connections) = mpsc::channel(1);
-            let server = NetworkServer::<_, ()>::new(server_address, tx_client_connections);
+            let server = NetworkServer::<_, ()>::new(0, server_address, tx_client_connections);
             let _server_handle = server.spawn();
 
             // Wait for a client connection and hold it (to avoid closing the channel).
@@ -51,7 +51,7 @@ mod tests {
             let (tx_unused, _rx_unused) = mpsc::channel(1);
             let (tx_transactions, rx_transactions) = mpsc::channel(1);
 
-            let client = NetworkClient::<(), _>::new(server_address, tx_unused, rx_transactions);
+            let client = NetworkClient::<(), _>::new(0, server_address, tx_unused, rx_transactions);
             let _client_handle = client.spawn();
 
             // Send a transaction to the primary.
@@ -76,7 +76,7 @@ mod tests {
         let server = async move {
             let (tx_proxy_connections, mut rx_proxy_connections) = mpsc::channel(1);
 
-            let server = NetworkServer::new(server_address, tx_proxy_connections);
+            let server = NetworkServer::new(0, server_address, tx_proxy_connections);
             let _server_handle = server.spawn();
 
             // Wait for a proxy connection and send a transaction.
@@ -93,7 +93,7 @@ mod tests {
             let (tx_transactions, mut rx_transactions) = mpsc::channel(1);
             let (tx_proxy_results, rx_proxy_results) = mpsc::channel(1);
 
-            let client = NetworkClient::new(server_address, tx_transactions, rx_proxy_results);
+            let client = NetworkClient::new(0, server_address, tx_transactions, rx_proxy_results);
             let _client_handle = client.spawn();
 
             let t: String = rx_transactions.recv().await.unwrap();

@@ -190,6 +190,11 @@ impl NodePublicConfig {
         self.identifiers.iter().map(|id| id.metrics_address)
     }
 
+    /// Return all metric addresses (including our own) in the order of the authority index.
+    pub fn all_aux_helper_addresses(&self) -> impl Iterator<Item = SocketAddr> + '_ {
+        self.identifiers.iter().map(|id| id.aux_helper_address)
+    }
+
     pub fn network_address(&self, authority: AuthorityIndex) -> Option<SocketAddr> {
         self.identifiers
             .get(authority as usize)

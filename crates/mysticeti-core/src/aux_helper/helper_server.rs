@@ -40,6 +40,7 @@ struct AuxHelperServerInner<H: BlockHandler, C: CommitObserver> {
 
 pub struct AuxHelperServer {
     _server_handle: JoinHandle<io::Result<()>>,
+    _connections_handle: JoinHandle<()>,
 }
 
 impl AuxHelperServer {
@@ -77,15 +78,19 @@ impl AuxHelperServer {
 
         let (tx_connections, mut rx_connections) =
             mpsc::channel(Self::DEFAULT_AUX_SERVER_CHANNEL_SIZE);
-        let server_handle = NetworkServer::new(server_address, tx_connections).spawn();
+        let server_handle =
+            NetworkServer::new(authority as usize, server_address, tx_connections).spawn();
 
-        while let Some(connection) = rx_connections.recv().await {
-            // TODO: authenticate connection
-            tokio::spawn(Self::handle_connection(inner.clone(), connection));
-        }
+        let connections_handle = tokio::spawn(async move {
+            while let Some(connection) = rx_connections.recv().await {
+                // TODO: authenticate connection
+                tokio::spawn(Self::handle_connection(inner.clone(), connection));
+            }
+        });
 
         Self {
             _server_handle: server_handle,
+            _connections_handle: connections_handle,
         }
     }
 
@@ -131,12 +136,6 @@ impl AuxHelperServer {
                             break;
                         }
 
-                        // Do not sign conflicting blocks for this authority.
-                        if !inner.aux_block_store.safe_to_vote(&reference) {
-                            tracing::warn!("[{id}] Received conflicting block from {peer}");
-                            break;
-                        }
-
                         // Ensure we have the references. Otherwise, request them from the sender.
                         let missing: Vec<_> = block
                             .includes()
@@ -164,6 +163,12 @@ impl AuxHelperServer {
 
                         // Reply with a vote if the sender is an auxiliary validator.
                         if !inner.aux_committee.exists(author) {
+                            break;
+                        }
+
+                        // Do not sign conflicting blocks for this authority.
+                        if !inner.aux_block_store.safe_to_vote(&reference) {
+                            tracing::warn!("[{id}] Received conflicting block from {peer}");
                             break;
                         }
 

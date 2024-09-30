@@ -17,6 +17,7 @@ use crate::aux_networking::worker::ConnectionWorker;
 /// primary machine and receive messages to process. The client can also leverage the
 /// bidirectional connection to send messages back to the server.
 pub struct NetworkClient<I, O> {
+    id: usize,
     /// The address of the validator.
     server_address: SocketAddr,
     /// The sender for messages received from the network to send to the application layer.
@@ -32,11 +33,13 @@ where
 {
     /// Create a new client.
     pub fn new(
+        id: usize,
         server_address: SocketAddr,
         tx_incoming: Sender<I>,
         rx_outgoing: Receiver<O>,
     ) -> Self {
         Self {
+            id,
             server_address,
             tx_incoming,
             rx_outgoing,
@@ -45,7 +48,8 @@ where
 
     /// Run the client.
     pub async fn run(self) -> io::Result<()> {
-        tracing::info!("Trying to connect to server {}", self.server_address);
+        let id = self.id;
+        tracing::info!("[{id}] Trying to connect to server {}", self.server_address);
 
         let stream = loop {
             let socket = if self.server_address.is_ipv4() {
@@ -58,7 +62,7 @@ where
                 Ok(stream) => break stream,
                 Err(e) => {
                     tracing::info!(
-                        "Failed to connect to server {} (retrying): {e}",
+                        "[{id}] Failed to connect to server {} (retrying): {e}",
                         self.server_address,
                         e = e
                     );
@@ -68,7 +72,7 @@ where
         };
         tracing::info!("Connected to {}", self.server_address);
 
-        let worker = ConnectionWorker::new(stream, self.tx_incoming, self.rx_outgoing);
+        let worker = ConnectionWorker::new(id, stream, self.tx_incoming, self.rx_outgoing);
         worker.run().await;
         Ok(())
     }

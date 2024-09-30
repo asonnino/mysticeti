@@ -22,7 +22,7 @@ use crate::{
 };
 
 pub struct AuxiliaryValidator {
-    core_handle: JoinHandle<()>,
+    _core_handle: AuxCore,
     metrics_handle: JoinHandle<Result<(), hyper::Error>>,
 }
 
@@ -64,33 +64,26 @@ impl AuxiliaryValidator {
         );
 
         // Boot core
-        let core_handle = tokio::spawn(async move {
-            AuxCore::new(
-                core_committee,
-                authority,
-                signer,
-                public_config.clone(),
-                aux_public_config.parameters,
-            )
-            .run(tx_receiver)
-            .await;
-        });
+        let core_handle = AuxCore::start(
+            core_committee,
+            authority,
+            signer,
+            public_config.clone(),
+            aux_public_config.parameters,
+            tx_receiver,
+        )
+        .await;
 
         tracing::info!("Validator {authority} exposing metrics on {metrics_address}");
 
         Ok(Self {
-            core_handle,
+            _core_handle: core_handle,
             metrics_handle,
         })
     }
 
-    pub async fn await_completion(
-        self,
-    ) -> (
-        Result<(), JoinError>,
-        Result<Result<(), hyper::Error>, JoinError>,
-    ) {
-        tokio::join!(self.core_handle, self.metrics_handle)
+    pub async fn await_completion(self) -> Result<Result<(), hyper::Error>, JoinError> {
+        self.metrics_handle.await
     }
 }
 
@@ -160,7 +153,8 @@ mod tests {
     ) {
         let id = server_address;
         let (tx_connections, mut rx_connections) = mpsc::channel(10);
-        let _handle = NetworkServer::new(server_address, tx_connections).spawn();
+        let _handle =
+            NetworkServer::new(authority_index as usize, server_address, tx_connections).spawn();
 
         // Wait for the aux validator to establish a connection.
         let mut connection = rx_connections.recv().await.unwrap();
@@ -236,7 +230,7 @@ mod tests {
             let core_authority = i as AuthorityIndex;
             let core_committee_clone = core_committee.clone();
             let core_signer = Arc::new(core_private_config.keypair.clone());
-            let server_address = public_config.network_address(core_authority).unwrap();
+            let server_address = public_config.aux_helper_address(core_authority).unwrap();
             let handle = tokio::spawn(async move {
                 mock_core_validator(
                     core_authority,

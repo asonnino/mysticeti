@@ -17,6 +17,7 @@ use tokio::{
 
 /// A worker that handles a bidirectional connection with a peer.
 pub struct ConnectionWorker<I, O> {
+    id: usize,
     /// The TCP stream.
     stream: TcpStream,
     /// The sender for messages received from the network.
@@ -34,8 +35,14 @@ where
     const MAX_MESSAGE_SIZE: u32 = 16 * 1024 * 1024;
 
     /// Create a new worker.
-    pub fn new(stream: TcpStream, tx_incoming: Sender<I>, rx_outgoing: Receiver<O>) -> Self {
+    pub fn new(
+        id: usize,
+        stream: TcpStream,
+        tx_incoming: Sender<I>,
+        rx_outgoing: Receiver<O>,
+    ) -> Self {
         Self {
+            id,
             stream,
             tx_incoming,
             rx_outgoing,
@@ -45,8 +52,10 @@ where
     /// Run the worker.
     pub async fn run(self) {
         let (reader, writer) = self.stream.into_split();
-        let read_stream_handle = Self::handle_read_stream(reader, self.tx_incoming).boxed();
-        let write_stream_handle = Self::handle_write_stream(writer, self.rx_outgoing).boxed();
+        let read_stream_handle =
+            Self::handle_read_stream(self.id, reader, self.tx_incoming).boxed();
+        let write_stream_handle =
+            Self::handle_write_stream(self.id, writer, self.rx_outgoing).boxed();
         tokio::select! {
             _ = read_stream_handle => (),
             _ = write_stream_handle => (),
@@ -55,6 +64,7 @@ where
 
     /// Handle reading from the stream.
     async fn handle_read_stream(
+        id: usize,
         mut reader: OwnedReadHalf,
         tx_incoming: Sender<I>,
     ) -> io::Result<()> {
@@ -71,12 +81,16 @@ where
             match bincode::deserialize(message) {
                 Ok(data) => {
                     if tx_incoming.send(data).await.is_err() {
-                        tracing::warn!("Cannot send message to application layer, stopping worker");
+                        tracing::warn!(
+                            "[{id}] Cannot send message to application layer, stopping worker"
+                        );
                         break Ok(());
                     }
                 }
                 Err(e) => {
-                    tracing::error!("Cannot deserialize message (killing connection): {e:?}");
+                    tracing::error!(
+                        "[{id}] Cannot deserialize message (killing connection): {e:?}"
+                    );
                     break Ok(());
                 }
             }
@@ -85,6 +99,7 @@ where
 
     /// Handle writing to the stream.
     async fn handle_write_stream(
+        id: usize,
         mut writer: OwnedWriteHalf,
         mut rx_outgoing: Receiver<O>,
     ) -> io::Result<()> {
@@ -94,7 +109,7 @@ where
             writer.write_u32(serialized.len() as u32).await?;
             writer.write_all(&serialized).await?;
         }
-        tracing::warn!("Cannot receive transaction from application layer, stopping worker");
+        tracing::warn!("[{id}] Cannot receive transaction from application layer, stopping worker");
         Ok(())
     }
 

@@ -45,6 +45,7 @@ impl<I, O> Connection<I, O> {
 /// as well. To this purpose, the server propagate a communication channel to the application
 /// layer, which can use it to send messages to the client.
 pub struct NetworkServer<I, O> {
+    id: usize,
     /// The socket address of the server.
     server_address: SocketAddr,
     /// The sender for client connections. When a new client connects, this channel
@@ -59,8 +60,13 @@ where
     O: Send + Serialize + 'static,
 {
     /// Create a new server.
-    pub fn new(server_address: SocketAddr, tx_connections: Sender<Connection<I, O>>) -> Self {
+    pub fn new(
+        id: usize,
+        server_address: SocketAddr,
+        tx_connections: Sender<Connection<I, O>>,
+    ) -> Self {
         Self {
+            id,
             server_address,
             tx_connections,
         }
@@ -68,18 +74,19 @@ where
 
     /// Run the server.
     pub async fn run(&self) -> io::Result<()> {
+        let id = self.id;
         let server = TcpListener::bind(self.server_address).await?;
-        tracing::info!("Listening on {}", self.server_address);
+        tracing::info!("[{id}] Listening on {}", self.server_address);
 
         loop {
             let (stream, peer) = server.accept().await?;
             stream.set_nodelay(true)?;
-            tracing::info!("Accepted connection from client {peer}");
+            tracing::info!("[{id}] Accepted connection from client {peer}");
 
             // Spawn a worker to handle the connection.
             let (tx_incoming, rx_incoming) = mpsc::channel(WORKER_CHANNEL_SIZE);
             let (tx_outgoing, rx_outgoing) = mpsc::channel(WORKER_CHANNEL_SIZE);
-            let worker = ConnectionWorker::new(stream, tx_incoming, rx_outgoing);
+            let worker = ConnectionWorker::new(id, stream, tx_incoming, rx_outgoing);
             let _handle = worker.spawn();
 
             // Notify the application layer that a new client has connected.
@@ -90,7 +97,7 @@ where
             };
             let result = self.tx_connections.send(connection).await;
             if result.is_err() {
-                tracing::warn!("Cannot send connection to application, stopping server");
+                tracing::warn!("[{id}] Cannot send connection to application, stopping server");
                 break Ok(());
             }
         }

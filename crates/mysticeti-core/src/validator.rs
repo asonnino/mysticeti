@@ -58,7 +58,7 @@ impl Validator {
         binding_metrics_address.set_ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
 
         let aux_helper_address = public_config
-            .metrics_address(authority)
+            .aux_helper_address(authority)
             .ok_or(eyre!("No aux helper address for authority {authority}"))
             .wrap_err("Unknown authority")?;
         let mut binding_aux_helper_address = aux_helper_address;
@@ -158,10 +158,12 @@ impl Validator {
             aux_public_config.parameters,
             network_synchronizer.inner.syncer.clone(),
             network_synchronizer.inner.notify.clone(),
-        );
+        )
+        .await;
 
         tracing::info!("Validator {authority} listening on {network_address}");
         tracing::info!("Validator {authority} exposing metrics on {metrics_address}");
+        tracing::info!("Validator {authority} serving aux validators on {aux_helper_address}");
 
         Ok(Self {
             network_synchronizer,
@@ -404,25 +406,131 @@ mod smoke_tests {
 
 #[cfg(test)]
 mod aux_tests {
-    use std::fs;
+    use std::{collections::VecDeque, fs, net::SocketAddr, time::Duration};
 
     use tempdir::TempDir;
     use tokio::time;
 
     use crate::{
-        aux_node::aux_config::{AuxNodePublicConfig, AuxiliaryCommittee},
+        aux_node::{
+            aux_config::{AuxNodeParameters, AuxNodePublicConfig, AuxiliaryCommittee},
+            aux_validator::AuxiliaryValidator,
+        },
         committee::Committee,
         config::{self, ClientParameters, NodePrivateConfig, NodePublicConfig},
+        prometheus,
         types::AuthorityIndex,
         validator::{smoke_tests::await_for_commits, Validator},
     };
+
+    /// Check whether the validator specified by its metrics address has committed at least once.
+    async fn check_aux_commit(address: &SocketAddr) -> Result<bool, reqwest::Error> {
+        let route = prometheus::METRICS_ROUTE;
+        let res = reqwest::get(format! {"http://{address}{route}"}).await?;
+        let string = res.text().await?;
+        println!("Metrics: {string}");
+        let commit = string.contains("aux_blocks_committed");
+        Ok(commit)
+    }
+
+    /// Await for all the validators specified by their metrics addresses to commit.
+    pub async fn await_for_aux_commits(addresses: Vec<SocketAddr>) {
+        let mut queue = VecDeque::from(addresses);
+        while let Some(address) = queue.pop_front() {
+            time::sleep(Duration::from_millis(100)).await;
+            match check_aux_commit(&address).await {
+                Ok(commits) if commits => (),
+                _ => queue.push_back(address),
+            }
+        }
+    }
+
+    /// Ensure that a committee of honest validators commits some blocks created by the aux validators.
+    #[tokio::test]
+    #[tracing_test::traced_test]
+    async fn validator_commit_aux_blocks() {
+        let committee_size = 4;
+        let core_committee = Committee::new_for_benchmarks(committee_size);
+        let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(400);
+        let client_parameters = ClientParameters::new_for_tests();
+
+        let aux_committee_size = 2;
+        let aux_committee = AuxiliaryCommittee::new_for_benchmarks(aux_committee_size);
+        let mut aux_public_config = AuxNodePublicConfig::new_for_tests(aux_committee_size);
+        aux_public_config.parameters = AuxNodeParameters::new_for_tests();
+
+        // Boot two aux validators.
+        for i in 0..aux_committee_size {
+            let aux_authority = (1000 + i) as AuthorityIndex;
+            let dir = TempDir::new("validator_commit_aux_blocks-1").unwrap();
+            let aux_private_config = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), 1001)
+                .pop()
+                .unwrap();
+
+            let _aux_validator = AuxiliaryValidator::start(
+                aux_authority,
+                core_committee.clone(),
+                public_config.clone(),
+                aux_private_config,
+                client_parameters.clone(),
+                aux_public_config.clone(),
+            )
+            .await
+            .unwrap();
+        }
+        tokio::task::yield_now().await;
+
+        // Boot a committee of core validators.
+        let mut handles = Vec::new();
+        let dir = TempDir::new("validator_commit_aux_blocks-2").unwrap();
+        let private_configs = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size);
+        private_configs.iter().for_each(|private_config| {
+            fs::create_dir_all(&private_config.storage_path).unwrap();
+        });
+
+        for (i, private_config) in private_configs.into_iter().enumerate() {
+            let authority = i as AuthorityIndex;
+
+            let validator = Validator::start(
+                authority,
+                core_committee.clone(),
+                aux_committee.clone(),
+                public_config.clone(),
+                private_config,
+                client_parameters.clone(),
+                aux_public_config.clone(),
+            )
+            .await
+            .unwrap();
+            handles.push(validator.await_completion());
+        }
+        tokio::task::yield_now().await;
+
+        // Ensure the core validators commit
+        let addresses: Vec<_> = public_config
+            .all_metric_addresses()
+            .map(|address| address.to_owned())
+            .collect();
+        let timeout = config::node_defaults::default_leader_timeout() * 5;
+
+        tokio::select! {
+            _ = await_for_commits(addresses.clone()) => (),
+            _ = time::sleep(timeout) => panic!("Failed to gather commits within a few timeouts"),
+        }
+
+        // Ensure the core validators commit aux blocks
+        tokio::select! {
+            _ = await_for_aux_commits(addresses) => (),
+            _ = time::sleep(timeout) => panic!("Failed to gather commits within a few timeouts"),
+        }
+    }
 
     /// Ensure that a committee of honest validators commits while aux validators are dead.
     #[tokio::test]
     async fn validator_commit_with_aux_validators_dead() {
         let committee_size = 4;
         let committee = Committee::new_for_benchmarks(committee_size);
-        let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(300);
+        let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(400);
         let client_parameters = ClientParameters::default();
 
         let aux_committee_size = 10;
@@ -430,7 +538,7 @@ mod aux_tests {
         let aux_public_config = AuxNodePublicConfig::new_for_tests(aux_committee_size);
 
         let mut handles = Vec::new();
-        let dir = TempDir::new("validator_commit").unwrap();
+        let dir = TempDir::new("validator_commit_with_aux_validators_dead").unwrap();
         let private_configs = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size);
         private_configs.iter().for_each(|private_config| {
             fs::create_dir_all(&private_config.storage_path).unwrap();

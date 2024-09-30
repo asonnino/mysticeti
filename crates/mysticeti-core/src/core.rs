@@ -278,13 +278,21 @@ impl<H: BlockHandler> Core<H> {
             }
         }
 
+        let aux_includes = self.aux_block_store.get_weak_links(clock_round);
+        for aux_include in &aux_includes {
+            self.metrics
+                .aux_blocks_included
+                .with_label_values(&[&aux_include.authority.to_string()])
+                .inc();
+        }
+
         assert!(!includes.is_empty());
         let time_ns = timestamp_utc().as_nanos();
         let block = StatementBlock::new_with_signer(
             self.authority,
             clock_round,
             includes,
-            self.aux_block_store.get_weak_links(clock_round),
+            aux_includes,
             statements,
             time_ns,
             self.epoch_changing(),
@@ -365,7 +373,10 @@ impl<H: BlockHandler> Core<H> {
                 // Update metrics with number of auxiliary blocks committed.
                 for aux_link in block.aux_includes() {
                     let author = aux_link.authority.to_string();
-                    self.metrics.aux_blocks.with_label_values(&[&author]).inc();
+                    self.metrics
+                        .aux_blocks_committed
+                        .with_label_values(&[&author])
+                        .inc();
                 }
                 block
             })

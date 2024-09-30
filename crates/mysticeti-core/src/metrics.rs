@@ -85,7 +85,8 @@ pub struct Metrics {
     pub utilization_timer: IntCounterVec,
     pub submitted_transactions: IntCounter,
 
-    pub aux_blocks: IntCounterVec,
+    pub aux_blocks_included: IntCounterVec,
+    pub aux_blocks_committed: IntCounterVec,
 }
 
 pub struct MetricReporter {
@@ -341,8 +342,16 @@ impl Metrics {
             )
             .unwrap(),
 
-            aux_blocks: register_int_counter_vec_with_registry!(
-                "aux_blocks",
+            aux_blocks_included: register_int_counter_vec_with_registry!(
+                "aux_blocks_included",
+                "Number of referenced blocks that are authored by auxiliary validators",
+                &["author"],
+                registry,
+            )
+            .unwrap(),
+
+            aux_blocks_committed: register_int_counter_vec_with_registry!(
+                "aux_blocks_committed",
                 "Number of committed blocks that are authored by auxiliary validators",
                 &["author"],
                 registry,
