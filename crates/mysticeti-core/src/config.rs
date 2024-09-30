@@ -114,6 +114,7 @@ pub struct NodeIdentifier {
     pub public_key: PublicKey,
     pub network_address: SocketAddr,
     pub metrics_address: SocketAddr,
+    pub aux_helper_address: SocketAddr,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -134,13 +135,16 @@ impl NodePublicConfig {
         for (i, (ip, key)) in ips.into_iter().zip(keys.into_iter()).enumerate() {
             let public_key = key.public_key();
             let network_port = Self::PORT_OFFSET_FOR_TESTS + i as u16;
-            let metrics_port = benchmark_port_offset + network_port;
+            let metrics_port = network_port + benchmark_port_offset;
+            let aux_helper_port = metrics_port + benchmark_port_offset;
             let network_address = SocketAddr::new(ip, network_port);
             let metrics_address = SocketAddr::new(ip, metrics_port);
+            let aux_helper_address = SocketAddr::new(ip, aux_helper_port);
             identifiers.push(NodeIdentifier {
                 public_key,
                 network_address,
                 metrics_address,
+                aux_helper_address,
             });
         }
 

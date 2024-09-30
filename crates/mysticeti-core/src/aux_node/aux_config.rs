@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     committee::Authority,
-    config::{ImportExport, NodeIdentifier},
+    config::ImportExport,
     crypto::{PublicKey, Signer},
     types::{AuthorityIndex, RoundNumber, Stake},
 };
@@ -109,8 +109,14 @@ impl Default for AuxNodeParameters {
 impl ImportExport for AuxNodeParameters {}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AuxNodeIdentifier {
+    pub public_key: PublicKey,
+    pub metrics_address: SocketAddr,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AuxNodePublicConfig {
-    pub identifiers: HashMap<AuthorityIndex, NodeIdentifier>,
+    pub identifiers: HashMap<AuthorityIndex, AuxNodeIdentifier>,
     pub parameters: AuxNodeParameters,
 }
 
@@ -125,9 +131,8 @@ impl AuxNodePublicConfig {
         for (ip, (index, authority)) in ips.into_iter().zip(aux_committee.authorities.iter()) {
             let metrics_port = Self::PORT_OFFSET_FOR_TESTS + *index as u16;
             let metrics_address = SocketAddr::new(ip, metrics_port);
-            let identifies = NodeIdentifier {
+            let identifies = AuxNodeIdentifier {
                 public_key: authority.public_key().clone(),
-                network_address: SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 1), // Unused
                 metrics_address,
             };
             identifiers.insert(*index, identifies);
