@@ -36,7 +36,7 @@ use crate::{
 pub const MAXIMUM_BLOCK_REQUEST: usize = 10;
 
 pub struct NetworkSyncer<H: BlockHandler, C: CommitObserver> {
-    inner: Arc<NetworkSyncerInner<H, C>>,
+    pub inner: Arc<NetworkSyncerInner<H, C>>,
     main_task: JoinHandle<()>,
     syncer_task: oneshot::Receiver<()>,
     stop: mpsc::Receiver<()>,

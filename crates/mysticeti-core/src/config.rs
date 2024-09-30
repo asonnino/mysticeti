@@ -201,6 +201,12 @@ impl NodePublicConfig {
             .get(authority as usize)
             .map(|id| id.metrics_address)
     }
+
+    pub fn aux_helper_address(&self, authority: AuthorityIndex) -> Option<SocketAddr> {
+        self.identifiers
+            .get(authority as usize)
+            .map(|id| id.aux_helper_address)
+    }
 }
 
 impl ImportExport for NodePublicConfig {}

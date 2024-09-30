@@ -10,7 +10,7 @@ use ::prometheus::Registry;
 use eyre::{eyre, Context, Result};
 
 use crate::{
-    aux_helper::aux_block_store::AuxiliaryBlockStore,
+    aux_helper::{aux_block_store::AuxiliaryBlockStore, helper_server::AuxHelperServer},
     aux_node::aux_config::{AuxNodePublicConfig, AuxiliaryCommittee},
     block_handler::{RealBlockHandler, TestCommitHandler},
     block_store::BlockStore,
@@ -57,6 +57,13 @@ impl Validator {
         let mut binding_metrics_address = metrics_address;
         binding_metrics_address.set_ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
 
+        let aux_helper_address = public_config
+            .metrics_address(authority)
+            .ok_or(eyre!("No aux helper address for authority {authority}"))
+            .wrap_err("Unknown authority")?;
+        let mut binding_aux_helper_address = aux_helper_address;
+        binding_aux_helper_address.set_ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+
         let signer = Arc::new(private_config.keypair.clone());
 
         // Boot the prometheus server.
@@ -81,7 +88,8 @@ impl Validator {
 
         // Create the auxiliary block store.
         // TODO - recover aux blob store from disk
-        let aux_block_store = AuxiliaryBlockStore::new(aux_committee, aux_public_config.parameters);
+        let aux_block_store =
+            AuxiliaryBlockStore::new(aux_committee.clone(), aux_public_config.parameters);
 
         // Boot the validator node.
         let (block_handler, block_sender) = RealBlockHandler::new(
@@ -139,16 +147,16 @@ impl Validator {
         );
 
         // Boot the aux helper service.
-        // let _aux_helper_handle = AuxHelperServer::start (
-        //     server_address: SocketAddr,
-        //     authority,
-        //     signe,
-        //     core_committee,
-        //     aux_committee,
-        //     network_synchronizer.inner.block_store.clone(),
-        //     aux_block_store,
-        //     network_synchronizer.inner.syncer.clone()
-        // );
+        let _aux_helper_handle = AuxHelperServer::start(
+            aux_helper_address,
+            authority,
+            signer,
+            core_committee,
+            aux_committee,
+            network_synchronizer.inner.block_store.clone(),
+            aux_block_store,
+            network_synchronizer.inner.syncer.clone(),
+        );
 
         tracing::info!("Validator {authority} listening on {network_address}");
         tracing::info!("Validator {authority} exposing metrics on {metrics_address}");

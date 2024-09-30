@@ -30,7 +30,7 @@ struct AuxHelperServerInner<H: BlockHandler, C: CommitObserver> {
     aux_committee: Arc<AuxiliaryCommittee>,
     block_store: BlockStore,
     aux_block_store: AuxiliaryBlockStore,
-    syncer: CoreThreadDispatcher<H, Arc<Notify>, C>,
+    syncer: Arc<CoreThreadDispatcher<H, Arc<Notify>, C>>,
 }
 
 pub struct AuxHelperServer {
@@ -48,7 +48,7 @@ impl AuxHelperServer {
         aux_committee: Arc<AuxiliaryCommittee>,
         block_store: BlockStore,
         aux_block_store: AuxiliaryBlockStore,
-        syncer: CoreThreadDispatcher<H, Arc<Notify>, C>,
+        syncer: Arc<CoreThreadDispatcher<H, Arc<Notify>, C>>,
     ) -> Self
     where
         H: BlockHandler + 'static,
