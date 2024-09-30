@@ -210,7 +210,7 @@ mod smoke_tests {
     }
 
     /// Await for all the validators specified by their metrics addresses to commit.
-    async fn await_for_commits(addresses: Vec<SocketAddr>) {
+    pub async fn await_for_commits(addresses: Vec<SocketAddr>) {
         let mut queue = VecDeque::from(addresses);
         while let Some(address) = queue.pop_front() {
             time::sleep(Duration::from_millis(100)).await;
@@ -398,6 +398,22 @@ mod smoke_tests {
             _ = time::sleep(timeout) => panic!("Failed to gather commits within a few timeouts"),
         }
     }
+}
+
+#[cfg(test)]
+mod aux_tests {
+    use std::fs;
+
+    use tempdir::TempDir;
+    use tokio::time;
+
+    use crate::{
+        aux_node::aux_config::{AuxNodePublicConfig, AuxiliaryCommittee},
+        committee::Committee,
+        config::{self, ClientParameters, NodePrivateConfig, NodePublicConfig},
+        types::AuthorityIndex,
+        validator::{smoke_tests::await_for_commits, Validator},
+    };
 
     /// Ensure that a committee of honest validators commits while aux validators are dead.
     #[tokio::test]
