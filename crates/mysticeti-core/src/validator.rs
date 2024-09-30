@@ -455,7 +455,11 @@ mod aux_tests {
         let aux_committee_size = 2;
         let aux_committee = AuxiliaryCommittee::new_for_benchmarks(aux_committee_size);
         let mut aux_public_config = AuxNodePublicConfig::new_for_tests(aux_committee_size);
-        aux_public_config.parameters = AuxNodeParameters::new_for_tests();
+        aux_public_config.parameters = AuxNodeParameters {
+            liveness_threshold: 2,
+            inclusion_period: 150,
+            max_block_size: 1024 * 5,
+        };
 
         // Boot two aux validators.
         for i in 0..aux_committee_size {
@@ -517,10 +521,10 @@ mod aux_tests {
         }
 
         // Ensure the core validators commit aux blocks
-        let timeout = config::node_defaults::default_leader_timeout() * 10;
+        let timeout = config::node_defaults::default_leader_timeout() * 5;
         tokio::select! {
             _ = await_for_aux_commits(addresses) => (),
-            _ = time::sleep(timeout) => panic!("Failed to gather commits within a few timeouts"),
+            _ = time::sleep(timeout) => panic!("Failed to gather aux commits within a few timeouts"),
         }
     }
 

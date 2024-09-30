@@ -221,6 +221,8 @@ impl AuxCore {
         tx_notification: mpsc::Sender<DisseminatorMessage>,
     ) {
         let core_committee = &inner.core_committee;
+        let mut last_created_block = None;
+
         while let Some(message) = rx_receive_from_network.recv().await {
             match message {
                 NetworkMessage::Block(block) => {
@@ -268,6 +270,7 @@ impl AuxCore {
                         );
                         let round = block.round();
                         let data = Data::new(block);
+                        last_created_block = Some(data.clone());
                         inner.blocks.write().insert(round, data);
                         Some(round)
                     } else {
@@ -288,6 +291,8 @@ impl AuxCore {
                         format_authority_index(inner.authority),
                         references
                     );
+
+                    // Send requested blocks.
                     let mut blocks = Vec::new();
                     let guard = inner.blocks.read();
                     for reference in references {
@@ -297,6 +302,14 @@ impl AuxCore {
                     }
                     drop(guard);
                     for block in blocks {
+                        tx_send_through_network
+                            .send(NetworkMessage::AuxiliaryBlock(block.clone()))
+                            .await
+                            .ok();
+                    }
+
+                    // Send again the last created block.
+                    if let Some(ref block) = last_created_block {
                         tx_send_through_network
                             .send(NetworkMessage::AuxiliaryBlock(block.clone()))
                             .await
