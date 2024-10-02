@@ -238,9 +238,12 @@ impl ProtocolMetrics for MysticetiProtocol {
     where
         I: IntoIterator<Item = Instance>,
     {
+        let instances = instances.into_iter().collect::<Vec<_>>();
+        let core_nodes = instances.len() - self.aux_committee_size;
         let (ips, instances): (_, Vec<_>) = instances
             .into_iter()
             .map(|x| (IpAddr::V4(x.main_ip), x))
+            .take(core_nodes)
             .unzip();
 
         let node_parameters = Some(parameters.node_parameters.deref().clone());
