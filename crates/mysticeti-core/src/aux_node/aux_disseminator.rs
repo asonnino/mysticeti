@@ -69,6 +69,11 @@ impl AuxDisseminator {
                         .await
                         .is_err()
                     {
+                        tracing::warn!(
+                            "[{}] Failed to send block to peer {}, stopping AuxDisseminator",
+                            self.inner.authority,
+                            self.peer
+                        );
                         break;
                     }
                 }
@@ -90,6 +95,11 @@ impl AuxDisseminator {
                         .await
                         .is_err()
                     {
+                        tracing::warn!(
+                            "[{}] Failed to send certificate to peer {}, stopping AuxDisseminator",
+                            self.inner.authority,
+                            self.peer
+                        );
                         break;
                     }
                 }

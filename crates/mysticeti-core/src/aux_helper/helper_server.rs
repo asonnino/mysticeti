@@ -41,6 +41,7 @@ struct AuxHelperServerInner<H: BlockHandler, C: CommitObserver> {
 pub struct AuxHelperServer {
     _server_handle: JoinHandle<io::Result<()>>,
     _connections_handle: JoinHandle<()>,
+    _tx_connections: mpsc::Sender<Connection<NetworkMessage, NetworkMessage>>,
 }
 
 impl AuxHelperServer {
@@ -79,7 +80,7 @@ impl AuxHelperServer {
         let (tx_connections, mut rx_connections) =
             mpsc::channel(Self::DEFAULT_AUX_SERVER_CHANNEL_SIZE);
         let server_handle =
-            NetworkServer::new(authority as usize, server_address, tx_connections).spawn();
+            NetworkServer::new(authority as usize, server_address, tx_connections.clone()).spawn();
 
         let connections_handle = tokio::spawn(async move {
             while let Some(connection) = rx_connections.recv().await {
@@ -91,6 +92,7 @@ impl AuxHelperServer {
         Self {
             _server_handle: server_handle,
             _connections_handle: connections_handle,
+            _tx_connections: tx_connections,
         }
     }
 
@@ -170,6 +172,7 @@ impl AuxHelperServer {
 
                         // Reply with a vote if the sender is an auxiliary validator.
                         if !inner.aux_committee.exists(author) {
+                            tracing::warn!("[{id}] Received aux block from non-auxiliary validator {peer}");
                             break;
                         }
 
@@ -211,8 +214,9 @@ impl AuxHelperServer {
                                 .await
                             {
                                 tracing::warn!("[{id}] Failed to send sync request to {peer}: {e:?}");
+                                break;
                             }
-                            break;
+                            continue;
                         };
 
                         // Ensure we have the references. Otherwise, request them from the sender.
@@ -227,8 +231,9 @@ impl AuxHelperServer {
                                 .await
                             {
                                 tracing::warn!("[{id}] Failed to send sync request to {peer}: {e:?}");
+                                break;
                             }
-                            break;
+                            continue;
                         }
 
                         // Add the the certificate to the auxiliary block store. Flag the block as certified and
