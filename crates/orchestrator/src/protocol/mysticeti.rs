@@ -9,6 +9,7 @@ use std::{
 };
 
 use mysticeti_core::{
+    aux_node::aux_config::{AuxNodeParameters, AuxNodePublicConfig, AuxiliaryCommittee},
     config::{self, ClientParameters, NodeParameters},
     types::AuthorityIndex,
 };
@@ -18,14 +19,16 @@ use super::{ProtocolCommands, ProtocolMetrics, ProtocolParameters, BINARY_PATH};
 use crate::{benchmark::BenchmarkParameters, client::Instance, settings::Settings};
 
 #[derive(Clone, Serialize, Deserialize, Default)]
-#[serde(transparent)]
-pub struct MysticetiNodeParameters(NodeParameters);
+pub struct MysticetiNodeParameters {
+    pub node_parameters: NodeParameters,
+    pub aux_node_parameters: AuxNodeParameters,
+}
 
 impl Deref for MysticetiNodeParameters {
     type Target = NodeParameters;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.node_parameters
     }
 }
 
@@ -79,6 +82,7 @@ impl ProtocolParameters for MysticetiClientParameters {}
 
 pub struct MysticetiProtocol {
     working_dir: PathBuf,
+    aux_committee_size: usize,
 }
 
 impl ProtocolCommands for MysticetiProtocol {
@@ -99,7 +103,7 @@ impl ProtocolCommands for MysticetiProtocol {
             .collect::<Vec<_>>()
             .join(" ");
 
-        let node_parameters = parameters.node_parameters.clone();
+        let node_parameters = parameters.node_parameters.node_parameters.clone();
         let node_parameters_string = serde_yaml::to_string(&node_parameters).unwrap();
         let node_parameters_path = self.working_dir.join("node-parameters.yaml");
         let upload_node_parameters = format!(
@@ -116,13 +120,23 @@ impl ProtocolCommands for MysticetiProtocol {
             client_parameters_path.display()
         );
 
+        let aux_node_parameters = parameters.node_parameters.aux_node_parameters.clone();
+        let aux_node_parameters_string = serde_yaml::to_string(&aux_node_parameters).unwrap();
+        let aux_node_parameters_path = self.working_dir.join("aux-node-parameters.yaml");
+        let upload_aux_node_parameters = format!(
+            "echo -e '{aux_node_parameters_string}' > {}",
+            aux_node_parameters_path.display()
+        );
+
         let genesis = [
             &format!("./{BINARY_PATH}/mysticeti"),
             "benchmark-genesis",
             &format!(
-                "--ips {ips} --working-directory {} --node-parameters-path {}",
+                "--ips {ips} --aux-committee-size {} --working-directory {} --node-parameters-path {} --aux-node-parameters-path {}",
                 self.working_dir.display(),
+                self.aux_committee_size,
                 node_parameters_path.display(),
+                aux_node_parameters_path.display()
             ),
         ]
         .join(" ");
@@ -131,6 +145,7 @@ impl ProtocolCommands for MysticetiProtocol {
             "source $HOME/.cargo/env",
             &upload_node_parameters,
             &upload_client_parameters,
+            &upload_aux_node_parameters,
             &genesis,
         ]
         .join(" && ")
@@ -156,6 +171,11 @@ impl ProtocolCommands for MysticetiProtocol {
                     .join(format!("private-config-{authority}.yaml"));
                 let client_parameters_path = self.working_dir.join("client-parameters.yaml");
 
+                let aux_committee_path =
+                    self.working_dir.join(AuxiliaryCommittee::DEFAULT_FILENAME);
+                let aux_public_config_path =
+                    self.working_dir.join(AuxNodePublicConfig::DEFAULT_FILENAME);
+
                 let run = [
                     &format!("./{BINARY_PATH}/mysticeti"),
                     "run",
@@ -166,6 +186,11 @@ impl ProtocolCommands for MysticetiProtocol {
                     &format!(
                         "--client-parameters-path {}",
                         client_parameters_path.display()
+                    ),
+                    &format!("--aux-committee-path {}", aux_committee_path.display()),
+                    &format!(
+                        "--aux-public-config-path {}",
+                        aux_public_config_path.display()
                     ),
                 ]
                 .join(" ");
@@ -236,6 +261,7 @@ impl MysticetiProtocol {
     pub fn new(settings: &Settings) -> Self {
         Self {
             working_dir: settings.working_dir.clone(),
+            aux_committee_size: settings.aux_committee_size,
         }
     }
 }

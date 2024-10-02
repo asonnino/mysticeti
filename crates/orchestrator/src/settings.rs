@@ -136,6 +136,10 @@ pub struct Settings {
     /// The number of times the orchestrator should retry an ssh command.
     #[serde(default = "defaults::default_ssh_retries")]
     pub ssh_retries: usize,
+
+    /// Size of the auxiliary committee.
+    #[serde(default = "defaults::default_aux_committee_size")]
+    pub aux_committee_size: usize,
 }
 
 mod defaults {
@@ -189,6 +193,10 @@ mod defaults {
 
     pub fn default_ssh_retries() -> usize {
         3
+    }
+
+    pub fn default_aux_committee_size() -> usize {
+        0
     }
 }
 

@@ -12,7 +12,7 @@ use clap::{command, Parser};
 use eyre::{eyre, Context, Result};
 use mysticeti_core::{
     aux_node::{
-        aux_config::{AuxNodePublicConfig, AuxiliaryCommittee},
+        aux_config::{AuxNodeParameters, AuxNodePublicConfig, AuxiliaryCommittee},
         aux_validator::AuxiliaryValidator,
     },
     committee::Committee,
@@ -43,6 +43,12 @@ enum Operation {
         /// Path to the file holding the node parameters. If not provided, default parameters are used.
         #[clap(long, value_name = "FILE")]
         node_parameters_path: Option<PathBuf>,
+        /// The number of auxiliary validators. Should be less than the number of ips.
+        #[clap(long, value_name = "INT", default_value = "0")]
+        aux_committee_size: usize,
+        /// Path to the file holding the aux node parameters. If not provided, default parameters are used.
+        #[clap(long, value_name = "FILE")]
+        aux_node_parameters_path: Option<PathBuf>,
     },
     /// Run a validator node.
     Run {
@@ -65,7 +71,7 @@ enum Operation {
         /// Path to the file holding the public aux committee information.
         #[clap(long, value_name = "FILE")]
         aux_committee_path: Option<String>,
-        /// Path to the file holding the public validator configurations (such as network addresses).
+        /// Path to the file holding the public aux validator configurations (such as network addresses).
         #[clap(long, value_name = "FILE")]
         aux_public_config_path: Option<String>,
     },
@@ -95,7 +101,15 @@ async fn main() -> Result<()> {
             ips,
             working_directory,
             node_parameters_path,
-        } => benchmark_genesis(ips, working_directory, node_parameters_path)?,
+            aux_committee_size,
+            aux_node_parameters_path,
+        } => benchmark_genesis(
+            ips,
+            working_directory,
+            node_parameters_path,
+            aux_committee_size,
+            aux_node_parameters_path,
+        )?,
         Operation::Run {
             authority,
             committee_path,
@@ -126,9 +140,11 @@ async fn main() -> Result<()> {
 }
 
 fn benchmark_genesis(
-    ips: Vec<IpAddr>,
+    mut ips: Vec<IpAddr>,
     working_directory: PathBuf,
     node_parameters_path: Option<PathBuf>,
+    aux_committee_size: usize,
+    aux_node_parameters_path: Option<PathBuf>,
 ) -> Result<()> {
     tracing::info!("Generating benchmark genesis files");
     fs::create_dir_all(&working_directory).wrap_err(format!(
@@ -136,14 +152,30 @@ fn benchmark_genesis(
         working_directory.display()
     ))?;
 
-    // Generate the committee file.
-    let committee_size = ips.len();
-    let mut committee_path = working_directory.clone();
-    committee_path.push(Committee::DEFAULT_FILENAME);
-    Committee::new_for_benchmarks(committee_size)
-        .print(&committee_path)
+    assert!(!ips.is_empty(), "At least one IP address is required");
+    assert!(
+        aux_committee_size < ips.len(),
+        "Too many auxiliary validators"
+    );
+
+    let core_ips = ips
+        .drain(0..ips.len() - aux_committee_size)
+        .collect::<Vec<_>>();
+    tracing::info!("Core committee IPs: {:?}", core_ips);
+    let aux_ips = ips;
+    tracing::info!("Auxiliary committee IPs: {:?}", aux_ips);
+
+    // Generate the core committee file.
+    let core_committee_size = core_ips.len();
+    let mut core_committee_path = working_directory.clone();
+    core_committee_path.push(Committee::DEFAULT_FILENAME);
+    Committee::new_for_benchmarks(core_committee_size)
+        .print(&core_committee_path)
         .wrap_err("Failed to print committee file")?;
-    tracing::info!("Generated committee file: {}", committee_path.display());
+    tracing::info!(
+        "Generated committee file: {}",
+        core_committee_path.display()
+    );
 
     // Generate the public node config file.
     let node_parameters = match node_parameters_path {
@@ -154,7 +186,7 @@ fn benchmark_genesis(
         None => NodeParameters::default(),
     };
 
-    let node_public_config = NodePublicConfig::new_for_benchmarks(ips, Some(node_parameters));
+    let node_public_config = NodePublicConfig::new_for_benchmarks(core_ips, Some(node_parameters));
     let mut node_public_config_path = working_directory.clone();
     node_public_config_path.push(NodePublicConfig::DEFAULT_FILENAME);
     node_public_config
@@ -167,7 +199,7 @@ fn benchmark_genesis(
 
     // Generate the private node config files.
     let node_private_configs =
-        NodePrivateConfig::new_for_benchmarks(&working_directory, committee_size);
+        NodePrivateConfig::new_for_benchmarks(&working_directory, core_committee_size);
     for (i, private_config) in node_private_configs.into_iter().enumerate() {
         fs::create_dir_all(&private_config.storage_path)
             .expect("Failed to create storage directory");
@@ -176,6 +208,54 @@ fn benchmark_genesis(
             .print(&path)
             .wrap_err("Failed to print private config file")?;
         tracing::info!("Generated private config file: {}", path.display());
+    }
+
+    // Generate the aux committee file.
+    let mut aux_committee_path = working_directory.clone();
+    aux_committee_path.push(AuxiliaryCommittee::DEFAULT_FILENAME);
+    AuxiliaryCommittee::new_for_benchmarks(aux_committee_size)
+        .print(&aux_committee_path)
+        .wrap_err("Failed to print aux committee file")?;
+    tracing::info!(
+        "Generated aux committee file: {}",
+        aux_committee_path.display()
+    );
+
+    // Generate the public node config file.
+    let aux_node_parameters = match aux_node_parameters_path {
+        Some(path) => AuxNodeParameters::load(&path).wrap_err(format!(
+            "Failed to load parameters file '{}'",
+            path.display()
+        ))?,
+        None => AuxNodeParameters::default(),
+    };
+
+    let aux_node_public_config =
+        AuxNodePublicConfig::new_for_benchmarks(aux_ips, Some(aux_node_parameters));
+    let mut aux_node_public_config_path = working_directory.clone();
+    aux_node_public_config_path.push(AuxNodePublicConfig::DEFAULT_FILENAME);
+    aux_node_public_config
+        .print(&aux_node_public_config_path)
+        .wrap_err("Failed to print aux parameters file")?;
+    tracing::info!(
+        "Generated public aux node config file: {}",
+        aux_node_public_config_path.display()
+    );
+
+    // Generate the aux private node config files.
+    let aux_node_private_configs = NodePrivateConfig::new_for_benchmarks_with_offset(
+        &working_directory,
+        aux_committee_size,
+        AuxiliaryCommittee::AUX_AUTHORITY_INDEX_OFFSET,
+    );
+    for (i, private_config) in aux_node_private_configs.into_iter().enumerate() {
+        fs::create_dir_all(&private_config.storage_path)
+            .expect("Failed to create storage directory");
+        let path = working_directory.join(NodePrivateConfig::default_filename(i as AuthorityIndex));
+        private_config
+            .print(&path)
+            .wrap_err("Failed to print aux private config file")?;
+        tracing::info!("Generated aux private config file: {}", path.display());
     }
 
     Ok(())

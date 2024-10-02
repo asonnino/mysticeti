@@ -31,6 +31,7 @@ impl Default for AuxiliaryCommittee {
 
 impl AuxiliaryCommittee {
     pub const AUX_AUTHORITY_INDEX_OFFSET: usize = 1000;
+    pub const DEFAULT_FILENAME: &'static str = "aux-committee.yaml";
 
     pub fn new(authorities: HashMap<AuthorityIndex, Authority>) -> Arc<Self> {
         Arc::new(Self { authorities })

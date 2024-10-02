@@ -1,3 +1,8 @@
-leader_timeout:
-  secs: 1
-  nanos: 0
+node_parameters:
+  leader_timeout:
+    secs: 1
+    nanos: 0
+aux_node_parameters:
+  liveness_threshold: 1
+  inclusion_period: 150
+  max_block_size: 5000

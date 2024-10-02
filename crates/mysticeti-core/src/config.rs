@@ -248,6 +248,26 @@ impl NodePrivateConfig {
             .collect()
     }
 
+    pub fn new_for_benchmarks_with_offset(
+        working_dir: &Path,
+        committee_size: usize,
+        offset: usize,
+    ) -> Vec<Self> {
+        Signer::new_for_test_with_offset(committee_size, offset)
+            .into_iter()
+            .enumerate()
+            .map(|(i, keypair)| {
+                let authority = (i + offset) as AuthorityIndex;
+                let path = working_dir.join(NodePrivateConfig::default_storage_path(authority));
+                Self {
+                    authority,
+                    keypair,
+                    storage_path: path,
+                }
+            })
+            .collect()
+    }
+
     pub fn default_filename(authority: AuthorityIndex) -> PathBuf {
         format!("private-config-{authority}.yaml").into()
     }
