@@ -166,6 +166,7 @@ impl NodePublicConfig {
         for (id, ip) in self.identifiers.iter_mut().zip(ips) {
             id.network_address.set_ip(ip);
             id.metrics_address.set_ip(ip);
+            id.aux_helper_address.set_ip(ip);
         }
         self
     }
@@ -176,6 +177,8 @@ impl NodePublicConfig {
                 .set_port(id.network_address.port() + port_offset);
             id.metrics_address
                 .set_port(id.metrics_address.port() + port_offset);
+            id.aux_helper_address
+                .set_port(id.aux_helper_address.port() + port_offset);
         }
         self
     }

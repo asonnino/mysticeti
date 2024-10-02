@@ -159,12 +159,21 @@ impl ProtocolCommands for MysticetiProtocol {
     where
         I: IntoIterator<Item = Instance>,
     {
+        let instances = instances.into_iter().collect::<Vec<_>>();
+        let core_committee_size = instances.len() - self.aux_committee_size;
         instances
             .into_iter()
             .enumerate()
             .map(|(i, instance)| {
-                let authority = i as AuthorityIndex;
                 let committee_path = self.working_dir.join("committee.yaml");
+
+                let authority = if i < core_committee_size {
+                    i as AuthorityIndex
+                } else {
+                    (i - core_committee_size + AuxiliaryCommittee::AUX_AUTHORITY_INDEX_OFFSET)
+                        as AuthorityIndex
+                };
+
                 let public_config_path = self.working_dir.join("public-config.yaml");
                 let private_config_path = self
                     .working_dir
