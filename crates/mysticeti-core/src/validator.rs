@@ -148,7 +148,7 @@ impl Validator {
 
         // Boot the aux helper service.
         let _aux_helper_handle = AuxHelperServer::start(
-            aux_helper_address,
+            binding_aux_helper_address,
             authority,
             signer,
             core_committee,
