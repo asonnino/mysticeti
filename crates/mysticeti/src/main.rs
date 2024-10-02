@@ -11,7 +11,10 @@ use std::{
 use clap::{command, Parser};
 use eyre::{eyre, Context, Result};
 use mysticeti_core::{
-    aux_node::aux_config::{AuxNodePublicConfig, AuxiliaryCommittee},
+    aux_node::{
+        aux_config::{AuxNodePublicConfig, AuxiliaryCommittee},
+        aux_validator::AuxiliaryValidator,
+    },
     committee::Committee,
     config::{ClientParameters, ImportExport, NodeParameters, NodePrivateConfig, NodePublicConfig},
     types::AuthorityIndex,
@@ -181,7 +184,7 @@ fn benchmark_genesis(
 /// Boot a single validator node.
 async fn run(
     authority: AuthorityIndex,
-    committee_path: String,
+    core_committee_path: String,
     aux_committee_path: Option<String>,
     public_config_path: String,
     private_config_path: String,
@@ -190,8 +193,11 @@ async fn run(
 ) -> Result<()> {
     tracing::info!("Starting validator {authority}");
 
-    let committee = Committee::load(&committee_path)
-        .wrap_err(format!("Failed to load committee file '{committee_path}'"))?;
+    let core_committee = Committee::load(&core_committee_path).wrap_err(format!(
+        "Failed to load committee file '{core_committee_path}'"
+    ))?;
+    let core_committee = Arc::new(core_committee);
+
     let public_config = NodePublicConfig::load(&public_config_path).wrap_err(format!(
         "Failed to load parameters file '{public_config_path}'"
     ))?;
@@ -215,35 +221,36 @@ async fn run(
         None => AuxNodePublicConfig::new_for_tests(0),
     };
 
-    let committee = Arc::new(committee);
-
-    let network_address = public_config
-        .network_address(authority)
-        .ok_or(eyre!("No network address for authority {authority}"))
-        .wrap_err("Unknown authority")?;
-    let mut binding_network_address = network_address;
-    binding_network_address.set_ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
-
-    let metrics_address = public_config
-        .metrics_address(authority)
-        .ok_or(eyre!("No metrics address for authority {authority}"))
-        .wrap_err("Unknown authority")?;
-    let mut binding_metrics_address = metrics_address;
-    binding_metrics_address.set_ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
-
     // Boot the validator node.
-    let validator = Validator::start(
-        authority,
-        committee,
-        aux_committee,
-        public_config.clone(),
-        private_config,
-        client_parameters,
-        aux_public_config,
-    )
-    .await?;
-    let (network_result, _metrics_result) = validator.await_completion().await;
-    network_result.expect("Validator crashed");
+    if core_committee.known_authority(authority) {
+        let validator = Validator::start(
+            authority,
+            core_committee,
+            aux_committee,
+            public_config.clone(),
+            private_config,
+            client_parameters,
+            aux_public_config,
+        )
+        .await?;
+        let (network_result, _metrics_result) = validator.await_completion().await;
+        network_result.expect("Validator crashed");
+    } else if aux_committee.exists(authority) {
+        let validator = AuxiliaryValidator::start(
+            authority,
+            core_committee,
+            public_config,
+            private_config,
+            client_parameters,
+            aux_public_config,
+        )
+        .await?;
+        let result = validator.await_completion().await?;
+        result.expect("Auxiliary Validator crashed");
+    } else {
+        return Err(eyre!("Unknown authority {authority}"));
+    }
+
     Ok(())
 }
 
