@@ -251,7 +251,9 @@ fn benchmark_genesis(
     for (i, private_config) in aux_node_private_configs.into_iter().enumerate() {
         fs::create_dir_all(&private_config.storage_path)
             .expect("Failed to create storage directory");
-        let path = working_directory.join(NodePrivateConfig::default_filename(i as AuthorityIndex));
+        let path = working_directory.join(NodePrivateConfig::default_filename(
+            (i + AuxiliaryCommittee::AUX_AUTHORITY_INDEX_OFFSET) as AuthorityIndex,
+        ));
         private_config
             .print(&path)
             .wrap_err("Failed to print aux private config file")?;

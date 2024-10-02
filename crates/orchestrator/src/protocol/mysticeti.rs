@@ -132,7 +132,7 @@ impl ProtocolCommands for MysticetiProtocol {
             &format!("./{BINARY_PATH}/mysticeti"),
             "benchmark-genesis",
             &format!(
-                "--ips {ips} --aux-committee-size {} --working-directory {} --node-parameters-path {} --aux-node-parameters-path {}",
+                "--ips {ips} --working-directory {} --aux-committee-size {} --node-parameters-path {} --aux-node-parameters-path {}",
                 self.working_dir.display(),
                 self.aux_committee_size,
                 node_parameters_path.display(),
