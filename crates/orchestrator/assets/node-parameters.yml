@@ -3,6 +3,6 @@ node_parameters:
     secs: 1
     nanos: 0
 aux_node_parameters:
-  liveness_threshold: 1
-  inclusion_period: 150
+  liveness_threshold: 5
+  inclusion_period: 1000
   max_block_size: 5000
