@@ -199,6 +199,7 @@ impl Grafana {
     /// Generate the commands to update the grafana datasource and restart grafana.
     pub fn setup_commands() -> String {
         [
+            &format!("sudo chmod 777 -R {}", Self::DATASOURCES_PATH),
             &format!("(rm -r {} || true)", Self::DATASOURCES_PATH),
             &format!("mkdir -p {}", Self::DATASOURCES_PATH),
             &format!(

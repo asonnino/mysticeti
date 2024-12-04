@@ -321,5 +321,7 @@ mod test {
         let parameters = super::ClientParameters::default();
         let serialized = serde_yaml::to_string(&parameters).unwrap();
         println!("{}", serialized);
+        // load_type: !BCounter
+        //  total_budget: 18000000000000000
     }
 }

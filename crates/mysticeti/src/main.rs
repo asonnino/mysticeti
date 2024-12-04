@@ -58,7 +58,7 @@ enum Operation {
         #[clap(long, value_name = "FILE")]
         client_parameters_path: String,
         /// Whether to start the load generator for this validator (for benchmarks).
-        #[clap(long, action, default_value_t = true)]
+        #[clap(long, action, default_value_t = false)]
         start_load_gen: bool,
     },
     /// Deploy a local validator for test. Dryrun mode uses default keys and committee configurations.
