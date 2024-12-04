@@ -1,3 +1,5 @@
+results/
+
 # Orchestrator settings
 crates/orchestrator/assets/settings.yml
 #crates/orchestrator/assets/node-parameters.yml
