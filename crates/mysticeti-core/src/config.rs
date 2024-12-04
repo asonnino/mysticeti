@@ -312,3 +312,14 @@ impl Default for ClientParameters {
 }
 
 impl ImportExport for ClientParameters {}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    #[ignore = "Used to printout the serde yaml format to put in the configs"]
+    fn serialize_client_parameters() {
+        let parameters = super::ClientParameters::default();
+        let serialized = serde_yaml::to_string(&parameters).unwrap();
+        println!("{}", serialized);
+    }
+}
