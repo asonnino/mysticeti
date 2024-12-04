@@ -257,6 +257,12 @@ impl NodePrivateConfig {
 impl ImportExport for NodePrivateConfig {}
 
 #[derive(Serialize, Deserialize, Clone)]
+pub enum LoadType {
+    Sui,
+    BCounter { total_budget: u64 },
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub struct ClientParameters {
     /// The number of transactions to send to the network per second.
     #[serde(default = "client_defaults::default_load")]
@@ -267,10 +273,15 @@ pub struct ClientParameters {
     /// The initial delay before starting to send transactions.
     #[serde(default = "client_defaults::default_initial_delay")]
     pub initial_delay: Duration,
+    #[serde(default = "client_defaults::default_load_type")]
+    /// The initial budget for the client. For BCounters this budget is arbitrary and the client
+    /// can spend up to (2f+1)/(f+1) of this budget. For contended Sui owned-object transactions,
+    /// this budget is set to 1.
+    pub load_type: LoadType,
 }
 
 mod client_defaults {
-    use super::Duration;
+    use super::{Duration, LoadType};
 
     pub fn default_load() -> usize {
         10
@@ -283,6 +294,10 @@ mod client_defaults {
     pub fn default_initial_delay() -> Duration {
         Duration::from_secs(30)
     }
+
+    pub fn default_load_type() -> LoadType {
+        LoadType::Sui
+    }
 }
 
 impl Default for ClientParameters {
@@ -291,6 +306,7 @@ impl Default for ClientParameters {
             load: client_defaults::default_load(),
             transaction_size: client_defaults::default_transaction_size(),
             initial_delay: client_defaults::default_initial_delay(),
+            load_type: client_defaults::default_load_type(),
         }
     }
 }

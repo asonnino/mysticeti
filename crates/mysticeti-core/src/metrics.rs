@@ -84,6 +84,7 @@ pub struct Metrics {
 
     pub utilization_timer: IntCounterVec,
     pub submitted_transactions: IntCounter,
+    pub budget: IntGauge,
 }
 
 pub struct MetricReporter {
@@ -335,6 +336,12 @@ impl Metrics {
                 "utilization_timer",
                 "Utilization timer",
                 &["proc"],
+                registry,
+            )
+            .unwrap(),
+            budget: register_int_gauge_with_registry!(
+                "Current spending budget",
+                "Current value of the spending budget",
                 registry,
             )
             .unwrap(),

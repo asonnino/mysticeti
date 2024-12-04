@@ -1,13 +1,14 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{cmp::min, sync::Arc, time::Duration};
+use std::{cmp::min, collections::VecDeque, sync::Arc, time::Duration};
 
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use tokio::sync::mpsc;
 
 use crate::{
-    config::{ClientParameters, NodePublicConfig},
+    committee::Committee,
+    config::{ClientParameters, LoadType, NodePublicConfig},
     crypto::AsBytes,
     metrics::Metrics,
     runtime::{self, timestamp_utc},
@@ -15,17 +16,20 @@ use crate::{
 };
 
 pub struct TransactionGenerator {
+    committee: Arc<Committee>,
     sender: mpsc::Sender<Vec<Transaction>>,
     rng: StdRng,
     client_parameters: ClientParameters,
     node_public_config: NodePublicConfig,
     metrics: Arc<Metrics>,
+    budget: u64,
 }
 
 impl TransactionGenerator {
     const TARGET_BLOCK_INTERVAL: Duration = Duration::from_millis(100);
 
     pub fn start(
+        committee: Arc<Committee>,
         sender: mpsc::Sender<Vec<Transaction>>,
         seed: AuthorityIndex,
         client_parameters: ClientParameters,
@@ -38,6 +42,8 @@ impl TransactionGenerator {
             client_parameters.load,
             client_parameters.initial_delay
         );
+
+        let budget = Self::initial_budget(&client_parameters.load_type, &committee);
         runtime::Handle::current().spawn(
             Self {
                 sender,
@@ -45,6 +51,8 @@ impl TransactionGenerator {
                 client_parameters,
                 node_public_config,
                 metrics,
+                budget,
+                committee,
             }
             .run(),
         );
@@ -65,6 +73,9 @@ impl TransactionGenerator {
         let mut random: u64 = self.rng.gen(); // 8 bytes
         let zeros = vec![0u8; self.client_parameters.transaction_size - 8 - 8]; // 8 bytes timestamp + 8 bytes random
 
+        let mut buffer = VecDeque::new();
+        let metrics_granularity = if load > 10_000 { 10_000 } else { 100 };
+
         let mut interval = runtime::TimeInterval::new(Self::TARGET_BLOCK_INTERVAL);
         runtime::sleep(self.client_parameters.initial_delay).await;
         loop {
@@ -81,17 +92,24 @@ impl TransactionGenerator {
                 transaction.extend_from_slice(&random.to_le_bytes()); // 8 bytes
                 transaction.extend_from_slice(&zeros[..]);
 
-                block.push(Transaction::new(transaction));
-                block_size += self.client_parameters.transaction_size;
-                counter += 1;
-                tx_to_report += 1;
+                buffer.push_front(Transaction::new(transaction));
+                self.update_budget(counter);
 
-                if block_size >= max_block_size {
-                    if self.sender.send(block.clone()).await.is_err() {
-                        return;
+                for _ in 0..self.budget {
+                    let Some(tx) = buffer.pop_back() else { break };
+                    block.push(tx);
+
+                    block_size += self.client_parameters.transaction_size;
+                    counter += 1;
+                    tx_to_report += 1;
+
+                    if block_size >= max_block_size {
+                        if self.sender.send(block.clone()).await.is_err() {
+                            return;
+                        }
+                        block.clear();
+                        block_size = 0;
                     }
-                    block.clear();
-                    block_size = 0;
                 }
             }
 
@@ -99,9 +117,10 @@ impl TransactionGenerator {
                 return;
             }
 
-            if counter % 10_000 == 0 {
+            if counter % metrics_granularity == 0 {
                 self.metrics.submitted_transactions.inc_by(tx_to_report);
-                tx_to_report = 0
+                tx_to_report = 0;
+                self.metrics.budget.set(self.budget as i64);
             }
         }
     }
@@ -111,5 +130,42 @@ impl TransactionGenerator {
             .try_into()
             .expect("Transactions should be at least 8 bytes");
         Duration::from_millis(u64::from_le_bytes(bytes))
+    }
+
+    fn certified_transactions_count(&self) -> u64 {
+        self.metrics
+            .latency_s
+            .get_metric_with_label_values(&["owned"])
+            .map_or_else(|_| 0, |m| m.get_sample_count())
+    }
+
+    fn initial_budget(load_type: &LoadType, committee: &Arc<Committee>) -> u64 {
+        match load_type {
+            LoadType::Sui => 1,
+            LoadType::BCounter { total_budget } => {
+                (total_budget * committee.validity_threshold()) / committee.quorum_threshold()
+            }
+        }
+    }
+
+    fn update_budget(&mut self, counter: u64) {
+        match self.client_parameters.load_type {
+            LoadType::Sui => {
+                self.budget += self.certified_transactions_count();
+                self.budget = self.budget.saturating_sub(counter);
+            }
+            LoadType::BCounter { total_budget } => {
+                self.budget = self.budget.saturating_sub(counter);
+                // Budget is exhausted.
+                if self.budget == 0 {
+                    // Client is ready to send a version update (piggy-backed on its next transaction).
+                    if self.certified_transactions_count() == counter {
+                        let remaining_budget = total_budget - counter;
+                        self.budget = (remaining_budget * self.committee.validity_threshold())
+                            / self.committee.quorum_threshold()
+                    }
+                }
+            }
+        }
     }
 }

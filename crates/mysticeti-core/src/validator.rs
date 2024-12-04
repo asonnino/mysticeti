@@ -38,6 +38,7 @@ impl Validator {
         public_config: NodePublicConfig,
         private_config: NodePrivateConfig,
         client_parameters: ClientParameters,
+        start_load_gen: bool,
     ) -> Result<Self> {
         let network_address = public_config
             .network_address(authority)
@@ -83,13 +84,16 @@ impl Validator {
             public_config.parameters.consensus_only,
         );
 
-        TransactionGenerator::start(
-            block_sender,
-            authority,
-            client_parameters,
-            public_config.clone(),
-            metrics.clone(),
-        );
+        if start_load_gen {
+            TransactionGenerator::start(
+                committee.clone(),
+                block_sender,
+                authority,
+                client_parameters,
+                public_config.clone(),
+                metrics.clone(),
+            );
+        }
         let committed_transaction_log =
             TransactionLog::start(private_config.committed_transactions_log())
                 .expect("Failed to open committed transaction log for write");
@@ -192,6 +196,7 @@ mod smoke_tests {
     /// Ensure that a committee of honest validators commits.
     #[tokio::test]
     async fn validator_commit() {
+        let start_load_gen = true;
         let committee_size = 4;
         let committee = Committee::new_for_benchmarks(committee_size);
         let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(0);
@@ -213,6 +218,7 @@ mod smoke_tests {
                 public_config.clone(),
                 private_config,
                 client_parameters.clone(),
+                start_load_gen,
             )
             .await
             .unwrap();
@@ -234,6 +240,7 @@ mod smoke_tests {
     /// Ensure validators can sync missing blocks
     #[tokio::test]
     async fn validator_sync() {
+        let start_load_gen = true;
         let committee_size = 4;
         let committee = Committee::new_for_benchmarks(committee_size);
         let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(100);
@@ -258,6 +265,7 @@ mod smoke_tests {
                 public_config.clone(),
                 private_config,
                 client_parameters.clone(),
+                start_load_gen,
             )
             .await
             .unwrap();
@@ -286,6 +294,7 @@ mod smoke_tests {
             public_config.clone(),
             private_config,
             client_parameters,
+            start_load_gen,
         )
         .await
         .unwrap();
@@ -307,6 +316,7 @@ mod smoke_tests {
     // Ensure that honest validators commit despite the presence of a crash fault.
     #[tokio::test]
     async fn validator_crash_faults() {
+        let start_load_gen = true;
         let committee_size = 4;
         let committee = Committee::new_for_benchmarks(committee_size);
         let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(200);
@@ -331,6 +341,7 @@ mod smoke_tests {
                 public_config.clone(),
                 private_config,
                 client_parameters.clone(),
+                start_load_gen,
             )
             .await
             .unwrap();
