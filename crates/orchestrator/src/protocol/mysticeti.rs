@@ -156,6 +156,13 @@ impl ProtocolCommands for MysticetiProtocol {
                     .join(format!("private-config-{authority}.yaml"));
                 let client_parameters_path = self.working_dir.join("client-parameters.yaml");
 
+                // Only start the first load gen to simulate a single client.
+                let start_load_gen = if i == 0 {
+                    format!("--start-load-gen")
+                } else {
+                    "".to_string()
+                };
+
                 let run = [
                     &format!("./{BINARY_PATH}/mysticeti"),
                     "run",
@@ -167,6 +174,7 @@ impl ProtocolCommands for MysticetiProtocol {
                         "--client-parameters-path {}",
                         client_parameters_path.display()
                     ),
+                    &start_load_gen,
                 ]
                 .join(" ");
 

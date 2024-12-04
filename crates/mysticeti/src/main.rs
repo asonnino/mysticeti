@@ -57,6 +57,9 @@ enum Operation {
         /// Path to the file holding the client parameters (for benchmarks).
         #[clap(long, value_name = "FILE")]
         client_parameters_path: String,
+        /// Whether to start the load generator for this validator (for benchmarks).
+        #[clap(long, action, default_value_t = true)]
+        start_load_gen: bool,
     },
     /// Deploy a local validator for test. Dryrun mode uses default keys and committee configurations.
     DryRun {
@@ -91,6 +94,7 @@ async fn main() -> Result<()> {
             public_config_path,
             private_config_path,
             client_parameters_path,
+            start_load_gen,
         } => {
             run(
                 authority,
@@ -98,6 +102,7 @@ async fn main() -> Result<()> {
                 public_config_path,
                 private_config_path,
                 client_parameters_path,
+                start_load_gen,
             )
             .await?
         }
@@ -173,6 +178,7 @@ async fn run(
     public_config_path: String,
     private_config_path: String,
     client_parameters_path: String,
+    start_load_gen: bool,
 ) -> Result<()> {
     tracing::info!("Starting validator {authority}");
 
@@ -211,6 +217,7 @@ async fn run(
         public_config.clone(),
         private_config,
         client_parameters,
+        start_load_gen,
     )
     .await?;
     let (network_result, _metrics_result) = validator.await_completion().await;
@@ -252,12 +259,14 @@ async fn dryrun(authority: AuthorityIndex, committee_size: usize) -> Result<()> 
         }
     }
 
+    let start_load_gen = true;
     let validator = Validator::start(
         authority,
         committee,
         public_config,
         private_config,
         client_parameters,
+        start_load_gen,
     )
     .await?;
     let (network_result, _metrics_result) = validator.await_completion().await;

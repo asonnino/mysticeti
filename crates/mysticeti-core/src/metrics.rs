@@ -340,7 +340,7 @@ impl Metrics {
             )
             .unwrap(),
             budget: register_int_gauge_with_registry!(
-                "Current spending budget",
+                "current_budget",
                 "Current value of the spending budget",
                 registry,
             )
