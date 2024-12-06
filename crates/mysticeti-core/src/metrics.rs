@@ -85,6 +85,7 @@ pub struct Metrics {
     pub utilization_timer: IntCounterVec,
     pub submitted_transactions: IntCounter,
     pub budget: IntGauge,
+    pub tx_buffer: IntGauge,
 }
 
 pub struct MetricReporter {
@@ -342,6 +343,12 @@ impl Metrics {
             budget: register_int_gauge_with_registry!(
                 "current_budget",
                 "Current value of the spending budget",
+                registry,
+            )
+            .unwrap(),
+            tx_buffer: register_int_gauge_with_registry!(
+                "tx_budget",
+                "Buffer of transactions that cannot yet be sent due to budget constraints",
                 registry,
             )
             .unwrap(),

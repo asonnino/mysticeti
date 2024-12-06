@@ -123,6 +123,7 @@ impl TransactionGenerator {
                 tracing::debug!("Submitted {tx_to_report} transactions");
                 tx_to_report = 0;
                 self.metrics.budget.set(self.budget as i64);
+                self.metrics.tx_buffer.set(buffer.len() as i64);
             }
         }
     }
