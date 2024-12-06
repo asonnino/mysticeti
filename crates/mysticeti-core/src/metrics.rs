@@ -347,7 +347,7 @@ impl Metrics {
             )
             .unwrap(),
             tx_buffer: register_int_gauge_with_registry!(
-                "tx_budget",
+                "tx_buffer",
                 "Buffer of transactions that cannot yet be sent due to budget constraints",
                 registry,
             )
