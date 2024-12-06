@@ -154,12 +154,12 @@ impl TransactionGenerator {
     fn update_budget(&mut self, counter: u64) {
         let committee_size = self.committee.len() as u64;
         let certified_transactions_count = self.certified_transactions_count();
-        // the client submits the same transaction to all validators.
-        let unique_certificates = if certified_transactions_count % committee_size == 0 {
-            certified_transactions_count / committee_size
-        } else {
-            certified_transactions_count / committee_size + 1
-        };
+        // let unique_certificates = if certified_transactions_count % committee_size == 0 {
+        //     certified_transactions_count / committee_size
+        // } else {
+        //     certified_transactions_count / committee_size + 1
+        // };
+        let unique_certificates = certified_transactions_count;
         tracing::warn!(
             "updating budget: certified_transactions_count={certified_transactions_count}, unique_certificates={unique_certificates}, counter={counter}"
         );
