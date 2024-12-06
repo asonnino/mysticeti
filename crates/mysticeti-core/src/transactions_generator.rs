@@ -74,7 +74,7 @@ impl TransactionGenerator {
         let zeros = vec![0u8; self.client_parameters.transaction_size - 8 - 8]; // 8 bytes timestamp + 8 bytes random
 
         let mut buffer = VecDeque::new();
-        let metrics_granularity = if load > 10_000 { 10_000 } else { 100 };
+        let metrics_granularity = if load > 10_000 { 10_000 } else { 1 };
 
         let mut interval = runtime::TimeInterval::new(Self::TARGET_BLOCK_INTERVAL);
         runtime::sleep(self.client_parameters.initial_delay).await;
