@@ -83,7 +83,7 @@ pub mod node_defaults {
     }
 
     pub fn default_consensus_only() -> bool {
-        true
+        false
     }
 
     pub fn default_enable_synchronizer() -> bool {

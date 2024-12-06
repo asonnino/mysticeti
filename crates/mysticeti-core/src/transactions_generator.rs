@@ -61,7 +61,7 @@ impl TransactionGenerator {
     pub async fn run(mut self) {
         let load = self.client_parameters.load;
         let transactions_per_block_interval = (load + 9) / 10;
-        tracing::info!(
+        tracing::warn!(
             "Generating {transactions_per_block_interval} transactions per {} ms",
             Self::TARGET_BLOCK_INTERVAL.as_millis()
         );
@@ -96,6 +96,7 @@ impl TransactionGenerator {
                 self.update_budget(counter);
 
                 for _ in 0..self.budget {
+                    tracing::warn!("Submitted tx: counter={counter}, budget={}", self.budget);
                     let Some(tx) = buffer.pop_back() else { break };
                     block.push(tx);
 
@@ -119,6 +120,7 @@ impl TransactionGenerator {
 
             if counter % metrics_granularity == 0 {
                 self.metrics.submitted_transactions.inc_by(tx_to_report);
+                tracing::debug!("Submitted {tx_to_report} transactions");
                 tx_to_report = 0;
                 self.metrics.budget.set(self.budget as i64);
             }
@@ -149,9 +151,20 @@ impl TransactionGenerator {
     }
 
     fn update_budget(&mut self, counter: u64) {
+        let committee_size = self.committee.len() as u64;
+        let certified_transactions_count = self.certified_transactions_count();
+        let unique_certificates = if certified_transactions_count % committee_size == 0 {
+            certified_transactions_count / committee_size
+        } else {
+            certified_transactions_count / committee_size + 1
+        };
+        tracing::debug!(
+            "updating budget: certified_transactions_count={certified_transactions_count}, unique_certificates={unique_certificates}, counter={counter}"
+        );
+
         match self.client_parameters.load_type {
             LoadType::Sui => {
-                self.budget += self.certified_transactions_count();
+                self.budget += unique_certificates;
                 self.budget = self.budget.saturating_sub(counter);
             }
             LoadType::BCounter { total_budget } => {
@@ -159,7 +172,7 @@ impl TransactionGenerator {
                 // Budget is exhausted.
                 if self.budget == 0 {
                     // Client is ready to send a version update (piggy-backed on its next transaction).
-                    if self.certified_transactions_count() == counter {
+                    if unique_certificates == counter {
                         let remaining_budget = total_budget - counter;
                         self.budget = (remaining_budget * self.committee.validity_threshold())
                             / self.committee.quorum_threshold()
@@ -167,5 +180,6 @@ impl TransactionGenerator {
                 }
             }
         }
+        tracing::debug!("updated budget: {}", self.budget);
     }
 }

@@ -193,6 +193,28 @@ mod smoke_tests {
         }
     }
 
+    /// Check whether the validator specified by its metrics address has committed at one transaction.
+    async fn check_tx_commit(address: &SocketAddr) -> Result<bool, reqwest::Error> {
+        let route = prometheus::METRICS_ROUTE;
+        let res = reqwest::get(format! {"http://{address}{route}"}).await?;
+        let string = res.text().await?;
+        println!("Metrics: {string}");
+        let commit = string.contains("latency_s");
+        Ok(commit)
+    }
+
+    /// Await for all the validators specified by their metrics addresses to commit a transaction.
+    async fn await_for_tx_commits(addresses: Vec<SocketAddr>) {
+        let mut queue = VecDeque::from(addresses);
+        while let Some(address) = queue.pop_front() {
+            time::sleep(Duration::from_millis(100)).await;
+            match check_tx_commit(&address).await {
+                Ok(commits) if commits => (),
+                _ => queue.push_back(address),
+            }
+        }
+    }
+
     /// Ensure that a committee of honest validators commits.
     #[tokio::test]
     async fn validator_commit() {
@@ -357,6 +379,94 @@ mod smoke_tests {
 
         tokio::select! {
             _ = await_for_commits(addresses) => (),
+            _ = time::sleep(timeout) => panic!("Failed to gather commits within a few timeouts"),
+        }
+    }
+
+    /// Ensure that a committee of honest validators commits.
+    #[tokio::test]
+    async fn validator_sequential_commit() {
+        let committee_size = 4;
+        let committee = Committee::new_for_benchmarks(committee_size);
+        let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(300);
+        let client_parameters = ClientParameters::default();
+
+        let mut handles = Vec::new();
+        let dir = TempDir::new("validator_commit").unwrap();
+        let private_configs = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size);
+        private_configs.iter().for_each(|private_config| {
+            fs::create_dir_all(&private_config.storage_path).unwrap();
+        });
+
+        let start_load_gen = true;
+        for (i, private_config) in private_configs.into_iter().enumerate() {
+            let authority = i as AuthorityIndex;
+
+            let validator = Validator::start(
+                authority,
+                committee.clone(),
+                public_config.clone(),
+                private_config,
+                client_parameters.clone(),
+                start_load_gen,
+            )
+            .await
+            .unwrap();
+            handles.push(validator.await_completion());
+        }
+
+        let addresses = public_config
+            .all_metric_addresses()
+            .map(|address| address.to_owned())
+            .collect();
+        let timeout = config::node_defaults::default_leader_timeout() * 30;
+
+        tokio::select! {
+            _ = await_for_tx_commits(addresses) => (),
+            _ = time::sleep(timeout) => panic!("Failed to gather commits within a few timeouts"),
+        }
+    }
+
+    /// Ensure that a committee of honest validators commits.
+    #[tokio::test]
+    async fn validator_sequential_commit_single_submit() {
+        let committee_size = 4;
+        let committee = Committee::new_for_benchmarks(committee_size);
+        let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(400);
+        let client_parameters = ClientParameters::default();
+
+        let mut handles = Vec::new();
+        let dir = TempDir::new("validator_commit").unwrap();
+        let private_configs = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size);
+        private_configs.iter().for_each(|private_config| {
+            fs::create_dir_all(&private_config.storage_path).unwrap();
+        });
+
+        for (i, private_config) in private_configs.into_iter().enumerate() {
+            let authority = i as AuthorityIndex;
+            let start_load_gen = i == 0;
+
+            let validator = Validator::start(
+                authority,
+                committee.clone(),
+                public_config.clone(),
+                private_config,
+                client_parameters.clone(),
+                start_load_gen,
+            )
+            .await
+            .unwrap();
+            handles.push(validator.await_completion());
+        }
+
+        let addresses = public_config
+            .all_metric_addresses()
+            .map(|address| address.to_owned())
+            .collect();
+        let timeout = config::node_defaults::default_leader_timeout() * 30;
+
+        tokio::select! {
+            _ = await_for_tx_commits(addresses) => (),
             _ = time::sleep(timeout) => panic!("Failed to gather commits within a few timeouts"),
         }
     }
