@@ -154,7 +154,13 @@ impl TransactionGenerator {
 
     fn initial_budget(load_type: &LoadType, committee: &Arc<Committee>) -> u64 {
         match load_type {
-            LoadType::Sui => 1,
+            LoadType::Sui { sequential } => {
+                if *sequential {
+                    1
+                } else {
+                    18000000000000000 // very large number, but not quite u64::MAX to avoid overflow
+                }
+            }
             LoadType::BCounter { total_budget } => {
                 (total_budget * committee.validity_threshold()) / committee.quorum_threshold()
             }
@@ -174,7 +180,7 @@ impl TransactionGenerator {
         );
 
         match self.client_parameters.load_type {
-            LoadType::Sui => {
+            LoadType::Sui { .. } => {
                 self.budget += unique_certificates;
                 self.budget = self.budget.saturating_sub(counter);
             }

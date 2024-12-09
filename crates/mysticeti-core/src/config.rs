@@ -258,7 +258,7 @@ impl ImportExport for NodePrivateConfig {}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum LoadType {
-    Sui,
+    Sui { sequential: bool },
     BCounter { total_budget: u64 },
 }
 
@@ -296,7 +296,7 @@ mod client_defaults {
     }
 
     pub fn default_load_type() -> LoadType {
-        LoadType::Sui
+        LoadType::Sui { sequential: true }
     }
 }
 
