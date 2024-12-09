@@ -60,10 +60,15 @@ impl TransactionGenerator {
 
     pub async fn run(mut self) {
         let load = self.client_parameters.load;
-        let transactions_per_block_interval = (load + 9) / 10;
+        let transactions_per_block_interval = if load < 10 { load } else { (load + 9) / 10 };
+        let target_block_interval = if load < 10 {
+            Duration::from_secs(1)
+        } else {
+            Self::TARGET_BLOCK_INTERVAL
+        };
         tracing::warn!(
             "Generating {transactions_per_block_interval} transactions per {} ms",
-            Self::TARGET_BLOCK_INTERVAL.as_millis()
+            target_block_interval.as_millis()
         );
         let max_block_size = self.node_public_config.parameters.max_block_size;
         let target_block_size = min(max_block_size, transactions_per_block_interval);
@@ -76,7 +81,7 @@ impl TransactionGenerator {
         let mut buffer = VecDeque::new();
         let metrics_granularity = if load > 10_000 { 10_000 } else { 1 };
 
-        let mut interval = runtime::TimeInterval::new(Self::TARGET_BLOCK_INTERVAL);
+        let mut interval = runtime::TimeInterval::new(target_block_interval);
         runtime::sleep(self.client_parameters.initial_delay).await;
         loop {
             interval.tick().await;
