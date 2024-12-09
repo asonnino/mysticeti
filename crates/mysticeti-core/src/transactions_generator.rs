@@ -133,9 +133,9 @@ impl TransactionGenerator {
                 self.metrics.tx_buffer.set(buffer.len() as i64);
             }
 
-            if self.budget == 0 {
-                self.budget = 1;
-            }
+            // if self.budget == 0 {
+            //     self.budget = 1;
+            // }
         }
     }
 
@@ -190,12 +190,12 @@ impl TransactionGenerator {
                 // Budget is exhausted.
                 if self.budget == 0 {
                     // Client is ready to send a version update (piggy-backed on its next transaction).
-                    if unique_certificates == counter {
-                        let remaining_budget = total_budget - counter;
-                        tracing::warn!("Merge: remaining_budget={remaining_budget}");
-                        self.budget = (remaining_budget * self.committee.validity_threshold())
-                            / self.committee.quorum_threshold()
-                    }
+                    // if unique_certificates == counter {
+                    let remaining_budget = total_budget - counter;
+                    tracing::warn!("Merge: remaining_budget={remaining_budget}");
+                    self.budget = (remaining_budget * self.committee.validity_threshold())
+                        / self.committee.quorum_threshold()
+                    // }
                 }
             }
         }
