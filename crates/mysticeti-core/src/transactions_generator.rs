@@ -66,6 +66,7 @@ impl TransactionGenerator {
         } else {
             Self::TARGET_BLOCK_INTERVAL
         };
+
         tracing::warn!(
             "Generating {transactions_per_block_interval} transactions per {} ms",
             target_block_interval.as_millis()
@@ -163,11 +164,12 @@ impl TransactionGenerator {
     fn update_budget(&mut self, counter: u64) {
         let committee_size = self.committee.len() as u64;
         let certified_transactions_count = self.certified_transactions_count();
-        let unique_certificates = if certified_transactions_count % committee_size == 0 {
-            certified_transactions_count / committee_size
-        } else {
-            certified_transactions_count / committee_size + 1
-        };
+        let unique_certificates =
+            if certified_transactions_count % self.committee.quorum_threshold() == 0 {
+                certified_transactions_count / self.committee.quorum_threshold()
+            } else {
+                certified_transactions_count / self.committee.quorum_threshold() + 1
+            };
         tracing::warn!(
             "updating budget: certified_transactions_count={certified_transactions_count}, unique_certificates={unique_certificates}, counter={counter}"
         );
