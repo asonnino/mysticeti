@@ -192,6 +192,7 @@ impl TransactionGenerator {
                     // Client is ready to send a version update (piggy-backed on its next transaction).
                     if unique_certificates == counter {
                         let remaining_budget = total_budget - counter;
+                        tracing::warn!("Merge: remaining_budget={remaining_budget}");
                         self.budget = (remaining_budget * self.committee.validity_threshold())
                             / self.committee.quorum_threshold()
                     }
