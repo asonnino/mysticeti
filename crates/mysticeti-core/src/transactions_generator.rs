@@ -84,6 +84,7 @@ impl TransactionGenerator {
 
         let mut interval = runtime::TimeInterval::new(target_block_interval);
         runtime::sleep(self.client_parameters.initial_delay).await;
+        tracing::warn!("Starting to submit transactions");
         loop {
             interval.tick().await;
             let timestamp = (timestamp_utc().as_millis() as u64).to_le_bytes();

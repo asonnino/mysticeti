@@ -157,12 +157,12 @@ impl ProtocolCommands for MysticetiProtocol {
                 let client_parameters_path = self.working_dir.join("client-parameters.yaml");
 
                 // Only start the first load gen to simulate a single client.
-                // let start_load_gen = if i == 0 {
-                //     format!("--start-load-gen")
-                // } else {
-                //     "".to_string()
-                // };
-                let start_load_gen = format!("--start-load-gen");
+                let start_load_gen = if i == 0 {
+                    format!("--start-load-gen")
+                } else {
+                    "".to_string()
+                };
+                // let start_load_gen = format!("--start-load-gen");
 
                 let run = [
                     &format!("./{BINARY_PATH}/mysticeti"),
