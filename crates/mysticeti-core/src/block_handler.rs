@@ -15,7 +15,14 @@ use tokio::sync::mpsc;
 
 use crate::{
     block_store::BlockStore,
-    committee::{Committee, ProcessedTransactionHandler, QuorumThreshold, TransactionAggregator},
+    committee::{
+        BCounterAggregator,
+        Committee,
+        ProcessedTransactionHandler,
+        QuorumThreshold,
+        TransactionAggregator,
+    },
+    config::{ClientParameters, LoadType},
     consensus::linearizer::{CommittedSubDag, Linearizer},
     data::Data,
     log::TransactionLog,
@@ -70,6 +77,8 @@ pub struct RealBlockHandler {
     receiver: mpsc::Receiver<Vec<Transaction>>,
     pending_transactions: usize,
     consensus_only: bool,
+    client_parameters: ClientParameters,
+    bcounter_aggregator: BCounterAggregator,
 }
 
 /// The max number of transactions per block.
@@ -84,10 +93,17 @@ impl RealBlockHandler {
         block_store: BlockStore,
         metrics: Arc<Metrics>,
         consensus_only: bool,
+        client_parameters: ClientParameters,
     ) -> (Self, mpsc::Sender<Vec<Transaction>>) {
         let (sender, receiver) = mpsc::channel(1024);
         let transaction_log = TransactionLog::start(certified_transactions_log_path)
             .expect("Failed to open certified transaction log for write");
+
+        let total_budget = match &client_parameters.load_type {
+            LoadType::Sui { .. } => 1,
+            LoadType::BCounter { total_budget } => *total_budget,
+        };
+        let bcounter_aggregator = BCounterAggregator::new(&committee, total_budget);
 
         let this = Self {
             transaction_votes: TransactionAggregator::with_handler(transaction_log),
@@ -99,6 +115,8 @@ impl RealBlockHandler {
             receiver,
             pending_transactions: 0, // todo - need to initialize correctly when loaded from disk
             consensus_only,
+            client_parameters,
+            bcounter_aggregator,
         };
         (this, sender)
     }
@@ -173,9 +191,20 @@ impl BlockHandler for RealBlockHandler {
                 None
             };
             if !self.consensus_only {
-                let processed =
+                let mut processed =
                     self.transaction_votes
                         .process_block(block, response_option, &self.committee);
+
+                // Drop "processed" if Bcounter lacks of budget.
+                if self.client_parameters.bcounter_run() {
+                    let stake = processed.len() as u64; // 1 unit of stake per transaction
+                    let spendable = self.bcounter_aggregator.update_budget(stake);
+                    processed.truncate(spendable as usize);
+                    if spendable == 0 {
+                        tracing::warn!("BCounter has no budget left");
+                    }
+                }
+
                 for processed_locator in processed {
                     let block_creation = transaction_time.get(&processed_locator);
                     let transaction = self

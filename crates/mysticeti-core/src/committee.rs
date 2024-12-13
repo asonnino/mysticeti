@@ -395,6 +395,56 @@ impl<TH: CommitteeThreshold> TransactionAggregator<TH> {
     }
 }
 
+/// Budget counter
+#[derive(Serialize, Deserialize, Clone)]
+pub struct BCounterAggregator {
+    /// Total budget
+    total_budget: Stake,
+    /// Total spent
+    total_spent: Stake,
+    /// Current spent from the last reset
+    current_spent: Stake,
+    /// Maximum budget for the current period
+    threshold: Stake,
+}
+
+impl BCounterAggregator {
+    /// Create a new budget counter
+    pub fn new(committee: &Arc<Committee>, total_budget: Stake) -> Self {
+        let threshold =
+            (total_budget * committee.validity_threshold()) / committee.quorum_threshold();
+        Self {
+            total_budget,
+            total_spent: 0,
+            current_spent: 0,
+            threshold,
+        }
+    }
+
+    /// Update the budget and returns the spent budget
+    pub fn update_budget(&mut self, amount: Stake) -> Stake {
+        let ok = (self.current_spent + amount) <= self.threshold;
+        if ok {
+            self.total_spent += amount;
+            self.current_spent += amount;
+            amount
+        } else {
+            let delta = self.threshold - self.current_spent;
+            self.total_spent += delta;
+            self.current_spent += delta;
+            delta
+        }
+    }
+
+    /// Reset the budget
+    pub fn reset(&mut self, committee: &Arc<Committee>) {
+        self.current_spent = 0;
+        let remaining_budget = self.total_budget - self.total_spent;
+        self.threshold =
+            (remaining_budget * committee.validity_threshold()) / committee.quorum_threshold()
+    }
+}
+
 pub enum TransactionVoteResult {
     Processed,
     VoteAccepted,

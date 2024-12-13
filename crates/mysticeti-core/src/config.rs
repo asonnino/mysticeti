@@ -280,6 +280,12 @@ pub struct ClientParameters {
     pub load_type: LoadType,
 }
 
+impl ClientParameters {
+    pub fn bcounter_run(&self) -> bool {
+        matches!(self.load_type, LoadType::BCounter { .. })
+    }
+}
+
 mod client_defaults {
     use super::{Duration, LoadType};
 
