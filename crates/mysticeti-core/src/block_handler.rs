@@ -199,8 +199,7 @@ impl BlockHandler for RealBlockHandler {
                 if self.client_parameters.bcounter_run() {
                     let spent = processed.len() as u64; // 1 unit per transaction
                     let spendable = self.bcounter_aggregator.update_budget(spent);
-                    processed.truncate(spendable as usize);
-                    if spendable == 0 {
+                    if spendable == 0 && !processed.is_empty() {
                         tracing::warn!(
                             "BCounter has no budget left. Total budget is {}. Total spent is {}. Current spent is {}.",
                             self.bcounter_aggregator.total_budget,
@@ -208,6 +207,7 @@ impl BlockHandler for RealBlockHandler {
                             self.bcounter_aggregator.current_spent
                         );
                     }
+                    processed.truncate(spendable as usize);
                 }
 
                 for processed_locator in processed {

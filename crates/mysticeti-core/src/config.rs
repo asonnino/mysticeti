@@ -328,6 +328,6 @@ mod test {
         let serialized = serde_yaml::to_string(&parameters).unwrap();
         println!("{}", serialized);
         // load_type: !BCounter
-        //  total_budget: 18000000000000000
+        //  total_budget: 180000000000000
     }
 }

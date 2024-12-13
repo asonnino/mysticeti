@@ -131,7 +131,7 @@ impl TransactionGenerator {
 
             if counter % metrics_granularity == 0 {
                 self.metrics.submitted_transactions.inc_by(tx_to_report);
-                tracing::debug!("Submitted {tx_to_report} transactions");
+                tracing::warn!("Submitted {tx_to_report} transactions");
                 tx_to_report = 0;
                 self.metrics.budget.set(self.budget as i64);
                 self.metrics.tx_buffer.set(buffer.len() as i64);
@@ -159,7 +159,7 @@ impl TransactionGenerator {
                 if *sequential {
                     1
                 } else {
-                    18000000000000000 // very large number, but not quite u64::MAX to avoid overflow
+                    1800000000000000 // very large number, but not quite u64::MAX to avoid overflow
                 }
             }
             LoadType::BCounter { total_budget } => {
@@ -176,7 +176,7 @@ impl TransactionGenerator {
         } else {
             certified_transactions_count / committee_size + 1
         };
-        tracing::debug!(
+        tracing::warn!(
             "updating budget: certified_transactions_count={certified_transactions_count}, unique_certificates={unique_certificates}, counter={counter}"
         );
 
@@ -193,7 +193,7 @@ impl TransactionGenerator {
                     if unique_certificates == counter {
                         // only if N clients
                         let remaining_budget = total_budget - counter;
-                        tracing::debug!("Merge: remaining_budget={remaining_budget}");
+                        tracing::warn!("Merge: remaining_budget={remaining_budget}");
                         self.budget = (remaining_budget * self.committee.validity_threshold())
                             / self.committee.quorum_threshold()
                     }
