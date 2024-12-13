@@ -197,8 +197,8 @@ impl BlockHandler for RealBlockHandler {
 
                 // Drop "processed" if Bcounter lacks of budget.
                 if self.client_parameters.bcounter_run() {
-                    let stake = processed.len() as u64; // 1 unit of stake per transaction
-                    let spendable = self.bcounter_aggregator.update_budget(stake);
+                    let spent = processed.len() as u64; // 1 unit per transaction
+                    let spendable = self.bcounter_aggregator.update_budget(spent);
                     processed.truncate(spendable as usize);
                     if spendable == 0 {
                         tracing::warn!("BCounter has no budget left");

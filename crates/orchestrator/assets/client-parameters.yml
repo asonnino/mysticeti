@@ -1,5 +1,5 @@
 initial_delay:
   secs: 60
   nanos: 0
-load_type: !Sui
-  sequential: false
+load_type: !BCounter
+  total_budget: 18000000000000000

@@ -71,6 +71,10 @@ impl TransactionGenerator {
             "Generating {transactions_per_block_interval} transactions per {} ms",
             target_block_interval.as_millis()
         );
+        if let LoadType::BCounter { total_budget } = self.client_parameters.load_type {
+            tracing::warn!("Total budget: {}", total_budget);
+        }
+
         let max_block_size = self.node_public_config.parameters.max_block_size;
         let target_block_size = min(max_block_size, transactions_per_block_interval);
 
@@ -103,7 +107,7 @@ impl TransactionGenerator {
                 self.update_budget(counter);
 
                 for _ in 0..self.budget {
-                    tracing::warn!("Submitted tx: counter={counter}, budget={}", self.budget);
+                    tracing::debug!("Submitted tx: counter={counter}, budget={}", self.budget);
                     let Some(tx) = buffer.pop_back() else { break };
                     block.push(tx);
 
@@ -132,10 +136,6 @@ impl TransactionGenerator {
                 self.metrics.budget.set(self.budget as i64);
                 self.metrics.tx_buffer.set(buffer.len() as i64);
             }
-
-            // if self.budget == 0 {
-            //     self.budget = 1;
-            // }
         }
     }
 
@@ -176,7 +176,7 @@ impl TransactionGenerator {
         } else {
             certified_transactions_count / committee_size + 1
         };
-        tracing::warn!(
+        tracing::debug!(
             "updating budget: certified_transactions_count={certified_transactions_count}, unique_certificates={unique_certificates}, counter={counter}"
         );
 
@@ -193,13 +193,13 @@ impl TransactionGenerator {
                     if unique_certificates == counter {
                         // only if N clients
                         let remaining_budget = total_budget - counter;
-                        tracing::warn!("Merge: remaining_budget={remaining_budget}");
+                        tracing::debug!("Merge: remaining_budget={remaining_budget}");
                         self.budget = (remaining_budget * self.committee.validity_threshold())
                             / self.committee.quorum_threshold()
                     }
                 }
             }
         }
-        tracing::warn!("updated budget: {}", self.budget);
+        tracing::debug!("updated budget: {}", self.budget);
     }
 }
