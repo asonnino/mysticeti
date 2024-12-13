@@ -88,7 +88,7 @@ impl TransactionGenerator {
 
         let mut interval = runtime::TimeInterval::new(target_block_interval);
         runtime::sleep(self.client_parameters.initial_delay).await;
-        tracing::warn!("Starting to submit transactions");
+        tracing::info!("Starting to submit transactions");
         loop {
             interval.tick().await;
             let timestamp = (timestamp_utc().as_millis() as u64).to_le_bytes();
@@ -131,7 +131,7 @@ impl TransactionGenerator {
 
             if counter % metrics_granularity == 0 {
                 self.metrics.submitted_transactions.inc_by(tx_to_report);
-                tracing::warn!("Submitted {tx_to_report} transactions");
+                tracing::debug!("Submitted {tx_to_report} transactions");
                 tx_to_report = 0;
                 self.metrics.budget.set(self.budget as i64);
                 self.metrics.tx_buffer.set(buffer.len() as i64);
@@ -176,7 +176,7 @@ impl TransactionGenerator {
         } else {
             certified_transactions_count / committee_size + 1
         };
-        tracing::warn!(
+        tracing::debug!(
             "updating budget: certified_transactions_count={certified_transactions_count}, unique_certificates={unique_certificates}, counter={counter}"
         );
 
