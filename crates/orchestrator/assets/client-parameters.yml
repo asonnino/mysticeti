@@ -2,4 +2,4 @@ initial_delay:
   secs: 10
   nanos: 0
 load_type: !BCounter
-  total_budget: 100
+  total_budget: 1000

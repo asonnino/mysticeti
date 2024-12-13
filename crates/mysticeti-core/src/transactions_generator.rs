@@ -60,8 +60,8 @@ impl TransactionGenerator {
 
     pub async fn run(mut self) {
         let load = self.client_parameters.load;
-        let transactions_per_block_interval = if load < 10 { load } else { (load + 9) / 10 };
-        let target_block_interval = if load < 10 {
+        let transactions_per_block_interval = if load <= 1000 { load } else { (load + 9) / 10 };
+        let target_block_interval = if load <= 1000 {
             Duration::from_secs(1)
         } else {
             Self::TARGET_BLOCK_INTERVAL
@@ -190,12 +190,13 @@ impl TransactionGenerator {
                 // Budget is exhausted.
                 if self.budget == 0 {
                     // Client is ready to send a version update (piggy-backed on its next transaction).
-                    // if unique_certificates == counter {
-                    let remaining_budget = total_budget - counter;
-                    tracing::warn!("Merge: remaining_budget={remaining_budget}");
-                    self.budget = (remaining_budget * self.committee.validity_threshold())
-                        / self.committee.quorum_threshold()
-                    // }
+                    if unique_certificates == counter {
+                        // only if N clients
+                        let remaining_budget = total_budget - counter;
+                        tracing::warn!("Merge: remaining_budget={remaining_budget}");
+                        self.budget = (remaining_budget * self.committee.validity_threshold())
+                            / self.committee.quorum_threshold()
+                    }
                 }
             }
         }
