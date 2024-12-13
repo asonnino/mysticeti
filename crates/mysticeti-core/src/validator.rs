@@ -82,6 +82,7 @@ impl Validator {
             recovered.block_store.clone(),
             metrics.clone(),
             public_config.parameters.consensus_only,
+            client_parameters.clone(),
         );
 
         if start_load_gen {
