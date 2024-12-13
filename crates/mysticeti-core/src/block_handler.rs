@@ -201,7 +201,12 @@ impl BlockHandler for RealBlockHandler {
                     let spendable = self.bcounter_aggregator.update_budget(spent);
                     processed.truncate(spendable as usize);
                     if spendable == 0 {
-                        tracing::warn!("BCounter has no budget left");
+                        tracing::warn!(
+                            "BCounter has no budget left. Total budget is {}. Total spent is {}. Current spent is {}.",
+                            self.bcounter_aggregator.total_budget,
+                            self.bcounter_aggregator.total_spent,
+                            self.bcounter_aggregator.current_spent
+                        );
                     }
                 }
 

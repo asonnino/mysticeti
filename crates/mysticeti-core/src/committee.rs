@@ -399,13 +399,13 @@ impl<TH: CommitteeThreshold> TransactionAggregator<TH> {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct BCounterAggregator {
     /// Total budget
-    total_budget: Stake,
+    pub total_budget: Stake,
     /// Total spent
-    total_spent: Stake,
+    pub total_spent: Stake,
     /// Current spent from the last reset
-    current_spent: Stake,
+    pub current_spent: Stake,
     /// Maximum budget for the current period
-    threshold: Stake,
+    pub threshold: Stake,
 }
 
 impl BCounterAggregator {
