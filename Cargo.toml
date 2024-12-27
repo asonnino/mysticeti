@@ -1,22 +1,11 @@
 [workspace]
-members = [
-    "crates/mysticeti",
-    "crates/mysticeti-core",
-    "crates/orchestrator",
-    "crates/third-party/minibytes",
-]
+members = ["crates/mysticeti"]
 resolver = "2"
+readme = "README.md"
+license-file = "LICENSE"
+publish = false
 
 [workspace.dependencies]
-tokio = { version = "1.28.1", features = ["full"] }
-futures = "0.3.28"
-serde = { version = "1.0.163", features = ["derive"] }
-eyre = "0.6.8"
-color-eyre = "0.6.2"
-clap = { version = "4.3.3", features = ["derive"] }
-tracing = "0.1.37"
-tempfile = "3.6.0"
-reqwest = { version = "0.11.18", features = ["json"] }
 
 [profile.release]
 panic = "abort"
