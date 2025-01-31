@@ -4,6 +4,8 @@
 pub mod block_handler;
 mod block_manager;
 mod block_store;
+mod certifier;
+mod certifier_network;
 pub mod committee;
 pub mod config;
 pub mod consensus;

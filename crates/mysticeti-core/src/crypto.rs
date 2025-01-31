@@ -4,7 +4,6 @@
 use std::fmt;
 
 use digest::Digest;
-#[cfg(not(test))]
 use ed25519_consensus::Signature;
 use rand::{rngs::StdRng, SeedableRng};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
@@ -197,6 +196,15 @@ impl PublicKey {
     pub fn verify_block(&self, _block: &StatementBlock) -> Result<(), ed25519_consensus::Error> {
         Ok(())
     }
+
+    pub fn verify_digest(
+        &self,
+        digest: &BlockDigest,
+        signature: &SignatureBytes,
+    ) -> Result<(), ed25519_consensus::Error> {
+        let signature = Signature::from(signature.0);
+        self.0.verify(&signature, digest.as_ref())
+    }
 }
 
 impl Signer {
@@ -247,6 +255,11 @@ impl Signer {
 
     pub fn public_key(&self) -> PublicKey {
         PublicKey(self.0.verification_key())
+    }
+
+    pub fn sign_digest(&self, digest: &BlockDigest) -> SignatureBytes {
+        let signature = self.0.sign(digest.as_ref());
+        SignatureBytes(signature.to_bytes())
     }
 }
 
