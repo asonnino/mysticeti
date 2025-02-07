@@ -4,6 +4,7 @@
 use std::fmt::{self, Debug, Formatter};
 
 use eyre::{bail, ensure};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     committee::Committee,
@@ -12,14 +13,24 @@ use crate::{
 };
 
 mod aggregator;
+mod core;
 mod voter;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CertifierMessage {
+    OwnBlock(BlockReference, Vec<BlockReference>),
+    OthersBlock(BlockReference),
+    Vote(Vote),
+    Certificate(Certificate),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CertificateType {
     C0,
     C1,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Vote {
     /// The authority that voted.
     authority: AuthorityIndex,
@@ -78,7 +89,7 @@ impl Vote {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Certificate {
     /// The block that was certified.
     reference: BlockReference,

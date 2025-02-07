@@ -37,6 +37,10 @@ impl<I, O> Connection<I, O> {
             .await
             .map_err(|_| io::ErrorKind::BrokenPipe.into())
     }
+
+    pub fn split(self) -> (Sender<O>, Receiver<I>) {
+        (self.tx_outgoing, self.rx_incoming)
+    }
 }
 
 /// A server run by the primary machine that listens for connections from proxies

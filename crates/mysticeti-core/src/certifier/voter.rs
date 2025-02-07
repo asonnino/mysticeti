@@ -8,6 +8,7 @@ use tokio::{
     task::JoinHandle,
 };
 
+use super::{Certificate, CertifierMessage};
 use crate::{
     certifier::{CertificateType, Vote},
     committee::Committee,
@@ -15,31 +16,13 @@ use crate::{
     types::{AuthorityIndex, BlockReference, RoundNumber},
 };
 
-pub struct VoterMessage {
-    reference: BlockReference,
-    parents: Vec<BlockReference>,
-}
-
-impl VoterMessage {
-    pub fn own_block(reference: BlockReference, parents: Vec<BlockReference>) -> Self {
-        Self { reference, parents }
-    }
-
-    pub fn others_block(reference: BlockReference) -> Self {
-        Self {
-            reference,
-            parents: vec![],
-        }
-    }
-}
-
 pub struct Voter {
     authority_index: AuthorityIndex,
     authority_indices: Range<AuthorityIndex>,
     cannot_vote: HashSet<(AuthorityIndex, RoundNumber)>,
     min_voting_round: RoundNumber,
     signer: Signer,
-    tx_vote: Sender<Vote>,
+    tx_vote: Sender<CertifierMessage>,
 }
 
 impl Voter {
@@ -49,7 +32,7 @@ impl Voter {
         authority_index: AuthorityIndex,
         signer: Signer,
         committee: &Committee,
-        tx_vote: Sender<Vote>,
+        tx_vote: Sender<CertifierMessage>,
     ) -> Self {
         let authority_indices = 0..committee.len() as AuthorityIndex;
         let cannot_vote = HashSet::new();
@@ -110,23 +93,59 @@ impl Voter {
             reference,
             CertificateType::C0,
         );
-
-        self.tx_vote.send(vote).await.expect("Failed to send vote");
+        let message = CertifierMessage::Vote(vote);
+        self.tx_vote
+            .send(message)
+            .await
+            .expect("Failed to send vote");
     }
 
-    pub async fn run(mut self, mut receiver: Receiver<VoterMessage>) {
+    pub async fn process_certificate(&mut self, certificate: Certificate) {
+        let reference = certificate.reference;
+
+        if certificate.certificate_type == CertificateType::C0 {
+            // Keep the certificate.
+
+            // Send the vote.
+            let vote = Vote::new(
+                &self.signer,
+                self.authority_index,
+                reference,
+                CertificateType::C1,
+            );
+            let message = CertifierMessage::Vote(vote);
+            self.tx_vote
+                .send(message)
+                .await
+                .expect("Failed to send vote");
+        } else {
+            // Keep the certificate.
+            // Notify consensus.
+        }
+    }
+
+    pub async fn run(mut self, mut receiver: Receiver<CertifierMessage>) {
         while let Some(message) = receiver.recv().await {
-            if message.reference.authority == self.authority_index {
-                self.process_own_block(message.reference, message.parents);
-            } else {
-                self.process_others_block(message.reference).await;
+            match message {
+                CertifierMessage::OwnBlock(reference, parents) => {
+                    self.process_own_block(reference, parents);
+                }
+                CertifierMessage::OthersBlock(reference) => {
+                    self.process_others_block(reference).await;
+                }
+                CertifierMessage::Certificate(certificate) => {
+                    self.process_certificate(certificate).await;
+                }
+                CertifierMessage::Vote(_) => {
+                    panic!("Received unexpected vote message");
+                }
             }
         }
     }
 }
 
 impl Voter {
-    pub fn spawn(self, receiver: Receiver<VoterMessage>) -> JoinHandle<()> {
+    pub fn spawn(self, receiver: Receiver<CertifierMessage>) -> JoinHandle<()> {
         tokio::spawn(async move {
             self.run(receiver).await;
         })

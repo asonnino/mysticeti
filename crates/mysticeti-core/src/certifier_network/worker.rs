@@ -103,9 +103,9 @@ where
         mut writer: OwnedWriteHalf,
         mut rx_outgoing: Receiver<O>,
     ) -> io::Result<()> {
-        while let Some(transaction) = rx_outgoing.recv().await {
+        while let Some(message) = rx_outgoing.recv().await {
             // Serialize and send the message.
-            let serialized = bincode::serialize(&transaction).expect("Infallible serialization");
+            let serialized = bincode::serialize(&message).expect("Infallible serialization");
             writer.write_u32(serialized.len() as u32).await?;
             writer.write_all(&serialized).await?;
         }

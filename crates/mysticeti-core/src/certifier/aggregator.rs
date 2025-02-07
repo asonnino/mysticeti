@@ -3,7 +3,12 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::{Certificate, Vote};
+use tokio::{
+    sync::mpsc::{Receiver, Sender},
+    task::JoinHandle,
+};
+
+use super::{Certificate, CertifierMessage, Vote};
 use crate::{
     certifier::CertificateType,
     committee::Committee,
@@ -65,27 +70,31 @@ impl Aggregator {
 
 pub struct AggregatorCollection {
     aggregators: HashMap<RoundNumber, Aggregator>,
+    committee: Committee,
+    tx_certificate: Sender<Certificate>,
 }
 
 impl AggregatorCollection {
     const GC_ROUND: RoundNumber = 100;
 
-    pub fn new() -> Self {
+    pub fn new(committee: Committee, tx_certificate: Sender<Certificate>) -> Self {
         Self {
             aggregators: HashMap::with_capacity(2 * Self::GC_ROUND as usize),
+            committee,
+            tx_certificate,
         }
     }
 
     /// Add a vote to the aggregator collection. This function assumes that the vote is valid, that is,
     /// (1) vote.verify() succeeds, and (2) the vote is for a block authored by this authority.
-    pub fn add(&mut self, vote: Vote, committee: &Committee) -> Option<Certificate> {
+    pub fn add(&mut self, vote: Vote) -> Option<Certificate> {
         let round = vote.round();
 
         // Add the vote to the aggregator. A new aggregator is initialized if it does not exist.
         let aggregator = self.aggregators.entry(round).or_insert_with(|| {
             let reference = vote.reference.clone();
             let certificate = Certificate::new(reference, vote.certificate_type);
-            Aggregator::new(certificate, committee)
+            Aggregator::new(certificate, &self.committee)
         });
 
         // Check if the certificate type matches. It is impossible to receive a vote for a C1
@@ -95,7 +104,7 @@ impl AggregatorCollection {
         }
 
         // Check if the vote allows to create a certificate.
-        if let Some(certificate) = aggregator.add(&vote, committee) {
+        if let Some(certificate) = aggregator.add(&vote, &self.committee) {
             // The aggregator now collects C1 certificates.
             if aggregator.certificate_type() == CertificateType::C0 {
                 aggregator.collect_c1();
@@ -107,5 +116,24 @@ impl AggregatorCollection {
             return Some(certificate);
         }
         return None;
+    }
+
+    pub async fn run(mut self, mut receiver: Receiver<CertifierMessage>) {
+        while let Some(CertifierMessage::Vote(vote)) = receiver.recv().await {
+            if let Some(certificate) = self.add(vote) {
+                self.tx_certificate
+                    .send(certificate)
+                    .await
+                    .expect("Failed to send certificate");
+            }
+        }
+    }
+}
+
+impl AggregatorCollection {
+    pub fn spawn(self, receiver: Receiver<CertifierMessage>) -> JoinHandle<()> {
+        tokio::spawn(async move {
+            self.run(receiver).await;
+        })
     }
 }
