@@ -12,15 +12,15 @@ use crate::{
     types::{format_authority_round, AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
 };
 
-/// The consensus protocol operates in 'waves'. Each wave is composed of a leader round, at least one
-/// voting round, and one decision round.
+/// The consensus protocol operates in 'waves'. Each wave is composed of a leader round
+/// and a decision round.
 type WaveNumber = u64;
 
 pub struct BaseCommitterOptions {
-    /// The length of a wave (minimum 3)
+    /// The length of a wave (minimum 2)
     pub wave_length: u64,
-    /// The offset used in the leader-election protocol. THis is used by the multi-committer to ensure
-    /// that each [`BaseCommitter`] instance elects a different leader.
+    /// The offset used in the leader-election protocol. This is used by the multi-committer to
+    /// ensure that each [`BaseCommitter`] instance elects a different leader.
     pub leader_offset: u64,
     /// The offset of the first wave. This is used by the pipelined committer to ensure that each
     /// [`BaseCommitter`] instances operates on a different view of the dag.
@@ -37,9 +37,9 @@ impl Default for BaseCommitterOptions {
     }
 }
 
-/// The [`BaseCommitter`] contains the bare bone commit logic. Once instantiated, the method `try_direct_decide`
-/// and `try_indirect_decide` can be called at any time and any number of times (it is idempotent) to determine
-/// whether a leader can be committed or skipped.
+/// The [`BaseCommitter`] contains the bare bone commit logic. Once instantiated, the method
+/// `try_direct_decide` and `try_indirect_decide` can be called at any time and any number
+/// of times (it is idempotent) to determine whether a leader can be committed or skipped.
 pub struct BaseCommitter {
     /// The committee information
     committee: Arc<Committee>,
@@ -83,8 +83,8 @@ impl BaseCommitter {
     }
 
     /// The leader-elect protocol is offset by `leader_offset` to ensure that different committers
-    /// with different leader offsets elect different leaders for the same round number. This function
-    /// returns `None` if there are no leaders for the specified round.
+    /// with different leader offsets elect different leaders for the same round number. This
+    /// function returns `None` if there are no leaders for the specified round.
     pub fn elect_leader(&self, round: RoundNumber) -> Option<AuthorityIndex> {
         let wave = self.wave_number(round);
         if self.leader_round(wave) != round {
@@ -96,10 +96,10 @@ impl BaseCommitter {
     }
 
     /// Find which block is supported at (author, round) by the given block.
-    /// Blocks can indirectly reference multiple other blocks at (author, round), but only one block at
-    /// (author, round)  will be supported by the given block. If block A supports B at (author, round),
-    /// it is guaranteed that any processed block by the same author that directly or indirectly includes
-    /// A will also support B at (author, round).
+    /// Blocks can indirectly reference multiple other blocks at (author, round), but only one block
+    /// at (author, round) will be supported by the given block. If block A supports B at
+    /// (author, round), it is guaranteed that any processed block by the same author that directly
+    /// or indirectly includes A will also support B at (author, round).
     fn find_support(
         &self,
         (author, round): (AuthorityIndex, RoundNumber),
@@ -127,7 +127,7 @@ impl BaseCommitter {
         None
     }
 
-    /// Check whether the specified block (`potential_certificate`) is a vote for
+    /// Check whether the specified block (`potential_vote`) is a vote for
     /// the specified leader (`leader_block`).
     fn is_vote(
         &self,
@@ -140,27 +140,27 @@ impl BaseCommitter {
 
     /// Check whether the specified block (`potential_certificate`) is a certificate for
     /// the specified leader (`leader_block`).
-    fn is_certificate(
-        &self,
-        potential_certificate: &Data<StatementBlock>,
-        leader_block: &Data<StatementBlock>,
-    ) -> bool {
-        let mut votes_stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
-        for reference in potential_certificate.includes() {
-            let potential_vote = self
-                .block_store
-                .get_block(*reference)
-                .expect("We should have the whole sub-dag by now");
+    // fn is_certificate(
+    //     &self,
+    //     potential_certificate: &Data<StatementBlock>,
+    //     leader_block: &Data<StatementBlock>,
+    // ) -> bool {
+    //     let mut votes_stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
+    //     for reference in potential_certificate.includes() {
+    //         let potential_vote = self
+    //             .block_store
+    //             .get_block(*reference)
+    //             .expect("We should have the whole sub-dag by now");
 
-            if self.is_vote(&potential_vote, leader_block) {
-                tracing::trace!("[{self}] {potential_vote:?} is a vote for {leader_block:?}");
-                if votes_stake_aggregator.add(reference.authority, &self.committee) {
-                    return true;
-                }
-            }
-        }
-        false
-    }
+    //         if self.is_vote(&potential_vote, leader_block) {
+    //             tracing::trace!("[{self}] {potential_vote:?} is a vote for {leader_block:?}");
+    //             if votes_stake_aggregator.add(reference.authority, &self.committee) {
+    //                 return true;
+    //             }
+    //         }
+    //     }
+    //     false
+    // }
 
     /// Decide the status of a target leader from the specified anchor. We commit the target leader
     /// if it has a certified link to the anchor. Otherwise, we skip the target leader.
@@ -197,7 +197,8 @@ impl BaseCommitter {
             })
             .collect();
 
-        // There can be at most one certified leader, otherwise it means the BFT assumption is broken.
+        // There can be at most one certified leader, otherwise it means the BFT assumption
+        // is broken.
         if certified_leader_blocks.len() > 1 {
             panic!("More than one certified block at wave {wave} from leader {leader}")
         }
@@ -210,24 +211,24 @@ impl BaseCommitter {
         }
     }
 
-    /// Check whether the specified leader has enough blames (that is, 2f+1 non-votes) to be
+    /// Check whether the specified leader has enough blames (that is, 4f+1 non-supports) to be
     /// directly skipped.
-    fn enough_leader_blame(&self, voting_round: RoundNumber, leader: AuthorityIndex) -> bool {
-        let voting_blocks = self.block_store.get_blocks_by_round(voting_round);
+    fn enough_leader_blame(&self, decision_round: RoundNumber, leader: AuthorityIndex) -> bool {
+        let decision_blocks = self.block_store.get_blocks_by_round(decision_round);
 
         let mut blame_stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
-        for voting_block in &voting_blocks {
-            let voter = voting_block.reference().authority;
-            if voting_block
+        for decision_block in &decision_blocks {
+            let decider = decision_block.reference().authority;
+            if decision_block
                 .includes()
                 .iter()
                 .all(|include| include.authority != leader)
             {
                 tracing::trace!(
-                    "[{self}] {voting_block:?} is a blame for leader {}",
-                    format_authority_round(leader, voting_round - 1)
+                    "[{self}] {decision_block:?} is a blame for leader {}",
+                    format_authority_round(leader, decision_round - 1)
                 );
-                if blame_stake_aggregator.add(voter, &self.committee) {
+                if blame_stake_aggregator.add(decider, &self.committee) {
                     return true;
                 }
             }
@@ -235,7 +236,7 @@ impl BaseCommitter {
         false
     }
 
-    /// Check whether the specified leader has enough support (that is, 2f+1 certificates)
+    /// Check whether the specified leader has enough support (that is, 4f+1 supports)
     /// to be directly committed.
     fn enough_leader_support(
         &self,
@@ -247,9 +248,14 @@ impl BaseCommitter {
         let mut certificate_stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
         for decision_block in &decision_blocks {
             let authority = decision_block.reference().authority;
-            if self.is_certificate(decision_block, leader_block) {
+            // if self.is_certificate(decision_block, leader_block)
+            if decision_block
+                .includes()
+                .iter()
+                .any(|include| include.authority == leader_block.author_round().0)
+            {
                 tracing::trace!(
-                    "[{self}] {decision_block:?} is a certificate for leader {leader_block:?}"
+                    "[{self}] {decision_block:?} is a support for leader {leader_block:?}"
                 );
                 if certificate_stake_aggregator.add(authority, &self.committee) {
                     return true;
@@ -259,8 +265,8 @@ impl BaseCommitter {
         false
     }
 
-    /// Apply the indirect decision rule to the specified leader to see whether we can indirect-commit
-    /// or indirect-skip it.
+    /// Apply the indirect decision rule to the specified leader to see whether we can
+    /// indirect-commit or indirect-skip it.
     #[tracing::instrument(skip_all, fields(leader = %format_authority_round(leader, leader_round)))]
     pub fn try_indirect_decide<'a>(
         &self,
@@ -289,26 +295,26 @@ impl BaseCommitter {
         LeaderStatus::Undecided(leader, leader_round)
     }
 
-    /// Apply the direct decision rule to the specified leader to see whether we can direct-commit or
-    /// direct-skip it.
+    /// Apply the direct decision rule to the specified leader to see whether we can direct-commit
+    /// or direct-skip it.
     #[tracing::instrument(skip_all, fields(leader = %format_authority_round(leader, leader_round)))]
     pub fn try_direct_decide(
         &self,
         leader: AuthorityIndex,
         leader_round: RoundNumber,
     ) -> LeaderStatus {
-        // Check whether the leader has enough blame. That is, whether there are 2f+1 non-votes
-        // for that leader (which ensure there will never be a certificate for that leader).
-        let voting_round = leader_round + 1;
-        if self.enough_leader_blame(voting_round, leader) {
+        // Check whether the leader has enough blame. That is, whether there are 4f+1 non-supports
+        // for that leader.
+        let wave = self.wave_number(leader_round);
+        let decision_round = self.decision_round(wave);
+        // let voting_round = leader_round + 1;
+        if self.enough_leader_blame(decision_round, leader) {
             return LeaderStatus::Skip(leader, leader_round);
         }
 
-        // Check whether the leader(s) has enough support. That is, whether there are 2f+1
-        // certificates over the leader. Note that there could be more than one leader block
+        // Check whether the leader(s) has enough support. That is, whether there are 4f+1
+        // supports for the leader. Note that there could be more than one leader block
         // (created by Byzantine leaders).
-        let wave = self.wave_number(leader_round);
-        let decision_round = self.decision_round(wave);
         let leader_blocks = self
             .block_store
             .get_blocks_at_authority_round(leader, leader_round);
@@ -322,7 +328,7 @@ impl BaseCommitter {
         // the BFT assumption is broken.
         if leaders_with_enough_support.len() > 1 {
             panic!(
-                "[{self}] More than one certified block for {}",
+                "[{self}] More than one leader block with enough support for {}",
                 format_authority_round(leader, leader_round)
             )
         }

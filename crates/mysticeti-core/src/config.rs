@@ -55,7 +55,7 @@ pub struct NodeParameters {
 
 pub mod node_defaults {
     pub fn default_wave_length() -> super::RoundNumber {
-        3
+        2
     }
 
     pub fn default_leader_timeout() -> std::time::Duration {
