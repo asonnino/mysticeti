@@ -6,7 +6,7 @@ use std::{fmt::Display, sync::Arc};
 use super::{LeaderStatus, DEFAULT_WAVE_LENGTH};
 use crate::{
     block_store::BlockStore,
-    committee::{Committee, QuorumThreshold, StakeAggregator},
+    committee::{Committee, QuorumThreshold, IndirectQuorumThreshold, StakeAggregator},
     consensus::MINIMUM_WAVE_LENGTH,
     data::Data,
     types::{format_authority_round, AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
@@ -100,43 +100,43 @@ impl BaseCommitter {
     /// at (author, round) will be supported by the given block. If block A supports B at
     /// (author, round), it is guaranteed that any processed block by the same author that directly
     /// or indirectly includes A will also support B at (author, round).
-    fn find_support(
-        &self,
-        (author, round): (AuthorityIndex, RoundNumber),
-        from: &Data<StatementBlock>,
-    ) -> Option<BlockReference> {
-        if from.round() < round {
-            return None;
-        }
-        for include in from.includes() {
-            // Weak links may point to blocks with lower round numbers than strong links.
-            if include.round() < round {
-                continue;
-            }
-            if include.author_round() == (author, round) {
-                return Some(*include);
-            }
-            let include = self
-                .block_store
-                .get_block(*include)
-                .expect("We should have the whole sub-dag by now");
-            if let Some(support) = self.find_support((author, round), &include) {
-                return Some(support);
-            }
-        }
-        None
-    }
+    // fn find_support(
+    //     &self,
+    //     (author, round): (AuthorityIndex, RoundNumber),
+    //     from: &Data<StatementBlock>,
+    // ) -> Option<BlockReference> {
+    //     if from.round() < round {
+    //         return None;
+    //     }
+    //     for include in from.includes() {
+    //         // Weak links may point to blocks with lower round numbers than strong links.
+    //         if include.round() < round {
+    //             continue;
+    //         }
+    //         if include.author_round() == (author, round) {
+    //             return Some(*include);
+    //         }
+    //         let include = self
+    //             .block_store
+    //             .get_block(*include)
+    //             .expect("We should have the whole sub-dag by now");
+    //         if let Some(support) = self.find_support((author, round), &include) {
+    //             return Some(support);
+    //         }
+    //     }
+    //     None
+    // }
 
     /// Check whether the specified block (`potential_vote`) is a vote for
     /// the specified leader (`leader_block`).
-    fn is_vote(
-        &self,
-        potential_vote: &Data<StatementBlock>,
-        leader_block: &Data<StatementBlock>,
-    ) -> bool {
-        let (author, round) = leader_block.author_round();
-        self.find_support((author, round), potential_vote) == Some(*leader_block.reference())
-    }
+    // fn is_vote(
+    //     &self,
+    //     potential_vote: &Data<StatementBlock>,
+    //     leader_block: &Data<StatementBlock>,
+    // ) -> bool {
+    //     let (author, round) = leader_block.author_round();
+    //     self.find_support((author, round), potential_vote) == Some(*leader_block.reference())
+    // }
 
     /// Check whether the specified block (`potential_certificate`) is a certificate for
     /// the specified leader (`leader_block`).
@@ -163,7 +163,8 @@ impl BaseCommitter {
     // }
 
     /// Decide the status of a target leader from the specified anchor. We commit the target leader
-    /// if it has a certified link to the anchor. Otherwise, we skip the target leader.
+    /// if it has enough support (that is, 2f+1 supports) in the caussal history the anchor.
+    /// Otherwise, we skip the target leader.
     fn decide_leader_from_anchor(
         &self,
         anchor: &Data<StatementBlock>,
@@ -176,37 +177,66 @@ impl BaseCommitter {
             .block_store
             .get_blocks_at_authority_round(leader, leader_round);
 
-        // Get all blocks that could be potential certificates for the target leader. These blocks
+        // Get all blocks that could be potential supports for the target leader. These blocks
         // are in the decision round of the target leader and are linked to the anchor.
         let wave = self.wave_number(leader_round);
         let decision_round = self.decision_round(wave);
         let decision_blocks = self.block_store.get_blocks_by_round(decision_round);
-        let potential_certificates: Vec<_> = decision_blocks
+        let potential_supports: Vec<_> = decision_blocks
             .iter()
             .filter(|block| self.block_store.linked(anchor, block))
             .collect();
 
-        // Use those potential certificates to determine which (if any) of the target leader
-        // blocks can be committed.
-        let mut certified_leader_blocks: Vec<_> = leader_blocks
+        // For each leader block, check if it has enough support in the causal history
+        let mut supported_leader_blocks: Vec<_> = leader_blocks
             .into_iter()
             .filter(|leader_block| {
-                potential_certificates.iter().any(|potential_certificate| {
-                    self.is_certificate(potential_certificate, leader_block)
-                })
+                let mut indirect_support_stake_aggregator = StakeAggregator::<IndirectQuorumThreshold>::new();
+                
+                // Count supports for this leader block in the causal history
+                for block in &potential_supports {
+                    let authority = block.reference().authority;
+                    if block.includes().iter().any(|include| include.authority == leader) {
+                        if indirect_support_stake_aggregator.add(authority, &self.committee) {
+                            return true; // We have enough support (2f+1)
+                        }
+                    }
+                }
+                false // Not enough support
             })
             .collect();
 
-        // There can be at most one certified leader, otherwise it means the BFT assumption
+        // // Get all blocks that could be potential certificates for the target leader. These blocks
+        // // are in the decision round of the target leader and are linked to the anchor.
+        // let wave = self.wave_number(leader_round);
+        // let decision_round = self.decision_round(wave);
+        // let decision_blocks = self.block_store.get_blocks_by_round(decision_round);
+        // let potential_certificates: Vec<_> = decision_blocks
+        //     .iter()
+        //     .filter(|block| self.block_store.linked(anchor, block))
+        //     .collect();
+
+        // // Use those potential certificates to determine which (if any) of the target leader
+        // // blocks can be committed.
+        // let mut certified_leader_blocks: Vec<_> = leader_blocks
+        //     .into_iter()
+        //     .filter(|leader_block| {
+        //         potential_certificates.iter().any(|potential_certificate| {
+        //             self.is_certificate(potential_certificate, leader_block)
+        //         })
+        //     })
+        //     .collect();
+
+        // There can be at most one supported leader, otherwise it means the BFT assumption
         // is broken.
-        if certified_leader_blocks.len() > 1 {
-            panic!("More than one certified block at wave {wave} from leader {leader}")
+        if supported_leader_blocks.len() > 1 {
+            panic!("More than one supported block at wave {wave} from leader {leader}")
         }
 
-        // We commit the target leader if it has a certificate that is an ancestor of the anchor.
+        // We commit the target leader if it has enough support in the anchor's caussal history.
         // Otherwise skip it.
-        match certified_leader_blocks.pop() {
-            Some(certified_leader_block) => LeaderStatus::Commit(certified_leader_block.clone()),
+        match supported_leader_blocks.pop() {
+            Some(supported_leader_block) => LeaderStatus::Commit(supported_leader_block.clone()),
             None => LeaderStatus::Skip(leader, leader_round),
         }
     }
@@ -245,9 +275,9 @@ impl BaseCommitter {
     ) -> bool {
         let decision_blocks = self.block_store.get_blocks_by_round(decision_round);
 
-        let mut certificate_stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
+        let mut support_stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
         for decision_block in &decision_blocks {
-            let authority = decision_block.reference().authority;
+            let decider = decision_block.reference().authority;
             // if self.is_certificate(decision_block, leader_block)
             if decision_block
                 .includes()
@@ -257,7 +287,7 @@ impl BaseCommitter {
                 tracing::trace!(
                     "[{self}] {decision_block:?} is a support for leader {leader_block:?}"
                 );
-                if certificate_stake_aggregator.add(authority, &self.committee) {
+                if support_stake_aggregator.add(decider, &self.committee) {
                     return true;
                 }
             }
