@@ -15,11 +15,11 @@ use crate::{
 #[test]
 #[tracing_test::traced_test]
 fn direct_commit() {
-    let committee = committee(4);
+    let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
     for number_of_leaders in 1..committee.len() {
         let mut block_writer = TestBlockWriter::new(&committee);
-        build_dag(&committee, &mut block_writer, None, 5);
+        build_dag(&committee, &mut block_writer, None, wave_length + 1);
 
         let committer = UniversalCommitterBuilder::new(
             committee.clone(),
@@ -52,11 +52,11 @@ fn direct_commit() {
 #[test]
 #[tracing_test::traced_test]
 fn idempotence() {
-    let committee = committee(4);
+    let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
     for number_of_leaders in 1..committee.len() {
         let mut block_writer = TestBlockWriter::new(&committee);
-        build_dag(&committee, &mut block_writer, None, 5);
+        build_dag(&committee, &mut block_writer, None, wave_length + 1);
 
         let committer = UniversalCommitterBuilder::new(
             committee.clone(),
@@ -84,7 +84,7 @@ fn idempotence() {
 #[test]
 #[tracing_test::traced_test]
 fn multiple_direct_commit() {
-    let committee = committee(4);
+    let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
     let number_of_leaders = committee.quorum_threshold() as usize;
 
@@ -127,7 +127,7 @@ fn multiple_direct_commit() {
 #[test]
 #[tracing_test::traced_test]
 fn direct_commit_partial_round() {
-    let committee = committee(4);
+    let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
     let number_of_leaders = committee.quorum_threshold() as usize;
 
@@ -167,7 +167,7 @@ fn direct_commit_partial_round() {
 #[test]
 #[tracing_test::traced_test]
 fn direct_commit_late_call() {
-    let committee = committee(4);
+    let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
     let number_of_leaders = committee.quorum_threshold() as usize;
 
@@ -208,7 +208,7 @@ fn direct_commit_late_call() {
 #[test]
 #[tracing_test::traced_test]
 fn no_genesis_commit() {
-    let committee = committee(4);
+    let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
     let number_of_leaders = committee.quorum_threshold() as usize;
 
@@ -237,7 +237,7 @@ fn no_genesis_commit() {
 #[test]
 #[tracing_test::traced_test]
 fn no_leader() {
-    let committee = committee(4);
+    let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
     let number_of_leaders = committee.quorum_threshold() as usize;
 
@@ -305,7 +305,7 @@ fn no_leader() {
 #[test]
 #[tracing_test::traced_test]
 fn direct_skip() {
-    let committee = committee(4);
+    let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
     let number_of_leaders = committee.quorum_threshold() as usize;
 
@@ -370,7 +370,7 @@ fn direct_skip() {
 #[test]
 #[tracing_test::traced_test]
 fn indirect_commit() {
-    let committee = committee(4);
+    let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
     let number_of_leaders = committee.quorum_threshold() as usize;
 
@@ -469,7 +469,7 @@ fn indirect_commit() {
 #[test]
 #[tracing_test::traced_test]
 fn indirect_skip() {
-    let committee = committee(4);
+    let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
     let number_of_leaders = committee.quorum_threshold() as usize;
 
@@ -592,7 +592,7 @@ fn indirect_skip() {
 #[test]
 #[tracing_test::traced_test]
 fn undecided() {
-    let committee = committee(4);
+    let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
     let number_of_leaders = committee.quorum_threshold() as usize;
 

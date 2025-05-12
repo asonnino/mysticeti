@@ -15,7 +15,7 @@ use crate::{
 #[test]
 #[tracing_test::traced_test]
 fn direct_commit() {
-    let committee = committee(4);
+    let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
     let mut block_writer = TestBlockWriter::new(&committee);
@@ -46,11 +46,11 @@ fn direct_commit() {
 #[test]
 #[tracing_test::traced_test]
 fn idempotence() {
-    let committee = committee(4);
+    let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
     let mut block_writer = TestBlockWriter::new(&committee);
-    build_dag(&committee, &mut block_writer, None, 5);
+    build_dag(&committee, &mut block_writer, None, wave_length);
 
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
@@ -77,7 +77,7 @@ fn idempotence() {
 #[test]
 #[tracing_test::traced_test]
 fn multiple_direct_commit() {
-    let committee = committee(4);
+    let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
     let mut last_committed = BlockReference::new_test(0, 0);
@@ -115,7 +115,7 @@ fn multiple_direct_commit() {
 #[test]
 #[tracing_test::traced_test]
 fn direct_commit_late_call() {
-    let committee = committee(4);
+    let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
     let n = 10;
@@ -151,7 +151,7 @@ fn direct_commit_late_call() {
 #[test]
 #[tracing_test::traced_test]
 fn no_genesis_commit() {
-    let committee = committee(4);
+    let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
     let first_commit_round = wave_length - 1;
@@ -179,7 +179,7 @@ fn no_genesis_commit() {
 #[test]
 #[tracing_test::traced_test]
 fn no_leader() {
-    let committee = committee(4);
+    let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
     let mut block_writer = TestBlockWriter::new(&committee);
@@ -233,7 +233,7 @@ fn no_leader() {
 #[test]
 #[tracing_test::traced_test]
 fn direct_skip() {
-    let committee = committee(4);
+    let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
     let mut block_writer = TestBlockWriter::new(&committee);
@@ -284,7 +284,7 @@ fn direct_skip() {
 #[test]
 #[tracing_test::traced_test]
 fn indirect_commit() {
-    let committee = committee(4);
+    let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
     let mut block_writer = TestBlockWriter::new(&committee);
@@ -384,7 +384,7 @@ fn indirect_commit() {
 #[test]
 #[tracing_test::traced_test]
 fn indirect_skip() {
-    let committee = committee(4);
+    let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
     let mut block_writer = TestBlockWriter::new(&committee);
@@ -481,7 +481,7 @@ fn indirect_skip() {
 #[test]
 #[tracing_test::traced_test]
 fn undecided() {
-    let committee = committee(4);
+    let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
     let mut block_writer = TestBlockWriter::new(&committee);
