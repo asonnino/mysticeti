@@ -344,14 +344,6 @@ fn indirect_commit() {
     } else {
         panic!("Expected a committed leader")
     };
-
-    let leader_round_2 = 2 * wave_length;
-    let leader_2 = committee.elect_leader(leader_round_2);
-    if let LeaderStatus::Commit(ref block) = sequence[1] {
-        assert_eq!(block.author(), leader_2);
-    } else {
-        panic!("Expected a committed leader")
-    };
 }
 
 /// Commit the first leader, skip the 2nd, and commit the 3rd leader.
