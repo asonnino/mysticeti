@@ -81,8 +81,9 @@ pub struct StatementBlock {
     reference: BlockReference,
 
     //  A list of block references to other blocks that this block includes
-    //  Note that the order matters: if a reference to two blocks from the same round and same authority
-    //  are included, then the first reference is the one that this block conceptually votes for.
+    //  Note that the order matters: if a reference to two blocks from the same round and same
+    //  authority are included, then the first reference is the one that this block conceptually
+    //  votes for.
     includes: Vec<BlockReference>,
 
     // A list of base statements in order.
@@ -653,7 +654,8 @@ mod test {
         /// Takes a string in form "Block:[Dependencies, ...]; ..."
         /// Where Block is one letter denoting a node and a number denoting a round
         /// For example B3 is a block for round 3 made by validator index 2
-        /// Note that blocks are separated with semicolon(;) and dependencies within block are separated with coma(,)
+        /// Note that blocks are separated with semicolon(;) and dependencies within block are
+        /// separated with coma(,)
         pub fn draw(s: &str) -> Self {
             let mut blocks = HashMap::new();
             for block in s.split(";") {

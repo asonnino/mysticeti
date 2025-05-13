@@ -300,7 +300,7 @@ fn indirect_commit() {
         .filter(|x| x.authority != committee.elect_leader(leader_round_1))
         .collect();
 
-    // Only 2f+1 validators vote for the 1st leader.
+    // Only 2f+1 validators support the 1st leader.
     let mut references = Vec::new();
 
     let connections_with_leader_1 = committee
@@ -310,7 +310,7 @@ fn indirect_commit() {
         .collect();
     references.extend(build_dag_layer(
         connections_with_leader_1,
-        &mut block_writer
+        &mut block_writer,
     ));
 
     let connections_without_leader_1 = committee
@@ -320,36 +320,8 @@ fn indirect_commit() {
         .collect();
     references.extend(build_dag_layer(
         connections_without_leader_1,
-        &mut block_writer
+        &mut block_writer,
     ));
-
-    // // Only f+1 validators certify the 1st leader.
-    // let mut references_3 = Vec::new();
-
-    // let connections_with_votes_for_leader_1 = committee
-    //     .authorities()
-    //     .take(committee.validity_threshold() as usize)
-    //     .map(|authority| (authority, references_with_votes_for_leader_1.clone()))
-    //     .collect();
-    // references_3.extend(build_dag_layer(
-    //     connections_with_votes_for_leader_1,
-    //     &mut block_writer,
-    // ));
-
-    // let references: Vec<_> = references_without_votes_for_leader_1
-    //     .into_iter()
-    //     .chain(references_with_votes_for_leader_1.into_iter())
-    //     .take(committee.quorum_threshold() as usize)
-    //     .collect();
-    // let connections_without_votes_for_leader_1 = committee
-    //     .authorities()
-    //     .skip(committee.validity_threshold() as usize)
-    //     .map(|authority| (authority, references.clone()))
-    //     .collect();
-    // references_3.extend(build_dag_layer(
-    //     connections_without_votes_for_leader_1,
-    //     &mut block_writer,
-    // ));
 
     // Add enough blocks to decide the 5th leader. The second leader may be skipped
     // (if it was the support for the first leader that we removed) so we add enough blocks
