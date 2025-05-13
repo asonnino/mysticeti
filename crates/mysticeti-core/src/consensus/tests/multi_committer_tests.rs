@@ -19,7 +19,7 @@ fn direct_commit() {
     let wave_length = DEFAULT_WAVE_LENGTH;
     for number_of_leaders in 1..committee.len() {
         let mut block_writer = TestBlockWriter::new(&committee);
-        build_dag(&committee, &mut block_writer, None, wave_length + 1);
+        build_dag(&committee, &mut block_writer, None, 2 * wave_length - 1);
 
         let committer = UniversalCommitterBuilder::new(
             committee.clone(),
@@ -56,7 +56,7 @@ fn idempotence() {
     let wave_length = DEFAULT_WAVE_LENGTH;
     for number_of_leaders in 1..committee.len() {
         let mut block_writer = TestBlockWriter::new(&committee);
-        build_dag(&committee, &mut block_writer, None, wave_length + 1);
+        build_dag(&committee, &mut block_writer, None, 2 * wave_length - 1);
 
         let committer = UniversalCommitterBuilder::new(
             committee.clone(),
@@ -387,58 +387,64 @@ fn indirect_commit() {
         .filter(|x| x.authority != committee.elect_leader(leader_round_1))
         .collect();
 
-    // Only 2f+1 validators vote for the that leader.
+    // Only 2f+1 validators support that leader.
+    let mut references = Vec::new();
+
     let connections_with_leader_1 = committee
         .authorities()
-        .take(committee.quorum_threshold() as usize)
+        .take(committee.indirect_threshold() as usize)
         .map(|authority| (authority, references_1.clone()))
         .collect();
-    let references_with_votes_for_leader_1 =
-        build_dag_layer(connections_with_leader_1, &mut block_writer);
+    references.extend(build_dag_layer(
+        connections_with_leader_1,
+        &mut block_writer
+    ));
 
     let connections_without_leader_1 = committee
         .authorities()
-        .skip(committee.quorum_threshold() as usize)
+        .skip(committee.indirect_threshold() as usize)
         .map(|authority| (authority, references_without_leader_1.clone()))
         .collect();
-    let references_without_votes_for_leader_1 =
-        build_dag_layer(connections_without_leader_1, &mut block_writer);
-
-    // Only f+1 validators certify that leader.
-    let mut references_3 = Vec::new();
-
-    let connections_with_votes_for_leader_1 = committee
-        .authorities()
-        .take(committee.validity_threshold() as usize)
-        .map(|authority| (authority, references_with_votes_for_leader_1.clone()))
-        .collect();
-    references_3.extend(build_dag_layer(
-        connections_with_votes_for_leader_1,
-        &mut block_writer,
+    references.extend(build_dag_layer(
+        connections_without_leader_1,
+        &mut block_writer
     ));
 
-    let references: Vec<_> = references_without_votes_for_leader_1
-        .into_iter()
-        .chain(references_with_votes_for_leader_1.into_iter())
-        .take(committee.quorum_threshold() as usize)
-        .collect();
-    let connections_without_votes_for_leader_1 = committee
-        .authorities()
-        .skip(committee.validity_threshold() as usize)
-        .map(|authority| (authority, references.clone()))
-        .collect();
-    references_3.extend(build_dag_layer(
-        connections_without_votes_for_leader_1,
-        &mut block_writer,
-    ));
+    // // Only f+1 validators certify that leader.
+    // let mut references_3 = Vec::new();
+
+    // let connections_with_votes_for_leader_1 = committee
+    //     .authorities()
+    //     .take(committee.validity_threshold() as usize)
+    //     .map(|authority| (authority, references_with_votes_for_leader_1.clone()))
+    //     .collect();
+    // references_3.extend(build_dag_layer(
+    //     connections_with_votes_for_leader_1,
+    //     &mut block_writer,
+    // ));
+
+    // let references: Vec<_> = references_without_votes_for_leader_1
+    //     .into_iter()
+    //     .chain(references_with_votes_for_leader_1.into_iter())
+    //     .take(committee.quorum_threshold() as usize)
+    //     .collect();
+    // let connections_without_votes_for_leader_1 = committee
+    //     .authorities()
+    //     .skip(committee.validity_threshold() as usize)
+    //     .map(|authority| (authority, references.clone()))
+    //     .collect();
+    // references_3.extend(build_dag_layer(
+    //     connections_without_votes_for_leader_1,
+    //     &mut block_writer,
+    // ));
 
     // Add enough blocks to decide the leaders of wave 2.
-    let decision_round_3 = 3 * wave_length - 1;
+    let decision_round_2 = 3 * wave_length - 1;
     build_dag(
         &committee,
         &mut block_writer,
-        Some(references_3),
-        decision_round_3,
+        Some(references),
+        decision_round_2,
     );
 
     // Ensure we commit the 1st leader.
@@ -487,7 +493,7 @@ fn indirect_skip() {
         .filter(|x| x.authority != leader_2)
         .collect();
 
-    // Only f+1 validators connect to that leader.
+    // Only f+1 validators support that leader.
     let mut references = Vec::new();
 
     let connections_with_leader_2 = committee
@@ -609,7 +615,7 @@ fn undecided() {
         .filter(|x| x.authority != committee.elect_leader(leader_round_1))
         .collect();
 
-    // Create a dag layer where only one authority votes for that leader.
+    // Create a dag layer where only one authority supports that leader.
     let mut authorities = committee.authorities();
     let leader_connection = vec![(authorities.next().unwrap(), references_1)];
     let non_leader_connections: Vec<_> = authorities

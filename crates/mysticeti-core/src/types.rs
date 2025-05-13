@@ -48,7 +48,7 @@ pub enum InternalEpochStatus {
     Open,
     /// Change is triggered by an external deterministic mechanism
     BeginChange,
-    /// Epoch is safe to close -- committed blocks from >= 2f+1 stake indicate epoch change
+    /// Epoch is safe to close -- committed blocks from >= 4f+1 stake indicate epoch change
     SafeToClose,
 }
 
