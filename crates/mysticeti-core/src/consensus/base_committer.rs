@@ -96,7 +96,7 @@ impl BaseCommitter {
     }
 
     /// Decide the status of a target leader from the specified anchor. We commit the target leader
-    /// if it has enough support (that is, 2f+1 supports) in the caussal history the anchor.
+    /// if it has enough support (that is, 2f+1 supports) in the causal history the anchor.
     /// Otherwise, we skip the target leader.
     fn decide_leader_from_anchor(
         &self,
@@ -192,7 +192,7 @@ impl BaseCommitter {
     ) -> bool {
         let decision_blocks = self.block_store.get_blocks_by_round(decision_round);
 
-        let mut support_stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
+        let mut support_stake_aggregator = StakeAggregator::<IndirectQuorumThreshold>::new();
         for decision_block in &decision_blocks {
             let decider = decision_block.reference().authority;
             if decision_block
