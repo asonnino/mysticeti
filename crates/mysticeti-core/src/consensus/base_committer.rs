@@ -192,7 +192,7 @@ impl BaseCommitter {
     ) -> bool {
         let decision_blocks = self.block_store.get_blocks_by_round(decision_round);
 
-        let mut support_stake_aggregator = StakeAggregator::<IndirectQuorumThreshold>::new();
+        let mut support_stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
         for decision_block in &decision_blocks {
             let decider = decision_block.reference().authority;
             if decision_block
