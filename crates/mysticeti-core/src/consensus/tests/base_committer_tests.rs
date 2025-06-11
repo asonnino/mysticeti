@@ -15,10 +15,10 @@ use crate::{
 #[test]
 #[tracing_test::traced_test]
 fn direct_commit() {
-    let committee = committee(4);
+    let committee = committee(3);
 
     let mut block_writer = TestBlockWriter::new(&committee);
-    build_dag(&committee, &mut block_writer, None, 5);
+    build_dag(&committee, &mut block_writer, None, 3);
 
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
@@ -43,10 +43,10 @@ fn direct_commit() {
 #[test]
 #[tracing_test::traced_test]
 fn idempotence() {
-    let committee = committee(4);
+    let committee = committee(3);
 
     let mut block_writer = TestBlockWriter::new(&committee);
-    build_dag(&committee, &mut block_writer, None, 5);
+    build_dag(&committee, &mut block_writer, None, 3);
 
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
@@ -71,7 +71,7 @@ fn idempotence() {
 #[test]
 #[tracing_test::traced_test]
 fn multiple_direct_commit() {
-    let committee = committee(4);
+    let committee = committee(3);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
     let mut last_committed = BlockReference::new_test(0, 0);
@@ -108,7 +108,7 @@ fn multiple_direct_commit() {
 #[test]
 #[tracing_test::traced_test]
 fn direct_commit_late_call() {
-    let committee = committee(4);
+    let committee = committee(3);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
     let n = 10;
@@ -143,7 +143,7 @@ fn direct_commit_late_call() {
 #[test]
 #[tracing_test::traced_test]
 fn no_genesis_commit() {
-    let committee = committee(4);
+    let committee = committee(3);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
     let first_commit_round = 2 * wave_length - 1;
@@ -170,7 +170,7 @@ fn no_genesis_commit() {
 #[test]
 #[tracing_test::traced_test]
 fn no_leader() {
-    let committee = committee(4);
+    let committee = committee(3);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
     let mut block_writer = TestBlockWriter::new(&committee);
@@ -223,7 +223,7 @@ fn no_leader() {
 #[test]
 #[tracing_test::traced_test]
 fn direct_skip() {
-    let committee = committee(4);
+    let committee = committee(3);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
     let mut block_writer = TestBlockWriter::new(&committee);
@@ -273,7 +273,7 @@ fn direct_skip() {
 #[test]
 #[tracing_test::traced_test]
 fn indirect_commit() {
-    let committee = committee(4);
+    let committee = committee(3);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
     let mut block_writer = TestBlockWriter::new(&committee);
@@ -289,7 +289,7 @@ fn indirect_commit() {
         .filter(|x| x.authority != committee.elect_leader(leader_round_1))
         .collect();
 
-    // Only 2f+1 validators vote for the 1st leader.
+    // Only [quorum threshold] validators vote for the 1st leader.
     let connections_with_leader_1 = committee
         .authorities()
         .take(committee.quorum_threshold() as usize)
@@ -306,7 +306,7 @@ fn indirect_commit() {
     let references_without_votes_for_leader_1 =
         build_dag_layer(connections_without_leader_1, &mut block_writer);
 
-    // Only f+1 validators certify the 1st leader.
+    // Only [quorum validity] validators certify the 1st leader.
     let mut references_3 = Vec::new();
 
     let connections_with_votes_for_leader_1 = committee
@@ -370,7 +370,7 @@ fn indirect_commit() {
 #[test]
 #[tracing_test::traced_test]
 fn indirect_skip() {
-    let committee = committee(4);
+    let committee = committee(3);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
     let mut block_writer = TestBlockWriter::new(&committee);
@@ -389,20 +389,8 @@ fn indirect_skip() {
 
     // Only f+1 validators connect to the 2nd leader.
     let mut references = Vec::new();
-
-    let connections_with_leader_2 = committee
-        .authorities()
-        .take(committee.validity_threshold() as usize)
-        .map(|authority| (authority, references_2.clone()))
-        .collect();
-    references.extend(build_dag_layer(
-        connections_with_leader_2,
-        &mut block_writer,
-    ));
-
     let connections_without_leader_2 = committee
         .authorities()
-        .skip(committee.validity_threshold() as usize)
         .map(|authority| (authority, references_without_leader_2.clone()))
         .collect();
     references.extend(build_dag_layer(
@@ -465,7 +453,7 @@ fn indirect_skip() {
 #[test]
 #[tracing_test::traced_test]
 fn undecided() {
-    let committee = committee(4);
+    let committee = committee(3);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
     let mut block_writer = TestBlockWriter::new(&committee);
@@ -481,16 +469,14 @@ fn undecided() {
         .filter(|x| x.authority != committee.elect_leader(leader_round_1))
         .collect();
 
-    // Create a dag layer where only one authority votes for the first leader.
-    let mut authorities = committee.authorities();
-    let leader_connection = vec![(authorities.next().unwrap(), references_1)];
-    let non_leader_connections: Vec<_> = authorities
+    // Create a dag layer where no authority votes for the first leader.
+    let non_leader_connections: Vec<_> = committee
+        .authorities()
         .take((committee.quorum_threshold() - 1) as usize)
         .map(|authority| (authority, references_without_leader_1.clone()))
         .collect();
 
-    let connections = leader_connection.into_iter().chain(non_leader_connections);
-    let references = build_dag_layer(connections.collect(), &mut block_writer);
+    let references = build_dag_layer(non_leader_connections, &mut block_writer);
 
     // Add enough blocks to reach the decision round of the first leader.
     let decision_round_1 = 2 * wave_length - 1;

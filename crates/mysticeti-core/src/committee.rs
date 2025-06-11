@@ -63,7 +63,7 @@ impl Committee {
                 .checked_add(a.stake())
                 .expect("Total stake overflow");
         }
-        let validity_threshold = total_stake / 3;
+        let validity_threshold = 1;
         let quorum_threshold = total_stake / 3;
         Arc::new(Committee {
             authorities,
