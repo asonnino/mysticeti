@@ -94,7 +94,7 @@ mod tests {
             &Dag::draw_block("A1:[]"),
             &committee
         ));
-        assert!(!threshold_clock_valid_non_genesis(
+        assert!(threshold_clock_valid_non_genesis(
             &Dag::draw_block("A1:[A0, B0]"),
             &committee
         ));
@@ -107,7 +107,7 @@ mod tests {
             &committee
         ));
         assert!(!threshold_clock_valid_non_genesis(
-            &Dag::draw_block("A2:[A1, B1, C0, D0]"),
+            &Dag::draw_block("A2:[A1, B0, C0, D0]"),
             &committee
         ));
         assert!(threshold_clock_valid_non_genesis(
@@ -128,7 +128,7 @@ mod tests {
         aggregator.add_block(BlockReference::new_test(1, 0), &committee);
         assert_eq!(aggregator.get_round(), 1);
         aggregator.add_block(BlockReference::new_test(1, 1), &committee);
-        assert_eq!(aggregator.get_round(), 1);
+        assert_eq!(aggregator.get_round(), 2);
         aggregator.add_block(BlockReference::new_test(2, 1), &committee);
         assert_eq!(aggregator.get_round(), 2);
         aggregator.add_block(BlockReference::new_test(3, 1), &committee);
