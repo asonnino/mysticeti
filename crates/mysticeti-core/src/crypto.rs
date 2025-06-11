@@ -4,8 +4,8 @@
 use std::fmt;
 
 use digest::Digest;
-#[cfg(not(test))]
-use ed25519_consensus::Signature;
+// #[cfg(not(test))]
+// use ed25519_consensus::Signature;
 use rand::{rngs::StdRng, SeedableRng};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use zeroize::Zeroize;
@@ -45,42 +45,42 @@ pub struct Signer(Box<ed25519_consensus::SigningKey>);
 type BlockHasher = blake2::Blake2b<digest::consts::U32>;
 
 impl BlockDigest {
-    #[cfg(not(test))]
-    pub fn new(
-        authority: AuthorityIndex,
-        round: RoundNumber,
-        includes: &[BlockReference],
-        statements: &[BaseStatement],
-        meta_creation_time_ns: TimestampNs,
-        epoch_marker: EpochStatus,
-        signature: &SignatureBytes,
-    ) -> Self {
-        let mut hasher = BlockHasher::default();
-        Self::digest_without_signature(
-            &mut hasher,
-            authority,
-            round,
-            includes,
-            statements,
-            meta_creation_time_ns,
-            epoch_marker,
-        );
-        hasher.update(signature);
-        Self(hasher.finalize().into())
-    }
+    // #[cfg(not(test))]
+    // pub fn new(
+    //     authority: AuthorityIndex,
+    //     round: RoundNumber,
+    //     includes: &[BlockReference],
+    //     statements: &[BaseStatement],
+    //     meta_creation_time_ns: TimestampNs,
+    //     epoch_marker: EpochStatus,
+    //     signature: &SignatureBytes,
+    // ) -> Self {
+    //     let mut hasher = BlockHasher::default();
+    //     Self::digest_without_signature(
+    //         &mut hasher,
+    //         authority,
+    //         round,
+    //         includes,
+    //         statements,
+    //         meta_creation_time_ns,
+    //         epoch_marker,
+    //     );
+    //     hasher.update(signature);
+    //     Self(hasher.finalize().into())
+    // }
 
-    #[cfg(test)]
-    pub fn new(
-        _authority: AuthorityIndex,
-        _round: RoundNumber,
-        _includes: &[BlockReference],
-        _statements: &[BaseStatement],
-        _meta_creation_time_ns: TimestampNs,
-        _epoch_marker: EpochStatus,
-        _signature: &SignatureBytes,
-    ) -> Self {
-        Default::default()
-    }
+    // #[cfg(test)]
+    // pub fn new(
+    //     _authority: AuthorityIndex,
+    //     _round: RoundNumber,
+    //     _includes: &[BlockReference],
+    //     _statements: &[BaseStatement],
+    //     _meta_creation_time_ns: TimestampNs,
+    //     _epoch_marker: EpochStatus,
+    //     _signature: &SignatureBytes,
+    // ) -> Self {
+    //     Default::default()
+    // }
 
     /// There is a bit of a complexity around what is considered block digest and what is being signed
     ///
@@ -177,20 +177,21 @@ impl<T: AsBytes> CryptoHash for T {
 
 impl PublicKey {
     #[cfg(not(test))]
-    pub fn verify_block(&self, block: &StatementBlock) -> Result<(), ed25519_consensus::Error> {
-        let signature = Signature::from(block.signature().0);
-        let mut hasher = BlockHasher::default();
-        BlockDigest::digest_without_signature(
-            &mut hasher,
-            block.author(),
-            block.round(),
-            block.includes(),
-            block.statements(),
-            block.meta_creation_time_ns(),
-            block.epoch_changed(),
-        );
-        let digest: [u8; BLOCK_DIGEST_SIZE] = hasher.finalize().into();
-        self.0.verify(&signature, digest.as_ref())
+    pub fn verify_block(&self, _block: &StatementBlock) -> Result<(), ed25519_consensus::Error> {
+        // let signature = Signature::from(block.signature().0);
+        // let mut hasher = BlockHasher::default();
+        // BlockDigest::digest_without_signature(
+        //     &mut hasher,
+        //     block.author(),
+        //     block.round(),
+        //     block.includes(),
+        //     block.statements(),
+        //     block.meta_creation_time_ns(),
+        //     block.epoch_changed(),
+        // );
+        // let digest: [u8; BLOCK_DIGEST_SIZE] = hasher.finalize().into();
+        // self.0.verify(&signature, digest.as_ref())
+        Ok(())
     }
 
     #[cfg(test)]

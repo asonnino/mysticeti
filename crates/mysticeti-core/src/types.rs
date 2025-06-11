@@ -9,7 +9,7 @@ pub struct Transaction {
 }
 
 pub type RoundNumber = u64;
-pub type BlockDigest = crate::crypto::BlockDigest;
+pub type BlockDigest = ();
 pub type Stake = u64;
 pub type KeyPair = u64;
 pub type PublicKey = crate::crypto::PublicKey;
@@ -29,7 +29,7 @@ pub use test::Dag;
 
 use crate::{
     committee::{Committee, VoteRangeBuilder},
-    crypto::{AsBytes, CryptoHash, SignatureBytes, Signer},
+    crypto::{AsBytes, CryptoHash, Signer},
     data::Data,
     threshold_clock::threshold_clock_valid_non_genesis,
 };
@@ -71,7 +71,10 @@ pub enum BaseStatement {
 
 impl Hash for BlockReference {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write(&self.digest.as_ref()[..8]);
+        let mut buf = [0u8; 16];
+        buf[..8].copy_from_slice(&self.authority.to_be_bytes());
+        buf[8..].copy_from_slice(&self.round().to_be_bytes());
+        state.write(&buf);
     }
 }
 
@@ -94,7 +97,7 @@ pub struct StatementBlock {
     epoch_marker: EpochStatus,
 
     // Signature by the block author
-    signature: SignatureBytes,
+    signature: (),
 }
 
 #[derive(Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Default)]
@@ -126,7 +129,6 @@ impl StatementBlock {
             vec![],
             0,
             false,
-            SignatureBytes::default(),
         ))
     }
 
@@ -137,16 +139,8 @@ impl StatementBlock {
         statements: Vec<BaseStatement>,
         meta_creation_time_ns: TimestampNs,
         epoch_marker: EpochStatus,
-        signer: &Signer,
+        _signer: &Signer,
     ) -> Self {
-        let signature = signer.sign_block(
-            authority,
-            round,
-            &includes,
-            &statements,
-            meta_creation_time_ns,
-            epoch_marker,
-        );
         Self::new(
             authority,
             round,
@@ -154,7 +148,6 @@ impl StatementBlock {
             statements,
             meta_creation_time_ns,
             epoch_marker,
-            signature,
         )
     }
 
@@ -165,27 +158,18 @@ impl StatementBlock {
         statements: Vec<BaseStatement>,
         meta_creation_time_ns: TimestampNs,
         epoch_marker: EpochStatus,
-        signature: SignatureBytes,
     ) -> Self {
         Self {
             reference: BlockReference {
                 authority,
                 round,
-                digest: BlockDigest::new(
-                    authority,
-                    round,
-                    &includes,
-                    &statements,
-                    meta_creation_time_ns,
-                    epoch_marker,
-                    &signature,
-                ),
+                digest: (),
             },
             includes,
             statements,
             meta_creation_time_ns,
             epoch_marker,
-            signature,
+            signature: (),
         }
     }
 
@@ -252,8 +236,8 @@ impl StatementBlock {
         self.reference.author_round()
     }
 
-    pub fn signature(&self) -> &SignatureBytes {
-        &self.signature
+    pub fn signature(&self) -> () {
+        ()
     }
 
     pub fn meta_creation_time_ns(&self) -> TimestampNs {
@@ -273,15 +257,7 @@ impl StatementBlock {
 
     pub fn verify(&self, committee: &Committee) -> eyre::Result<()> {
         let round = self.round();
-        let digest = BlockDigest::new(
-            self.author(),
-            round,
-            &self.includes,
-            &self.statements,
-            self.meta_creation_time_ns,
-            self.epoch_marker,
-            &self.signature,
-        );
+        let digest = ();
         ensure!(
             digest == self.digest(),
             "Digest does not match, calculated {:?}, provided {:?}",
@@ -570,7 +546,7 @@ impl CryptoHash for BlockReference {
     fn crypto_hash(&self, state: &mut impl Digest) {
         self.authority.crypto_hash(state);
         self.round.crypto_hash(state);
-        self.digest.crypto_hash(state);
+        // self.digest.crypto_hash(state);
     }
 }
 

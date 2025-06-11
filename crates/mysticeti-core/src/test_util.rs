@@ -437,7 +437,6 @@ pub fn build_dag(
                     vec![],
                     0,
                     false,
-                    Default::default(),
                 ));
                 (*block.reference(), block)
             })
@@ -465,7 +464,6 @@ pub fn build_dag_layer(
             vec![],
             0,
             false,
-            Default::default(),
         ));
 
         references.push(*block.reference());
