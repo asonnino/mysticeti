@@ -3,11 +3,14 @@
 
 use std::cmp::Ordering;
 
+#[cfg(test)]
+use crate::types::StatementBlock;
 use crate::{
     committee::{Committee, QuorumThreshold, StakeAggregator},
-    types::{BlockReference, RoundNumber, StatementBlock},
+    types::{BlockReference, RoundNumber},
 };
 
+#[cfg(test)]
 // A block is threshold clock valid if:
 // - all included blocks have a round number lower than the block round number.
 // - the set of authorities with blocks included has a quorum in the current committee.

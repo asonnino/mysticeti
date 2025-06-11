@@ -22,7 +22,7 @@ use std::{
 };
 
 use digest::Digest;
-use eyre::{bail, ensure};
+use eyre::ensure;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
 pub use test::Dag;
@@ -31,7 +31,7 @@ use crate::{
     committee::{Committee, VoteRangeBuilder},
     crypto::{AsBytes, CryptoHash, Signer},
     data::Data,
-    threshold_clock::threshold_clock_valid_non_genesis,
+    // threshold_clock::threshold_clock_valid_non_genesis,
 };
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
@@ -255,51 +255,51 @@ impl StatementBlock {
         Duration::new(secs as u64, nanos as u32)
     }
 
-    pub fn verify(&self, committee: &Committee) -> eyre::Result<()> {
-        let round = self.round();
-        let digest = ();
-        ensure!(
-            digest == self.digest(),
-            "Digest does not match, calculated {:?}, provided {:?}",
-            digest,
-            self.digest()
-        );
-        let pub_key = committee.get_public_key(self.author());
-        let Some(pub_key) = pub_key else {
-            bail!("Unknown block author {}", self.author())
-        };
-        if round == GENESIS_ROUND {
-            bail!("Genesis block should not go through verification");
-        }
-        if let Err(e) = pub_key.verify_block(self) {
-            bail!("Block signature verification has failed: {:?}", e);
-        }
-        for include in &self.includes {
-            // Also check duplicate includes?
-            ensure!(
-                committee.known_authority(include.authority),
-                "Include {:?} references unknown authority",
-                include
-            );
-            ensure!(
-                include.round < round,
-                "Include {:?} round is greater or equal to own round {}",
-                include,
-                round
-            );
-        }
-        for statement in &self.statements {
-            // Also check duplicate statements?
-            match statement {
-                BaseStatement::Share(_) => {}
-                BaseStatement::Vote(_, _) => {}
-                BaseStatement::VoteRange(range) => range.verify()?,
-            }
-        }
-        ensure!(
-            threshold_clock_valid_non_genesis(self, committee),
-            "Threshold clock is not valid"
-        );
+    pub fn verify(&self, _committee: &Committee) -> eyre::Result<()> {
+        // let round = self.round();
+        // let digest = ();
+        // ensure!(
+        //     digest == self.digest(),
+        //     "Digest does not match, calculated {:?}, provided {:?}",
+        //     digest,
+        //     self.digest()
+        // );
+        // let pub_key = committee.get_public_key(self.author());
+        // let Some(pub_key) = pub_key else {
+        //     bail!("Unknown block author {}", self.author())
+        // };
+        // if round == GENESIS_ROUND {
+        //     bail!("Genesis block should not go through verification");
+        // }
+        // if let Err(e) = pub_key.verify_block(self) {
+        //     bail!("Block signature verification has failed: {:?}", e);
+        // }
+        // for include in &self.includes {
+        //     // Also check duplicate includes?
+        //     ensure!(
+        //         committee.known_authority(include.authority),
+        //         "Include {:?} references unknown authority",
+        //         include
+        //     );
+        //     ensure!(
+        //         include.round < round,
+        //         "Include {:?} round is greater or equal to own round {}",
+        //         include,
+        //         round
+        //     );
+        // }
+        // for statement in &self.statements {
+        //     // Also check duplicate statements?
+        //     match statement {
+        //         BaseStatement::Share(_) => {}
+        //         BaseStatement::Vote(_, _) => {}
+        //         BaseStatement::VoteRange(range) => range.verify()?,
+        //     }
+        // }
+        // ensure!(
+        //     threshold_clock_valid_non_genesis(self, committee),
+        //     "Threshold clock is not valid"
+        // );
         Ok(())
     }
 

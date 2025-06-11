@@ -150,7 +150,7 @@ pub fn committee_and_syncers(
                     core.block_handler().transaction_time.clone(),
                     test_metrics(),
                 );
-                Syncer::new(core, 3, Default::default(), commit_handler, test_metrics())
+                Syncer::new(core, 2, Default::default(), commit_handler, test_metrics())
             })
             .collect(),
     )
