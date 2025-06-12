@@ -166,12 +166,17 @@ impl<C: ServerProviderClient> Testbed<C> {
 
     /// Start the specified number of instances in each region. Returns an error if there are not
     /// enough available instances.
-    pub async fn start(&mut self, quantity: usize) -> TestbedResult<()> {
-        display::action("Booting instances");
+    pub async fn start(&mut self, quantity: usize, region: Option<String>) -> TestbedResult<()> {
+        display::action(format!("Booting instances ({quantity} per region)"));
 
         // Gather available instances.
         let mut available = Vec::new();
-        for region in &self.settings.regions {
+        let regions_to_check = match region {
+            Some(r) => vec![r.clone()],
+            None => self.settings.regions.clone(),
+        };
+        
+        for region in &regions_to_check {
             available.extend(
                 self.instances
                     .iter()
@@ -291,7 +296,7 @@ mod test {
         testbed.deploy(5, None).await.unwrap();
         testbed.stop().await.unwrap();
 
-        let result = testbed.start(2).await;
+        let result = testbed.start(2, None).await;
 
         assert!(result.is_ok());
         for region in &testbed.settings.regions {
@@ -317,7 +322,7 @@ mod test {
         let client = TestClient::new(settings.clone());
         let mut testbed = Testbed::new(settings, client).await.unwrap();
         testbed.deploy(5, None).await.unwrap();
-        testbed.start(2).await.unwrap();
+        testbed.start(2, None).await.unwrap();
 
         testbed.stop().await.unwrap();
 
