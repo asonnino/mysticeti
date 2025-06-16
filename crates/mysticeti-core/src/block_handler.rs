@@ -12,6 +12,7 @@ use std::{
 use minibytes::Bytes;
 use parking_lot::Mutex;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::{
     block_store::BlockStore,
@@ -33,6 +34,7 @@ use crate::{
     },
 };
 
+use crate::runtime::timestamp_utc;
 pub trait BlockHandler: Send + Sync {
     fn handle_blocks(
         &mut self,
@@ -346,6 +348,8 @@ pub struct TestCommitHandler<H = HashSet<TransactionLocator>> {
 
     metrics: Arc<Metrics>,
     consensus_only: bool,
+    tx: Option<Sender<(u128, u128)>>,
+    start_time_duration: Duration,
 }
 
 impl<H: ProcessedTransactionHandler<TransactionLocator> + Default> TestCommitHandler<H> {
@@ -373,6 +377,35 @@ impl<H: ProcessedTransactionHandler<TransactionLocator>> TestCommitHandler<H> {
         metrics: Arc<Metrics>,
         handler: H,
     ) -> Self {
+
+        let (tx, mut rx): (Sender<(u128, u128)>, Receiver<(u128, u128)>) = mpsc::channel(10000000);
+        let file_name = format!("client-times-{}.txt", authority);
+        // start a new asynchronous task using the receiver (rx)
+        tokio::spawn(async move {
+            let mut file = match tokio::fs::File::create(&file_name).await {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to create file {}: {}", file_name, e);
+                    return;
+                }
+            };
+            let mut counter = 0;
+            let mut pending = String::from("");
+            // Continuously receive messages from the channel and write them to the file
+            while let Some((start, end)) = rx.recv().await {
+                let output = format!("{:?}, {:?}\n", start, end);
+                pending.push_str(&output);
+                counter = counter + 1;
+                if counter == 100 {
+                    tokio::io::AsyncWriteExt::write_all(&mut file, pending.as_bytes()).await;
+                    counter = 0;
+                    pending.clear();
+                }
+            }
+        });
+
+
+
         let consensus_only = env::var("CONSENSUS_ONLY").is_ok();
         Self {
             commit_interpreter: Linearizer::new(authority),
@@ -385,6 +418,8 @@ impl<H: ProcessedTransactionHandler<TransactionLocator>> TestCommitHandler<H> {
 
             metrics,
             consensus_only,
+            tx: Some(tx.clone()),
+            start_time_duration: timestamp_utc(),
         }
     }
 
@@ -429,6 +464,21 @@ impl<H: ProcessedTransactionHandler<TransactionLocator>> TestCommitHandler<H> {
             .latency_squared_s
             .with_label_values(&["shared"])
             .inc_by(square_latency);
+        if let Some(tx) = &self.tx {
+            let result = tx.try_send((
+                tx_submission_timestamp
+                    .checked_sub(self.start_time_duration)
+                    .unwrap_or_default()
+                    .as_micros(),
+                current_timestamp
+                    .checked_sub(self.start_time_duration)
+                    .unwrap_or_default()
+                    .as_micros(),
+            ));
+            if let Err(e) = result {
+                eprintln!("Failed to send timestamp: {}", e);
+            }
+        }
     }
 }
 
