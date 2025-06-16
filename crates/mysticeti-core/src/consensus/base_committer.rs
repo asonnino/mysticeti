@@ -6,7 +6,7 @@ use std::{fmt::Display, sync::Arc};
 use super::{LeaderStatus, DEFAULT_WAVE_LENGTH};
 use crate::{
     block_store::BlockStore,
-    committee::{Committee, QuorumThreshold, StakeAggregator},
+    committee::{AllThreshold, Committee, QuorumThreshold, StakeAggregator},
     consensus::MINIMUM_WAVE_LENGTH,
     data::Data,
     types::{format_authority_round, AuthorityIndex, RoundNumber, StatementBlock},
@@ -180,8 +180,8 @@ impl BaseCommitter {
         for leader_block in leader_blocks {
             if self.block_store.linked(anchor, &leader_block) {
                 tracing::trace!(
-                "[{self}] Leader {leader} at round {leader_round} is linked to anchor {anchor:?}"
-            );
+                    "[{self}] Leader {leader} at round {leader_round} is linked to anchor {anchor:?}"
+                );
                 return LeaderStatus::Commit(leader_block);
             }
         }
@@ -229,7 +229,7 @@ impl BaseCommitter {
     fn enough_leader_blame(&self, voting_round: RoundNumber, leader: AuthorityIndex) -> bool {
         let voting_blocks = self.block_store.get_blocks_by_round(voting_round);
 
-        let mut blame_stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
+        let mut blame_stake_aggregator = StakeAggregator::<AllThreshold>::new();
         for voting_block in &voting_blocks {
             let voter = voting_block.reference().authority;
             if voting_block
@@ -249,7 +249,7 @@ impl BaseCommitter {
         false
     }
 
-    /// Check whether the specified leader has enough support (that is, 2f+1 certificates)
+    /// Check whether the specified leader has enough support (that is, f+1 blocks)
     /// to be directly committed.
     fn enough_leader_support(
         &self,

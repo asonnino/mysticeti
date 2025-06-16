@@ -6,7 +6,7 @@ use std::{collections::HashSet, fmt};
 use crate::{
     block_store::BlockStore,
     data::Data,
-    types::{BlockReference, StatementBlock},
+    types::{AuthorityIndex, BlockReference, StatementBlock},
 };
 
 /// The output of consensus is an ordered list of [`CommittedSubDag`]. The application can arbitrarily
@@ -33,13 +33,17 @@ impl CommittedSubDag {
 /// Expand a committed sequence of leader into a sequence of sub-dags.
 #[derive(Default)]
 pub struct Linearizer {
+    _authority: AuthorityIndex,
     /// Keep track of all committed blocks to avoid committing the same block twice.
     pub committed: HashSet<BlockReference>,
 }
 
 impl Linearizer {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(authority: AuthorityIndex) -> Self {
+        Self {
+            _authority: authority,
+            committed: HashSet::new(),
+        }
     }
 
     /// Collect the sub-dag from a specific anchor excluding any duplicates or blocks that

@@ -48,7 +48,6 @@ impl<'a> FinalizationInterpreter<'a> {
         &mut self,
     ) -> Vec<(TransactionLocator, HashSet<BlockReference>)> {
         for round in 0..=self.block_store.highest_round() {
-            println!("ROUND: {}", round);
             for block in self.block_store.get_blocks_by_round(round) {
                 self._finalized_tx_certifying_blocks(&block);
             }
@@ -59,7 +58,6 @@ impl<'a> FinalizationInterpreter<'a> {
                 result.push((*k, v.clone()));
             }
         }
-        println!("Total finalized transactions: {}", result.len());
         result
     }
 

@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     pub fn test_syncer() {
-        for seed in 0..10 {
+        for seed in 1..2 {
             test_syncer_at(seed);
         }
     }

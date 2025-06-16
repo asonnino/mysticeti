@@ -94,6 +94,7 @@ impl Validator {
             TransactionLog::start(private_config.committed_transactions_log())
                 .expect("Failed to open committed transaction log for write");
         let commit_handler = TestCommitHandler::new_with_handler(
+            authority,
             committee.clone(),
             block_handler.transaction_time.clone(),
             metrics.clone(),

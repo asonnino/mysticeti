@@ -350,16 +350,24 @@ pub struct TestCommitHandler<H = HashSet<TransactionLocator>> {
 
 impl<H: ProcessedTransactionHandler<TransactionLocator> + Default> TestCommitHandler<H> {
     pub fn new(
+        authority: AuthorityIndex,
         committee: Arc<Committee>,
         transaction_time: Arc<Mutex<HashMap<TransactionLocator, TimeInstant>>>,
         metrics: Arc<Metrics>,
     ) -> Self {
-        Self::new_with_handler(committee, transaction_time, metrics, Default::default())
+        Self::new_with_handler(
+            authority,
+            committee,
+            transaction_time,
+            metrics,
+            Default::default(),
+        )
     }
 }
 
 impl<H: ProcessedTransactionHandler<TransactionLocator>> TestCommitHandler<H> {
     pub fn new_with_handler(
+        authority: AuthorityIndex,
         committee: Arc<Committee>,
         transaction_time: Arc<Mutex<HashMap<TransactionLocator, TimeInstant>>>,
         metrics: Arc<Metrics>,
@@ -367,7 +375,7 @@ impl<H: ProcessedTransactionHandler<TransactionLocator>> TestCommitHandler<H> {
     ) -> Self {
         let consensus_only = env::var("CONSENSUS_ONLY").is_ok();
         Self {
-            commit_interpreter: Linearizer::new(),
+            commit_interpreter: Linearizer::new(authority),
             transaction_votes: TransactionAggregator::with_handler(handler),
             committee,
             committed_leaders: vec![],

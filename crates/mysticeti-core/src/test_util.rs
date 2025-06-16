@@ -146,6 +146,7 @@ pub fn committee_and_syncers(
             .into_iter()
             .map(|core| {
                 let commit_handler = TestCommitHandler::new(
+                    core.authority(),
                     committee.clone(),
                     core.block_handler().transaction_time.clone(),
                     test_metrics(),
@@ -234,6 +235,7 @@ pub async fn network_syncers_with_epoch_duration(
     let mut network_syncers = vec![];
     for (network, core) in networks.into_iter().zip(cores.into_iter()) {
         let commit_handler = TestCommitHandler::new(
+            core.authority(),
             committee.clone(),
             core.block_handler().transaction_time.clone(),
             test_metrics(),
@@ -267,9 +269,11 @@ pub fn check_commits<H: BlockHandler, S: SyncerSignals>(
         .map(|state| state.commit_observer().committed_leaders());
     let zero_commit = vec![];
     let mut max_commit = &zero_commit;
-    for commit in commits {
+    for (i, commit) in commits.enumerate() {
+        println!("[{i}] Analyzing commit");
         if commit.len() >= max_commit.len() {
             if is_prefix(&max_commit, commit) {
+                println!("[{i}] max commit is [{i}]");
                 max_commit = commit;
             } else {
                 panic!("[!] Commits diverged: {max_commit:?}, {commit:?}");
