@@ -63,7 +63,7 @@ pub mod node_defaults {
     }
 
     pub fn default_max_block_size() -> usize {
-        4 * 1024 * 1024
+        512 * 1024
     }
 
     pub fn default_rounds_in_epoch() -> super::RoundNumber {
