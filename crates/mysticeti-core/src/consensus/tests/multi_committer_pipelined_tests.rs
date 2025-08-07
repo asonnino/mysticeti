@@ -121,7 +121,6 @@ fn multiple_direct_commit() {
                 let leader_round = i_u64 / num_leaders_u64;
                 let expected = committee.elect_leader(leader_offset + leader_round);
                 assert_eq!(block.author(), expected);
-                
             } else {
                 panic!("Expected a committed leader")
             };
@@ -160,7 +159,7 @@ fn direct_commit_partial_round() {
 
     let sequence = committer.try_commit(last_committed);
     tracing::info!("Commit sequence: {sequence:?}");
-    
+
     assert_eq!(sequence.len(), wave_length as usize * number_of_leaders - 1);
     for (i, leader) in sequence.iter().enumerate() {
         if let LeaderStatus::Commit(block) = leader {
@@ -203,7 +202,10 @@ fn direct_commit_late_call() {
     let sequence = committer.try_commit(last_committed);
     tracing::info!("Commit sequence: {sequence:?}");
 
-    assert_eq!(sequence.len(), number_of_leaders * n as usize * wave_length as usize);
+    assert_eq!(
+        sequence.len(),
+        number_of_leaders * n as usize * wave_length as usize
+    );
     for (i, leader) in sequence.iter().enumerate() {
         if let LeaderStatus::Commit(block) = leader {
             let num_leaders_u64 = number_of_leaders as u64;
@@ -248,10 +250,10 @@ fn no_genesis_commit() {
     }
 }
 
-/// We directly skip a leader that has enough blames and commit the others
+/// We directly skip the leader if it has enough blame.
 #[test]
 #[tracing_test::traced_test]
-fn no_leader() {
+fn direct_skip() {
     let committee = committee(6);
     let wave_length = DEFAULT_WAVE_LENGTH;
     let number_of_leaders = committee.quorum_threshold() as usize;
@@ -319,72 +321,6 @@ fn no_leader() {
     }
 }
 
-/// We directly skip the leader if it has enough blame.
-// #[test]
-// #[tracing_test::traced_test]
-// fn direct_skip() {
-//     let committee = committee(6);
-//     let wave_length = DEFAULT_WAVE_LENGTH;
-//     let number_of_leaders = committee.quorum_threshold() as usize;
-
-//     let mut block_writer = TestBlockWriter::new(&committee);
-
-//     // Add enough blocks to reach the first leader of wave 1.
-//     let leader_round_1 = 1;
-//     let references_1 = build_dag(&committee, &mut block_writer, None, leader_round_1);
-
-//     // Filter out that leader.
-//     let references_without_leader_1: Vec<_> = references_1
-//         .into_iter()
-//         .filter(|x| x.authority != committee.elect_leader(leader_round_1))
-//         .collect();
-
-//     // Add enough blocks to reach the decision round of wave 1.
-//     let decision_round_1 = wave_length;
-//     build_dag(
-//         &committee,
-//         &mut block_writer,
-//         Some(references_without_leader_1),
-//         decision_round_1,
-//     );
-
-//     // Ensure that the first leader of wave 1 is skipped.
-//     let committer = UniversalCommitterBuilder::new(
-//         committee.clone(),
-//         block_writer.into_block_store(),
-//         test_metrics(),
-//     )
-//     .with_wave_length(wave_length)
-//     .with_number_of_leaders(number_of_leaders)
-//     .with_pipeline(true)
-//     .build();
-
-//     let last_committed = BlockReference::new_test(0, 0);
-//     let sequence = committer.try_commit(last_committed);
-//     tracing::info!("Commit sequence: {sequence:?}");
-
-//     assert_eq!(sequence.len(), number_of_leaders);
-//     for (i, leader) in sequence.iter().enumerate() {
-//         let leader_round = wave_length;
-//         let leader_offset = i as u64;
-//         let expected_leader = committee.elect_leader(leader_round + leader_offset);
-//         if i == 0 {
-//             if let LeaderStatus::Skip(leader, round) = sequence[i] {
-//                 assert_eq!(leader, expected_leader);
-//                 assert_eq!(round, leader_round_1);
-//             } else {
-//                 panic!("Expected to directly skip the leader");
-//             }
-//         } else {
-//             if let LeaderStatus::Commit(block) = leader {
-//                 assert_eq!(block.author(), expected_leader);
-//             } else {
-//                 panic!("Expected a committed leader")
-//             }
-//         }
-//     }
-// }
-
 /// Indirect-commit the first leader.
 #[test]
 #[tracing_test::traced_test]
@@ -406,7 +342,10 @@ fn indirect_commit() {
         .filter(|x| x.authority != committee.elect_leader(leader_round_1))
         .collect();
     tracing::info!("number_of_leaders: {:?}", number_of_leaders);
-    tracing::info!("references_without_leader_1: {:?}", references_without_leader_1);
+    tracing::info!(
+        "references_without_leader_1: {:?}",
+        references_without_leader_1
+    );
 
     // Only 2f+1 validators support that leader.
     let mut references = Vec::new();
