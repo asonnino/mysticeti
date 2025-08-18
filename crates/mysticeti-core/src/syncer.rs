@@ -87,7 +87,11 @@ impl<H: BlockHandler, S: SyncerSignals, C: CommitObserver> Syncer<H, S, C> {
             .metrics
             .utilization_timer
             .utilization_timer("Syncer::try_new_block");
+
         if self.force_new_block
+            || self
+                .core
+                .force_due_to_leader_blames(self.commit_period)
             || self
                 .core
                 .ready_new_block(self.commit_period, &self.connected_authorities)

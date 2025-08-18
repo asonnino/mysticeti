@@ -21,7 +21,7 @@ use crate::{
         WAL_ENTRY_PAYLOAD,
         WAL_ENTRY_STATE,
     },
-    committee::Committee,
+    committee::{Committee, IndirectQuorumThreshold, StakeAggregator},
     config::{NodePrivateConfig, NodePublicConfig},
     consensus::{
         linearizer::CommittedSubDag,
@@ -398,6 +398,46 @@ impl<H: BlockHandler> Core<H> {
             leaders.retain(|leader| connected_authorities.contains(leader));
             self.block_store
                 .all_blocks_exists_at_authority_round(&leaders, leader_round)
+        } else {
+            false
+        }
+    }
+
+    /// Force the next block if we observe 2f + 1 blames for each leader block in the prior round
+    pub fn force_due_to_leader_blames(
+        &self,
+        period: u64,
+    ) -> bool { 
+        let quorum_round = self.threshold_clock.get_round();
+
+        // Only applicable when we are waiting for the previous leader blocks
+        if quorum_round > self.last_commit_leader.round().max(period - 1) {
+            let leader_round = quorum_round - 1;
+            let leaders = self.committer.get_leaders(leader_round);
+            let quorum_blocks = self.block_store.get_blocks_by_round(quorum_round);
+            
+            // Return true only if all leaders individually reach 2f + 1 blames
+            for leader in leaders.into_iter() {
+                let mut blame_stake_aggregator = StakeAggregator::<IndirectQuorumThreshold>::new();
+                let mut reached_threshold_for_leader = false;
+                for quorum_block in &quorum_blocks {
+                    let decider = quorum_block.reference().authority;
+                    if quorum_block
+                        .includes()
+                        .iter()
+                        .all(|include| include.authority != leader)
+                    {
+                        if blame_stake_aggregator.add(decider, &self.committee) {
+                            reached_threshold_for_leader = true;
+                            break;
+                        }
+                    }
+                }
+                if !reached_threshold_for_leader {
+                    return false;
+                }
+            }
+            true
         } else {
             false
         }
