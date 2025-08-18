@@ -413,7 +413,14 @@ impl<H: BlockHandler> Core<H> {
         // Only applicable when we are waiting for the previous leader blocks
         if quorum_round > self.last_commit_leader.round().max(period - 1) {
             let leader_round = quorum_round - 1;
-            let leaders = self.committer.get_leaders(leader_round);
+            let mut leaders = self.committer.get_leaders(leader_round);
+            // Only check leaders for which we have not received their block yet
+            leaders.retain(|leader| {
+                !self
+                    .block_store
+                    .block_exists_at_authority_round(*leader, leader_round)
+            });
+
             let quorum_blocks = self.block_store.get_blocks_by_round(quorum_round);
             
             // Return true only if all leaders individually reach 2f + 1 blames
