@@ -474,7 +474,7 @@ if __name__ == "__main__":
         help='The type of object transaction (owned or shared)'
     )
     parser.add_argument(
-        '--committee', nargs='+', type=int, default=[4],
+        '--committee', nargs='+', type=int, default=[3],
         help='The committee sizes to plot on the same graph'
     )
     parser.add_argument(

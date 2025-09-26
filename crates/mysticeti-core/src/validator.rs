@@ -350,4 +350,46 @@ mod smoke_tests {
             _ = time::sleep(timeout) => panic!("Failed to gather commits within a few timeouts"),
         }
     }
+
+    /// Ensure that a committee of 3 honest validators commits (minimum viable committee).
+    #[tokio::test]
+    async fn validator_commit_three_nodes() {
+        let committee_size = 3;
+        let committee = Committee::new_for_benchmarks(committee_size);
+        let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(300);
+        let client_parameters = ClientParameters::default();
+
+        let mut handles = Vec::new();
+        let dir = TempDir::new("validator_commit_three_nodes").unwrap();
+        let private_configs = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size);
+        private_configs.iter().for_each(|private_config| {
+            fs::create_dir_all(&private_config.storage_path).unwrap();
+        });
+
+        for (i, private_config) in private_configs.into_iter().enumerate() {
+            let authority = i as AuthorityIndex;
+
+            let validator = Validator::start(
+                authority,
+                committee.clone(),
+                public_config.clone(),
+                private_config,
+                client_parameters.clone(),
+            )
+            .await
+            .unwrap();
+            handles.push(validator.await_completion());
+        }
+
+        let addresses = public_config
+            .all_metric_addresses()
+            .map(|address| address.to_owned())
+            .collect();
+        let timeout = config::node_defaults::default_leader_timeout() * 5;
+
+        tokio::select! {
+            _ = await_for_commits(addresses) => (),
+            _ = time::sleep(timeout) => panic!("Failed to gather commits within a few timeouts"),
+        }
+    }
 }
