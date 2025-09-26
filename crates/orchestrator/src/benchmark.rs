@@ -77,7 +77,7 @@ impl<N: ProtocolParameters, C: ProtocolParameters> BenchmarkParametersGeneric<N,
             settings: Settings::new_for_test(),
             node_parameters: N::default(),
             client_parameters: C::default(),
-            nodes: 4,
+            nodes: 3,
             load: 500,
         }
     }
