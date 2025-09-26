@@ -11,8 +11,10 @@ use std::{
 
 use minibytes::Bytes;
 use parking_lot::Mutex;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::{
+    mpsc,
+    mpsc::{Receiver, Sender},
+};
 
 use crate::{
     block_store::BlockStore,
@@ -21,7 +23,7 @@ use crate::{
     data::Data,
     log::TransactionLog,
     metrics::{Metrics, UtilizationTimerExt, UtilizationTimerVecExt},
-    runtime::{self, TimeInstant},
+    runtime::{self, timestamp_utc, TimeInstant},
     syncer::CommitObserver,
     transactions_generator::TransactionGenerator,
     types::{
@@ -33,8 +35,6 @@ use crate::{
         TransactionLocator,
     },
 };
-
-use crate::runtime::timestamp_utc;
 pub trait BlockHandler: Send + Sync {
     fn handle_blocks(
         &mut self,
@@ -377,7 +377,6 @@ impl<H: ProcessedTransactionHandler<TransactionLocator>> TestCommitHandler<H> {
         metrics: Arc<Metrics>,
         handler: H,
     ) -> Self {
-
         let (tx, mut rx): (Sender<(u128, u128)>, Receiver<(u128, u128)>) = mpsc::channel(10000000);
         let file_name = format!("client-times-{}.txt", authority);
         // start a new asynchronous task using the receiver (rx)
@@ -397,14 +396,14 @@ impl<H: ProcessedTransactionHandler<TransactionLocator>> TestCommitHandler<H> {
                 pending.push_str(&output);
                 counter = counter + 1;
                 if counter == 1000000 {
-                    tokio::io::AsyncWriteExt::write_all(&mut file, pending.as_bytes()).await;
+                    tokio::io::AsyncWriteExt::write_all(&mut file, pending.as_bytes())
+                        .await
+                        .unwrap();
                     counter = 0;
                     pending.clear();
                 }
             }
         });
-
-
 
         let consensus_only = env::var("CONSENSUS_ONLY").is_ok();
         Self {

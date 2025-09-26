@@ -209,8 +209,8 @@ mod tests {
         }
     }
 
-    #[test]
-    pub fn test_syncer() {
+    #[tokio::test]
+    pub async fn test_syncer() {
         for seed in 1..2 {
             test_syncer_at(seed);
         }
