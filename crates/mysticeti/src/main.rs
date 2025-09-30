@@ -31,7 +31,7 @@ enum Operation {
     /// from a list of initial peers. This is only suitable for benchmarks as it exposes all keys.
     BenchmarkGenesis {
         /// The list of ip addresses of the all validators.
-        #[clap(long, value_name = "ADDR", value_delimiter = ' ', num_args(4..))]
+        #[clap(long, value_name = "ADDR", value_delimiter = ' ', num_args(3..))]
         ips: Vec<IpAddr>,
         /// The working directory where the files will be generated.
         #[clap(long, value_name = "FILE", default_value = "genesis")]
