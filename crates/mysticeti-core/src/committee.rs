@@ -38,6 +38,7 @@ pub struct Committee {
     authorities: Vec<Authority>,
     validity_threshold: Stake, // The minimum stake required for validity
     quorum_threshold: Stake,   // The minimum stake required for quorum
+    indirect_threshold: Stake, // The minimum stake required for indirect quorum
 }
 
 impl Committee {
@@ -63,12 +64,15 @@ impl Committee {
                 .checked_add(a.stake())
                 .expect("Total stake overflow");
         }
-        let validity_threshold = total_stake / 3;
-        let quorum_threshold = 2 * total_stake / 3;
+        let validity_threshold = total_stake / 5;
+        let quorum_threshold = 4 * total_stake / 5;
+        let indirect_threshold = 2 * total_stake / 5;
+        
         Arc::new(Committee {
             authorities,
             validity_threshold,
             quorum_threshold,
+            indirect_threshold,
         })
     }
 
@@ -84,6 +88,10 @@ impl Committee {
 
     pub fn quorum_threshold(&self) -> Stake {
         self.quorum_threshold + 1
+    }
+
+    pub fn indirect_threshold(&self) -> Stake {
+        self.indirect_threshold + 1
     }
 
     pub fn get_public_key(&self, authority: AuthorityIndex) -> Option<&PublicKey> {
@@ -125,6 +133,10 @@ impl Committee {
 
     pub fn is_quorum(&self, amount: Stake) -> bool {
         amount > self.quorum_threshold
+    }
+
+    pub fn is_indirect_quorum(&self, amount: Stake) -> bool {
+        amount > self.indirect_threshold
     }
 
     pub fn get_total_stake<A: Borrow<AuthorityIndex>>(&self, authorities: &HashSet<A>) -> Stake {
@@ -194,6 +206,8 @@ pub trait CommitteeThreshold: Clone {
 pub struct QuorumThreshold;
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ValidityThreshold;
+#[derive(Serialize, Deserialize, Clone)]
+pub struct IndirectQuorumThreshold;
 
 impl CommitteeThreshold for QuorumThreshold {
     fn is_threshold(committee: &Committee, amount: Stake) -> bool {
@@ -204,6 +218,12 @@ impl CommitteeThreshold for QuorumThreshold {
 impl CommitteeThreshold for ValidityThreshold {
     fn is_threshold(committee: &Committee, amount: Stake) -> bool {
         committee.is_valid(amount)
+    }
+}
+
+impl CommitteeThreshold for IndirectQuorumThreshold {
+    fn is_threshold(committee: &Committee, amount: Stake) -> bool {
+        committee.is_indirect_quorum(amount)
     }
 }
 

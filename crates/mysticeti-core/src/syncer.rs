@@ -87,7 +87,11 @@ impl<H: BlockHandler, S: SyncerSignals, C: CommitObserver> Syncer<H, S, C> {
             .metrics
             .utilization_timer
             .utilization_timer("Syncer::try_new_block");
+
         if self.force_new_block
+            || self
+                .core
+                .force_due_to_leader_blames(self.commit_period)
             || self
                 .core
                 .ready_new_block(self.commit_period, &self.connected_authorities)
@@ -219,7 +223,7 @@ mod tests {
     pub fn test_syncer_at(seed: u64) {
         eprintln!("Seed {seed}");
         let rng = rng_at_seed(seed);
-        let (committee, syncers) = committee_and_syncers(4);
+        let (committee, syncers) = committee_and_syncers(6);
         let mut simulator = Simulator::new(syncers, rng);
 
         // Kick off process by asking validators create a block after genesis

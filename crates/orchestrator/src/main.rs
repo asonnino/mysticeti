@@ -119,9 +119,15 @@ pub enum TestbedAction {
 
     /// Start at most the specified number of instances per region on an existing testbed.
     Start {
-        /// Number of instances to deploy.
+        /// Number of instances to start.
         #[clap(long, default_value_t = 10)]
         instances: usize,
+
+        /// The region where to start the instances. If this parameter is not specified, the
+        /// command starts the specified number of instances in all regions listed in the
+        /// setting file.
+        #[clap(long)]
+        region: Option<String>,
     },
 
     /// Stop an existing testbed (without destroying the instances).
@@ -182,8 +188,8 @@ async fn run<C: ServerProviderClient>(
                 .wrap_err("Failed to deploy testbed")?,
 
             // Start the specified number of instances on an existing testbed.
-            TestbedAction::Start { instances } => testbed
-                .start(instances)
+            TestbedAction::Start { instances , region} => testbed
+                .start(instances, region)
                 .await
                 .wrap_err("Failed to start testbed")?,
 

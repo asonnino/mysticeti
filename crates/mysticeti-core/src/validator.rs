@@ -192,7 +192,7 @@ mod smoke_tests {
     /// Ensure that a committee of honest validators commits.
     #[tokio::test]
     async fn validator_commit() {
-        let committee_size = 4;
+        let committee_size = 6;
         let committee = Committee::new_for_benchmarks(committee_size);
         let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(0);
         let client_parameters = ClientParameters::default();
@@ -234,7 +234,7 @@ mod smoke_tests {
     /// Ensure validators can sync missing blocks
     #[tokio::test]
     async fn validator_sync() {
-        let committee_size = 4;
+        let committee_size = 6;
         let committee = Committee::new_for_benchmarks(committee_size);
         let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(100);
         let client_parameters = ClientParameters::default();
@@ -307,7 +307,7 @@ mod smoke_tests {
     // Ensure that honest validators commit despite the presence of a crash fault.
     #[tokio::test]
     async fn validator_crash_faults() {
-        let committee_size = 4;
+        let committee_size = 6;
         let committee = Committee::new_for_benchmarks(committee_size);
         let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(200);
         let client_parameters = ClientParameters::default();

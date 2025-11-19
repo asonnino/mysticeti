@@ -419,7 +419,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_network_sync() {
-        let network_syncers = network_syncers(4).await;
+        let network_syncers = network_syncers(6).await;
         println!("Started");
         tokio::time::sleep(Duration::from_secs(3)).await;
         println!("Done");

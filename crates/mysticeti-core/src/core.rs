@@ -21,7 +21,7 @@ use crate::{
         WAL_ENTRY_PAYLOAD,
         WAL_ENTRY_STATE,
     },
-    committee::Committee,
+    committee::{Committee, IndirectQuorumThreshold, StakeAggregator},
     config::{NodePrivateConfig, NodePublicConfig},
     consensus::{
         linearizer::CommittedSubDag,
@@ -403,6 +403,53 @@ impl<H: BlockHandler> Core<H> {
         }
     }
 
+    /// Force the next block if we observe 2f + 1 blames for each leader block in the prior round
+    pub fn force_due_to_leader_blames(
+        &self,
+        period: u64,
+    ) -> bool { 
+        let quorum_round = self.threshold_clock.get_round();
+
+        // Only applicable when we are waiting for the previous leader blocks
+        if quorum_round > self.last_commit_leader.round().max(period - 1) {
+            let leader_round = quorum_round - 1;
+            let mut leaders = self.committer.get_leaders(leader_round);
+            // Only check leaders for which we have not received their block yet
+            leaders.retain(|leader| {
+                !self
+                    .block_store
+                    .block_exists_at_authority_round(*leader, leader_round)
+            });
+
+            let quorum_blocks = self.block_store.get_blocks_by_round(quorum_round);
+            
+            // Return true only if all leaders individually reach 2f + 1 blames
+            for leader in leaders.into_iter() {
+                let mut blame_stake_aggregator = StakeAggregator::<IndirectQuorumThreshold>::new();
+                let mut reached_threshold_for_leader = false;
+                for quorum_block in &quorum_blocks {
+                    let decider = quorum_block.reference().authority;
+                    if quorum_block
+                        .includes()
+                        .iter()
+                        .all(|include| include.authority != leader)
+                    {
+                        if blame_stake_aggregator.add(decider, &self.committee) {
+                            reached_threshold_for_leader = true;
+                            break;
+                        }
+                    }
+                }
+                if !reached_threshold_for_leader {
+                    return false;
+                }
+            }
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn handle_committed_subdag(
         &mut self,
         committed: Vec<CommittedSubDag>,
@@ -524,7 +571,7 @@ mod test {
 
     #[test]
     fn test_core_simple_exchange() {
-        let (_committee, mut cores, _) = committee_and_cores(4);
+        let (_committee, mut cores, _) = committee_and_cores(6);
 
         let mut proposed_transactions = vec![];
         let mut blocks = vec![];
@@ -538,7 +585,7 @@ mod test {
             eprintln!("{}: {}", core.authority, block);
             blocks.push(block.clone());
         }
-        assert_eq!(proposed_transactions.len(), 4);
+        assert_eq!(proposed_transactions.len(), 6);
         let more_blocks = blocks.split_off(1);
 
         eprintln!("===");
@@ -578,7 +625,7 @@ mod test {
     fn test_randomized_simple_exchange() {
         'l: for seed in 0..100 {
             let mut rng = StdRng::from_seed([seed; 32]);
-            let (committee, mut cores, _) = committee_and_cores(4);
+            let (committee, mut cores, _) = committee_and_cores(6);
 
             let mut proposed_transactions = vec![];
             let mut pending: Vec<_> = committee.authorities().map(|_| vec![]).collect();
@@ -661,7 +708,7 @@ mod test {
     #[test]
     fn test_core_recovery() {
         let tmp = tempdir::TempDir::new("test_core_recovery").unwrap();
-        let (_committee, mut cores, _) = committee_and_cores_persisted(4, Some(tmp.path()));
+        let (_committee, mut cores, _) = committee_and_cores_persisted(6, Some(tmp.path()));
 
         let mut proposed_transactions = vec![];
         let mut blocks = vec![];
@@ -675,11 +722,11 @@ mod test {
             eprintln!("{}: {}", core.authority, block);
             blocks.push(block.clone());
         }
-        assert_eq!(proposed_transactions.len(), 4);
+        assert_eq!(proposed_transactions.len(), 6);
         cores.iter_mut().for_each(Core::write_state);
         drop(cores);
 
-        let (_committee, mut cores, _) = committee_and_cores_persisted(4, Some(tmp.path()));
+        let (_committee, mut cores, _) = committee_and_cores_persisted(6, Some(tmp.path()));
 
         let more_blocks = blocks.split_off(2);
 
@@ -704,7 +751,7 @@ mod test {
 
         eprintln!("===");
 
-        let (_committee, mut cores, _) = committee_and_cores_persisted(4, Some(tmp.path()));
+        let (_committee, mut cores, _) = committee_and_cores_persisted(6, Some(tmp.path()));
 
         for core in &mut cores {
             core.add_blocks(blocks_r2.clone());

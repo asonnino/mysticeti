@@ -53,7 +53,7 @@ impl ThresholdClockAggregator {
         match block.round.cmp(&self.round) {
             // Blocks with round less then what we currently build are irrelevant here
             Ordering::Less => {}
-            // If we processed block for round r, we also have stored 2f+1 blocks from r-1
+            // If we processed block for round r, we also have stored 4f+1 blocks from r-1
             Ordering::Greater => {
                 self.aggregator.clear();
                 self.aggregator.add(block.authority, committee);
@@ -62,13 +62,13 @@ impl ThresholdClockAggregator {
             Ordering::Equal => {
                 if self.aggregator.add(block.authority, committee) {
                     self.aggregator.clear();
-                    // We have seen 2f+1 blocks for current round, advance
+                    // We have seen 4f+1 blocks for current round, advance
                     self.round = block.round + 1;
                 }
             }
         }
         if block.round > self.round {
-            // If we processed block for round r, we also have stored 2f+1 blocks from r-1
+            // If we processed block for round r, we also have stored 4f+1 blocks from r-1
             self.round = block.round;
         }
     }
@@ -84,12 +84,12 @@ mod tests {
     use super::*;
     use crate::types::Dag;
 
-    // Make a committee with 4 authorities each with Stake 1, and a block with 3 includes at round number zero
+    // Make a committee with 6 authorities each with Stake 1, and a block with 3 includes at round number zero
     // check that if the includes are blocks the threshold_clock_valid returns false, but if it is only base statements
     // it succeeds
     #[test]
     fn test_threshold_clock_valid() {
-        let committee = Committee::new_test(vec![1, 1, 1, 1]);
+        let committee = Committee::new_test(vec![1, 1, 1, 1, 1, 1]);
         assert!(!threshold_clock_valid_non_genesis(
             &Dag::draw_block("A1:[]"),
             &committee
@@ -99,26 +99,26 @@ mod tests {
             &committee
         ));
         assert!(threshold_clock_valid_non_genesis(
-            &Dag::draw_block("A1:[A0, B0, C0]"),
+            &Dag::draw_block("A1:[A0, B0, C0, D0, E0]"),
             &committee
         ));
         assert!(threshold_clock_valid_non_genesis(
-            &Dag::draw_block("A1:[A0, B0, C0, D0]"),
+            &Dag::draw_block("A1:[A0, B0, C0, D0, E0, F0]"),
             &committee
         ));
         assert!(!threshold_clock_valid_non_genesis(
-            &Dag::draw_block("A2:[A1, B1, C0, D0]"),
+            &Dag::draw_block("A2:[A1, B1, C0, D0, E0]"),
             &committee
         ));
         assert!(threshold_clock_valid_non_genesis(
-            &Dag::draw_block("A2:[A1, B1, C1, D0]"),
+            &Dag::draw_block("A2:[A1, B1, C1, D1, E1, F0]"),
             &committee
         ));
     }
 
     #[test]
     fn test_threshold_clock_aggregator() {
-        let committee = Committee::new_test(vec![1, 1, 1, 1]);
+        let committee = Committee::new_test(vec![1, 1, 1, 1, 1, 1]);
         let mut aggregator = ThresholdClockAggregator::new(0);
 
         aggregator.add_block(BlockReference::new_test(0, 0), &committee);
@@ -130,8 +130,12 @@ mod tests {
         aggregator.add_block(BlockReference::new_test(1, 1), &committee);
         assert_eq!(aggregator.get_round(), 1);
         aggregator.add_block(BlockReference::new_test(2, 1), &committee);
-        assert_eq!(aggregator.get_round(), 2);
+        assert_eq!(aggregator.get_round(), 1);
         aggregator.add_block(BlockReference::new_test(3, 1), &committee);
+        assert_eq!(aggregator.get_round(), 1);
+        aggregator.add_block(BlockReference::new_test(4, 1), &committee);
+        assert_eq!(aggregator.get_round(), 2);
+        aggregator.add_block(BlockReference::new_test(5, 1), &committee);
         assert_eq!(aggregator.get_round(), 2);
     }
 }
