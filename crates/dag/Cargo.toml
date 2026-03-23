@@ -1,5 +1,5 @@
 [package]
-name = "mysticeti-core"
+name = "dag"
 version = "0.1.0"
 edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -20,7 +20,7 @@ hyper = "0.14.26"
 libc = "0.2.146"
 memmap2 = "0.7.0"
 
-minibytes = { path = "../third-party/minibytes", default_features = false, features = ["frommmap"] }
+minibytes = { path = "../minibytes", default_features = false, features = ["frommmap"] }
 parking_lot = "0.12.1"
 prometheus = "0.13.3"
 

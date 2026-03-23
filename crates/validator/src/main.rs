@@ -10,7 +10,7 @@ use std::{
 
 use clap::{command, Parser};
 use eyre::{eyre, Context, Result};
-use mysticeti_core::{
+use dag::{
     committee::Committee,
     config::{ClientParameters, ImportExport, NodeParameters, NodePrivateConfig, NodePublicConfig},
     types::AuthorityIndex,

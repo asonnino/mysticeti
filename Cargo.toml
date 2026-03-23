@@ -1,9 +1,9 @@
 [workspace]
 members = [
-    "crates/mysticeti",
-    "crates/mysticeti-core",
+    "crates/validator",
+    "crates/dag",
     "crates/orchestrator",
-    "crates/third-party/minibytes",
+    "crates/minibytes",
 ]
 resolver = "2"
 

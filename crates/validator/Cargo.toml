@@ -1,5 +1,5 @@
 [package]
-name = "mysticeti"
+name = "validator"
 version = "0.1.0"
 edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -9,7 +9,7 @@ clap = { workspace = true }
 color-eyre = { workspace = true }
 eyre = { workspace = true }
 futures = { workspace = true }
-mysticeti-core = { path = "../mysticeti-core" }
+dag = { path = "../dag" }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }

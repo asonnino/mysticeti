@@ -8,7 +8,7 @@ use std::{
     path::PathBuf,
 };
 
-use mysticeti_core::{
+use dag::{
     config::{self, ClientParameters, NodeParameters},
     types::AuthorityIndex,
 };
@@ -117,7 +117,7 @@ impl ProtocolCommands for MysticetiProtocol {
         );
 
         let genesis = [
-            &format!("./{BINARY_PATH}/mysticeti"),
+            &format!("./{BINARY_PATH}/validator"),
             "benchmark-genesis",
             &format!(
                 "--ips {ips} --working-directory {} --node-parameters-path {}",
@@ -157,7 +157,7 @@ impl ProtocolCommands for MysticetiProtocol {
                 let client_parameters_path = self.working_dir.join("client-parameters.yaml");
 
                 let run = [
-                    &format!("./{BINARY_PATH}/mysticeti"),
+                    &format!("./{BINARY_PATH}/validator"),
                     "run",
                     &format!("--authority {authority}"),
                     &format!("--committee-path {}", committee_path.display()),
@@ -190,11 +190,11 @@ impl ProtocolCommands for MysticetiProtocol {
 }
 
 impl ProtocolMetrics for MysticetiProtocol {
-    const BENCHMARK_DURATION: &'static str = mysticeti_core::metrics::BENCHMARK_DURATION;
+    const BENCHMARK_DURATION: &'static str = dag::metrics::BENCHMARK_DURATION;
     const TOTAL_TRANSACTIONS: &'static str = "latency_s_count";
     const LATENCY_BUCKETS: &'static str = "latency_s";
     const LATENCY_SUM: &'static str = "latency_s_sum";
-    const LATENCY_SQUARED_SUM: &'static str = mysticeti_core::metrics::LATENCY_SQUARED_S;
+    const LATENCY_SQUARED_SUM: &'static str = dag::metrics::LATENCY_SQUARED_S;
 
     fn nodes_metrics_path<I>(
         &self,
@@ -213,7 +213,7 @@ impl ProtocolMetrics for MysticetiProtocol {
         let node_config = config::NodePublicConfig::new_for_benchmarks(ips, node_parameters);
         let metrics_paths = node_config
             .all_metric_addresses()
-            .map(|x| format!("{x}{}", mysticeti_core::prometheus::METRICS_ROUTE));
+            .map(|x| format!("{x}{}", dag::prometheus::METRICS_ROUTE));
 
         instances.into_iter().zip(metrics_paths).collect()
     }

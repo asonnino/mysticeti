@@ -24,7 +24,7 @@ pub fn setup_simulator_tracing() {
     let env_log = env_log
         .as_ref()
         .map(String::as_str)
-        .unwrap_or("mysticeti_core=info,mysticeti_core::block_store=warn");
+        .unwrap_or("dag=info,dag::block_store=warn");
     let subscriber = FmtSubscriber::builder()
         .with_env_filter(env_log)
         .event_format(SimulatorFormat(

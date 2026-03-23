@@ -203,7 +203,7 @@ impl WalWriter {
     /// Allow to retrieve a 'syncer' instance that allows
     /// to fsync wal to disk without acquiring a lock on wal itself.
     ///
-    /// In mysticeti specifically this allows to have an independent syncer thread that
+    /// This allows to have an independent syncer thread that
     /// does not share locks with consensus thread.
     pub fn syncer(&self) -> io::Result<WalSyncer> {
         let file = self.file.try_clone()?;

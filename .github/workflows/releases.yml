@@ -51,7 +51,7 @@ jobs:
       - name: Build archive
         shell: bash
         run: |
-          binary_name="mysticeti"
+          binary_name="validator"
 
           dirname="$binary_name-${{ matrix.target }}"
           mkdir "$dirname"

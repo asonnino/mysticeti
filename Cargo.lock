@@ -873,6 +873,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "dag"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "bincode",
+ "blake2",
+ "crc32fast",
+ "digest 0.10.7",
+ "ed25519-consensus",
+ "eyre",
+ "futures",
+ "gettid",
+ "hex",
+ "hyper",
+ "libc",
+ "memmap2",
+ "minibytes",
+ "parking_lot 0.12.1",
+ "prometheus",
+ "rand 0.8.5",
+ "reqwest",
+ "seahash",
+ "serde",
+ "serde_yaml",
+ "tabled",
+ "tempdir",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-core",
+ "tracing-subscriber",
+ "tracing-test",
+ "zeroize",
+]
+
+[[package]]
 name = "darling"
 version = "0.20.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1805,56 +1841,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mysticeti"
-version = "0.1.0"
-dependencies = [
- "clap",
- "color-eyre",
- "eyre",
- "futures",
- "mysticeti-core",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "mysticeti-core"
-version = "0.1.0"
-dependencies = [
- "axum",
- "bincode",
- "blake2",
- "crc32fast",
- "digest 0.10.7",
- "ed25519-consensus",
- "eyre",
- "futures",
- "gettid",
- "hex",
- "hyper",
- "libc",
- "memmap2",
- "minibytes",
- "parking_lot 0.12.1",
- "prometheus",
- "rand 0.8.5",
- "reqwest",
- "seahash",
- "serde",
- "serde_yaml",
- "tabled",
- "tempdir",
- "tempfile",
- "tokio",
- "tracing",
- "tracing-core",
- "tracing-subscriber",
- "tracing-test",
- "zeroize",
-]
-
-[[package]]
 name = "native-tls"
 version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1997,10 +1983,10 @@ dependencies = [
  "clap",
  "color-eyre",
  "crossterm",
+ "dag",
  "eyre",
  "futures",
  "glob",
- "mysticeti-core",
  "plotters",
  "prettytable-rs",
  "prometheus-parse",
@@ -3412,6 +3398,20 @@ name = "uuid"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a183cf7feeba97b4dd1c0d46788634f6221d87fa961b305bed08c851829efcc0"
+
+[[package]]
+name = "validator"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "color-eyre",
+ "dag",
+ "eyre",
+ "futures",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "valuable"

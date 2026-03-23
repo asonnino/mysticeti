@@ -44,7 +44,7 @@ impl<H: BlockHandler + 'static, S: SyncerSignals + 'static, C: CommitObserver + 
         let metrics = syncer.core().metrics.clone();
         let core_thread = CoreThread { syncer, receiver };
         let join_handle = thread::Builder::new()
-            .name("mysticeti-core".to_string())
+            .name("dag".to_string())
             .spawn(move || core_thread.run())
             .unwrap();
         Self {
