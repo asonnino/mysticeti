@@ -147,6 +147,7 @@ impl SyncerSignals for bool {
 }
 
 #[cfg(test)]
+#[cfg(feature = "simulator")]
 mod tests {
     use std::{ops::Range, time::Duration};
 

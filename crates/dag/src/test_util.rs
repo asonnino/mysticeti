@@ -9,6 +9,7 @@ use std::{
 
 use futures::future::join_all;
 use prometheus::Registry;
+#[cfg(feature = "simulator")]
 use rand::{rngs::StdRng, SeedableRng};
 
 #[cfg(feature = "simulator")]
@@ -133,6 +134,7 @@ fn first_transaction_for_authority(authority: AuthorityIndex) -> u64 {
     authority * 1_000_000
 }
 
+#[cfg(feature = "simulator")]
 pub fn committee_and_syncers(
     n: usize,
 ) -> (
@@ -198,6 +200,7 @@ pub fn simulated_network_syncers_with_epoch_duration(
 ) {
     let (committee, cores, reporters) = committee_and_cores_epoch_duration(n, rounds_in_epoch);
     let (simulated_network, networks) = SimulatedNetwork::new(&committee);
+    let public_config = config::NodePublicConfig::new_for_tests(n);
     let mut network_syncers = vec![];
     for (network, core) in networks.into_iter().zip(cores.into_iter()) {
         let commit_handler = TestCommitHandler::new(
@@ -213,6 +216,7 @@ pub fn simulated_network_syncers_with_epoch_duration(
             commit_handler,
             config::node_defaults::default_shutdown_grace_period(),
             test_metrics(),
+            &public_config,
         );
         drop(node_context);
         network_syncers.push(network_syncer);
@@ -252,6 +256,7 @@ pub async fn network_syncers_with_epoch_duration(
     network_syncers
 }
 
+#[cfg(feature = "simulator")]
 pub fn rng_at_seed(seed: u64) -> StdRng {
     let bytes = seed.to_le_bytes();
     let mut seed = [0u8; 32];
