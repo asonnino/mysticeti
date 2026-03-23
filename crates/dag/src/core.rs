@@ -499,6 +499,7 @@ impl CoreOptions {
 }
 
 #[cfg(test)]
+#[cfg(not(feature = "simulator"))]
 mod test {
     use std::fmt::Write;
 

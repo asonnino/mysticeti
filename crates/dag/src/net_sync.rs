@@ -416,6 +416,7 @@ impl AsyncWalSyncer {
 }
 
 #[cfg(test)]
+#[cfg(not(feature = "simulator"))]
 mod tests {
     use std::time::Duration;
 
