@@ -11,7 +11,7 @@ use crate::{
     consensus::linearizer::CommittedSubDag,
     core::Core,
     data::Data,
-    metrics::{Metrics, UtilizationTimerVecExt},
+    metrics::Metrics,
     runtime::timestamp_utc,
     types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
 };
@@ -63,17 +63,14 @@ impl<H: BlockHandler, S: SyncerSignals, C: CommitObserver> Syncer<H, S, C> {
     }
 
     pub fn add_blocks(&mut self, blocks: Vec<Data<StatementBlock>>) {
-        let _timer = self
-            .metrics
-            .utilization_timer
-            .utilization_timer("Syncer::add_blocks");
+        let _timer = self.metrics.utilization_timer("Syncer::add_blocks");
         self.core.add_blocks(blocks);
         self.try_new_block();
     }
 
     pub fn force_new_block(&mut self, round: RoundNumber) -> bool {
         if self.core.last_proposed() == round {
-            self.metrics.leader_timeout_total.inc();
+            self.metrics.inc_leader_timeout();
             self.force_new_block = true;
             self.try_new_block();
             true
@@ -83,10 +80,7 @@ impl<H: BlockHandler, S: SyncerSignals, C: CommitObserver> Syncer<H, S, C> {
     }
 
     fn try_new_block(&mut self) {
-        let _timer = self
-            .metrics
-            .utilization_timer
-            .utilization_timer("Syncer::try_new_block");
+        let _timer = self.metrics.utilization_timer("Syncer::try_new_block");
         if self.force_new_block
             || self
                 .core

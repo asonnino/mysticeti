@@ -491,7 +491,7 @@ mod sim_tests {
     async fn test_exact_commits_in_epoch_async() {
         let n = 4;
         let rounds_in_epoch = 3000;
-        let (simulated_network, network_syncers, mut reporters) =
+        let (simulated_network, network_syncers) =
             simulated_network_syncers_with_epoch_duration(n, rounds_in_epoch);
         simulated_network.connect_all().await;
         let syncers = wait_for_epoch_to_close(network_syncers).await;
@@ -500,7 +500,7 @@ mod sim_tests {
             let commit_seq = syncer.commit_observer().committed_leaders().clone();
             assert_eq!(canonical_commit_seq, commit_seq);
         }
-        print_stats(&syncers, &mut reporters);
+        print_stats(&syncers);
     }
 
     #[test]
@@ -512,7 +512,7 @@ mod sim_tests {
         // todo - no cleanup of block store
         let n = 4;
         let rounds_in_epoch = 10;
-        let (simulated_network, network_syncers, mut reporters) =
+        let (simulated_network, network_syncers) =
             simulated_network_syncers_with_epoch_duration(n, rounds_in_epoch);
         simulated_network.connect_all().await;
         let syncers = wait_for_epoch_to_close(network_syncers).await;
@@ -546,7 +546,7 @@ mod sim_tests {
                 assert!(committed);
             }
         }
-        print_stats(&syncers, &mut reporters);
+        print_stats(&syncers);
     }
 
     #[test]
@@ -556,7 +556,7 @@ mod sim_tests {
     }
 
     async fn test_network_sync_sim_all_up_async() {
-        let (simulated_network, network_syncers, mut reporters) = simulated_network_syncers(10);
+        let (simulated_network, network_syncers) = simulated_network_syncers(10);
         simulated_network.connect_all().await;
         runtime::sleep(Duration::from_secs(20)).await;
         let mut syncers = vec![];
@@ -566,7 +566,7 @@ mod sim_tests {
         }
 
         check_commits(&syncers);
-        print_stats(&syncers, &mut reporters);
+        print_stats(&syncers);
     }
 
     #[test]
@@ -578,7 +578,7 @@ mod sim_tests {
     // All peers except for peer A are connected in this test
     // Peer A is disconnected from everything
     async fn test_network_sync_sim_one_down_async() {
-        let (simulated_network, network_syncers, mut reporters) = simulated_network_syncers(10);
+        let (simulated_network, network_syncers) = simulated_network_syncers(10);
         simulated_network.connect_some(|a, _b| a != 0).await;
         println!("Started");
         runtime::sleep(Duration::from_secs(40)).await;
@@ -590,7 +590,7 @@ mod sim_tests {
         }
 
         check_commits(&syncers);
-        print_stats(&syncers, &mut reporters);
+        print_stats(&syncers);
     }
 
     #[test]
@@ -602,7 +602,7 @@ mod sim_tests {
     // All peers except for peer A are connected in this test. Peer A is disconnected from everyone
     // except for peer B. This test ensures that A eventually manages to commit by syncing with B.
     async fn test_network_partition_async() {
-        let (simulated_network, network_syncers, mut reporters) = simulated_network_syncers(10);
+        let (simulated_network, network_syncers) = simulated_network_syncers(10);
         // Disconnect all A from all peers except for B.
         simulated_network
             .connect_some(|a, b| a != 0 || (a == 0 && b == 1))
@@ -619,6 +619,6 @@ mod sim_tests {
 
         // Ensure no conflicts.
         check_commits(&syncers);
-        print_stats(&syncers, &mut reporters);
+        print_stats(&syncers);
     }
 }

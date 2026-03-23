@@ -75,8 +75,8 @@ impl UniversalCommitter {
     }
 
     /// Return list of leaders for the round. Syncer may give those leaders some extra time.
-    /// To preserve (theoretical) liveness, we should wait `Delta` time for at least the first leader.
-    /// Can return empty vec if round does not have a designated leader.
+    /// To preserve (theoretical) liveness, we should wait `Delta` time for at least the
+    /// first leader. Can return empty vec if round does not have a designated leader.
     pub fn get_leaders(&self, round: RoundNumber) -> Vec<AuthorityIndex> {
         self.committers
             .iter()
@@ -93,10 +93,7 @@ impl UniversalCommitter {
             LeaderStatus::Skip(..) => format!("{direct_or_indirect}-skip"),
             LeaderStatus::Undecided(..) => return,
         };
-        self.metrics
-            .committed_leaders_total
-            .with_label_values(&[&authority, &status])
-            .inc();
+        self.metrics.inc_committed_leaders(&authority, &status);
     }
 }
 

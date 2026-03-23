@@ -102,7 +102,7 @@ impl TransactionGenerator {
             }
 
             if counter % 10_000 == 0 {
-                self.metrics.submitted_transactions.inc_by(tx_to_report);
+                self.metrics.inc_submitted_transactions(tx_to_report);
                 tx_to_report = 0
             }
         }

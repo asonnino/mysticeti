@@ -55,8 +55,7 @@ impl Validator {
 
         // Boot the prometheus server.
         let registry = Registry::new();
-        let (metrics, reporter) = Metrics::new(&registry, Some(&committee));
-        reporter.start();
+        let metrics = Metrics::new(&registry, Some(&committee));
 
         let metrics_handle =
             prometheus::start_prometheus_server(binding_metrics_address, &registry);

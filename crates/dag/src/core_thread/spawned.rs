@@ -8,7 +8,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::{
     block_handler::BlockHandler,
     data::Data,
-    metrics::{Metrics, UtilizationTimerExt},
+    metrics::Metrics,
     syncer::{CommitObserver, Syncer, SyncerSignals},
     types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
 };
@@ -99,7 +99,7 @@ impl<H: BlockHandler + 'static, S: SyncerSignals + 'static, C: CommitObserver + 
     }
 
     async fn send(&self, command: CoreThreadCommand) {
-        self.metrics.core_lock_enqueued.inc();
+        self.metrics.inc_core_lock_enqueued();
         if self.sender.send(command).await.is_err() {
             panic!("core thread is not expected to stop");
         }
@@ -111,8 +111,8 @@ impl<H: BlockHandler, S: SyncerSignals, C: CommitObserver> CoreThread<H, S, C> {
         tracing::info!("Started core thread with tid {}", gettid::gettid());
         let metrics = self.syncer.core().metrics.clone();
         while let Some(command) = self.receiver.blocking_recv() {
-            let _timer = metrics.core_lock_util.utilization_timer();
-            metrics.core_lock_dequeued.inc();
+            let _timer = metrics.core_lock_utilization_timer();
+            metrics.inc_core_lock_dequeued();
             match command {
                 CoreThreadCommand::AddBlocks(blocks, sender) => {
                     self.syncer.add_blocks(blocks);

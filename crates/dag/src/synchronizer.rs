@@ -107,9 +107,7 @@ where
                 None => missing.push(reference),
             }
             self.metrics
-                .block_sync_requests_received
-                .with_label_values(&[&peer.to_string(), &found.to_string()])
-                .inc();
+                .inc_block_sync_requests_received(&peer.to_string(), &found.to_string());
         }
         self.sender
             .send(NetworkMessage::BlockNotFound(missing))
@@ -307,9 +305,7 @@ where
         let missing_blocks = self.inner.syncer.get_missing_blocks().await;
         for (authority, missing) in missing_blocks.into_iter().enumerate() {
             self.metrics
-                .missing_blocks
-                .with_label_values(&[&authority.to_string()])
-                .set(missing.len() as i64);
+                .set_missing_blocks(&authority.to_string(), missing.len() as i64);
 
             for reference in missing {
                 let time = self.missing.entry(reference).or_insert(now);
@@ -334,10 +330,7 @@ where
             let message = NetworkMessage::RequestBlocks(chunks.to_vec());
             permit.send(message);
 
-            self.metrics
-                .block_sync_requests_sent
-                .with_label_values(&[&peer.to_string()])
-                .inc();
+            self.metrics.inc_block_sync_requests_sent(&peer.to_string());
         }
     }
 

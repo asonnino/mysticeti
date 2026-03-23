@@ -111,11 +111,7 @@ impl Network {
                     connection_sender: connection_sender.clone(),
                     bind_addr: bind_addr(local_addr),
                     active_immediately: id < our_id,
-                    latency_sender: metrics
-                        .connection_latency_sender
-                        .get(id)
-                        .expect("Missing connection_latency_sender metric")
-                        .clone(),
+                    latency_sender: metrics.connection_latency_sender(id),
                 }
                 .run(receiver),
             );
@@ -470,7 +466,7 @@ mod test {
         let committee = Committee::new_test(vec![1, 1, 1]);
         let metrics: Vec<_> = committee
             .authorities()
-            .map(|_| Metrics::new(&Registry::default(), Some(&committee)).0)
+            .map(|_| Metrics::new_for_test(&Registry::default(), Some(&committee)))
             .collect();
         let (networks, addresses) = networks_and_addresses(&metrics).await;
         for (mut network, address) in networks.into_iter().zip(addresses.iter()) {

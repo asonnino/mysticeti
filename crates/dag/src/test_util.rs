@@ -23,40 +23,30 @@ use crate::{
     config::{self, NodePrivateConfig, NodePublicConfig},
     core::{Core, CoreOptions},
     data::Data,
-    metrics::{MetricReporter, Metrics},
+    metrics::Metrics,
     net_sync::NetworkSyncer,
     network::Network,
     syncer::{Syncer, SyncerSignals},
-    types::{format_authority_index, AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
+    types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
     wal::{open_file_for_wal, walf, WalPosition, WalWriter},
 };
 
 pub fn test_metrics() -> Arc<Metrics> {
-    Metrics::new(&Registry::new(), None).0
+    Metrics::new_for_test(&Registry::new(), None)
 }
 
 pub fn committee(n: usize) -> Arc<Committee> {
     Committee::new_test(vec![1; n])
 }
 
-pub fn committee_and_cores(
-    n: usize,
-) -> (
-    Arc<Committee>,
-    Vec<Core<TestBlockHandler>>,
-    Vec<MetricReporter>,
-) {
+pub fn committee_and_cores(n: usize) -> (Arc<Committee>, Vec<Core<TestBlockHandler>>) {
     committee_and_cores_persisted_epoch_duration(n, None, &NodePublicConfig::new_for_tests(n))
 }
 
 pub fn committee_and_cores_epoch_duration(
     n: usize,
     rounds_in_epoch: RoundNumber,
-) -> (
-    Arc<Committee>,
-    Vec<Core<TestBlockHandler>>,
-    Vec<MetricReporter>,
-) {
+) -> (Arc<Committee>, Vec<Core<TestBlockHandler>>) {
     let mut config = NodePublicConfig::new_for_tests(n);
     config.parameters.rounds_in_epoch = rounds_in_epoch;
     committee_and_cores_persisted_epoch_duration(n, None, &config)
@@ -65,11 +55,7 @@ pub fn committee_and_cores_epoch_duration(
 pub fn committee_and_cores_persisted(
     n: usize,
     path: Option<&Path>,
-) -> (
-    Arc<Committee>,
-    Vec<Core<TestBlockHandler>>,
-    Vec<MetricReporter>,
-) {
+) -> (Arc<Committee>, Vec<Core<TestBlockHandler>>) {
     committee_and_cores_persisted_epoch_duration(n, path, &NodePublicConfig::new_for_tests(n))
 }
 
@@ -77,17 +63,13 @@ pub fn committee_and_cores_persisted_epoch_duration(
     n: usize,
     path: Option<&Path>,
     public_config: &NodePublicConfig,
-) -> (
-    Arc<Committee>,
-    Vec<Core<TestBlockHandler>>,
-    Vec<MetricReporter>,
-) {
+) -> (Arc<Committee>, Vec<Core<TestBlockHandler>>) {
     let committee = committee(n);
     let cores: Vec<_> = committee
         .authorities()
         .map(|authority| {
             let last_transaction = first_transaction_for_authority(authority);
-            let (metrics, reporter) = Metrics::new(&Registry::new(), Some(&committee));
+            let metrics = Metrics::new_for_test(&Registry::new(), Some(&committee));
             let block_handler = TestBlockHandler::new(
                 last_transaction,
                 committee.clone(),
@@ -112,7 +94,7 @@ pub fn committee_and_cores_persisted_epoch_duration(
             let private_config = NodePrivateConfig::new_for_tests(authority);
 
             println!("Opening core {authority}");
-            let core = Core::open(
+            Core::open(
                 block_handler,
                 authority,
                 committee.clone(),
@@ -122,12 +104,10 @@ pub fn committee_and_cores_persisted_epoch_duration(
                 recovered,
                 wal_writer,
                 CoreOptions::test(),
-            );
-            (core, reporter)
+            )
         })
         .collect();
-    let (cores, reporters) = cores.into_iter().unzip();
-    (committee, cores, reporters)
+    (committee, cores)
 }
 
 fn first_transaction_for_authority(authority: AuthorityIndex) -> u64 {
@@ -141,7 +121,7 @@ pub fn committee_and_syncers(
     Arc<Committee>,
     Vec<Syncer<TestBlockHandler, bool, TestCommitHandler>>,
 ) {
-    let (committee, cores, _) = committee_and_cores(n);
+    let (committee, cores) = committee_and_cores(n);
     (
         committee.clone(),
         cores
@@ -181,7 +161,6 @@ pub fn simulated_network_syncers(
 ) -> (
     SimulatedNetwork,
     Vec<NetworkSyncer<TestBlockHandler, TestCommitHandler>>,
-    Vec<MetricReporter>,
 ) {
     simulated_network_syncers_with_epoch_duration(
         n,
@@ -196,9 +175,8 @@ pub fn simulated_network_syncers_with_epoch_duration(
 ) -> (
     SimulatedNetwork,
     Vec<NetworkSyncer<TestBlockHandler, TestCommitHandler>>,
-    Vec<MetricReporter>,
 ) {
-    let (committee, cores, reporters) = committee_and_cores_epoch_duration(n, rounds_in_epoch);
+    let (committee, cores) = committee_and_cores_epoch_duration(n, rounds_in_epoch);
     let (simulated_network, networks) = SimulatedNetwork::new(&committee);
     let public_config = config::NodePublicConfig::new_for_tests(n);
     let mut network_syncers = vec![];
@@ -221,7 +199,7 @@ pub fn simulated_network_syncers_with_epoch_duration(
         drop(node_context);
         network_syncers.push(network_syncer);
     }
-    (simulated_network, network_syncers, reporters)
+    (simulated_network, network_syncers)
 }
 
 pub async fn network_syncers(n: usize) -> Vec<NetworkSyncer<TestBlockHandler, TestCommitHandler>> {
@@ -232,7 +210,7 @@ pub async fn network_syncers_with_epoch_duration(
     n: usize,
     rounds_in_epoch: RoundNumber,
 ) -> Vec<NetworkSyncer<TestBlockHandler, TestCommitHandler>> {
-    let (committee, cores, _) = committee_and_cores_epoch_duration(n, rounds_in_epoch);
+    let (committee, cores) = committee_and_cores_epoch_duration(n, rounds_in_epoch);
     let metrics: Vec<_> = cores.iter().map(|c| c.metrics.clone()).collect();
     let (networks, _) = networks_and_addresses(&metrics).await;
     let mut network_syncers = vec![];
@@ -286,51 +264,19 @@ pub fn check_commits<H: BlockHandler, S: SyncerSignals>(
     eprintln!("Max commit sequence: {max_commit:?}");
 }
 
-#[allow(dead_code)]
-pub fn print_stats<S: SyncerSignals>(
-    syncers: &[Syncer<TestBlockHandler, S, TestCommitHandler>],
-    reporters: &mut [MetricReporter],
-) {
-    assert_eq!(syncers.len(), reporters.len());
-    eprintln!("val ||    cert(ms)   ||cert commit(ms)|| tx commit(ms) |");
-    eprintln!("    ||  p90  |  avg  ||  p90  |  avg  ||  p90  |  avg  |");
-    syncers.iter().zip(reporters.iter_mut()).for_each(|(s, r)| {
-        r.clear_receive_all();
-        eprintln!(
-            "  {} || {:05} | {:05} || {:05} | {:05} || {:05} | {:05} |",
-            format_authority_index(s.core().authority()),
-            r.transaction_certified_latency
-                .histogram
-                .pct(900)
-                .unwrap_or_default()
-                .as_millis(),
-            r.transaction_certified_latency
-                .histogram
-                .avg()
-                .unwrap_or_default()
-                .as_millis(),
-            r.certificate_committed_latency
-                .histogram
-                .pct(900)
-                .unwrap_or_default()
-                .as_millis(),
-            r.certificate_committed_latency
-                .histogram
-                .avg()
-                .unwrap_or_default()
-                .as_millis(),
-            r.transaction_committed_latency
-                .histogram
-                .pct(900)
-                .unwrap_or_default()
-                .as_millis(),
-            r.transaction_committed_latency
-                .histogram
-                .avg()
-                .unwrap_or_default()
-                .as_millis(),
-        )
-    });
+#[cfg(feature = "simulator")]
+pub fn print_stats<H: BlockHandler, S: SyncerSignals>(syncers: &[Syncer<H, S, TestCommitHandler>]) {
+    eprintln!(
+        "val ||    cert(ms)   \
+        ||cert commit(ms)|| tx commit(ms) |"
+    );
+    eprintln!(
+        "    ||  p90  |  avg  \
+        ||  p90  |  avg  ||  p90  |  avg  |"
+    );
+    for s in syncers {
+        s.core().metrics.print_stats(s.core().authority());
+    }
 }
 
 fn is_prefix(short: &[BlockReference], long: &[BlockReference]) -> bool {

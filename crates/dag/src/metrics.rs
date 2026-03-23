@@ -4,7 +4,7 @@
 use std::{
     net::SocketAddr,
     ops::AddAssign,
-    sync::{atomic::Ordering, Arc},
+    sync::{atomic::Ordering, Arc, Mutex},
     time::Duration,
 };
 
@@ -34,78 +34,100 @@ pub const BENCHMARK_DURATION: &str = "benchmark_duration";
 pub const LATENCY_S: &str = "latency_s";
 pub const LATENCY_SQUARED_S: &str = "latency_squared_s";
 
-#[derive(Clone)]
 pub struct Metrics {
-    pub benchmark_duration: IntCounter,
-    pub latency_s: HistogramVec,
-    pub latency_squared_s: CounterVec,
-    pub committed_leaders_total: IntCounterVec,
-    pub leader_timeout_total: IntCounter,
-    pub inter_block_latency_s: HistogramVec,
+    benchmark_duration: IntCounter,
+    latency_s: HistogramVec,
+    latency_squared_s: CounterVec,
+    committed_leaders_total: IntCounterVec,
+    leader_timeout_total: IntCounter,
+    inter_block_latency_s: HistogramVec,
 
-    pub block_store_unloaded_blocks: IntCounter,
-    pub block_store_loaded_blocks: IntCounter,
-    pub block_store_entries: IntCounter,
-    pub block_store_cleanup_util: IntCounter,
+    block_store_unloaded_blocks: IntCounter,
+    block_store_loaded_blocks: IntCounter,
+    block_store_entries: IntCounter,
+    block_store_cleanup_util: IntCounter,
 
-    pub wal_mappings: IntGauge,
+    wal_mappings: IntGauge,
 
-    pub core_lock_util: IntCounter,
-    pub core_lock_enqueued: IntCounter,
-    pub core_lock_dequeued: IntCounter,
+    core_lock_util: IntCounter,
+    core_lock_enqueued: IntCounter,
+    core_lock_dequeued: IntCounter,
 
-    pub block_handler_pending_certificates: IntGauge,
-    pub block_handler_cleanup_util: IntCounter,
+    block_handler_pending_certificates: IntGauge,
+    block_handler_cleanup_util: IntCounter,
 
-    pub commit_handler_pending_certificates: IntGauge,
+    commit_handler_pending_certificates: IntGauge,
 
-    pub missing_blocks: IntGaugeVec,
-    pub block_sync_requests_sent: IntCounterVec,
-    pub block_sync_requests_received: IntCounterVec,
+    missing_blocks: IntGaugeVec,
+    block_sync_requests_sent: IntCounterVec,
+    block_sync_requests_received: IntCounterVec,
 
-    pub transaction_certified_latency: HistogramSender<Duration>,
-    pub certificate_committed_latency: HistogramSender<Duration>,
-    pub transaction_committed_latency: HistogramSender<Duration>,
+    transaction_certified_latency: HistogramSender<Duration>,
+    certificate_committed_latency: HistogramSender<Duration>,
+    transaction_committed_latency: HistogramSender<Duration>,
 
-    pub proposed_block_size_bytes: HistogramSender<usize>,
-    pub proposed_block_transaction_count: HistogramSender<usize>,
-    pub proposed_block_vote_count: HistogramSender<usize>,
+    proposed_block_size_bytes: HistogramSender<usize>,
+    proposed_block_transaction_count: HistogramSender<usize>,
+    proposed_block_vote_count: HistogramSender<usize>,
 
-    pub connection_latency_sender: Vec<HistogramSender<Duration>>,
+    connection_latency_sender: Vec<HistogramSender<Duration>>,
 
-    pub utilization_timer: IntCounterVec,
-    pub submitted_transactions: IntCounter,
+    utilization_timer: IntCounterVec,
+    submitted_transactions: IntCounter,
+
+    /// Stored reporter for test-constructed metrics.
+    /// `None` in production (reporter runs as background
+    /// task). `Some` in tests (drained on-demand via
+    /// `print_stats`).
+    reporter: Mutex<Option<MetricReporter>>,
 }
 
-pub struct MetricReporter {
+struct MetricReporter {
     // When adding field here make sure to update
-    // MetricsReporter::receive_all and MetricsReporter::run_report.
-    pub transaction_certified_latency: HistogramReporter<Duration>,
-    pub certificate_committed_latency: HistogramReporter<Duration>,
-    pub transaction_committed_latency: HistogramReporter<Duration>,
+    // MetricReporter::clear_receive_all and run_report.
+    transaction_certified_latency: HistogramReporter<Duration>,
+    certificate_committed_latency: HistogramReporter<Duration>,
+    transaction_committed_latency: HistogramReporter<Duration>,
 
-    pub proposed_block_size_bytes: HistogramReporter<usize>,
-    pub proposed_block_transaction_count: HistogramReporter<usize>,
-    pub proposed_block_vote_count: HistogramReporter<usize>,
+    proposed_block_size_bytes: HistogramReporter<usize>,
+    proposed_block_transaction_count: HistogramReporter<usize>,
+    proposed_block_vote_count: HistogramReporter<usize>,
 
-    pub connection_latency: VecHistogramReporter<Duration>,
+    connection_latency: VecHistogramReporter<Duration>,
 
-    pub global_in_memory_blocks: IntGauge,
-    pub global_in_memory_blocks_bytes: IntGauge,
+    global_in_memory_blocks: IntGauge,
+    global_in_memory_blocks_bytes: IntGauge,
 }
 
-pub struct HistogramReporter<T> {
-    pub histogram: PreciseHistogram<T>,
+struct HistogramReporter<T> {
+    histogram: PreciseHistogram<T>,
     gauge: IntGaugeVec,
 }
 
-pub struct VecHistogramReporter<T> {
+struct VecHistogramReporter<T> {
     histograms: Vec<(PreciseHistogram<T>, String)>,
     gauge: IntGaugeVec,
 }
 
+// ── Constructors ────────────────────────────────────
+
 impl Metrics {
-    pub fn new(registry: &Registry, committee: Option<&Committee>) -> (Arc<Self>, MetricReporter) {
+    /// Create metrics and start the background reporter.
+    pub fn new(registry: &Registry, committee: Option<&Committee>) -> Arc<Self> {
+        let (metrics, reporter) = Self::build(registry, committee);
+        reporter.start();
+        metrics
+    }
+
+    /// Create metrics for tests. The reporter is stored
+    /// internally and drained on-demand via `print_stats`.
+    pub fn new_for_test(registry: &Registry, committee: Option<&Committee>) -> Arc<Self> {
+        let (metrics, reporter) = Self::build(registry, committee);
+        *metrics.reporter.lock().unwrap() = Some(reporter);
+        metrics
+    }
+
+    fn build(registry: &Registry, committee: Option<&Committee>) -> (Arc<Self>, MetricReporter) {
         let (transaction_certified_latency_hist, transaction_certified_latency) = histogram();
         let (certificate_committed_latency_hist, certificate_committed_latency) = histogram();
         let (transaction_committed_latency_hist, transaction_committed_latency) = histogram();
@@ -175,7 +197,7 @@ impl Metrics {
             .unwrap(),
             global_in_memory_blocks_bytes: register_int_gauge_with_registry!(
                 "global_in_memory_blocks_bytes",
-                "Total size of blocks loaded in memory",
+                concat!("Total size of blocks loaded ", "in memory",),
                 registry,
             )
             .unwrap(),
@@ -189,7 +211,11 @@ impl Metrics {
             .unwrap(),
             latency_s: register_histogram_vec_with_registry!(
                 LATENCY_S,
-                "Buckets measuring the end-to-end latency of a workload in seconds",
+                concat!(
+                    "Buckets measuring the ",
+                    "end-to-end latency of a ",
+                    "workload in seconds",
+                ),
                 &["workload"],
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry,
@@ -197,21 +223,29 @@ impl Metrics {
             .unwrap(),
             latency_squared_s: register_counter_vec_with_registry!(
                 LATENCY_SQUARED_S,
-                "Square of total end-to-end latency of a workload in seconds",
+                concat!(
+                    "Square of total end-to-end ",
+                    "latency of a workload ",
+                    "in seconds",
+                ),
                 &["workload"],
                 registry,
             )
             .unwrap(),
             committed_leaders_total: register_int_counter_vec_with_registry!(
                 "committed_leaders_total",
-                "Total number of (direct or indirect) committed leaders per authority",
+                concat!(
+                    "Total number of (direct or ",
+                    "indirect) committed leaders ",
+                    "per authority",
+                ),
                 &["authority", "commit_type"],
                 registry,
             )
             .unwrap(),
             inter_block_latency_s: register_histogram_vec_with_registry!(
                 "inter_block_latency_s",
-                "Buckets measuring the inter-block latency in seconds",
+                concat!("Buckets measuring the ", "inter-block latency in seconds",),
                 &["workload"],
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry,
@@ -219,7 +253,7 @@ impl Metrics {
             .unwrap(),
             submitted_transactions: register_int_counter_with_registry!(
                 "submitted_transactions",
-                "Total number of submitted transactions",
+                concat!("Total number of submitted ", "transactions",),
                 registry,
             )
             .unwrap(),
@@ -232,13 +266,13 @@ impl Metrics {
 
             block_store_loaded_blocks: register_int_counter_with_registry!(
                 "block_store_loaded_blocks",
-                "Blocks loaded from wal position in the block store",
+                concat!("Blocks loaded from wal ", "position in the block store",),
                 registry,
             )
             .unwrap(),
             block_store_unloaded_blocks: register_int_counter_with_registry!(
                 "block_store_unloaded_blocks",
-                "Blocks unloaded from wal position during cleanup",
+                concat!("Blocks unloaded from wal ", "position during cleanup",),
                 registry,
             )
             .unwrap(),
@@ -257,7 +291,7 @@ impl Metrics {
 
             wal_mappings: register_int_gauge_with_registry!(
                 "wal_mappings",
-                "Number of mappings retained by the wal",
+                concat!("Number of mappings retained ", "by the wal",),
                 registry,
             )
             .unwrap(),
@@ -270,20 +304,20 @@ impl Metrics {
             .unwrap(),
             core_lock_enqueued: register_int_counter_with_registry!(
                 "core_lock_enqueued",
-                "Number of enqueued core requests",
+                concat!("Number of enqueued ", "core requests",),
                 registry,
             )
             .unwrap(),
             core_lock_dequeued: register_int_counter_with_registry!(
                 "core_lock_dequeued",
-                "Number of dequeued core requests",
+                concat!("Number of dequeued ", "core requests",),
                 registry,
             )
             .unwrap(),
 
             block_handler_pending_certificates: register_int_gauge_with_registry!(
                 "block_handler_pending_certificates",
-                "Number of pending certificates in block handler",
+                concat!("Number of pending certificates", " in block handler",),
                 registry,
             )
             .unwrap(),
@@ -296,21 +330,21 @@ impl Metrics {
 
             commit_handler_pending_certificates: register_int_gauge_with_registry!(
                 "commit_handler_pending_certificates",
-                "Number of pending certificates in commit handler",
+                concat!("Number of pending certificates", " in commit handler",),
                 registry,
             )
             .unwrap(),
 
             missing_blocks: register_int_gauge_vec_with_registry!(
                 "missing_blocks",
-                "Number of missing blocks per authority",
+                concat!("Number of missing blocks ", "per authority",),
                 &["authority"],
                 registry,
             )
             .unwrap(),
             block_sync_requests_sent: register_int_counter_vec_with_registry!(
                 "block_sync_requests_sent",
-                "Number of block sync requests sent per authority",
+                concat!("Number of block sync requests", " sent per authority",),
                 &["authority"],
                 registry,
             )
@@ -318,8 +352,10 @@ impl Metrics {
             block_sync_requests_received: register_int_counter_vec_with_registry!(
                 "block_sync_requests_received",
                 concat!(
-                    "Number of block sync requests received ",
-                    "per authority and whether they have been fulfilled",
+                    "Number of block sync requests",
+                    " received per authority and ",
+                    "whether they have been ",
+                    "fulfilled",
                 ),
                 &["authority", "fulfilled"],
                 registry,
@@ -343,13 +379,234 @@ impl Metrics {
             proposed_block_vote_count,
 
             connection_latency_sender,
+
+            reporter: Mutex::new(None),
         };
 
         (Arc::new(metrics), reporter)
     }
 }
 
-pub trait AsPrometheusMetric {
+// ── Delegation methods ──────────────────────────────
+
+impl Metrics {
+    // -- Simple counter increments --
+
+    pub fn inc_leader_timeout(&self) {
+        self.leader_timeout_total.inc();
+    }
+
+    pub fn inc_core_lock_enqueued(&self) {
+        self.core_lock_enqueued.inc();
+    }
+
+    pub fn inc_core_lock_dequeued(&self) {
+        self.core_lock_dequeued.inc();
+    }
+
+    pub fn inc_block_store_entries(&self) {
+        self.block_store_entries.inc();
+    }
+
+    pub fn inc_block_store_entries_by(&self, n: u64) {
+        self.block_store_entries.inc_by(n);
+    }
+
+    pub fn inc_block_store_loaded_blocks(&self) {
+        self.block_store_loaded_blocks.inc();
+    }
+
+    pub fn inc_block_store_unloaded_blocks_by(&self, n: u64) {
+        self.block_store_unloaded_blocks.inc_by(n);
+    }
+
+    pub fn inc_submitted_transactions(&self, n: u64) {
+        self.submitted_transactions.inc_by(n);
+    }
+
+    pub fn inc_benchmark_duration_by(&self, delta: u64) {
+        self.benchmark_duration.inc_by(delta);
+    }
+
+    // -- Gauge sets --
+
+    pub fn set_wal_mappings(&self, value: i64) {
+        self.wal_mappings.set(value);
+    }
+
+    pub fn set_block_handler_pending_certificates(&self, value: i64) {
+        self.block_handler_pending_certificates.set(value);
+    }
+
+    pub fn set_commit_handler_pending_certificates(&self, value: i64) {
+        self.commit_handler_pending_certificates.set(value);
+    }
+
+    // -- Counter reads --
+
+    pub fn benchmark_duration_secs(&self) -> u64 {
+        self.benchmark_duration.get()
+    }
+
+    // -- Channel-based observations --
+
+    pub fn observe_transaction_certified_latency(&self, d: Duration) {
+        self.transaction_certified_latency.observe(d);
+    }
+
+    pub fn observe_certificate_committed_latency(&self, d: Duration) {
+        self.certificate_committed_latency.observe(d);
+    }
+
+    pub fn observe_transaction_committed_latency(&self, d: Duration) {
+        self.transaction_committed_latency.observe(d);
+    }
+
+    pub fn observe_proposed_block_size_bytes(&self, size: usize) {
+        self.proposed_block_size_bytes.observe(size);
+    }
+
+    pub fn observe_proposed_block_transaction_count(&self, count: usize) {
+        self.proposed_block_transaction_count.observe(count);
+    }
+
+    pub fn observe_proposed_block_vote_count(&self, count: usize) {
+        self.proposed_block_vote_count.observe(count);
+    }
+
+    // -- Labeled metrics --
+
+    pub fn observe_latency_s(&self, workload: &str, value: f64) {
+        self.latency_s.with_label_values(&[workload]).observe(value);
+    }
+
+    pub fn observe_latency_squared_s(&self, workload: &str, value: f64) {
+        self.latency_squared_s
+            .with_label_values(&[workload])
+            .inc_by(value);
+    }
+
+    pub fn observe_inter_block_latency_s(&self, workload: &str, value: f64) {
+        self.inter_block_latency_s
+            .with_label_values(&[workload])
+            .observe(value);
+    }
+
+    pub fn inc_committed_leaders(&self, authority: &str, commit_type: &str) {
+        self.committed_leaders_total
+            .with_label_values(&[authority, commit_type])
+            .inc();
+    }
+
+    pub fn set_missing_blocks(&self, authority: &str, value: i64) {
+        self.missing_blocks
+            .with_label_values(&[authority])
+            .set(value);
+    }
+
+    pub fn inc_block_sync_requests_sent(&self, authority: &str) {
+        self.block_sync_requests_sent
+            .with_label_values(&[authority])
+            .inc();
+    }
+
+    pub fn inc_block_sync_requests_received(&self, authority: &str, fulfilled: &str) {
+        self.block_sync_requests_received
+            .with_label_values(&[authority, fulfilled])
+            .inc();
+    }
+
+    // -- Network --
+
+    pub fn connection_latency_sender(&self, peer: usize) -> HistogramSender<Duration> {
+        self.connection_latency_sender
+            .get(peer)
+            .expect("Missing connection_latency_sender")
+            .clone()
+    }
+
+    // -- Utilization timers --
+
+    pub fn core_lock_utilization_timer(&self) -> UtilizationTimer<'_> {
+        UtilizationTimer {
+            metric: &self.core_lock_util,
+            start: Instant::now(),
+        }
+    }
+
+    pub fn block_store_cleanup_utilization_timer(&self) -> UtilizationTimer<'_> {
+        UtilizationTimer {
+            metric: &self.block_store_cleanup_util,
+            start: Instant::now(),
+        }
+    }
+
+    pub fn block_handler_cleanup_utilization_timer(&self) -> UtilizationTimer<'_> {
+        UtilizationTimer {
+            metric: &self.block_handler_cleanup_util,
+            start: Instant::now(),
+        }
+    }
+
+    pub fn utilization_timer(&self, label: &str) -> OwnedUtilizationTimer {
+        OwnedUtilizationTimer {
+            metric: self.utilization_timer.with_label_values(&[label]),
+            start: Instant::now(),
+        }
+    }
+
+    // -- Test utilities --
+
+    /// Drain channels and print latency percentiles.
+    /// Only works for test-constructed metrics (where
+    /// the reporter is stored internally).
+    pub fn print_stats(&self, authority: AuthorityIndex) {
+        let mut guard = self.reporter.lock().unwrap();
+        let Some(r) = guard.as_mut() else {
+            return;
+        };
+        r.clear_receive_all();
+        eprintln!(
+            "  {} || {:05} | {:05} || {:05} | {:05} \
+            || {:05} | {:05} |",
+            format_authority_index(authority),
+            r.transaction_certified_latency
+                .histogram
+                .pct(900)
+                .unwrap_or_default()
+                .as_millis(),
+            r.transaction_certified_latency
+                .histogram
+                .avg()
+                .unwrap_or_default()
+                .as_millis(),
+            r.certificate_committed_latency
+                .histogram
+                .pct(900)
+                .unwrap_or_default()
+                .as_millis(),
+            r.certificate_committed_latency
+                .histogram
+                .avg()
+                .unwrap_or_default()
+                .as_millis(),
+            r.transaction_committed_latency
+                .histogram
+                .pct(900)
+                .unwrap_or_default()
+                .as_millis(),
+            r.transaction_committed_latency
+                .histogram
+                .avg()
+                .unwrap_or_default()
+                .as_millis(),
+        );
+    }
+}
+
+// ── Reporter ────────────────────────────────────────
+
+trait AsPrometheusMetric {
     fn as_prometheus_metric(&self) -> i64;
 }
 
@@ -360,7 +617,6 @@ impl<T: Ord + AddAssign + DivUsize + Copy + Default + AsPrometheusMetric> Histog
         name: &str,
     ) -> Self {
         let gauge = register_int_gauge_vec_with_registry!(name, name, &["v"], registry).unwrap();
-
         Self { histogram, gauge }
     }
 
@@ -398,7 +654,6 @@ impl<T: Ord + AddAssign + DivUsize + Copy + Default + AsPrometheusMetric> VecHis
     ) -> Self {
         let gauge =
             register_int_gauge_vec_with_registry!(name, name, &[label, "v"], registry).unwrap();
-
         Self { histograms, gauge }
     }
 
@@ -445,7 +700,7 @@ impl AsPrometheusMetric for usize {
 }
 
 impl MetricReporter {
-    pub fn start(self) {
+    fn start(self) {
         runtime::Handle::current().spawn(self.run());
     }
 
@@ -492,6 +747,8 @@ impl MetricReporter {
     }
 }
 
+// ── Network address table ───────────────────────────
+
 pub fn print_network_address_table(addresses: &[SocketAddr]) {
     let table: Vec<_> = addresses
         .iter()
@@ -503,6 +760,8 @@ pub fn print_network_address_table(addresses: &[SocketAddr]) {
         .collect();
     tracing::info!("Network address table:\n{}", Table::new(table));
 }
+
+// ── Utilization timers ──────────────────────────────
 
 pub trait UtilizationTimerExt {
     fn utilization_timer(&self) -> UtilizationTimer<'_>;

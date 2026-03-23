@@ -19,7 +19,7 @@ use crate::{
     consensus::linearizer::{CommittedSubDag, Linearizer},
     data::Data,
     log::TransactionLog,
-    metrics::{Metrics, UtilizationTimerExt, UtilizationTimerVecExt},
+    metrics::Metrics,
     runtime::{self, TimeInstant},
     syncer::CommitObserver,
     transactions_generator::TransactionGenerator,
@@ -120,11 +120,9 @@ impl RealBlockHandler {
         // Record inter-block latency.
         if let Some(instant) = block_creation {
             let latency = instant.elapsed();
-            self.metrics.transaction_certified_latency.observe(latency);
+            self.metrics.observe_transaction_certified_latency(latency);
             self.metrics
-                .inter_block_latency_s
-                .with_label_values(&["owned"])
-                .observe(latency.as_secs_f64());
+                .observe_inter_block_latency_s("owned", latency.as_secs_f64());
         }
 
         // Record end-to-end latency.
@@ -132,13 +130,9 @@ impl RealBlockHandler {
         let latency = current_timestamp.saturating_sub(tx_submission_timestamp);
         let square_latency = latency.as_secs_f64().powf(2.0);
         self.metrics
-            .latency_s
-            .with_label_values(&["owned"])
-            .observe(latency.as_secs_f64());
+            .observe_latency_s("owned", latency.as_secs_f64());
         self.metrics
-            .latency_squared_s
-            .with_label_values(&["owned"])
-            .inc_by(square_latency);
+            .observe_latency_squared_s("owned", square_latency);
     }
 }
 
@@ -151,7 +145,6 @@ impl BlockHandler for RealBlockHandler {
         let current_timestamp = runtime::timestamp_utc();
         let _timer = self
             .metrics
-            .utilization_timer
             .utilization_timer("BlockHandler::handle_blocks");
         let mut response = vec![];
         if require_response {
@@ -183,8 +176,7 @@ impl BlockHandler for RealBlockHandler {
             }
         }
         self.metrics
-            .block_handler_pending_certificates
-            .set(self.transaction_votes.len() as i64);
+            .set_block_handler_pending_certificates(self.transaction_votes.len() as i64);
         response
     }
 
@@ -212,7 +204,7 @@ impl BlockHandler for RealBlockHandler {
     }
 
     fn cleanup(&self) {
-        let _timer = self.metrics.block_handler_cleanup_util.utilization_timer();
+        let _timer = self.metrics.block_handler_cleanup_utilization_timer();
         // todo - all of this should go away and we should measure tx latency differently
         let mut l = self.transaction_time.lock();
         l.retain(|_k, v| v.elapsed() < Duration::from_secs(10));
@@ -297,8 +289,7 @@ impl BlockHandler for TestBlockHandler {
             for processed_locator in processed {
                 if let Some(instant) = transaction_time.get(&processed_locator) {
                     self.metrics
-                        .transaction_certified_latency
-                        .observe(instant.elapsed());
+                        .observe_transaction_certified_latency(instant.elapsed());
                 }
             }
         }
@@ -391,18 +382,16 @@ impl<H: ProcessedTransactionHandler<TransactionLocator>> TestCommitHandler<H> {
         // Record inter-block latency.
         if let Some(instant) = block_creation {
             let latency = instant.elapsed();
-            self.metrics.transaction_committed_latency.observe(latency);
+            self.metrics.observe_transaction_committed_latency(latency);
             self.metrics
-                .inter_block_latency_s
-                .with_label_values(&["shared"])
-                .observe(latency.as_secs_f64());
+                .observe_inter_block_latency_s("shared", latency.as_secs_f64());
         }
 
         // Record benchmark start time.
         let time_from_start = self.start_time.elapsed();
-        let benchmark_duration = self.metrics.benchmark_duration.get();
+        let benchmark_duration = self.metrics.benchmark_duration_secs();
         if let Some(delta) = time_from_start.as_secs().checked_sub(benchmark_duration) {
-            self.metrics.benchmark_duration.inc_by(delta);
+            self.metrics.inc_benchmark_duration_by(delta);
         }
 
         // Record end-to-end latency. The first 8 bytes of the transaction are the timestamp of the
@@ -411,13 +400,9 @@ impl<H: ProcessedTransactionHandler<TransactionLocator>> TestCommitHandler<H> {
         let latency = current_timestamp.saturating_sub(tx_submission_timestamp);
         let square_latency = latency.as_secs_f64().powf(2.0);
         self.metrics
-            .latency_s
-            .with_label_values(&["shared"])
-            .observe(latency.as_secs_f64());
+            .observe_latency_s("shared", latency.as_secs_f64());
         self.metrics
-            .latency_squared_s
-            .with_label_values(&["shared"])
-            .inc_by(square_latency);
+            .observe_latency_squared_s("shared", square_latency);
     }
 }
 
@@ -446,8 +431,7 @@ impl<H: ProcessedTransactionHandler<TransactionLocator> + Send + Sync> CommitObs
                         if let Some(instant) = transaction_time.get(&processed_locator) {
                             // todo - batch send data points
                             self.metrics
-                                .certificate_committed_latency
-                                .observe(instant.elapsed());
+                                .observe_certificate_committed_latency(instant.elapsed());
                         }
                     }
                 }
@@ -462,8 +446,7 @@ impl<H: ProcessedTransactionHandler<TransactionLocator> + Send + Sync> CommitObs
             // self.committed_dags.push(commit);
         }
         self.metrics
-            .commit_handler_pending_certificates
-            .set(self.transaction_votes.len() as i64);
+            .set_commit_handler_pending_certificates(self.transaction_votes.len() as i64);
         committed
     }
 

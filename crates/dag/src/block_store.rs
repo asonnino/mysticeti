@@ -17,7 +17,7 @@ use crate::{
     committee::Committee,
     consensus::linearizer::CommittedSubDag,
     data::Data,
-    metrics::{Metrics, UtilizationTimerExt},
+    metrics::Metrics,
     state::{RecoveredState, RecoveredStateBuilder},
     types::{
         AuthorityIndex, BaseStatement, BlockDigest, BlockReference, RoundNumber, StatementBlock,
@@ -109,7 +109,7 @@ impl BlockStore {
             block_count += 1;
             inner.add_unloaded(block.reference(), pos);
         }
-        metrics.block_store_entries.inc_by(block_count);
+        metrics.inc_block_store_entries_by(block_count);
         if let Some(replay_started) = replay_started {
             tracing::info!("Wal replay completed in {:?}", replay_started.elapsed());
         } else {
@@ -124,7 +124,7 @@ impl BlockStore {
     }
 
     pub fn insert_block(&self, block: Data<StatementBlock>, position: WalPosition) {
-        self.metrics.block_store_entries.inc();
+        self.metrics.inc_block_store_entries();
         self.inner.write().add_loaded(position, block);
     }
 
@@ -216,13 +216,12 @@ impl BlockStore {
         if threshold_round == 0 {
             return;
         }
-        let _timer = self.metrics.block_store_cleanup_util.utilization_timer();
+        let _timer = self.metrics.block_store_cleanup_utilization_timer();
         let unloaded = self.inner.write().unload_below_round(threshold_round);
         self.metrics
-            .block_store_unloaded_blocks
-            .inc_by(unloaded as u64);
+            .inc_block_store_unloaded_blocks_by(unloaded as u64);
         let retained_maps = self.block_wal_reader.cleanup();
-        self.metrics.wal_mappings.set(retained_maps as i64);
+        self.metrics.set_wal_mappings(retained_maps as i64);
     }
 
     pub fn get_own_blocks(
@@ -258,7 +257,7 @@ impl BlockStore {
     fn read_index(&self, entry: IndexEntry) -> Data<StatementBlock> {
         match entry {
             IndexEntry::WalPosition(position) => {
-                self.metrics.block_store_loaded_blocks.inc();
+                self.metrics.inc_block_store_loaded_blocks();
                 let (tag, data) = self
                     .block_wal_reader
                     .read(position)

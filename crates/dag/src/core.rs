@@ -25,7 +25,7 @@ use crate::{
     crypto::Signer,
     data::Data,
     epoch_close::EpochManager,
-    metrics::{Metrics, UtilizationTimerVecExt},
+    metrics::Metrics,
     runtime::timestamp_utc,
     state::RecoveredState,
     threshold_clock::ThresholdClockAggregator,
@@ -179,10 +179,7 @@ impl<H: BlockHandler> Core<H> {
     // Note that generally when you update this function you
     // also want to change genesis initialization above
     pub fn add_blocks(&mut self, blocks: Vec<Data<StatementBlock>>) -> Vec<Data<StatementBlock>> {
-        let _timer = self
-            .metrics
-            .utilization_timer
-            .utilization_timer("Core::add_blocks");
+        let _timer = self.metrics.utilization_timer("Core::add_blocks");
         let processed = self
             .block_manager
             .add_blocks(blocks, &mut (&mut self.wal_writer, &self.block_store));
@@ -199,10 +196,7 @@ impl<H: BlockHandler> Core<H> {
     }
 
     fn run_block_handler(&mut self, processed: &[Data<StatementBlock>]) {
-        let _timer = self
-            .metrics
-            .utilization_timer
-            .utilization_timer("Core::run_block_handler");
+        let _timer = self.metrics.utilization_timer("Core::run_block_handler");
         let statements = self
             .block_handler
             .handle_blocks(processed, !self.epoch_changing());
@@ -217,10 +211,7 @@ impl<H: BlockHandler> Core<H> {
     }
 
     pub fn try_new_block(&mut self) -> Option<Data<StatementBlock>> {
-        let _timer = self
-            .metrics
-            .utilization_timer
-            .utilization_timer("Core::try_new_block");
+        let _timer = self.metrics.utilization_timer("Core::try_new_block");
         let clock_round = self.threshold_clock.get_round();
         if clock_round <= self.last_proposed() {
             return None;
@@ -329,8 +320,7 @@ impl<H: BlockHandler> Core<H> {
 
     fn proposed_block_stats(&self, block: &Data<StatementBlock>) {
         self.metrics
-            .proposed_block_size_bytes
-            .observe(block.serialized_bytes().len());
+            .observe_proposed_block_size_bytes(block.serialized_bytes().len());
         let mut votes = 0usize;
         let mut transactions = 0usize;
         for statement in block.statements() {
@@ -341,9 +331,8 @@ impl<H: BlockHandler> Core<H> {
             }
         }
         self.metrics
-            .proposed_block_transaction_count
-            .observe(transactions);
-        self.metrics.proposed_block_vote_count.observe(votes);
+            .observe_proposed_block_transaction_count(transactions);
+        self.metrics.observe_proposed_block_vote_count(votes);
     }
 
     pub fn try_commit(&mut self) -> Vec<Data<StatementBlock>> {
@@ -523,7 +512,7 @@ mod test {
 
     #[test]
     fn test_core_simple_exchange() {
-        let (_committee, mut cores, _) = committee_and_cores(4);
+        let (_committee, mut cores) = committee_and_cores(4);
 
         let mut proposed_transactions = vec![];
         let mut blocks = vec![];
@@ -577,7 +566,7 @@ mod test {
     fn test_randomized_simple_exchange() {
         'l: for seed in 0..100 {
             let mut rng = StdRng::from_seed([seed; 32]);
-            let (committee, mut cores, _) = committee_and_cores(4);
+            let (committee, mut cores) = committee_and_cores(4);
 
             let mut proposed_transactions = vec![];
             let mut pending: Vec<_> = committee.authorities().map(|_| vec![]).collect();
@@ -661,7 +650,7 @@ mod test {
     #[test]
     fn test_core_recovery() {
         let tmp = tempdir::TempDir::new("test_core_recovery").unwrap();
-        let (_committee, mut cores, _) = committee_and_cores_persisted(4, Some(tmp.path()));
+        let (_committee, mut cores) = committee_and_cores_persisted(4, Some(tmp.path()));
 
         let mut proposed_transactions = vec![];
         let mut blocks = vec![];
@@ -679,7 +668,7 @@ mod test {
         cores.iter_mut().for_each(Core::write_state);
         drop(cores);
 
-        let (_committee, mut cores, _) = committee_and_cores_persisted(4, Some(tmp.path()));
+        let (_committee, mut cores) = committee_and_cores_persisted(4, Some(tmp.path()));
 
         let more_blocks = blocks.split_off(2);
 
@@ -704,7 +693,7 @@ mod test {
 
         eprintln!("===");
 
-        let (_committee, mut cores, _) = committee_and_cores_persisted(4, Some(tmp.path()));
+        let (_committee, mut cores) = committee_and_cores_persisted(4, Some(tmp.path()));
 
         for core in &mut cores {
             core.add_blocks(blocks_r2.clone());
