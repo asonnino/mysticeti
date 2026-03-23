@@ -81,8 +81,9 @@ pub struct StatementBlock {
     reference: BlockReference,
 
     //  A list of block references to other blocks that this block includes
-    //  Note that the order matters: if a reference to two blocks from the same round and same authority
-    //  are included, then the first reference is the one that this block conceptually votes for.
+    //  Note that the order matters: if a reference to two blocks
+    //  from the same round and same authority are included, then
+    //  the first reference is the one that this block votes for.
     includes: Vec<BlockReference>,
 
     // A list of base statements in order.
@@ -327,7 +328,7 @@ impl StatementBlock {
         Ok(())
     }
 
-    pub fn detailed(&self) -> Detailed {
+    pub fn detailed(&self) -> Detailed<'_> {
         Detailed(self)
     }
 }
@@ -383,6 +384,10 @@ impl TransactionLocatorRange {
 
     pub fn len(&self) -> usize {
         (self.offset_end_exclusive - self.offset_start_inclusive) as usize
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn verify(&self) -> eyre::Result<()> {
@@ -653,7 +658,8 @@ mod test {
         /// Takes a string in form "Block:[Dependencies, ...]; ..."
         /// Where Block is one letter denoting a node and a number denoting a round
         /// For example B3 is a block for round 3 made by validator index 2
-        /// Note that blocks are separated with semicolon(;) and dependencies within block are separated with coma(,)
+        /// Note that blocks are separated with semicolon(;) and
+        /// dependencies within a block are separated with comma(,)
         pub fn draw(s: &str) -> Self {
             let mut blocks = HashMap::new();
             for block in s.split(";") {
@@ -672,7 +678,7 @@ mod test {
             };
             let reference = Self::parse_name(name);
             let includes = includes.trim();
-            let includes = if includes.len() == 0 {
+            let includes = if includes.is_empty() {
                 vec![]
             } else {
                 let includes = includes.split(',');
@@ -692,7 +698,7 @@ mod test {
             let s = s.trim();
             assert!(s.len() >= 2, "Invalid block: {}", s);
             let authority = s.as_bytes()[0];
-            let authority = authority.wrapping_sub('A' as u8);
+            let authority = authority.wrapping_sub(b'A');
             assert!(authority < 26, "Invalid block: {}", s);
             let Ok(round): Result<u64, _> = s[1..].parse() else {
                 panic!("Invalid block: {}", s);
@@ -710,7 +716,7 @@ mod test {
             self
         }
 
-        pub fn random_iter(&self, rng: &mut impl Rng) -> RandomDagIter {
+        pub fn random_iter(&self, rng: &mut impl Rng) -> RandomDagIter<'_> {
             let mut v: Vec<_> = self.0.keys().cloned().collect();
             v.shuffle(rng);
             RandomDagIter(self, v.into_iter())
@@ -718,6 +724,10 @@ mod test {
 
         pub fn len(&self) -> usize {
             self.0.len()
+        }
+
+        pub fn is_empty(&self) -> bool {
+            self.0.is_empty()
         }
 
         fn authorities(&self) -> HashSet<AuthorityIndex> {

@@ -50,31 +50,31 @@ pub fn open_file_for_wal(p: impl AsRef<Path>) -> io::Result<File> {
         .read(true)
         .write(true)
         .create(true)
+        .truncate(false)
         .open(p)
 }
 
 /// Creates wal reader and wal writer on the file.
-/// WalWriter methods generally take &mut references so normally only one thread can access WalWriter at a time.
-/// WalReader methods take & reference, you can wrap WalReader in Arc and safely share it across different threads.
 ///
-/// You can write to wal using WalWriter::write method, which takes byte slice and a 'tag'(an opaque u32 value).
-/// WalWriter::write method returns WalPosition that can later be used to read the wal.
+/// WalWriter methods take `&mut` references so normally
+/// only one thread can access WalWriter at a time.
+/// WalReader methods take `&` reference — you can wrap
+/// WalReader in Arc and share it across threads.
 ///
-/// When WalWriter::write completes, the data is guaranteed to be written into kernel buffers, but not synced to disk.
-/// If the program terminates early, the data will be eventually written to disk by the operating system.
-/// If the machine crashes however, some data might be lost, unless WalWriter::sync method is called to flush data to disk.
+/// Write to wal using `WalWriter::write`, which takes a
+/// byte slice and a tag (an opaque u32 value). It returns
+/// a `WalPosition` that can later be used to read back.
 ///
+/// When write completes, data is in kernel buffers but not
+/// synced to disk. Call `WalWriter::sync` to flush to disk.
 ///
-/// You can read the wal using WalReader::read by providing the WalPosition returned by WalWriter.
+/// `WalReader::read` uses memory-mapped files and returns
+/// a `Bytes` pointing into the mapped region. All returned
+/// `Bytes` references hold a refcount to the mmap, so
+/// holding them keeps the wal file open.
 ///
-/// WalReader::read uses memory mapped files to map a region of the wal, and returns a pointer(in the form of Bytes abstraction)
-/// pointing to the region of the memory mapped file.
-///
-/// All returned Bytes references(and their sub-slices) holds a reference counter to the underlining memory mapped file.
-/// This allows to minimize copy of data, however it also means that holding the references to the buffers returned by WalReader::read will keep the wal file open.
-///
-/// In order to completely "close" the wal file(for example to allow to delete/reclaim space), user need to drop
-/// the wal reader, wal writer, **and** drop all the buffers returned by WalReader::read().
+/// To fully close the wal file, drop the reader, writer,
+/// **and** all buffers returned by `WalReader::read()`.
 #[allow(dead_code)]
 pub fn wal(path: impl AsRef<Path>) -> io::Result<(WalWriter, WalReader)> {
     let file = OpenOptions::new()
@@ -110,7 +110,7 @@ const MAP_MASK: u64 = !0xfffffff;
 const MAP_SIZE: u64 = 0x10_000; // 16 pages
 #[cfg(test)]
 const MAP_MASK: u64 = !0xffff;
-const ZERO_MAP: [u8; MAP_SIZE as usize] = [0u8; MAP_SIZE as usize];
+static ZERO_MAP: [u8; MAP_SIZE as usize] = [0u8; MAP_SIZE as usize];
 const _: () = assert_constants();
 
 pub const MAX_ENTRY_SIZE: usize = (MAP_SIZE - HEADER_LEN_BYTES) as usize;
@@ -274,7 +274,7 @@ impl WalReader {
     }
 
     // Iter all entries up to writer position at the time iter_until(...) is called
-    pub fn iter_until(&self, w: &WalWriter) -> WalIterator {
+    pub fn iter_until(&self, w: &WalWriter) -> WalIterator<'_> {
         WalIterator {
             wal_reader: self,
             position: Some(WalPosition { start: 0 }),
@@ -491,7 +491,8 @@ mod tests {
         assert_eq!(&two, two_read.as_ref());
         assert_eq!(two_tag, 6);
 
-        assert_eq!(1, reader.cleanup()); // assert only one mapping was created (therefore one and two share same mapping)
+        // Only one mapping was created (one and two share it)
+        assert_eq!(1, reader.cleanup());
     }
 
     #[test]

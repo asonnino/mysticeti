@@ -45,7 +45,7 @@ pub fn committee_and_cores(
     Vec<Core<TestBlockHandler>>,
     Vec<MetricReporter>,
 ) {
-    committee_and_cores_persisted_epoch_duration(n, None, &&NodePublicConfig::new_for_tests(n))
+    committee_and_cores_persisted_epoch_duration(n, None, &NodePublicConfig::new_for_tests(n))
 }
 
 pub fn committee_and_cores_epoch_duration(
@@ -69,7 +69,7 @@ pub fn committee_and_cores_persisted(
     Vec<Core<TestBlockHandler>>,
     Vec<MetricReporter>,
 ) {
-    committee_and_cores_persisted_epoch_duration(n, path, &&NodePublicConfig::new_for_tests(n))
+    committee_and_cores_persisted_epoch_duration(n, path, &NodePublicConfig::new_for_tests(n))
 }
 
 pub fn committee_and_cores_persisted_epoch_duration(
@@ -269,15 +269,13 @@ pub fn check_commits<H: BlockHandler, S: SyncerSignals>(
     let mut max_commit = &zero_commit;
     for commit in commits {
         if commit.len() >= max_commit.len() {
-            if is_prefix(&max_commit, commit) {
+            if is_prefix(max_commit, commit) {
                 max_commit = commit;
             } else {
                 panic!("[!] Commits diverged: {max_commit:?}, {commit:?}");
             }
-        } else {
-            if !is_prefix(&commit, &max_commit) {
-                panic!("[!] Commits diverged: {max_commit:?}, {commit:?}");
-            }
+        } else if !is_prefix(commit, max_commit) {
+            panic!("[!] Commits diverged: {max_commit:?}, {commit:?}");
         }
     }
     eprintln!("Max commit sequence: {max_commit:?}");
@@ -337,7 +335,7 @@ fn is_prefix(short: &[BlockReference], long: &[BlockReference]) -> bool {
             return false;
         }
     }
-    return true;
+    true
 }
 
 pub struct TestBlockWriter {
@@ -417,7 +415,7 @@ pub fn build_dag(
         None => {
             let (references, genesis): (Vec<_>, Vec<_>) = committee
                 .authorities()
-                .map(|index| StatementBlock::new_genesis(index))
+                .map(StatementBlock::new_genesis)
                 .map(|block| (*block.reference(), block))
                 .unzip();
             block_writer.add_blocks(genesis);

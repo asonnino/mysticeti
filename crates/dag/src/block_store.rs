@@ -20,14 +20,8 @@ use crate::{
     metrics::{Metrics, UtilizationTimerExt},
     state::{RecoveredState, RecoveredStateBuilder},
     types::{
-        AuthorityIndex,
-        BaseStatement,
-        BlockDigest,
-        BlockReference,
-        RoundNumber,
-        StatementBlock,
-        Transaction,
-        TransactionLocator,
+        AuthorityIndex, BaseStatement, BlockDigest, BlockReference, RoundNumber, StatementBlock,
+        Transaction, TransactionLocator,
     },
     wal::{Tag, WalPosition, WalReader, WalWriter},
 };
@@ -486,8 +480,11 @@ pub const WAL_ENTRY_BLOCK: Tag = 1;
 pub const WAL_ENTRY_PAYLOAD: Tag = 2;
 pub const WAL_ENTRY_OWN_BLOCK: Tag = 3;
 pub const WAL_ENTRY_STATE: Tag = 4;
-// Commit entry includes both commit interpreter incremental state and committed transactions aggregator
-// todo - They could be separated for better performance, but this will require catching up for committed transactions aggregator state
+// Commit entry includes both commit interpreter incremental
+// state and committed transactions aggregator.
+// todo - They could be separated for better performance, but
+// this will require catching up for committed transactions
+// aggregator state.
 pub const WAL_ENTRY_COMMIT: Tag = 5;
 
 impl BlockWriter for (&mut WalWriter, &BlockStore) {
@@ -506,7 +503,8 @@ impl BlockWriter for (&mut WalWriter, &BlockStore) {
     }
 }
 
-// This data structure has a special serialization in/from Bytes, see OwnBlockData::from_bytes/write_to_wal
+// This data structure has a special serialization in/from
+// Bytes, see OwnBlockData::from_bytes/write_to_wal
 pub struct OwnBlockData {
     pub next_entry: WalPosition,
     pub block: Data<StatementBlock>,

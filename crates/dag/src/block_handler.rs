@@ -24,11 +24,7 @@ use crate::{
     syncer::CommitObserver,
     transactions_generator::TransactionGenerator,
     types::{
-        AuthorityIndex,
-        BaseStatement,
-        BlockReference,
-        StatementBlock,
-        Transaction,
+        AuthorityIndex, BaseStatement, BlockReference, StatementBlock, Transaction,
         TransactionLocator,
     },
 };
@@ -55,7 +51,7 @@ const _: () = assert_constants();
 
 #[allow(dead_code)]
 const fn assert_constants() {
-    if REAL_BLOCK_HANDLER_TXN_SIZE % REAL_BLOCK_HANDLER_TXN_GEN_STEP != 0 {
+    if !REAL_BLOCK_HANDLER_TXN_SIZE.is_multiple_of(REAL_BLOCK_HANDLER_TXN_GEN_STEP) {
         panic!("REAL_BLOCK_HANDLER_TXN_SIZE % REAL_BLOCK_HANDLER_TXN_GEN_STEP != 0")
     }
 }
@@ -273,7 +269,8 @@ impl BlockHandler for TestBlockHandler {
         if require_response {
             for block in blocks {
                 if block.author() == self.authority {
-                    // We can see our own block in handle_blocks - this can happen during core recovery
+                    // We can see our own block in handle_blocks
+                    // this can happen during core recovery
                     // Todo - we might also need to process pending Payload statements as well
                     for statement in block.statements() {
                         if let BaseStatement::Share(_) = statement {

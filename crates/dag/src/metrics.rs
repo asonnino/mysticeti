@@ -9,19 +9,10 @@ use std::{
 };
 
 use prometheus::{
-    register_counter_vec_with_registry,
-    register_histogram_vec_with_registry,
-    register_int_counter_vec_with_registry,
-    register_int_counter_with_registry,
-    register_int_gauge_vec_with_registry,
-    register_int_gauge_with_registry,
-    CounterVec,
-    HistogramVec,
-    IntCounter,
-    IntCounterVec,
-    IntGauge,
-    IntGaugeVec,
-    Registry,
+    register_counter_vec_with_registry, register_histogram_vec_with_registry,
+    register_int_counter_vec_with_registry, register_int_counter_with_registry,
+    register_int_gauge_vec_with_registry, register_int_gauge_with_registry, CounterVec,
+    HistogramVec, IntCounter, IntCounterVec, IntGauge, IntGaugeVec, Registry,
 };
 use tabled::{Table, Tabled};
 use tokio::time::Instant;
@@ -224,7 +215,8 @@ impl Metrics {
                 &["workload"],
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry,
-            ).unwrap(),
+            )
+            .unwrap(),
             submitted_transactions: register_int_counter_with_registry!(
                 "submitted_transactions",
                 "Total number of submitted transactions",
@@ -325,7 +317,10 @@ impl Metrics {
             .unwrap(),
             block_sync_requests_received: register_int_counter_vec_with_registry!(
                 "block_sync_requests_received",
-                "Number of block sync requests received per authority and whether they have been fulfilled",
+                concat!(
+                    "Number of block sync requests received ",
+                    "per authority and whether they have been fulfilled",
+                ),
                 &["authority", "fulfilled"],
                 registry,
             )
@@ -510,7 +505,7 @@ pub fn print_network_address_table(addresses: &[SocketAddr]) {
 }
 
 pub trait UtilizationTimerExt {
-    fn utilization_timer(&self) -> UtilizationTimer;
+    fn utilization_timer(&self) -> UtilizationTimer<'_>;
     fn owned_utilization_timer(&self) -> OwnedUtilizationTimer;
 }
 
@@ -519,7 +514,7 @@ pub trait UtilizationTimerVecExt {
 }
 
 impl UtilizationTimerExt for IntCounter {
-    fn utilization_timer(&self) -> UtilizationTimer {
+    fn utilization_timer(&self) -> UtilizationTimer<'_> {
         UtilizationTimer {
             metric: self,
             start: Instant::now(),

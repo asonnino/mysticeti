@@ -11,12 +11,7 @@ use crate::{
     committee::{Committee, QuorumThreshold, StakeAggregator},
     data::Data,
     types::{
-        AuthorityIndex,
-        BaseStatement,
-        BlockReference,
-        StatementBlock,
-        TransactionLocator,
-        Vote,
+        AuthorityIndex, BaseStatement, BlockReference, StatementBlock, TransactionLocator, Vote,
     },
 };
 
@@ -98,7 +93,10 @@ impl<'a> FinalizationInterpreter<'a> {
                     self.vote(block, tx, voter);
                 }
             }
-            // let _ = std::mem::replace(self.transaction_aggregator_for(parent), parent_aggregator);
+            // let _ = std::mem::replace(
+            //     self.transaction_aggregator_for(parent),
+            //     parent_aggregator,
+            // );
             self.transaction_aggregator
                 .insert(*parent, parent_aggregator);
         }

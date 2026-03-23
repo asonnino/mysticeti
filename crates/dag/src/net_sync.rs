@@ -82,9 +82,13 @@ impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncer<H, C>
         syncer.force_new_block(0);
         let syncer = CoreThreadDispatcher::start(syncer);
         let (stop_sender, stop_receiver) = mpsc::channel(1);
-        stop_sender.try_send(()).unwrap(); // occupy the only available permit, so that all other calls to send() will block
+        // Occupy the only available permit, so that all
+        // other calls to send() will block.
+        stop_sender.try_send(()).unwrap();
         let (epoch_sender, epoch_receiver) = mpsc::channel(1);
-        epoch_sender.try_send(()).unwrap(); // occupy the only available permit, so that all other calls to send() will block
+        // Occupy the only available permit, so that all
+        // other calls to send() will block.
+        epoch_sender.try_send(()).unwrap();
         let inner = Arc::new(NetworkSyncerInner {
             notify,
             syncer,
@@ -454,10 +458,7 @@ mod sim_tests {
         simulator_tracing::setup_simulator_tracing,
         syncer::Syncer,
         test_util::{
-            check_commits,
-            print_stats,
-            rng_at_seed,
-            simulated_network_syncers,
+            check_commits, print_stats, rng_at_seed, simulated_network_syncers,
             simulated_network_syncers_with_epoch_duration,
         },
     };

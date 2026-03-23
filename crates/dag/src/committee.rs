@@ -21,15 +21,8 @@ use crate::{
     data::Data,
     range_map::RangeMap,
     types::{
-        AuthorityIndex,
-        AuthoritySet,
-        BaseStatement,
-        BlockReference,
-        Stake,
-        StatementBlock,
-        TransactionLocator,
-        TransactionLocatorRange,
-        Vote,
+        AuthorityIndex, AuthoritySet, BaseStatement, BlockReference, Stake, StatementBlock,
+        TransactionLocator, TransactionLocatorRange, Vote,
     },
 };
 
@@ -55,7 +48,8 @@ impl Committee {
 
         // Ensure all stakes are positive
         assert!(authorities.iter().all(|a| a.stake() > 0));
-        assert!(authorities.len() <= 128); // For now AuthoritySet only supports up to 128 authorities
+        // For now AuthoritySet only supports up to 128 authorities
+        assert!(authorities.len() <= 128);
 
         let mut total_stake: Stake = 0;
         for a in authorities.iter() {
@@ -148,6 +142,10 @@ impl Committee {
         self.authorities.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.authorities.is_empty()
+    }
+
     pub fn new_for_benchmarks(committee_size: usize) -> Arc<Self> {
         Self::new(
             Signer::new_for_test(committee_size)
@@ -219,7 +217,8 @@ pub struct TransactionAggregator<TH, H = HashSet<TransactionLocator>> {
     pending: HashMap<BlockReference, RangeMap<u64, StakeAggregator<TH>>>,
     // todo - need to figure out serialization story with this
     // Currently we skip serialization for test handler,
-    // but it also means some invariants wrt unknown_transaction might be potentially broken in some tests
+    // but it also means some invariants wrt unknown_transaction
+    // might be potentially broken in some tests
     handler: H,
 }
 
@@ -360,7 +359,8 @@ impl<TH: CommitteeThreshold, H: ProcessedTransactionHandler<TransactionLocator>>
                         if aggregator.add(vote, committee) {
                             for l in range {
                                 let k = TransactionLocator::new(*locator_range.block(), l);
-                                // todo - make transaction_processed take TransactionLocatorRange instead
+                                // todo - make transaction_processed take
+                                // TransactionLocatorRange instead
                                 self.handler.transaction_processed(k);
                                 processed.push(k);
                             }

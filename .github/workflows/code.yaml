@@ -1,0 +1,124 @@
+name: Code
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+env:
+  CARGO_TERM_COLOR: always
+  CLICOLOR_FORCE: 1
+  CARGO_INCREMENTAL: ${{ github.ref == 'refs/heads/main' && '1' || '0' }}
+  CARGO_NET_RETRY: 10
+  RUSTUP_MAX_RETRIES: 10
+  RUST_BACKTRACE: short
+  RUSTDOCFLAGS: -D warnings
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      isRust: ${{ steps.diff.outputs.isRust }}
+      isTestConfig: ${{ steps.diff.outputs.isTestConfig }}
+      isRelevantForRustTests: ${{ steps.diff.outputs.isRust == 'true' || steps.diff.outputs.isTestConfig == 'true' }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
+      - name: Detect Changes
+        uses: "./.github/actions/diffs"
+        id: diff
+  lint:
+    name: Lint Rust code
+    needs: diff
+    if: ${{ needs.diff.outputs.isRust == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # pin@v2.8.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' && 'true' || 'false' }}
+      - name: Check formatting with rustfmt
+        run: cargo fmt --all -- --check
+      - name: Lint using clippy (including tests)
+        run: cargo clippy --workspace --tests --no-deps -- -D warnings
+  test:
+    name: Test Rust code
+    needs: diff
+    if: ${{ needs.diff.outputs.isRelevantForRustTests == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: taiki-e/install-action@70e00552f3196d9a4c7dde7c57ef4c4830d422dd # pin@v2.68.2
+        with:
+          tool: cargo-nextest
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # pin@v2.8.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' && 'true' || 'false' }}
+      - name: Run tests
+        run: cargo nextest run --workspace --no-tests=warn
+  test-coverage:
+    name: Test coverage
+    needs: diff
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # pin@v2.8.2
+        with:
+          save-if: "true"
+      - uses: taiki-e/install-action@70e00552f3196d9a4c7dde7c57ef4c4830d422dd # pin@v2.68.2
+        with:
+          tool: cargo-tarpaulin
+      - name: Generate code coverage
+        run: |
+          cargo tarpaulin \
+            --workspace \
+            --skip-clean \
+            --run-types Bins,Doctests,Examples,Lib,Tests \
+            --out Html,Xml \
+            --exclude-files "crates/**/benches/**/*" \
+            --exclude-files "crates/**/tests/**/*" \
+            --exclude-files "crates/**/test_utils/**/*" \
+            -- --include-ignored
+  dependencies:
+    name: Check dependencies
+    needs: diff
+    if: ${{ needs.diff.outputs.isRust == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
+      - uses: taiki-e/install-action@70e00552f3196d9a4c7dde7c57ef4c4830d422dd # pin@v2.68.2
+        with:
+          tool: cargo-deny
+      - name: Check bans, licenses, and sources
+        run: cargo deny check bans licenses sources
+  dependencies-schedule:
+    name: Check dependencies (scheduled)
+    if: ${{ github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
+      - uses: taiki-e/install-action@70e00552f3196d9a4c7dde7c57ef4c4830d422dd # pin@v2.68.2
+        with:
+          tool: cargo-deny
+      - name: Check advisories
+        run: cargo deny check advisories
+  check-all:
+    name: Check if all code checks succeeded
+    if: always()
+    needs:
+      - diff
+      - lint
+      - test
+      - test-coverage
+      - dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Decide whether all needed jobs succeeded
+        uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # pin@v1.2.2
+        with:
+          allowed-skips: ${{ toJSON(needs) }}
+          jobs: ${{ toJSON(needs) }}

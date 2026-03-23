@@ -8,14 +8,14 @@ use std::{
     sync::Arc,
 };
 
-use clap::{command, Parser};
-use eyre::{eyre, Context, Result};
+use clap::Parser;
 use dag::{
     committee::Committee,
     config::{ClientParameters, ImportExport, NodeParameters, NodePrivateConfig, NodePublicConfig},
     types::AuthorityIndex,
     validator::Validator,
 };
+use eyre::{eyre, Context, Result};
 use tracing_subscriber::{filter::LevelFilter, fmt, EnvFilter};
 
 #[derive(Parser)]
@@ -36,7 +36,8 @@ enum Operation {
         /// The working directory where the files will be generated.
         #[clap(long, value_name = "FILE", default_value = "genesis")]
         working_directory: PathBuf,
-        /// Path to the file holding the node parameters. If not provided, default parameters are used.
+        /// Path to the file holding the node parameters.
+        /// If not provided, default parameters are used.
         #[clap(long, value_name = "FILE")]
         node_parameters_path: Option<PathBuf>,
     },
@@ -48,7 +49,8 @@ enum Operation {
         /// Path to the file holding the public committee information.
         #[clap(long, value_name = "FILE")]
         committee_path: String,
-        /// Path to the file holding the public validator configurations (such as network addresses).
+        /// Path to the file holding the public validator
+        /// configurations (such as network addresses).
         #[clap(long, value_name = "FILE")]
         public_config_path: String,
         /// Path to the file holding the private validator configurations (including keys).
@@ -58,7 +60,8 @@ enum Operation {
         #[clap(long, value_name = "FILE")]
         client_parameters_path: String,
     },
-    /// Deploy a local validator for test. Dryrun mode uses default keys and committee configurations.
+    /// Deploy a local validator for test. Dryrun mode uses
+    /// default keys and committee configurations.
     DryRun {
         /// The authority index of this node.
         #[clap(long, value_name = "INT")]

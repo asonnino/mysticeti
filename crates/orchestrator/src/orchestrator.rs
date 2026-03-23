@@ -12,8 +12,7 @@ use tokio::time::{self, Instant};
 use crate::{
     benchmark::BenchmarkParameters,
     client::Instance,
-    display,
-    ensure,
+    display, ensure,
     error::{TestbedError, TestbedResult},
     faults::CrashRecoverySchedule,
     logs::LogsAnalyzer,
@@ -257,10 +256,10 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
         // Select instances to configure.
         let (clients, nodes, _) = self.select_instances(parameters)?;
         for (i, node) in nodes.iter().enumerate() {
-            display::config(format!("  - node {i}"), &node.ssh_address());
+            display::config(format!("  - node {i}"), node.ssh_address());
         }
         for (i, client) in clients.iter().enumerate() {
-            display::config(format!("  - client {i}"), &client.ssh_address());
+            display::config(format!("  - client {i}"), client.ssh_address());
         }
 
         // Generate the genesis configuration file and the keystore allowing access to gas objects.
@@ -462,7 +461,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
 
                     let results_directory = &self.settings.results_dir;
                     let commit = &self.settings.repository.commit;
-                    let path: PathBuf = results_directory.join(&format!("results-{commit}"));
+                    let path: PathBuf = results_directory.join(format!("results-{commit}"));
                     fs::create_dir_all(&path).expect("Failed to create log directory");
                     aggregator.save(path);
 

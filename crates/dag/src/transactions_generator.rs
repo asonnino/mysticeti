@@ -52,7 +52,7 @@ impl TransactionGenerator {
 
     pub async fn run(mut self) {
         let load = self.client_parameters.load;
-        let transactions_per_block_interval = (load + 9) / 10;
+        let transactions_per_block_interval = load.div_ceil(10);
         tracing::info!(
             "Generating {transactions_per_block_interval} transactions per {} ms",
             Self::TARGET_BLOCK_INTERVAL.as_millis()
@@ -62,8 +62,10 @@ impl TransactionGenerator {
 
         let mut counter = 0;
         let mut tx_to_report = 0;
-        let mut random: u64 = self.rng.gen(); // 8 bytes
-        let zeros = vec![0u8; self.client_parameters.transaction_size - 8 - 8]; // 8 bytes timestamp + 8 bytes random
+        // 8 bytes
+        let mut random: u64 = self.rng.gen();
+        // 8 bytes timestamp + 8 bytes random
+        let zeros = vec![0u8; self.client_parameters.transaction_size - 16];
 
         let mut interval = runtime::TimeInterval::new(Self::TARGET_BLOCK_INTERVAL);
         runtime::sleep(self.client_parameters.initial_delay).await;

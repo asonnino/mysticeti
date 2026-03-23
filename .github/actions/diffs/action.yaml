@@ -1,0 +1,27 @@
+name: Detect Changes
+description: Detects which file groups have changed to allow selective CI runs.
+outputs:
+  isRust:
+    description: Whether Rust-related files have changed.
+    value: ${{ steps.diff.outputs.isRust }}
+  isTestConfig:
+    description: Whether test config files have changed.
+    value: ${{ steps.diff.outputs.isTestConfig }}
+runs:
+  using: composite
+  steps:
+    - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # pin@v3.0.2
+      id: diff
+      with:
+        filters: |
+          isRust:
+            - 'crates/**'
+            - 'Cargo.toml'
+            - 'Cargo.lock'
+            - 'rust-toolchain.toml'
+            - 'deny.toml'
+            - '.github/workflows/code.yaml'
+          isTestConfig:
+            - 'rust-toolchain.toml'
+            - 'deny.toml'
+            - '.github/workflows/code.yaml'

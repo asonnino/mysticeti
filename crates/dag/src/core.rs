@@ -13,12 +13,7 @@ use crate::{
     block_handler::BlockHandler,
     block_manager::BlockManager,
     block_store::{
-        BlockStore,
-        BlockWriter,
-        CommitData,
-        OwnBlockData,
-        WAL_ENTRY_COMMIT,
-        WAL_ENTRY_PAYLOAD,
+        BlockStore, BlockWriter, CommitData, OwnBlockData, WAL_ENTRY_COMMIT, WAL_ENTRY_PAYLOAD,
         WAL_ENTRY_STATE,
     },
     committee::Committee,
@@ -104,7 +99,8 @@ impl<H: BlockHandler> Core<H> {
             // todo(fix) - this technically has a race condition if node crashes after genesis
             assert!(pending.is_empty());
             // Initialize empty block store
-            // A lot of this code is shared with Self::add_blocks, this is not great and some code reuse would be great
+            // A lot of this code is shared with Self::add_blocks,
+            // this is not great and some code reuse would be great
             let (own_genesis_block, other_genesis_blocks) = committee.genesis_blocks(authority);
             assert_eq!(own_genesis_block.author(), authority);
             let mut block_writer = (&mut wal_writer, &block_store);
@@ -180,7 +176,8 @@ impl<H: BlockHandler> Core<H> {
         self
     }
 
-    // Note that generally when you update this function you also want to change genesis initialization above
+    // Note that generally when you update this function you
+    // also want to change genesis initialization above
     pub fn add_blocks(&mut self, blocks: Vec<Data<StatementBlock>>) -> Vec<Data<StatementBlock>> {
         let _timer = self
             .metrics
@@ -245,7 +242,8 @@ impl<H: BlockHandler> Core<H> {
         // Split off returns the "tail", what we want is keep the tail in "pending" and get the head
         mem::swap(&mut taken, &mut self.pending);
         // Compress the references in the block
-        // Iterate through all the include statements in the block, and make a set of all the references in their includes.
+        // Iterate through all the include statements in the block,
+        // and make a set of all the references in their includes.
         let mut references_in_block: HashSet<BlockReference> = HashSet::new();
         references_in_block.extend(self.last_own_block.block.includes());
         for (_, statement) in &taken {
@@ -284,7 +282,7 @@ impl<H: BlockHandler> Core<H> {
             &self.signer,
         );
         assert_eq!(
-            block.includes().get(0).unwrap().authority,
+            block.includes().first().unwrap().authority,
             self.authority,
             "Invalid block {}",
             block
@@ -304,7 +302,7 @@ impl<H: BlockHandler> Core<H> {
             .add_block(*block.reference(), &self.committee);
         self.block_handler.handle_proposal(&block);
         self.proposed_block_stats(&block);
-        let next_entry = if let Some((pos, _)) = self.pending.get(0) {
+        let next_entry = if let Some((pos, _)) = self.pending.front() {
             *pos
         } else {
             WalPosition::MAX
@@ -383,7 +381,8 @@ impl<H: BlockHandler> Core<H> {
     /// This only checks readiness in terms of helping liveness for commit rule,
     /// try_new_block might still return None if threshold clock is not ready
     ///
-    /// The algorithm to calling is roughly: if timeout || commit_ready_new_block then try_new_block(..)
+    /// The algorithm to calling is roughly:
+    /// if timeout || commit_ready_new_block then try_new_block(..)
     pub fn ready_new_block(
         &self,
         period: u64,
@@ -534,7 +533,7 @@ mod test {
                 .try_new_block()
                 .expect("Must be able to create block after genesis");
             assert_eq!(block.reference().round, 1);
-            proposed_transactions.extend(core.block_handler.proposed.drain(..));
+            proposed_transactions.append(&mut core.block_handler.proposed);
             eprintln!("{}: {}", core.authority, block);
             blocks.push(block.clone());
         }
@@ -588,7 +587,7 @@ mod test {
                     .try_new_block()
                     .expect("Must be able to create block after genesis");
                 assert_eq!(block.reference().round, 1);
-                proposed_transactions.extend(core.block_handler.proposed.drain(..));
+                proposed_transactions.append(&mut core.block_handler.proposed);
                 eprintln!("{}: {}", core.authority, block);
                 assert!(
                     threshold_clock::threshold_clock_valid_non_genesis(&block, &committee),
@@ -635,11 +634,12 @@ mod test {
                 push_all(&mut pending, core.authority, &block);
                 if i < 20 {
                     // First 20 iterations we record proposed transactions
-                    proposed_transactions.extend(core.block_handler.proposed.drain(..));
+                    proposed_transactions.append(&mut core.block_handler.proposed);
                     // proposed_transactions.push(core.block_handler.last_transaction());
                 } else {
                     assert!(!proposed_transactions.is_empty());
-                    // After 20 iterations we just wait for all transactions to be committed everywhere
+                    // After 20 iterations we just wait for all
+                    // transactions to be committed everywhere
                     for proposed in &proposed_transactions {
                         for core in &cores {
                             if !core.block_handler.is_certified(proposed) {
@@ -725,7 +725,7 @@ mod test {
     }
 
     fn push_all(
-        p: &mut Vec<Vec<Data<StatementBlock>>>,
+        p: &mut [Vec<Data<StatementBlock>>],
         except: AuthorityIndex,
         block: &Data<StatementBlock>,
     ) {

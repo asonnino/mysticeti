@@ -19,7 +19,8 @@ use crate::{
 pub struct BlockManager {
     /// Keeps all pending blocks.
     blocks_pending: HashMap<BlockReference, Data<StatementBlock>>,
-    /// Keeps all the blocks (`HashSet<BlockReference>`) waiting for `BlockReference` to be processed.
+    /// Keeps all the blocks (`HashSet<BlockReference>`) waiting
+    /// for `BlockReference` to be processed.
     block_references_waiting: HashMap<BlockReference, HashSet<BlockReference>>,
     /// Keeps all blocks that need to be synced in order to unblock the processing of other pending
     /// blocks. The indices of the vector correspond the authority indices.
@@ -57,7 +58,8 @@ impl BlockManager {
 
             let mut processed = true;
             for included_reference in block.includes() {
-                // If we are missing a reference then we insert into pending and update the waiting index
+                // If we are missing a reference then we insert
+                // into pending and update the waiting index
                 if !self.block_store.block_exists(*included_reference) {
                     processed = false;
                     self.block_references_waiting
@@ -87,16 +89,22 @@ impl BlockManager {
                 {
                     // For each reference see if its unblocked.
                     for waiting_block_reference in waiting_references {
-                        let block_pointer = self.blocks_pending.get(&waiting_block_reference).expect("Safe since we ensure the block waiting reference has a valid primary key.");
+                        let block_pointer = self
+                            .blocks_pending
+                            .get(&waiting_block_reference)
+                            .expect("Block waiting ref must exist");
 
                         if block_pointer
                             .includes()
                             .iter()
                             .all(|item_ref| !self.block_references_waiting.contains_key(item_ref))
                         {
-                            // No dependencies are left unprocessed, so remove from unprocessed list, and add to the
-                            // blocks we are processing now.
-                            let block = self.blocks_pending.remove(&waiting_block_reference).expect("Safe since we ensure the block waiting reference has a valid primary key.");
+                            // No dependencies left, move to
+                            // processing queue.
+                            let block = self
+                                .blocks_pending
+                                .remove(&waiting_block_reference)
+                                .expect("Block waiting ref must exist");
                             blocks.push_front(block);
                         }
                     }
@@ -135,7 +143,7 @@ mod tests {
                 print!("Adding {:?}:", block.reference());
                 for (_, p) in processed {
                     print!("{:?},", p.reference());
-                    if !processed_blocks.insert(p.reference().clone()) {
+                    if !processed_blocks.insert(*p.reference()) {
                         panic!("Block {:?} processed twice", p.reference());
                     }
                 }

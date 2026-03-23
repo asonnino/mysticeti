@@ -15,12 +15,7 @@ use crate::types::Vote;
 use crate::{
     serde::{ByteRepr, BytesVisitor},
     types::{
-        AuthorityIndex,
-        BaseStatement,
-        BlockReference,
-        EpochStatus,
-        RoundNumber,
-        StatementBlock,
+        AuthorityIndex, BaseStatement, BlockReference, EpochStatus, RoundNumber, StatementBlock,
         TimestampNs,
     },
 };
@@ -82,9 +77,11 @@ impl BlockDigest {
         Default::default()
     }
 
-    /// There is a bit of a complexity around what is considered block digest and what is being signed
+    /// There is a bit of a complexity around what is considered
+    /// block digest and what is being signed.
     ///
-    /// * Block signature covers all the fields in the block, except for signature and reference.digest
+    /// * Block signature covers all the fields in the block,
+    ///   except for signature and reference.digest
     /// * Block digest(e.g. block.reference.digest) covers all the above **and** block signature
     ///
     /// This is not very beautiful, but it allows to optimize block synchronization,
@@ -153,7 +150,9 @@ impl<const N: usize> AsBytes for [u8; N] {
     }
 }
 
-pub trait CryptoHash {
+// Used in non-test builds by digest_without_signature.
+#[cfg_attr(test, allow(dead_code))]
+pub(crate) trait CryptoHash {
     fn crypto_hash(&self, state: &mut impl Digest);
 }
 

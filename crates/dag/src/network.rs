@@ -13,9 +13,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{
         tcp::{OwnedReadHalf, OwnedWriteHalf},
-        TcpListener,
-        TcpSocket,
-        TcpStream,
+        TcpListener, TcpSocket, TcpStream,
     },
     runtime::Handle,
     select,
@@ -113,7 +111,11 @@ impl Network {
                     connection_sender: connection_sender.clone(),
                     bind_addr: bind_addr(local_addr),
                     active_immediately: id < our_id,
-                    latency_sender: metrics.connection_latency_sender.get(id).expect("Can not locate connection_latency_sender metric - did you initialize metrics with correct committee?").clone()
+                    latency_sender: metrics
+                        .connection_latency_sender
+                        .get(id)
+                        .expect("Missing connection_latency_sender metric")
+                        .clone(),
                 }
                 .run(receiver),
             );
@@ -308,12 +310,19 @@ impl Worker {
                 received = pong_receiver.recv() => {
                     // We have an embedded ping-pong protocol for measuring RTT:
                     //
-                    // Every PING_INTERVAL node emits a "ping", positive number encoding some local time
-                    // On receiving positive ping, node replies with "pong" which is negative number (e.g. "ping".neg())
-                    // On receiving negative number we can calculate RTT(by negating it again and getting original ping time)
-                    // todo - we trust remote peer here, might want to enforce ping (not critical for safety though)
+                    // Every PING_INTERVAL node emits a "ping",
+                    // positive number encoding some local time.
+                    // On receiving positive ping, node replies
+                    // with "pong" (negative number, i.e. ping.neg()).
+                    // On receiving negative number we can calculate
+                    // RTT by negating and getting original ping time.
+                    // todo - we trust remote peer here, might want
+                    // to enforce ping (not critical for safety).
 
-                    let Some(ping) = received else {return Ok(())}; // todo - pass signal? (pong_sender closed)
+                    // todo - pass signal? (pong_sender closed)
+                    let Some(ping) = received else {
+                        return Ok(());
+                    };
                     if ping == 0 {
                         tracing::warn!("Invalid ping: {ping}");
                         return Ok(());
@@ -338,7 +347,10 @@ impl Worker {
                                         latency_sender.observe(Duration::from_micros(delay));
                                     },
                                     None => {
-                                        tracing::warn!("Invalid ping: {ping}, greater then current time {time}");
+                                        tracing::warn!(
+                                            "Invalid ping: {ping}, \
+                                            greater than current time {time}"
+                                        );
                                         return Ok(());
                                     }
                                 }
@@ -353,8 +365,11 @@ impl Worker {
                 }
                 received = receiver.recv() => {
                     // todo - pass signal to break main loop
-                    let Some(message) = received else {return Ok(())};
-                    let serialized = bincode::serialize(&message).expect("Serialization should not fail");
+                    let Some(message) = received else {
+                        return Ok(());
+                    };
+                    let serialized = bincode::serialize(&message)
+                        .expect("Serialization should not fail");
                     writer.write_u32(serialized.len() as u32).await?;
                     writer.write_all(&serialized).await?;
                 }
@@ -465,7 +480,7 @@ mod test {
                 let peer = &addresses[connection.peer_id];
                 eprintln!("{address} connected to {peer}");
                 waiting_peers.remove(peer);
-                if waiting_peers.len() == 0 {
+                if waiting_peers.is_empty() {
                     break;
                 }
             }

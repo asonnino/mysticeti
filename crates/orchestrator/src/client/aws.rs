@@ -14,16 +14,10 @@ use aws_sdk_ec2::{
     primitives::Blob,
     types::{
         builders::{
-            BlockDeviceMappingBuilder,
-            EbsBlockDeviceBuilder,
-            FilterBuilder,
-            TagBuilder,
+            BlockDeviceMappingBuilder, EbsBlockDeviceBuilder, FilterBuilder, TagBuilder,
             TagSpecificationBuilder,
         },
-        EphemeralNvmeSupport,
-        Instance as AwsInstance,
-        ResourceType,
-        VolumeType,
+        EphemeralNvmeSupport, Instance as AwsInstance, ResourceType, VolumeType,
     },
 };
 use serde::Serialize;
@@ -72,7 +66,7 @@ impl AwsClient {
 
         let mut clients = HashMap::new();
         for region in settings.regions.clone() {
-            let sdk_config = aws_config::defaults(BehaviorVersion::v2024_03_28())
+            let sdk_config = aws_config::defaults(BehaviorVersion::v2026_01_12())
                 .region(Region::new(region.clone()))
                 .profile_files(profile_files.clone())
                 .load()

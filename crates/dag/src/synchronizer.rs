@@ -19,8 +19,6 @@ use crate::{
 
 // TODO: A central controller will eventually dynamically update these parameters.
 pub struct SynchronizerParameters {
-    /// The maximum number of helpers (across all nodes).
-    pub absolute_maximum_helpers: usize,
     /// The maximum number of helpers per authority.
     pub maximum_helpers_per_authority: usize,
     /// The number of blocks to send in a single batch.
@@ -31,20 +29,16 @@ pub struct SynchronizerParameters {
     pub grace_period: Duration,
     /// The interval at which to send stream blocks authored by other nodes.
     pub stream_interval: Duration,
-    /// Threshold number of missing block from an authority to open a new stream.
-    pub new_stream_threshold: usize,
 }
 
 impl Default for SynchronizerParameters {
     fn default() -> Self {
         Self {
-            absolute_maximum_helpers: 10,
             maximum_helpers_per_authority: 2,
             batch_size: 10,
             sample_precision: Duration::from_secs(5),
             grace_period: Duration::from_secs(15),
             stream_interval: Duration::from_secs(1),
-            new_stream_threshold: 10,
         }
     }
 }
@@ -329,10 +323,9 @@ where
             now.checked_sub(*time).unwrap_or_default() < self.parameters.grace_period
         });
 
-        // TODO: If we are missing many blocks from the same authority
-        // (`missing.len() > self.parameters.new_stream_threshold`), it is likely that
-        // we have a network partition. We should try to find an other peer from which
-        // to (temporarily) sync the blocks from that authority.
+        // TODO: If we are missing many blocks from the same
+        // authority, it is likely a network partition. We should
+        // find another peer to temporarily sync blocks from.
 
         for chunks in to_request.chunks(net_sync::MAXIMUM_BLOCK_REQUEST) {
             let Some((peer, permit)) = self.sample_peer(&[self.id]) else {
@@ -351,7 +344,7 @@ where
     fn sample_peer(
         &self,
         except: &[AuthorityIndex],
-    ) -> Option<(AuthorityIndex, mpsc::Permit<NetworkMessage>)> {
+    ) -> Option<(AuthorityIndex, mpsc::Permit<'_, NetworkMessage>)> {
         let mut senders = self
             .senders
             .iter()

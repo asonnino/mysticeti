@@ -3,9 +3,7 @@
 
 use crate::{
     consensus::{
-        universal_committer::UniversalCommitterBuilder,
-        LeaderStatus,
-        DEFAULT_WAVE_LENGTH,
+        universal_committer::UniversalCommitterBuilder, LeaderStatus, DEFAULT_WAVE_LENGTH,
     },
     test_util::{build_dag, build_dag_layer, committee, test_metrics, TestBlockWriter},
     types::{BlockReference, StatementBlock},
@@ -99,7 +97,7 @@ fn multiple_direct_commit() {
         tracing::info!("Commit sequence: {sequence:?}");
 
         assert_eq!(sequence.len(), 1);
-        let leader_round = n as u64;
+        let leader_round = n;
         if let LeaderStatus::Commit(ref block) = sequence[0] {
             assert_eq!(block.author(), committee.elect_leader(leader_round));
         } else {
@@ -332,7 +330,7 @@ fn indirect_commit() {
 
     let references: Vec<_> = references_without_votes_for_leader_1
         .into_iter()
-        .chain(references_with_votes_for_leader_1.into_iter())
+        .chain(references_with_votes_for_leader_1)
         .take(committee.quorum_threshold() as usize)
         .collect();
     let connections_without_votes_for_leader_1 = committee

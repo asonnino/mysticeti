@@ -175,11 +175,13 @@ mod tests {
             match event {
                 SyncerEvent::ForceNewBlock(round) => {
                     if self.force_new_block(round) {
-                        // eprintln!("[{:06} {}] Proposal timeout for {round}", scheduler.time_ms(), self.core.authority());
+                        // eprintln!("[{:06} {}] Proposal timeout for {round}",
+                        // scheduler.time_ms(), self.core.authority());
                     }
                 }
                 SyncerEvent::DeliverBlock(block) => {
-                    // eprintln!("[{:06} {}] Deliver {block}", scheduler.time_ms(), self.core.authority());
+                    // eprintln!("[{:06} {}] Deliver {block}",
+                    //     scheduler.time_ms(), self.core.authority());
                     self.add_blocks(vec![block]);
                 }
             }
@@ -239,10 +241,11 @@ mod tests {
         loop {
             iteration += 1;
             assert!(!simulator.run_one());
-            // todo - we might want to wait for exactly num_txn from each authority, rather then num_txn as usize * committee.len() total
+            // todo - we might want to wait for exactly num_txn
+            // from each authority, rather than num_txn total
             if await_transactions.len() < await_num_txn {
                 for state in simulator.states_mut() {
-                    await_transactions.extend(state.core.block_handler_mut().proposed.drain(..))
+                    await_transactions.append(&mut state.core.block_handler_mut().proposed)
                 }
                 continue;
             }
@@ -271,12 +274,17 @@ mod tests {
                     .map(|syncer| syncer.core.last_proposed())
                     .max()
                     .unwrap();
-                eprintln!("Certified {} transactions in {time:.2?}, {rounds} rounds, {iteration} iterations", await_transactions.len());
+                eprintln!(
+                    "Certified {} txns in {time:.2?}, \
+                    {rounds} rounds, {iteration} iterations",
+                    await_transactions.len()
+                );
                 check_commits(simulator.states());
                 break;
-            } /*else if iteration % 100 == 0 {
-                  eprintln!("Not certified: {not_certified:?}");
-              }*/
+            }
+            // else if iteration % 100 == 0 {
+            //     eprintln!("Not certified: {not_certified:?}");
+            // }
         }
     }
 }
