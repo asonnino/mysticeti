@@ -15,13 +15,10 @@ mod epoch_close;
 mod finalization_interpreter;
 #[cfg(feature = "simulator")]
 mod future_simulator;
-#[allow(dead_code)] // todo - delete if unused after a while
-mod lock;
 mod log;
 pub mod metrics;
 pub mod net_sync;
 pub mod network;
-pub mod prometheus;
 mod range_map;
 mod runtime;
 mod serde;
@@ -32,7 +29,6 @@ mod simulated_network;
 mod simulator;
 #[cfg(feature = "simulator")]
 mod simulator_tracing;
-mod stat;
 mod state;
 mod syncer;
 mod synchronizer;

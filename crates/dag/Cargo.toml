@@ -5,7 +5,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-axum = "0.6.18"
+axum = "0.7"
 bincode = "1.3.3"
 
 blake2 = "0.10.6"
@@ -16,11 +16,12 @@ eyre = { workspace = true }
 futures = { workspace = true }
 gettid = "0.1.2"
 hex = "0.4.3"
-hyper = "0.14.26"
 libc = "0.2.146"
 memmap2 = "0.7.0"
 
-minibytes = { path = "../minibytes", default_features = false, features = ["frommmap"] }
+minibytes = { path = "../minibytes", default_features = false, features = [
+  "frommmap",
+] }
 parking_lot = "0.12.1"
 prometheus = "0.13.3"
 

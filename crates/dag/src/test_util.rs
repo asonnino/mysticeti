@@ -8,7 +8,6 @@ use std::{
 };
 
 use futures::future::join_all;
-use prometheus::Registry;
 #[cfg(feature = "simulator")]
 use rand::{rngs::StdRng, SeedableRng};
 
@@ -30,10 +29,6 @@ use crate::{
     types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
     wal::{open_file_for_wal, walf, WalPosition, WalWriter},
 };
-
-pub fn test_metrics() -> Arc<Metrics> {
-    Metrics::new_for_test(&Registry::new(), None)
-}
 
 pub fn committee(n: usize) -> Arc<Committee> {
     Committee::new_test(vec![1; n])
@@ -69,7 +64,7 @@ pub fn committee_and_cores_persisted_epoch_duration(
         .authorities()
         .map(|authority| {
             let last_transaction = first_transaction_for_authority(authority);
-            let metrics = Metrics::new_for_test(&Registry::new(), Some(&committee));
+            let metrics = Metrics::new_for_test(committee.len());
             let block_handler = TestBlockHandler::new(
                 last_transaction,
                 committee.clone(),
@@ -130,9 +125,15 @@ pub fn committee_and_syncers(
                 let commit_handler = TestCommitHandler::new(
                     committee.clone(),
                     core.block_handler().transaction_time.clone(),
-                    test_metrics(),
+                    Metrics::new_for_test(0),
                 );
-                Syncer::new(core, 3, Default::default(), commit_handler, test_metrics())
+                Syncer::new(
+                    core,
+                    3,
+                    Default::default(),
+                    commit_handler,
+                    Metrics::new_for_test(0),
+                )
             })
             .collect(),
     )
@@ -193,7 +194,7 @@ pub fn simulated_network_syncers_with_epoch_duration(
             3,
             commit_handler,
             config::node_defaults::default_shutdown_grace_period(),
-            test_metrics(),
+            Metrics::new_for_test(0),
             &public_config,
         );
         drop(node_context);
@@ -218,7 +219,7 @@ pub async fn network_syncers_with_epoch_duration(
         let commit_handler = TestCommitHandler::new(
             committee.clone(),
             core.block_handler().transaction_time.clone(),
-            test_metrics(),
+            Metrics::new_for_test(0),
         );
         let network_syncer = NetworkSyncer::start(
             network,
@@ -226,7 +227,7 @@ pub async fn network_syncers_with_epoch_duration(
             3,
             commit_handler,
             config::node_defaults::default_shutdown_grace_period(),
-            test_metrics(),
+            Metrics::new_for_test(0),
             &NodePublicConfig::new_for_tests(n),
         );
         network_syncers.push(network_syncer);
@@ -266,16 +267,11 @@ pub fn check_commits<H: BlockHandler, S: SyncerSignals>(
 
 #[cfg(feature = "simulator")]
 pub fn print_stats<H: BlockHandler, S: SyncerSignals>(syncers: &[Syncer<H, S, TestCommitHandler>]) {
-    eprintln!(
-        "val ||    cert(ms)   \
-        ||cert commit(ms)|| tx commit(ms) |"
-    );
-    eprintln!(
-        "    ||  p90  |  avg  \
-        ||  p90  |  avg  ||  p90  |  avg  |"
-    );
+    use crate::types::format_authority_index;
     for s in syncers {
-        s.core().metrics.print_stats(s.core().authority());
+        let authority = format_authority_index(s.core().authority());
+        let snapshot = s.core().metrics.collect();
+        tracing::info!("Validator {authority} metrics:\n{snapshot}");
     }
 }
 
@@ -302,7 +298,7 @@ impl TestBlockWriter {
             0,
             Arc::new(wal_reader),
             &wal_writer,
-            test_metrics(),
+            Metrics::new_for_test(0),
             committee,
         );
         let block_store = state.block_store;

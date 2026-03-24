@@ -26,7 +26,6 @@ use crate::{
     data::Data,
     metrics::{print_network_address_table, Metrics},
     runtime,
-    stat::HistogramSender,
     types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
 };
 
@@ -111,7 +110,7 @@ impl Network {
                     connection_sender: connection_sender.clone(),
                     bind_addr: bind_addr(local_addr),
                     active_immediately: id < our_id,
-                    latency_sender: metrics.connection_latency_sender(id),
+                    metrics: metrics.clone(),
                 }
                 .run(receiver),
             );
@@ -179,14 +178,14 @@ struct Worker {
     connection_sender: mpsc::Sender<Connection>,
     bind_addr: SocketAddr,
     active_immediately: bool,
-    latency_sender: HistogramSender<Duration>,
+    metrics: Arc<Metrics>,
 }
 
 struct WorkerConnection {
     sender: mpsc::Sender<NetworkMessage>,
     receiver: mpsc::Receiver<NetworkMessage>,
     peer_id: usize,
-    latency_sender: HistogramSender<Duration>,
+    metrics: Arc<Metrics>,
 }
 
 impl Worker {
@@ -272,13 +271,13 @@ impl Worker {
             sender,
             receiver,
             peer_id,
-            latency_sender,
+            metrics,
         } = connection;
         tracing::debug!("Connected to {}", peer_id);
         let (reader, writer) = stream.into_split();
         let (pong_sender, pong_receiver) = mpsc::channel(16);
         let write_fut =
-            Self::handle_write_stream(writer, receiver, pong_receiver, latency_sender).boxed();
+            Self::handle_write_stream(writer, receiver, pong_receiver, metrics, peer_id).boxed();
         let read_fut = Self::handle_read_stream(reader, sender, pong_sender).boxed();
         let (r, _, _) = select_all([write_fut, read_fut]).await;
         tracing::debug!("Disconnected from {}", peer_id);
@@ -289,7 +288,8 @@ impl Worker {
         mut writer: OwnedWriteHalf,
         mut receiver: mpsc::Receiver<NetworkMessage>,
         mut pong_receiver: mpsc::Receiver<i64>,
-        latency_sender: HistogramSender<Duration>,
+        metrics: Arc<Metrics>,
+        peer_id: usize,
     ) -> io::Result<()> {
         let start = Instant::now();
         let mut ping_deadline = start + PING_INTERVAL;
@@ -340,7 +340,10 @@ impl Worker {
                                 let time = start.elapsed().as_micros() as u64;
                                 match time.checked_sub(our_ping) {
                                     Some(delay) => {
-                                        latency_sender.observe(Duration::from_micros(delay));
+                                        metrics.observe_connection_latency(
+                                            peer_id,
+                                            Duration::from_micros(delay),
+                                        );
                                     },
                                     None => {
                                         tracing::warn!(
@@ -430,7 +433,7 @@ impl Worker {
             sender: network_in_sender,
             receiver: network_out_receiver,
             peer_id: self.peer_id,
-            latency_sender: self.latency_sender.clone(),
+            metrics: self.metrics.clone(),
         })
     }
 }
@@ -456,8 +459,6 @@ fn decode_ping(message: &[u8]) -> i64 {
 mod test {
     use std::collections::HashSet;
 
-    use prometheus::Registry;
-
     use crate::{committee::Committee, metrics::Metrics, test_util::networks_and_addresses};
 
     #[ignore]
@@ -466,7 +467,7 @@ mod test {
         let committee = Committee::new_test(vec![1, 1, 1]);
         let metrics: Vec<_> = committee
             .authorities()
-            .map(|_| Metrics::new_for_test(&Registry::default(), Some(&committee)))
+            .map(|_| Metrics::new_for_test(committee.len()))
             .collect();
         let (networks, addresses) = networks_and_addresses(&metrics).await;
         for (mut network, address) in networks.into_iter().zip(addresses.iter()) {

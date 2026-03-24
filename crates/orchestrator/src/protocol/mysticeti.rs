@@ -213,7 +213,7 @@ impl ProtocolMetrics for MysticetiProtocol {
         let node_config = config::NodePublicConfig::new_for_benchmarks(ips, node_parameters);
         let metrics_paths = node_config
             .all_metric_addresses()
-            .map(|x| format!("{x}{}", dag::prometheus::METRICS_ROUTE));
+            .map(|x| format!("{x}{}", dag::metrics::server::METRICS_ROUTE));
 
         instances.into_iter().zip(metrics_paths).collect()
     }

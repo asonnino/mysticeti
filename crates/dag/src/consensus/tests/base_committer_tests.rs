@@ -5,7 +5,8 @@ use crate::{
     consensus::{
         universal_committer::UniversalCommitterBuilder, LeaderStatus, DEFAULT_WAVE_LENGTH,
     },
-    test_util::{build_dag, build_dag_layer, committee, test_metrics, TestBlockWriter},
+    metrics::Metrics,
+    test_util::{build_dag, build_dag_layer, committee, TestBlockWriter},
     types::BlockReference,
 };
 
@@ -21,7 +22,7 @@ fn direct_commit() {
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
         block_writer.into_block_store(),
-        test_metrics(),
+        Metrics::new_for_test(0),
     )
     .build();
 
@@ -49,7 +50,7 @@ fn idempotence() {
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
         block_writer.into_block_store(),
-        test_metrics(),
+        Metrics::new_for_test(0),
     )
     .build();
 
@@ -81,7 +82,7 @@ fn multiple_direct_commit() {
         let committer = UniversalCommitterBuilder::new(
             committee.clone(),
             block_writer.into_block_store(),
-            test_metrics(),
+            Metrics::new_for_test(0),
         )
         .with_wave_length(wave_length)
         .build();
@@ -117,7 +118,7 @@ fn direct_commit_late_call() {
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
         block_writer.into_block_store(),
-        test_metrics(),
+        Metrics::new_for_test(0),
     )
     .with_wave_length(wave_length)
     .build();
@@ -152,7 +153,7 @@ fn no_genesis_commit() {
         let committer = UniversalCommitterBuilder::new(
             committee.clone(),
             block_writer.into_block_store(),
-            test_metrics(),
+            Metrics::new_for_test(0),
         )
         .with_wave_length(wave_length)
         .build();
@@ -199,7 +200,7 @@ fn no_leader() {
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
         block_writer.into_block_store(),
-        test_metrics(),
+        Metrics::new_for_test(0),
     )
     .with_wave_length(wave_length)
     .build();
@@ -249,7 +250,7 @@ fn direct_skip() {
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
         block_writer.into_block_store(),
-        test_metrics(),
+        Metrics::new_for_test(0),
     )
     .with_wave_length(wave_length)
     .build();
@@ -345,7 +346,7 @@ fn indirect_commit() {
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
         block_writer.into_block_store(),
-        test_metrics(),
+        Metrics::new_for_test(0),
     )
     .with_wave_length(wave_length)
     .build();
@@ -421,7 +422,7 @@ fn indirect_skip() {
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
         block_writer.into_block_store(),
-        test_metrics(),
+        Metrics::new_for_test(0),
     )
     .with_wave_length(wave_length)
     .build();
@@ -503,7 +504,7 @@ fn undecided() {
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
         block_writer.into_block_store(),
-        test_metrics(),
+        Metrics::new_for_test(0),
     )
     .with_wave_length(wave_length)
     .build();

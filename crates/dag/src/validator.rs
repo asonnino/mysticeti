@@ -16,10 +16,9 @@ use crate::{
     config::{ClientParameters, NodePrivateConfig, NodePublicConfig},
     core::{Core, CoreOptions},
     log::TransactionLog,
-    metrics::Metrics,
+    metrics::{self, Metrics},
     net_sync::NetworkSyncer,
     network::Network,
-    prometheus,
     runtime::{JoinError, JoinHandle},
     transactions_generator::TransactionGenerator,
     types::AuthorityIndex,
@@ -28,7 +27,7 @@ use crate::{
 
 pub struct Validator {
     network_synchronizer: NetworkSyncer<RealBlockHandler, TestCommitHandler<TransactionLog>>,
-    metrics_handle: JoinHandle<Result<(), hyper::Error>>,
+    metrics_handle: JoinHandle<()>,
 }
 
 impl Validator {
@@ -55,10 +54,10 @@ impl Validator {
 
         // Boot the prometheus server.
         let registry = Registry::new();
-        let metrics = Metrics::new(&registry, Some(&committee));
+        let metrics = Metrics::new(&registry, committee.len(), None);
 
         let metrics_handle =
-            prometheus::start_prometheus_server(binding_metrics_address, &registry);
+            metrics::server::start_prometheus_server(binding_metrics_address, &registry);
 
         // Open the block store.
         let wal_file =
@@ -135,12 +134,7 @@ impl Validator {
         })
     }
 
-    pub async fn await_completion(
-        self,
-    ) -> (
-        Result<(), JoinError>,
-        Result<Result<(), hyper::Error>, JoinError>,
-    ) {
+    pub async fn await_completion(self) -> (Result<(), JoinError>, Result<(), JoinError>) {
         tokio::join!(
             self.network_synchronizer.await_completion(),
             self.metrics_handle
@@ -164,13 +158,13 @@ mod smoke_tests {
     use crate::{
         committee::Committee,
         config::{self, ClientParameters, NodePrivateConfig, NodePublicConfig},
-        prometheus,
+        metrics,
         types::AuthorityIndex,
     };
 
     /// Check whether the validator specified by its metrics address has committed at least once.
     async fn check_commit(address: &SocketAddr) -> Result<bool, reqwest::Error> {
-        let route = prometheus::METRICS_ROUTE;
+        let route = metrics::server::METRICS_ROUTE;
         let res = reqwest::get(format! {"http://{address}{route}"}).await?;
         let string = res.text().await?;
         let commit = string.contains("committed_leaders_total");
