@@ -21,7 +21,6 @@ use crate::{
     log::TransactionLog,
     metrics::Metrics,
     runtime::{self, TimeInstant},
-    syncer::CommitObserver,
     transactions_generator::TransactionGenerator,
     types::{
         AuthorityIndex, BaseStatement, BlockReference, StatementBlock, Transaction,
@@ -323,12 +322,11 @@ impl BlockHandler for TestBlockHandler {
     }
 }
 
-pub struct TestCommitHandler<H = HashSet<TransactionLocator>> {
+pub struct CommitHandler<H = HashSet<TransactionLocator>> {
     commit_interpreter: Linearizer,
     transaction_votes: TransactionAggregator<QuorumThreshold, H>,
     committee: Arc<Committee>,
     committed_leaders: Vec<BlockReference>,
-    // committed_dags: Vec<CommittedSubDag>,
     start_time: TimeInstant,
     transaction_time: Arc<Mutex<HashMap<TransactionLocator, TimeInstant>>>,
 
@@ -336,7 +334,7 @@ pub struct TestCommitHandler<H = HashSet<TransactionLocator>> {
     consensus_only: bool,
 }
 
-impl<H: ProcessedTransactionHandler<TransactionLocator> + Default> TestCommitHandler<H> {
+impl<H: ProcessedTransactionHandler<TransactionLocator> + Default> CommitHandler<H> {
     pub fn new(
         committee: Arc<Committee>,
         transaction_time: Arc<Mutex<HashMap<TransactionLocator, TimeInstant>>>,
@@ -346,7 +344,7 @@ impl<H: ProcessedTransactionHandler<TransactionLocator> + Default> TestCommitHan
     }
 }
 
-impl<H: ProcessedTransactionHandler<TransactionLocator>> TestCommitHandler<H> {
+impl<H: ProcessedTransactionHandler<TransactionLocator>> CommitHandler<H> {
     pub fn new_with_handler(
         committee: Arc<Committee>,
         transaction_time: Arc<Mutex<HashMap<TransactionLocator, TimeInstant>>>,
@@ -368,7 +366,7 @@ impl<H: ProcessedTransactionHandler<TransactionLocator>> TestCommitHandler<H> {
         }
     }
 
-    pub fn committed_leaders(&self) -> &Vec<BlockReference> {
+    pub fn committed_leaders(&self) -> &[BlockReference] {
         &self.committed_leaders
     }
 
@@ -404,12 +402,8 @@ impl<H: ProcessedTransactionHandler<TransactionLocator>> TestCommitHandler<H> {
         self.metrics
             .observe_latency_squared_s("shared", square_latency);
     }
-}
 
-impl<H: ProcessedTransactionHandler<TransactionLocator> + Send + Sync> CommitObserver
-    for TestCommitHandler<H>
-{
-    fn handle_commit(
+    pub fn handle_commit(
         &mut self,
         block_store: &BlockStore,
         committed_leaders: Vec<Data<StatementBlock>>,
@@ -443,18 +437,17 @@ impl<H: ProcessedTransactionHandler<TransactionLocator> + Send + Sync> CommitObs
                     );
                 }
             }
-            // self.committed_dags.push(commit);
         }
         self.metrics
             .set_commit_handler_pending_certificates(self.transaction_votes.len() as i64);
         committed
     }
 
-    fn aggregator_state(&self) -> Bytes {
+    pub fn aggregator_state(&self) -> Bytes {
         self.transaction_votes.state()
     }
 
-    fn recover_committed(&mut self, committed: HashSet<BlockReference>, state: Option<Bytes>) {
+    pub fn recover_committed(&mut self, committed: HashSet<BlockReference>, state: Option<Bytes>) {
         assert!(self.commit_interpreter.committed.is_empty());
         if let Some(state) = state {
             self.transaction_votes.with_state(&state);

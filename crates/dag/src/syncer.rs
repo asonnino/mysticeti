@@ -1,53 +1,72 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
+use std::sync::Arc;
 
-use minibytes::Bytes;
+use tokio::sync::Notify;
 
 use crate::{
-    block_handler::BlockHandler,
-    block_store::BlockStore,
-    consensus::linearizer::CommittedSubDag,
+    block_handler::{BlockHandler, CommitHandler},
+    committee::ProcessedTransactionHandler,
     core::Core,
     data::Data,
     metrics::Metrics,
     runtime::timestamp_utc,
-    types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
+    types::{AuthorityIndex, RoundNumber, StatementBlock, TransactionLocator},
 };
 
-pub struct Syncer<H: BlockHandler, S: SyncerSignals, C: CommitObserver> {
+pub struct Syncer<
+    H: BlockHandler,
+    P: ProcessedTransactionHandler<TransactionLocator> = HashSet<TransactionLocator>,
+> {
     core: Core<H>,
     force_new_block: bool,
     commit_period: u64,
-    signals: S,
-    commit_observer: C,
+    signals: SyncerSignals,
+    commit_handler: CommitHandler<P>,
     pub(crate) connected_authorities: HashSet<AuthorityIndex>,
     metrics: Arc<Metrics>,
 }
 
-pub trait SyncerSignals: Send + Sync {
-    fn new_block_ready(&mut self);
+pub struct SyncerSignals {
+    notify: Option<Arc<Notify>>,
+    new_block: bool,
 }
 
-pub trait CommitObserver: Send + Sync {
-    fn handle_commit(
-        &mut self,
-        block_store: &BlockStore,
-        committed_leaders: Vec<Data<StatementBlock>>,
-    ) -> Vec<CommittedSubDag>;
+impl SyncerSignals {
+    pub fn new(notify: Arc<Notify>) -> Self {
+        Self {
+            notify: Some(notify),
+            new_block: false,
+        }
+    }
 
-    fn aggregator_state(&self) -> Bytes;
+    pub fn test() -> Self {
+        Self {
+            notify: None,
+            new_block: false,
+        }
+    }
 
-    fn recover_committed(&mut self, committed: HashSet<BlockReference>, state: Option<Bytes>);
+    pub fn new_block_ready(&mut self) {
+        self.new_block = true;
+        if let Some(notify) = &self.notify {
+            notify.notify_waiters();
+        }
+    }
+
+    pub fn take_new_block(&mut self) -> bool {
+        std::mem::take(&mut self.new_block)
+    }
 }
 
-impl<H: BlockHandler, S: SyncerSignals, C: CommitObserver> Syncer<H, S, C> {
+impl<H: BlockHandler, P: ProcessedTransactionHandler<TransactionLocator>> Syncer<H, P> {
     pub fn new(
         core: Core<H>,
         commit_period: u64,
-        signals: S,
-        commit_observer: C,
+        signals: SyncerSignals,
+        commit_handler: CommitHandler<P>,
         metrics: Arc<Metrics>,
     ) -> Self {
         let committee_size = core.committee().len();
@@ -56,7 +75,7 @@ impl<H: BlockHandler, S: SyncerSignals, C: CommitObserver> Syncer<H, S, C> {
             force_new_block: false,
             commit_period,
             signals,
-            commit_observer,
+            commit_handler,
             connected_authorities: HashSet::with_capacity(committee_size),
             metrics,
         }
@@ -111,17 +130,15 @@ impl<H: BlockHandler, S: SyncerSignals, C: CommitObserver> Syncer<H, S, C> {
                 tracing::debug!("Committed {:?}", committed_refs);
             }
             let committed_subdag = self
-                .commit_observer
+                .commit_handler
                 .handle_commit(self.core.block_store(), newly_committed);
-            self.core.handle_committed_subdag(
-                committed_subdag,
-                &self.commit_observer.aggregator_state(),
-            );
+            self.core
+                .handle_committed_subdag(committed_subdag, &self.commit_handler.aggregator_state());
         }
     }
 
-    pub fn commit_observer(&self) -> &C {
-        &self.commit_observer
+    pub fn commit_handler(&self) -> &CommitHandler<P> {
+        &self.commit_handler
     }
 
     pub fn core(&self) -> &Core<H> {
@@ -134,12 +151,6 @@ impl<H: BlockHandler, S: SyncerSignals, C: CommitObserver> Syncer<H, S, C> {
     }
 }
 
-impl SyncerSignals for bool {
-    fn new_block_ready(&mut self) {
-        *self = true;
-    }
-}
-
 #[cfg(test)]
 #[cfg(feature = "simulator")]
 mod tests {
@@ -149,7 +160,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        block_handler::{TestBlockHandler, TestCommitHandler},
+        block_handler::TestBlockHandler,
         data::Data,
         simulator::{Scheduler, Simulator, SimulatorState},
         test_util::{check_commits, committee_and_syncers, rng_at_seed},
@@ -163,7 +174,7 @@ mod tests {
         DeliverBlock(Data<StatementBlock>),
     }
 
-    impl SimulatorState for Syncer<TestBlockHandler, bool, TestCommitHandler> {
+    impl SimulatorState for Syncer<TestBlockHandler> {
         type Event = SyncerEvent;
 
         fn handle_event(&mut self, event: Self::Event) {
@@ -182,8 +193,7 @@ mod tests {
             }
 
             // New block was created
-            if self.signals {
-                self.signals = false;
+            if self.signals.take_new_block() {
                 let last_block = self.core.last_own_block().clone();
                 Scheduler::schedule_event(
                     ROUND_TIMEOUT,

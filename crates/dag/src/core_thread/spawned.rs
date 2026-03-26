@@ -7,20 +7,27 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::{
     block_handler::BlockHandler,
+    committee::ProcessedTransactionHandler,
     data::Data,
     metrics::Metrics,
-    syncer::{CommitObserver, Syncer, SyncerSignals},
-    types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
+    syncer::Syncer,
+    types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock, TransactionLocator},
 };
 
-pub struct CoreThreadDispatcher<H: BlockHandler, S: SyncerSignals, C: CommitObserver> {
+pub struct CoreThreadDispatcher<
+    H: BlockHandler,
+    P: ProcessedTransactionHandler<TransactionLocator> + Send = HashSet<TransactionLocator>,
+> {
     sender: mpsc::Sender<CoreThreadCommand>,
-    join_handle: thread::JoinHandle<Syncer<H, S, C>>,
+    join_handle: thread::JoinHandle<Syncer<H, P>>,
     metrics: Arc<Metrics>,
 }
 
-pub struct CoreThread<H: BlockHandler, S: SyncerSignals, C: CommitObserver> {
-    syncer: Syncer<H, S, C>,
+pub struct CoreThread<
+    H: BlockHandler,
+    P: ProcessedTransactionHandler<TransactionLocator> + Send = HashSet<TransactionLocator>,
+> {
+    syncer: Syncer<H, P>,
     receiver: mpsc::Receiver<CoreThreadCommand>,
 }
 
@@ -36,10 +43,12 @@ enum CoreThreadCommand {
     ConnectionDropped(AuthorityIndex, oneshot::Sender<()>),
 }
 
-impl<H: BlockHandler + 'static, S: SyncerSignals + 'static, C: CommitObserver + 'static>
-    CoreThreadDispatcher<H, S, C>
+impl<
+        H: BlockHandler + 'static,
+        P: ProcessedTransactionHandler<TransactionLocator> + Send + 'static,
+    > CoreThreadDispatcher<H, P>
 {
-    pub fn start(syncer: Syncer<H, S, C>) -> Self {
+    pub fn start(syncer: Syncer<H, P>) -> Self {
         let (sender, receiver) = mpsc::channel(32);
         let metrics = syncer.core().metrics.clone();
         let core_thread = CoreThread { syncer, receiver };
@@ -54,7 +63,7 @@ impl<H: BlockHandler + 'static, S: SyncerSignals + 'static, C: CommitObserver + 
         }
     }
 
-    pub fn stop(self) -> Syncer<H, S, C> {
+    pub fn stop(self) -> Syncer<H, P> {
         drop(self.sender);
         self.join_handle.join().unwrap()
     }
@@ -85,8 +94,7 @@ impl<H: BlockHandler + 'static, S: SyncerSignals + 'static, C: CommitObserver + 
         receiver.await.expect("core thread is not expected to stop")
     }
 
-    /// Update the syncer with the connection status of an authority. This function must be called
-    /// whenever a connection to an authority is established or dropped.
+    /// Update the syncer with the connection status of an authority.
     pub async fn authority_connection(&self, authority: AuthorityIndex, connected: bool) {
         let (sender, receiver) = oneshot::channel();
         let status = if connected {
@@ -106,8 +114,8 @@ impl<H: BlockHandler + 'static, S: SyncerSignals + 'static, C: CommitObserver + 
     }
 }
 
-impl<H: BlockHandler, S: SyncerSignals, C: CommitObserver> CoreThread<H, S, C> {
-    pub fn run(mut self) -> Syncer<H, S, C> {
+impl<H: BlockHandler, P: ProcessedTransactionHandler<TransactionLocator> + Send> CoreThread<H, P> {
+    pub fn run(mut self) -> Syncer<H, P> {
         tracing::info!("Started core thread with tid {}", gettid::gettid());
         let metrics = self.syncer.core().metrics.clone();
         while let Some(command) = self.receiver.blocking_recv() {

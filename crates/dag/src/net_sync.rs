@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -17,33 +17,39 @@ use tokio::{
 };
 
 use crate::{
-    block_handler::BlockHandler,
+    block_handler::{BlockHandler, CommitHandler},
     block_store::BlockStore,
-    committee::Committee,
+    committee::{Committee, ProcessedTransactionHandler},
     config::NodePublicConfig,
     core::Core,
     core_thread::CoreThreadDispatcher,
     metrics::Metrics,
     network::{Connection, Network, NetworkMessage},
     runtime::{self, timestamp_utc, Handle, JoinError, JoinHandle},
-    syncer::{CommitObserver, Syncer, SyncerSignals},
+    syncer::{Syncer, SyncerSignals},
     synchronizer::{BlockDisseminator, BlockFetcher, SynchronizerParameters},
-    types::{format_authority_index, AuthorityIndex},
+    types::{format_authority_index, AuthorityIndex, TransactionLocator},
     wal::WalSyncer,
 };
 
 /// The maximum number of blocks that can be requested in a single message.
 pub const MAXIMUM_BLOCK_REQUEST: usize = 10;
 
-pub struct NetworkSyncer<H: BlockHandler, C: CommitObserver> {
-    inner: Arc<NetworkSyncerInner<H, C>>,
+pub struct NetworkSyncer<
+    H: BlockHandler,
+    P: ProcessedTransactionHandler<TransactionLocator> + Send = HashSet<TransactionLocator>,
+> {
+    inner: Arc<NetworkSyncerInner<H, P>>,
     main_task: JoinHandle<()>,
     syncer_task: oneshot::Receiver<()>,
     stop: mpsc::Receiver<()>,
 }
 
-pub struct NetworkSyncerInner<H: BlockHandler, C: CommitObserver> {
-    pub syncer: CoreThreadDispatcher<H, Arc<Notify>, C>,
+pub struct NetworkSyncerInner<
+    H: BlockHandler,
+    P: ProcessedTransactionHandler<TransactionLocator> + Send = HashSet<TransactionLocator>,
+> {
+    pub syncer: CoreThreadDispatcher<H, P>,
     pub block_store: BlockStore,
     pub notify: Arc<Notify>,
     committee: Arc<Committee>,
@@ -52,12 +58,16 @@ pub struct NetworkSyncerInner<H: BlockHandler, C: CommitObserver> {
     pub epoch_closing_time: Arc<AtomicU64>,
 }
 
-impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncer<H, C> {
+impl<
+        H: BlockHandler + 'static,
+        P: ProcessedTransactionHandler<TransactionLocator> + Send + 'static,
+    > NetworkSyncer<H, P>
+{
     pub fn start(
         network: Network,
         mut core: Core<H>,
         commit_period: u64,
-        mut commit_observer: C,
+        mut commit_handler: CommitHandler<P>,
         shutdown_grace_period: Duration,
         metrics: Arc<Metrics>,
         public_config: &NodePublicConfig,
@@ -67,7 +77,7 @@ impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncer<H, C>
         let notify = Arc::new(Notify::new());
         // todo - ugly, probably need to merge syncer and core
         let (committed, state) = core.take_recovered_committed_blocks();
-        commit_observer.recover_committed(committed, state);
+        commit_handler.recover_committed(committed, state);
         let committee = core.committee().clone();
         let wal_syncer = core.wal_syncer();
         let block_store = core.block_store().clone();
@@ -75,8 +85,8 @@ impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncer<H, C>
         let mut syncer = Syncer::new(
             core,
             commit_period,
-            notify.clone(),
-            commit_observer,
+            SyncerSignals::new(notify.clone()),
+            commit_handler,
             metrics.clone(),
         );
         syncer.force_new_block(0);
@@ -121,7 +131,7 @@ impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncer<H, C>
         }
     }
 
-    pub async fn shutdown(self) -> Syncer<H, Arc<Notify>, C> {
+    pub async fn shutdown(self) -> Syncer<H, P> {
         drop(self.stop);
         // todo - wait for network shutdown as well
         self.main_task.await.ok();
@@ -134,7 +144,7 @@ impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncer<H, C>
 
     async fn run(
         mut network: Network,
-        inner: Arc<NetworkSyncerInner<H, C>>,
+        inner: Arc<NetworkSyncerInner<H, P>>,
         epoch_close_signal: mpsc::Receiver<()>,
         shutdown_grace_period: Duration,
         block_fetcher: Arc<BlockFetcher>,
@@ -181,7 +191,7 @@ impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncer<H, C>
 
     async fn connection_task(
         mut connection: Connection,
-        inner: Arc<NetworkSyncerInner<H, C>>,
+        inner: Arc<NetworkSyncerInner<H, P>>,
         block_fetcher: Arc<BlockFetcher>,
         metrics: Arc<Metrics>,
     ) -> Option<()> {
@@ -250,7 +260,7 @@ impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncer<H, C>
     }
 
     async fn leader_timeout_task(
-        inner: Arc<NetworkSyncerInner<H, C>>,
+        inner: Arc<NetworkSyncerInner<H, P>>,
         mut epoch_close_signal: mpsc::Receiver<()>,
         shutdown_grace_period: Duration,
     ) -> Option<()> {
@@ -293,7 +303,7 @@ impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncer<H, C>
         }
     }
 
-    async fn cleanup_task(inner: Arc<NetworkSyncerInner<H, C>>) -> Option<()> {
+    async fn cleanup_task(inner: Arc<NetworkSyncerInner<H, P>>) -> Option<()> {
         let cleanup_interval = Duration::from_secs(10);
         loop {
             select! {
@@ -313,7 +323,11 @@ impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncer<H, C>
     }
 }
 
-impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncerInner<H, C> {
+impl<
+        H: BlockHandler + 'static,
+        P: ProcessedTransactionHandler<TransactionLocator> + Send + 'static,
+    > NetworkSyncerInner<H, P>
+{
     // Returns None either if channel is closed or NetworkSyncerInner receives stop signal
     async fn recv_or_stopped<T>(&self, channel: &mut mpsc::Receiver<T>) -> Option<T> {
         select! {
@@ -340,12 +354,6 @@ impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncerInner<
                 assert!(closed.is_err());
             }
         }
-    }
-}
-
-impl SyncerSignals for Arc<Notify> {
-    fn new_block_ready(&mut self) {
-        self.notify_waiters();
     }
 }
 
@@ -446,11 +454,9 @@ mod sim_tests {
         time::Duration,
     };
 
-    use tokio::sync::Notify;
-
     use super::NetworkSyncer;
     use crate::{
-        block_handler::{TestBlockHandler, TestCommitHandler},
+        block_handler::TestBlockHandler,
         config,
         config::NodePublicConfig,
         finalization_interpreter::FinalizationInterpreter,
@@ -465,8 +471,8 @@ mod sim_tests {
     };
 
     async fn wait_for_epoch_to_close(
-        network_syncers: Vec<NetworkSyncer<TestBlockHandler, TestCommitHandler>>,
-    ) -> Vec<Syncer<TestBlockHandler, Arc<Notify>, TestCommitHandler>> {
+        network_syncers: Vec<NetworkSyncer<TestBlockHandler>>,
+    ) -> Vec<Syncer<TestBlockHandler>> {
         let mut any_closed = false;
         while !any_closed {
             for net_sync in network_syncers.iter() {
@@ -496,9 +502,9 @@ mod sim_tests {
             simulated_network_syncers_with_epoch_duration(n, rounds_in_epoch);
         simulated_network.connect_all().await;
         let syncers = wait_for_epoch_to_close(network_syncers).await;
-        let canonical_commit_seq = syncers[0].commit_observer().committed_leaders().clone();
+        let canonical_commit_seq = syncers[0].commit_handler().committed_leaders().clone();
         for syncer in &syncers {
-            let commit_seq = syncer.commit_observer().committed_leaders().clone();
+            let commit_seq = syncer.commit_handler().committed_leaders().clone();
             assert_eq!(canonical_commit_seq, commit_seq);
         }
         print_stats(&syncers);
@@ -521,11 +527,11 @@ mod sim_tests {
             let block_store = syncer.core().block_store();
             let committee = syncer.core().committee().clone();
             let latest_committed_leader =
-                syncer.commit_observer().committed_leaders().last().unwrap();
+                syncer.commit_handler().committed_leaders().last().unwrap();
 
             println!(
                 "Num of Committed leaders: {:?}",
-                syncer.commit_observer().committed_leaders()
+                syncer.commit_handler().committed_leaders()
             );
 
             let mut finalization_interpreter = FinalizationInterpreter::new(block_store, committee);

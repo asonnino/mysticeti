@@ -10,7 +10,7 @@ use ::prometheus::Registry;
 use eyre::{eyre, Context, Result};
 
 use crate::{
-    block_handler::{RealBlockHandler, TestCommitHandler},
+    block_handler::{CommitHandler, RealBlockHandler},
     block_store::BlockStore,
     committee::Committee,
     config::{ClientParameters, NodePrivateConfig, NodePublicConfig},
@@ -26,7 +26,7 @@ use crate::{
 };
 
 pub struct Validator {
-    network_synchronizer: NetworkSyncer<RealBlockHandler, TestCommitHandler<TransactionLog>>,
+    network_synchronizer: NetworkSyncer<RealBlockHandler, TransactionLog>,
     metrics_handle: JoinHandle<()>,
 }
 
@@ -91,7 +91,7 @@ impl Validator {
         let committed_transaction_log =
             TransactionLog::start(private_config.committed_transactions_log())
                 .expect("Failed to open committed transaction log for write");
-        let commit_handler = TestCommitHandler::new_with_handler(
+        let commit_handler = CommitHandler::new_with_handler(
             committee.clone(),
             block_handler.transaction_time.clone(),
             metrics.clone(),

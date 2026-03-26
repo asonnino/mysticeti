@@ -15,8 +15,10 @@ use rand::{rngs::StdRng, SeedableRng};
 use crate::future_simulator::OverrideNodeContext;
 #[cfg(feature = "simulator")]
 use crate::simulated_network::SimulatedNetwork;
+#[cfg(feature = "simulator")]
+use crate::syncer::SyncerSignals;
 use crate::{
-    block_handler::{BlockHandler, TestBlockHandler, TestCommitHandler},
+    block_handler::{BlockHandler, CommitHandler, TestBlockHandler},
     block_store::{BlockStore, BlockWriter, OwnBlockData, WAL_ENTRY_BLOCK},
     committee::Committee,
     config::{self, NodePrivateConfig, NodePublicConfig},
@@ -25,7 +27,7 @@ use crate::{
     metrics::Metrics,
     net_sync::NetworkSyncer,
     network::Network,
-    syncer::{Syncer, SyncerSignals},
+    syncer::Syncer,
     types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
     wal::{open_file_for_wal, walf, WalPosition, WalWriter},
 };
@@ -110,19 +112,14 @@ fn first_transaction_for_authority(authority: AuthorityIndex) -> u64 {
 }
 
 #[cfg(feature = "simulator")]
-pub fn committee_and_syncers(
-    n: usize,
-) -> (
-    Arc<Committee>,
-    Vec<Syncer<TestBlockHandler, bool, TestCommitHandler>>,
-) {
+pub fn committee_and_syncers(n: usize) -> (Arc<Committee>, Vec<Syncer<TestBlockHandler>>) {
     let (committee, cores) = committee_and_cores(n);
     (
         committee.clone(),
         cores
             .into_iter()
             .map(|core| {
-                let commit_handler = TestCommitHandler::new(
+                let commit_handler = CommitHandler::new(
                     committee.clone(),
                     core.block_handler().transaction_time.clone(),
                     Metrics::new_for_test(0),
@@ -130,7 +127,7 @@ pub fn committee_and_syncers(
                 Syncer::new(
                     core,
                     3,
-                    Default::default(),
+                    SyncerSignals::test(),
                     commit_handler,
                     Metrics::new_for_test(0),
                 )
@@ -159,10 +156,7 @@ pub async fn networks_and_addresses(metrics: &[Arc<Metrics>]) -> (Vec<Network>, 
 #[cfg(feature = "simulator")]
 pub fn simulated_network_syncers(
     n: usize,
-) -> (
-    SimulatedNetwork,
-    Vec<NetworkSyncer<TestBlockHandler, TestCommitHandler>>,
-) {
+) -> (SimulatedNetwork, Vec<NetworkSyncer<TestBlockHandler>>) {
     simulated_network_syncers_with_epoch_duration(
         n,
         config::node_defaults::default_rounds_in_epoch(),
@@ -173,16 +167,13 @@ pub fn simulated_network_syncers(
 pub fn simulated_network_syncers_with_epoch_duration(
     n: usize,
     rounds_in_epoch: RoundNumber,
-) -> (
-    SimulatedNetwork,
-    Vec<NetworkSyncer<TestBlockHandler, TestCommitHandler>>,
-) {
+) -> (SimulatedNetwork, Vec<NetworkSyncer<TestBlockHandler>>) {
     let (committee, cores) = committee_and_cores_epoch_duration(n, rounds_in_epoch);
     let (simulated_network, networks) = SimulatedNetwork::new(&committee);
     let public_config = config::NodePublicConfig::new_for_tests(n);
     let mut network_syncers = vec![];
     for (network, core) in networks.into_iter().zip(cores.into_iter()) {
-        let commit_handler = TestCommitHandler::new(
+        let commit_handler = CommitHandler::new(
             committee.clone(),
             core.block_handler().transaction_time.clone(),
             core.metrics.clone(),
@@ -203,20 +194,20 @@ pub fn simulated_network_syncers_with_epoch_duration(
     (simulated_network, network_syncers)
 }
 
-pub async fn network_syncers(n: usize) -> Vec<NetworkSyncer<TestBlockHandler, TestCommitHandler>> {
+pub async fn network_syncers(n: usize) -> Vec<NetworkSyncer<TestBlockHandler>> {
     network_syncers_with_epoch_duration(n, config::node_defaults::default_rounds_in_epoch()).await
 }
 
 pub async fn network_syncers_with_epoch_duration(
     n: usize,
     rounds_in_epoch: RoundNumber,
-) -> Vec<NetworkSyncer<TestBlockHandler, TestCommitHandler>> {
+) -> Vec<NetworkSyncer<TestBlockHandler>> {
     let (committee, cores) = committee_and_cores_epoch_duration(n, rounds_in_epoch);
     let metrics: Vec<_> = cores.iter().map(|c| c.metrics.clone()).collect();
     let (networks, _) = networks_and_addresses(&metrics).await;
     let mut network_syncers = vec![];
     for (network, core) in networks.into_iter().zip(cores.into_iter()) {
-        let commit_handler = TestCommitHandler::new(
+        let commit_handler = CommitHandler::new(
             committee.clone(),
             core.block_handler().transaction_time.clone(),
             Metrics::new_for_test(0),
@@ -243,14 +234,12 @@ pub fn rng_at_seed(seed: u64) -> StdRng {
     StdRng::from_seed(seed)
 }
 
-pub fn check_commits<H: BlockHandler, S: SyncerSignals>(
-    syncers: &[Syncer<H, S, TestCommitHandler>],
-) {
+pub fn check_commits<H: BlockHandler>(syncers: &[Syncer<H>]) {
     let commits = syncers
         .iter()
-        .map(|state| state.commit_observer().committed_leaders());
-    let zero_commit = vec![];
-    let mut max_commit = &zero_commit;
+        .map(|state| state.commit_handler().committed_leaders());
+    let zero_commit: &[BlockReference] = &[];
+    let mut max_commit = zero_commit;
     for commit in commits {
         if commit.len() >= max_commit.len() {
             if is_prefix(max_commit, commit) {
@@ -266,7 +255,7 @@ pub fn check_commits<H: BlockHandler, S: SyncerSignals>(
 }
 
 #[cfg(feature = "simulator")]
-pub fn print_stats<H: BlockHandler, S: SyncerSignals>(syncers: &[Syncer<H, S, TestCommitHandler>]) {
+pub fn print_stats<H: BlockHandler>(syncers: &[Syncer<H>]) {
     use crate::types::format_authority_index;
     for s in syncers {
         let authority = format_authority_index(s.core().authority());
