@@ -187,7 +187,7 @@ impl SimulatorContext {
 
     #[allow(dead_code)]
     pub fn time() -> Duration {
-        Scheduler::<ExecutorStateEvent>::time()
+        crate::simulator::simulator_time()
     }
 }
 
@@ -229,7 +229,8 @@ impl<R> JoinHandle<R> {
     }
 
     /// todo - this fn is not great(does not check try_recv error type), need to be rewritten
-    // This is organized as consume/return self to avoid re-entrance on success since channel state is mutated in this case
+    // This is organized as consume/return self to avoid re-entrance on success since channel
+    // state is mutated in this case
     fn check_complete(mut self) -> Result<(), Self> {
         if self.ch.try_recv().is_ok() {
             Ok(())
@@ -330,7 +331,7 @@ impl Future for Sleep {
                 Poll::Pending
             }
             Sleep::WaitingUntil(deadline) => {
-                if Scheduler::<ExecutorStateEvent>::time() >= *deadline {
+                if crate::simulator::simulator_time() >= *deadline {
                     Poll::Ready(())
                 } else {
                     Poll::Pending

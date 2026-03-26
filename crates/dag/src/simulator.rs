@@ -1,7 +1,13 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{any::Any, cell::RefCell, cmp::Ordering, collections::BinaryHeap, time::Duration};
+use std::{
+    any::Any,
+    cell::{Cell, RefCell},
+    cmp::Ordering,
+    collections::BinaryHeap,
+    time::Duration,
+};
 
 use rand::{prelude::StdRng, SeedableRng};
 
@@ -52,6 +58,7 @@ where
     pub fn run_one(&mut self) -> bool {
         if let Some(event) = self.events.pop() {
             self.time = event.time;
+            SIMULATOR_TIME.with(|cell| cell.set(self.time));
             self.run_event(event.state, event.event);
         }
         self.events.is_empty()
@@ -93,6 +100,11 @@ impl<'a, E: SimulatorState + 'static> Drop for SchedulerEnterGuard<'a, E> {
 
 thread_local! {
     static SCHEDULER: RefCell<Option<Box<dyn Any>>> = RefCell::new(None);
+    static SIMULATOR_TIME: Cell<Duration> = Cell::new(Duration::ZERO);
+}
+
+pub fn simulator_time() -> Duration {
+    SIMULATOR_TIME.with(|cell| cell.get())
 }
 
 impl<E: 'static> Scheduler<E> {
@@ -106,11 +118,6 @@ impl<E: 'static> Scheduler<E> {
 
     pub fn with_rng<R, F: FnOnce(&mut StdRng) -> R>(f: F) -> R {
         Self::with(|scheduler| f(&mut scheduler.rng))
-    }
-
-    #[allow(dead_code)]
-    pub fn time() -> Duration {
-        Self::with(|scheduler| scheduler.time)
     }
 
     fn with<R, F: FnOnce(&mut Self) -> R>(f: F) -> R {
@@ -155,6 +162,7 @@ where
         Scheduler::<S::Event>::enter(self.time, self.rng.take().unwrap());
         self.states.clear();
         Scheduler::<S::Event>::exit(); // all scheduled events are ignored
+        SIMULATOR_TIME.with(|cell| cell.set(Duration::ZERO));
     }
 }
 
