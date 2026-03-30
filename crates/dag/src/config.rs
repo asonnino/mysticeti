@@ -45,8 +45,6 @@ pub struct NodeParameters {
     pub number_of_leaders: usize,
     #[serde(default = "node_defaults::default_enable_pipelining")]
     pub enable_pipelining: bool,
-    #[serde(default = "node_defaults::default_consensus_only")]
-    pub consensus_only: bool,
     #[serde(default = "node_defaults::default_enable_synchronizer")]
     pub enable_synchronizer: bool,
 }
@@ -80,10 +78,6 @@ pub mod node_defaults {
         true
     }
 
-    pub fn default_consensus_only() -> bool {
-        true
-    }
-
     pub fn default_enable_synchronizer() -> bool {
         false
     }
@@ -99,7 +93,6 @@ impl Default for NodeParameters {
             shutdown_grace_period: node_defaults::default_shutdown_grace_period(),
             number_of_leaders: node_defaults::default_number_of_leaders(),
             enable_pipelining: node_defaults::default_enable_pipelining(),
-            consensus_only: node_defaults::default_consensus_only(),
             enable_synchronizer: node_defaults::default_enable_synchronizer(),
         }
     }
@@ -237,14 +230,6 @@ impl NodePrivateConfig {
 
     pub fn default_storage_path(authority: AuthorityIndex) -> PathBuf {
         format!("storage-{authority}").into()
-    }
-
-    pub fn certified_transactions_log(&self) -> PathBuf {
-        self.storage_path.join("certified.txt")
-    }
-
-    pub fn committed_transactions_log(&self) -> PathBuf {
-        self.storage_path.join("committed.txt")
     }
 
     pub fn wal(&self) -> PathBuf {

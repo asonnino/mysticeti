@@ -31,21 +31,13 @@ impl Deref for MysticetiNodeParameters {
 
 impl Debug for MysticetiNodeParameters {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.consensus_only {
-            write!(f, "c")
-        } else {
-            write!(f, "fpc")
-        }
+        write!(f, "c")
     }
 }
 
 impl Display for MysticetiNodeParameters {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.consensus_only {
-            write!(f, "Consensus-only mode")
-        } else {
-            write!(f, "FPC mode")
-        }
+        write!(f, "Consensus-only mode")
     }
 }
 

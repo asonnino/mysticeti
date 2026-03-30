@@ -14,7 +14,6 @@ use crate::{
     committee::Committee,
     config::{ClientParameters, NodePrivateConfig, NodePublicConfig},
     core::{Core, CoreOptions},
-    log::TransactionLog,
     metrics::{self, Metrics},
     net_sync::NetworkSyncer,
     network::Network,
@@ -64,14 +63,7 @@ impl Validator {
                 .expect("Failed to open storage");
 
         // Boot the validator node.
-        let (block_handler, block_sender) = RealBlockHandler::new(
-            committee.clone(),
-            authority,
-            Some(&private_config.certified_transactions_log()),
-            storage.block_reader().clone(),
-            metrics.clone(),
-            public_config.parameters.consensus_only,
-        );
+        let (block_handler, block_sender) = RealBlockHandler::new(metrics.clone());
 
         TransactionGenerator::start(
             block_sender,
@@ -80,15 +72,8 @@ impl Validator {
             public_config.clone(),
             metrics.clone(),
         );
-        let committed_transaction_log =
-            TransactionLog::start(private_config.committed_transactions_log())
-                .expect("Failed to open committed transaction log for write");
-        let commit_handler = CommitHandler::new(
-            committee.clone(),
-            block_handler.transaction_time.clone(),
-            metrics.clone(),
-            committed_transaction_log,
-        );
+        let commit_handler =
+            CommitHandler::new(block_handler.transaction_time.clone(), metrics.clone());
         let core = Core::open(
             block_handler,
             authority,

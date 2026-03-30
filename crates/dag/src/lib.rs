@@ -15,7 +15,6 @@ mod epoch_close;
 mod finalization_interpreter;
 #[cfg(feature = "simulator")]
 mod future_simulator;
-pub(crate) use storage::log;
 pub mod metrics;
 pub mod net_sync;
 pub mod network;

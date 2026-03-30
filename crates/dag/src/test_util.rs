@@ -23,7 +23,6 @@ use crate::{
     config::{self, NodePrivateConfig, NodePublicConfig},
     core::{Core, CoreOptions},
     data::Data,
-    log::TransactionLog,
     metrics::Metrics,
     net_sync::NetworkSyncer,
     network::Network,
@@ -54,14 +53,7 @@ fn open_core_with_real_handler(
     } else {
         Storage::new_for_tests(authority, metrics.clone(), committee)
     };
-    let (block_handler, _tx_sender) = RealBlockHandler::new(
-        committee.clone(),
-        authority,
-        None,
-        storage.block_reader().clone(),
-        metrics.clone(),
-        true,
-    );
+    let (block_handler, _tx_sender) = RealBlockHandler::new(metrics.clone());
     let private_config = NodePrivateConfig::new_for_tests(authority);
     Core::open(
         block_handler,
@@ -116,10 +108,8 @@ pub fn committee_and_syncers(n: usize) -> (Arc<Committee>, Vec<Syncer>) {
             .into_iter()
             .map(|core| {
                 let commit_handler = CommitHandler::new(
-                    committee.clone(),
                     core.block_handler().transaction_time.clone(),
                     Metrics::new_for_test(0),
-                    TransactionLog::noop(),
                 );
                 Syncer::new(
                     core,
@@ -169,10 +159,8 @@ pub fn simulated_network_syncers_with_epoch_duration(
     let mut network_syncers = vec![];
     for (network, core) in networks.into_iter().zip(cores.into_iter()) {
         let commit_handler = CommitHandler::new(
-            committee.clone(),
             core.block_handler().transaction_time.clone(),
             core.metrics.clone(),
-            TransactionLog::noop(),
         );
         let node_context = OverrideNodeContext::enter(Some(core.authority()));
         let network_syncer = NetworkSyncer::start(
@@ -198,16 +186,14 @@ pub async fn network_syncers_with_epoch_duration(
     n: usize,
     rounds_in_epoch: RoundNumber,
 ) -> Vec<NetworkSyncer> {
-    let (committee, cores) = committee_and_cores_epoch_duration(n, rounds_in_epoch);
+    let (_committee, cores) = committee_and_cores_epoch_duration(n, rounds_in_epoch);
     let metrics: Vec<_> = cores.iter().map(|c| c.metrics.clone()).collect();
     let (networks, _) = networks_and_addresses(&metrics).await;
     let mut network_syncers = vec![];
     for (network, core) in networks.into_iter().zip(cores.into_iter()) {
         let commit_handler = CommitHandler::new(
-            committee.clone(),
             core.block_handler().transaction_time.clone(),
             Metrics::new_for_test(0),
-            TransactionLog::noop(),
         );
         let network_syncer = NetworkSyncer::start(
             network,
