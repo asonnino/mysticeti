@@ -65,7 +65,7 @@ fn open_core_with_real_handler(
         None,
         recovered.block_store.clone(),
         metrics.clone(),
-        false,
+        true,
     );
     let private_config = NodePrivateConfig::new_for_tests(authority);
     Core::open(
@@ -90,12 +90,7 @@ pub fn committee_and_cores_persisted(
     path: Option<&Path>,
 ) -> (Arc<Committee>, Vec<Core<RealBlockHandler>>) {
     let public_config = NodePublicConfig::new_for_tests(n);
-    let committee = committee(n);
-    let cores = committee
-        .authorities()
-        .map(|authority| open_core_with_real_handler(authority, &committee, &public_config, path))
-        .collect();
-    (committee, cores)
+    committee_and_cores_with_config(n, path, &public_config)
 }
 
 pub fn committee_and_cores_epoch_duration(
@@ -104,10 +99,18 @@ pub fn committee_and_cores_epoch_duration(
 ) -> (Arc<Committee>, Vec<Core<RealBlockHandler>>) {
     let mut public_config = NodePublicConfig::new_for_tests(n);
     public_config.parameters.rounds_in_epoch = rounds_in_epoch;
+    committee_and_cores_with_config(n, None, &public_config)
+}
+
+fn committee_and_cores_with_config(
+    n: usize,
+    path: Option<&Path>,
+    public_config: &NodePublicConfig,
+) -> (Arc<Committee>, Vec<Core<RealBlockHandler>>) {
     let committee = committee(n);
     let cores = committee
         .authorities()
-        .map(|authority| open_core_with_real_handler(authority, &committee, &public_config, None))
+        .map(|authority| open_core_with_real_handler(authority, &committee, public_config, path))
         .collect();
     (committee, cores)
 }
@@ -243,12 +246,12 @@ pub fn check_commits<H: BlockHandler>(syncers: &[Syncer<H>]) {
     let mut max_commit = zero_commit;
     for commit in commits {
         if commit.len() >= max_commit.len() {
-            if is_prefix(max_commit, commit) {
+            if commit.starts_with(max_commit) {
                 max_commit = commit;
             } else {
                 panic!("[!] Commits diverged: {max_commit:?}, {commit:?}");
             }
-        } else if !is_prefix(commit, max_commit) {
+        } else if !max_commit.starts_with(commit) {
             panic!("[!] Commits diverged: {max_commit:?}, {commit:?}");
         }
     }
@@ -263,16 +266,6 @@ pub fn print_stats<H: BlockHandler>(syncers: &[Syncer<H>]) {
         let snapshot = s.core().metrics.collect();
         tracing::info!("Validator {authority} metrics:\n{snapshot}");
     }
-}
-
-fn is_prefix(short: &[BlockReference], long: &[BlockReference]) -> bool {
-    assert!(short.len() <= long.len());
-    for (a, b) in short.iter().zip(long.iter().take(short.len())) {
-        if a != b {
-            return false;
-        }
-    }
-    true
 }
 
 pub struct TestBlockWriter {
