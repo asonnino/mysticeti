@@ -19,8 +19,8 @@ use crate::{
 
 use self::{
     block_store::{
-        BlockStore, BlockWriter, CommitData, OwnBlockData, WAL_ENTRY_BLOCK, WAL_ENTRY_COMMIT,
-        WAL_ENTRY_PAYLOAD, WAL_ENTRY_STATE,
+        BlockStore, CommitData, OwnBlockData, WAL_ENTRY_BLOCK, WAL_ENTRY_COMMIT, WAL_ENTRY_PAYLOAD,
+        WAL_ENTRY_STATE,
     },
     state::RecoveredState,
     wal::{open_file_for_wal, walf, WalPosition, WalSyncer, WalWriter},
@@ -116,10 +116,8 @@ impl Storage {
     pub fn block_store(&self) -> &BlockStore {
         &self.block_store
     }
-}
 
-impl BlockWriter for Storage {
-    fn insert_block(&mut self, block: Data<StatementBlock>) -> WalPosition {
+    pub fn insert_block(&mut self, block: Data<StatementBlock>) -> WalPosition {
         let pos = self
             .wal_writer
             .write(WAL_ENTRY_BLOCK, block.serialized_bytes())
@@ -128,7 +126,7 @@ impl BlockWriter for Storage {
         pos
     }
 
-    fn insert_own_block(&mut self, data: &OwnBlockData) {
+    pub fn insert_own_block(&mut self, data: &OwnBlockData) {
         let block_pos = data.write_to_wal(&mut self.wal_writer);
         self.block_store.insert_block(data.block.clone(), block_pos);
     }

@@ -43,11 +43,6 @@ struct BlockStoreInner {
     last_own_block: Option<BlockReference>,
 }
 
-pub trait BlockWriter {
-    fn insert_block(&mut self, block: Data<StatementBlock>) -> WalPosition;
-    fn insert_own_block(&mut self, block: &OwnBlockData);
-}
-
 #[derive(Clone)]
 enum IndexEntry {
     WalPosition(WalPosition),

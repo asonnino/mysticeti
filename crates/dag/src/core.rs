@@ -12,7 +12,7 @@ use minibytes::Bytes;
 use crate::{
     block_handler::RealBlockHandler,
     block_manager::BlockManager,
-    block_store::{BlockStore, BlockWriter, CommitData, OwnBlockData},
+    block_store::{BlockStore, CommitData, OwnBlockData},
     committee::Committee,
     config::{NodePrivateConfig, NodePublicConfig},
     consensus::{

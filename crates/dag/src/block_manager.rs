@@ -7,9 +7,10 @@ use std::{
 };
 
 use crate::{
-    block_store::{BlockStore, BlockWriter},
+    block_store::BlockStore,
     committee::Committee,
     data::Data,
+    storage::Storage,
     types::{BlockReference, StatementBlock},
     wal::WalPosition,
 };
@@ -41,7 +42,7 @@ impl BlockManager {
     pub fn add_blocks(
         &mut self,
         blocks: Vec<Data<StatementBlock>>,
-        block_writer: &mut impl BlockWriter,
+        storage: &mut Storage,
     ) -> Vec<(WalPosition, Data<StatementBlock>)> {
         let mut blocks: VecDeque<Data<StatementBlock>> = blocks.into();
         let mut newly_blocks_processed: Vec<(WalPosition, Data<StatementBlock>)> = vec![];
@@ -80,7 +81,7 @@ impl BlockManager {
                 let block_reference = *block_reference;
 
                 // Block can be processed. So need to update indexes etc
-                let position = block_writer.insert_block(block.clone());
+                let position = storage.insert_block(block.clone());
                 newly_blocks_processed.push((position, block.clone()));
 
                 // Now unlock any pending blocks, and process them if ready.
@@ -125,7 +126,7 @@ mod tests {
     use rand::{prelude::StdRng, SeedableRng};
 
     use super::*;
-    use crate::{test_util::TestBlockWriter, types::Dag};
+    use crate::{metrics::Metrics, types::Dag};
 
     #[test]
     fn test_block_manager_add_block() {
@@ -133,13 +134,14 @@ mod tests {
             Dag::draw("A1:[A0, B0]; B1:[A0, B0]; B2:[A0, B1]; A2:[A1, B2]").add_genesis_blocks();
         assert_eq!(dag.len(), 6); // 4 blocks in dag + 2 genesis
         for seed in 0..100u8 {
-            let mut block_writer = TestBlockWriter::new(&dag.committee());
+            let (mut storage, _recovered) =
+                Storage::new_for_tests(0, Metrics::new_for_test(0), &dag.committee());
             println!("Seed {seed}");
             let iter = dag.random_iter(&mut rng(seed));
-            let mut bm = BlockManager::new(block_writer.block_store(), &dag.committee());
+            let mut bm = BlockManager::new(storage.block_store().clone(), &dag.committee());
             let mut processed_blocks = HashSet::new();
             for block in iter {
-                let processed = bm.add_blocks(vec![block.clone()], &mut block_writer);
+                let processed = bm.add_blocks(vec![block.clone()], &mut storage);
                 print!("Adding {:?}:", block.reference());
                 for (_, p) in processed {
                     print!("{:?},", p.reference());

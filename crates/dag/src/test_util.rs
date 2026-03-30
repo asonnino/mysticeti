@@ -19,7 +19,7 @@ use crate::simulated_network::SimulatedNetwork;
 use crate::syncer::SyncerSignals;
 use crate::{
     block_handler::{CommitHandler, RealBlockHandler},
-    block_store::{BlockStore, BlockWriter, OwnBlockData},
+    block_store::BlockStore,
     committee::Committee,
     config::{self, NodePrivateConfig, NodePublicConfig},
     core::{Core, CoreOptions},
@@ -283,20 +283,6 @@ impl TestBlockWriter {
 
     pub fn into_block_store(self) -> BlockStore {
         self.storage.block_store().clone()
-    }
-
-    pub fn block_store(&self) -> BlockStore {
-        self.storage.block_store().clone()
-    }
-}
-
-impl BlockWriter for TestBlockWriter {
-    fn insert_block(&mut self, block: Data<StatementBlock>) -> WalPosition {
-        self.storage.insert_block(block)
-    }
-
-    fn insert_own_block(&mut self, block: &OwnBlockData) {
-        self.storage.insert_own_block(block)
     }
 }
 
