@@ -25,7 +25,7 @@ pub struct RecoveredState {
 }
 
 #[derive(Default)]
-pub struct RecoveredStateBuilder {
+pub(super) struct RecoveredStateBuilder {
     pending: BTreeMap<WalPosition, RawMetaStatement>,
     last_own_block: Option<OwnBlockData>,
     state: Option<Bytes>,
@@ -37,33 +37,33 @@ pub struct RecoveredStateBuilder {
 }
 
 impl RecoveredStateBuilder {
-    pub fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self::default()
     }
 
-    pub fn block(&mut self, pos: WalPosition, block: &Data<StatementBlock>) {
+    pub(super) fn block(&mut self, pos: WalPosition, block: &Data<StatementBlock>) {
         self.pending
             .insert(pos, RawMetaStatement::Include(*block.reference()));
         self.unprocessed_blocks.push(block.clone());
     }
 
-    pub fn payload(&mut self, pos: WalPosition, payload: Bytes) {
+    pub(super) fn payload(&mut self, pos: WalPosition, payload: Bytes) {
         self.pending.insert(pos, RawMetaStatement::Payload(payload));
     }
 
-    pub fn own_block(&mut self, own_block_data: OwnBlockData) {
+    pub(super) fn own_block(&mut self, own_block_data: OwnBlockData) {
         // Edge case of WalPosition::MAX is automatically handled here, empty map is returned
         self.pending = self.pending.split_off(&own_block_data.next_entry);
         self.unprocessed_blocks.push(own_block_data.block.clone());
         self.last_own_block = Some(own_block_data);
     }
 
-    pub fn state(&mut self, state: Bytes) {
+    pub(super) fn state(&mut self, state: Bytes) {
         self.state = Some(state);
         self.unprocessed_blocks.clear();
     }
 
-    pub fn commit_data(&mut self, commits: Vec<CommitData>, committed_state: Bytes) {
+    pub(super) fn commit_data(&mut self, commits: Vec<CommitData>, committed_state: Bytes) {
         for commit_data in commits {
             self.last_committed_leader = Some(commit_data.leader);
             self.committed_blocks
@@ -72,7 +72,7 @@ impl RecoveredStateBuilder {
         self.committed_state = Some(committed_state);
     }
 
-    pub fn build(self) -> RecoveredState {
+    pub(super) fn build(self) -> RecoveredState {
         let pending = self
             .pending
             .into_iter()

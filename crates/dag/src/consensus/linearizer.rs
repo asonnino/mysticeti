@@ -4,13 +4,13 @@
 use std::{collections::HashSet, fmt};
 
 use crate::{
-    block_store::BlockStore,
     data::Data,
+    storage::BlockReader,
     types::{BlockReference, StatementBlock},
 };
 
-/// The output of consensus is an ordered list of [`CommittedSubDag`]. The application can arbitrarily
-/// sort the blocks within each sub-dag (but using a deterministic algorithm).
+/// The output of consensus is an ordered list of [`CommittedSubDag`]. The application can
+/// arbitrarily sort the blocks within each sub-dag (but using a deterministic algorithm).
 pub struct CommittedSubDag {
     /// A reference to the anchor of the sub-dag
     pub anchor: BlockReference,
@@ -46,7 +46,7 @@ impl Linearizer {
     /// have already been committed (within previous sub-dags).
     fn collect_sub_dag(
         &mut self,
-        block_store: &BlockStore,
+        block_reader: &BlockReader,
         leader_block: Data<StatementBlock>,
     ) -> CommittedSubDag {
         let mut to_commit = Vec::new();
@@ -58,7 +58,7 @@ impl Linearizer {
             to_commit.push(x.clone());
             for reference in x.includes() {
                 // The block manager may have cleaned up blocks passed the latest committed rounds.
-                let block = block_store
+                let block = block_reader
                     .get_block(*reference)
                     .expect("We should have the whole sub-dag by now");
 
@@ -74,13 +74,13 @@ impl Linearizer {
 
     pub fn handle_commit(
         &mut self,
-        block_store: &BlockStore,
+        block_reader: &BlockReader,
         committed_leaders: Vec<Data<StatementBlock>>,
     ) -> Vec<CommittedSubDag> {
         let mut committed = vec![];
         for leader_block in committed_leaders {
             // Collect the sub-dag generated using each of these leaders as anchor.
-            let mut sub_dag = self.collect_sub_dag(block_store, leader_block);
+            let mut sub_dag = self.collect_sub_dag(block_reader, leader_block);
 
             // [Optional] sort the sub-dag using a deterministic algorithm.
             sub_dag.sort();

@@ -12,7 +12,7 @@ use minibytes::Bytes;
 use crate::{
     block_handler::RealBlockHandler,
     block_manager::BlockManager,
-    block_store::{BlockStore, CommitData, OwnBlockData},
+    block_store::{CommitData, OwnBlockData},
     committee::Committee,
     config::{NodePrivateConfig, NodePublicConfig},
     consensus::{
@@ -25,6 +25,7 @@ use crate::{
     metrics::Metrics,
     runtime::timestamp_utc,
     state::RecoveredState,
+    storage::BlockReader,
     storage::Storage,
     threshold_clock::ThresholdClockAggregator,
     types::{AuthorityIndex, BaseStatement, BlockReference, RoundNumber, StatementBlock},
@@ -113,7 +114,7 @@ impl Core {
             storage.insert_own_block(&own_block_data);
             own_block_data
         };
-        let block_manager = BlockManager::new(storage.block_store().clone(), &committee);
+        let block_manager = BlockManager::new(storage.block_reader().clone(), &committee);
 
         if let Some(state) = state {
             block_handler.recover_state(&state);
@@ -123,7 +124,7 @@ impl Core {
 
         let committer = UniversalCommitterBuilder::new(
             committee.clone(),
-            storage.block_store().clone(),
+            storage.block_reader().clone(),
             metrics.clone(),
         )
         .with_number_of_leaders(public_config.parameters.number_of_leaders)
@@ -232,7 +233,7 @@ impl Core {
         for (_, statement) in &taken {
             if let MetaStatement::Include(block_ref) = statement {
                 // for all the includes in the block, add the references in the block to the set
-                if let Some(block) = self.storage.block_store().get_block(*block_ref) {
+                if let Some(block) = self.storage.block_reader().get_block(*block_ref) {
                     references_in_block.extend(block.includes());
                 }
             }
@@ -348,7 +349,7 @@ impl Core {
     pub fn cleanup(&self) {
         const RETAIN_BELOW_COMMIT_ROUNDS: RoundNumber = 100;
 
-        self.storage.block_store().cleanup(
+        self.storage.block_reader().cleanup(
             self.last_commit_leader
                 .round()
                 .saturating_sub(RETAIN_BELOW_COMMIT_ROUNDS),
@@ -375,7 +376,7 @@ impl Core {
             let mut leaders = self.committer.get_leaders(leader_round);
             leaders.retain(|leader| connected_authorities.contains(leader));
             self.storage
-                .block_store()
+                .block_reader()
                 .all_blocks_exists_at_authority_round(&leaders, leader_round)
         } else {
             false
@@ -412,8 +413,8 @@ impl Core {
             .expect("take_recovered_committed_blocks called twice")
     }
 
-    pub fn block_store(&self) -> &BlockStore {
-        self.storage.block_store()
+    pub fn block_reader(&self) -> &BlockReader {
+        self.storage.block_reader()
     }
 
     pub fn last_own_block(&self) -> &Data<StatementBlock> {

@@ -7,9 +7,9 @@ use std::{
 };
 
 use crate::{
-    block_store::BlockStore,
     committee::Committee,
     data::Data,
+    storage::BlockReader,
     storage::Storage,
     types::{BlockReference, StatementBlock},
     wal::WalPosition,
@@ -26,16 +26,16 @@ pub struct BlockManager {
     /// Keeps all blocks that need to be synced in order to unblock the processing of other pending
     /// blocks. The indices of the vector correspond the authority indices.
     missing: Vec<HashSet<BlockReference>>,
-    block_store: BlockStore,
+    block_reader: BlockReader,
 }
 
 impl BlockManager {
-    pub fn new(block_store: BlockStore, committee: &Arc<Committee>) -> Self {
+    pub fn new(block_reader: BlockReader, committee: &Arc<Committee>) -> Self {
         Self {
             blocks_pending: Default::default(),
             block_references_waiting: Default::default(),
             missing: (0..committee.len()).map(|_| HashSet::new()).collect(),
-            block_store,
+            block_reader,
         }
     }
 
@@ -51,7 +51,7 @@ impl BlockManager {
 
             // check whether we have already processed this block and skip it if so.
             let block_reference = block.reference();
-            if self.block_store.block_exists(*block_reference)
+            if self.block_reader.block_exists(*block_reference)
                 || self.blocks_pending.contains_key(block_reference)
             {
                 continue;
@@ -61,7 +61,7 @@ impl BlockManager {
             for included_reference in block.includes() {
                 // If we are missing a reference then we insert
                 // into pending and update the waiting index
-                if !self.block_store.block_exists(*included_reference) {
+                if !self.block_reader.block_exists(*included_reference) {
                     processed = false;
                     self.block_references_waiting
                         .entry(*included_reference)
@@ -138,7 +138,7 @@ mod tests {
                 Storage::new_for_tests(0, Metrics::new_for_test(0), &dag.committee());
             println!("Seed {seed}");
             let iter = dag.random_iter(&mut rng(seed));
-            let mut bm = BlockManager::new(storage.block_store().clone(), &dag.committee());
+            let mut bm = BlockManager::new(storage.block_reader().clone(), &dag.committee());
             let mut processed_blocks = HashSet::new();
             for block in iter {
                 let processed = bm.add_blocks(vec![block.clone()], &mut storage);
@@ -154,7 +154,7 @@ mod tests {
             assert_eq!(bm.block_references_waiting.len(), 0);
             assert_eq!(bm.blocks_pending.len(), 0);
             assert_eq!(processed_blocks.len(), dag.len());
-            assert_eq!(bm.block_store.len_expensive(), dag.len());
+            assert_eq!(bm.block_reader.len_expensive(), dag.len());
             println!("======");
         }
     }

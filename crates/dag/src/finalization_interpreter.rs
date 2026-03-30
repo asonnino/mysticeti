@@ -7,9 +7,9 @@ use std::{
 };
 
 use crate::{
-    block_store::BlockStore,
     committee::{Committee, QuorumThreshold, StakeAggregator},
     data::Data,
+    storage::BlockReader,
     types::{
         AuthorityIndex, BaseStatement, BlockReference, StatementBlock, TransactionLocator, Vote,
     },
@@ -22,19 +22,19 @@ pub struct FinalizationInterpreter<'a> {
     certificate_aggregator: HashMap<TransactionLocator, StakeAggregator<QuorumThreshold>>,
     transaction_certificates: HashMap<TransactionLocator, HashSet<BlockReference>>,
     committee: Arc<Committee>,
-    block_store: &'a BlockStore,
+    block_reader: &'a BlockReader,
     finalized_transactions: HashSet<TransactionLocator>,
 }
 
 #[allow(dead_code)]
 impl<'a> FinalizationInterpreter<'a> {
-    pub fn new(block_store: &'a BlockStore, committee: Arc<Committee>) -> Self {
+    pub fn new(block_reader: &'a BlockReader, committee: Arc<Committee>) -> Self {
         Self {
             transaction_aggregator: Default::default(),
             certificate_aggregator: Default::default(),
             transaction_certificates: Default::default(),
             committee,
-            block_store,
+            block_reader,
             finalized_transactions: Default::default(),
         }
     }
@@ -42,9 +42,9 @@ impl<'a> FinalizationInterpreter<'a> {
     pub fn finalized_tx_certifying_blocks(
         &mut self,
     ) -> Vec<(TransactionLocator, HashSet<BlockReference>)> {
-        for round in 0..=self.block_store.highest_round() {
+        for round in 0..=self.block_reader.highest_round() {
             println!("ROUND: {}", round);
-            for block in self.block_store.get_blocks_by_round(round) {
+            for block in self.block_reader.get_blocks_by_round(round) {
                 self._finalized_tx_certifying_blocks(&block);
             }
         }
@@ -85,7 +85,7 @@ impl<'a> FinalizationInterpreter<'a> {
             }
         }
         for parent in block.includes() {
-            self._finalized_tx_certifying_blocks(&self.block_store.get_block(*parent).unwrap());
+            self._finalized_tx_certifying_blocks(&self.block_reader.get_block(*parent).unwrap());
             let parent_aggregator =
                 std::mem::take(self.transaction_aggregator.get_mut(parent).unwrap());
             for (tx, parent_aggregator) in &parent_aggregator {

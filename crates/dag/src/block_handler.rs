@@ -14,13 +14,13 @@ use parking_lot::Mutex;
 use tokio::sync::mpsc;
 
 use crate::{
-    block_store::BlockStore,
     committee::{Committee, QuorumThreshold, TransactionAggregator},
     consensus::linearizer::{CommittedSubDag, Linearizer},
     data::Data,
     log::TransactionLog,
     metrics::Metrics,
     runtime::{self, TimeInstant},
+    storage::BlockReader,
     transactions_generator::TransactionGenerator,
     types::{
         AuthorityIndex, BaseStatement, BlockReference, StatementBlock, Transaction,
@@ -33,7 +33,7 @@ pub struct RealBlockHandler {
     pub transaction_time: Arc<Mutex<HashMap<TransactionLocator, TimeInstant>>>,
     committee: Arc<Committee>,
     authority: AuthorityIndex,
-    block_store: BlockStore,
+    block_reader: BlockReader,
     metrics: Arc<Metrics>,
     receiver: mpsc::Receiver<Vec<Transaction>>,
     pending_transactions: usize,
@@ -49,7 +49,7 @@ impl RealBlockHandler {
         committee: Arc<Committee>,
         authority: AuthorityIndex,
         certified_transactions_log_path: Option<&Path>,
-        block_store: BlockStore,
+        block_reader: BlockReader,
         metrics: Arc<Metrics>,
         consensus_only: bool,
     ) -> (Self, mpsc::Sender<Vec<Transaction>>) {
@@ -66,7 +66,7 @@ impl RealBlockHandler {
             transaction_time: Default::default(),
             committee,
             authority,
-            block_store,
+            block_reader,
             metrics,
             receiver,
             pending_transactions: 0, // todo - need to initialize correctly when loaded from disk
@@ -140,7 +140,7 @@ impl RealBlockHandler {
                 for processed_locator in processed {
                     let block_creation = transaction_time.get(&processed_locator);
                     let transaction = self
-                        .block_store
+                        .block_reader
                         .get_transaction(&processed_locator)
                         .expect("Failed to get certified transaction");
                     self.update_metrics(block_creation, &transaction, &current_timestamp);
@@ -256,14 +256,14 @@ impl CommitHandler {
 
     pub fn handle_commit(
         &mut self,
-        block_store: &BlockStore,
+        block_reader: &BlockReader,
         committed_leaders: Vec<Data<StatementBlock>>,
     ) -> Vec<CommittedSubDag> {
         let current_timestamp = runtime::timestamp_utc();
 
         let committed = self
             .commit_interpreter
-            .handle_commit(block_store, committed_leaders);
+            .handle_commit(block_reader, committed_leaders);
         let transaction_time = self.transaction_time.lock();
         for commit in &committed {
             self.committed_leaders.push(commit.anchor);

@@ -19,7 +19,6 @@ use crate::simulated_network::SimulatedNetwork;
 use crate::syncer::SyncerSignals;
 use crate::{
     block_handler::{CommitHandler, RealBlockHandler},
-    block_store::BlockStore,
     committee::Committee,
     config::{self, NodePrivateConfig, NodePublicConfig},
     core::{Core, CoreOptions},
@@ -28,6 +27,7 @@ use crate::{
     metrics::Metrics,
     net_sync::NetworkSyncer,
     network::Network,
+    storage::BlockReader,
     storage::Storage,
     syncer::Syncer,
     types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
@@ -58,7 +58,7 @@ fn open_core_with_real_handler(
         committee.clone(),
         authority,
         None,
-        storage.block_store().clone(),
+        storage.block_reader().clone(),
         metrics.clone(),
         true,
     );
@@ -281,8 +281,8 @@ impl TestBlockWriter {
         }
     }
 
-    pub fn into_block_store(self) -> BlockStore {
-        self.storage.block_store().clone()
+    pub fn into_block_reader(self) -> BlockReader {
+        self.storage.block_reader().clone()
     }
 }
 

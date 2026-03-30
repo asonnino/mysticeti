@@ -16,12 +16,12 @@ use minibytes::Bytes;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
-pub struct WalWriter {
+pub(super) struct WalWriter {
     file: File,
     pos: u64,
 }
 
-pub struct WalReader {
+pub(super) struct WalReader {
     fd: RawFd,
     maps: Mutex<BTreeMap<u64, Bytes>>,
 }
@@ -37,15 +37,15 @@ pub struct WalPosition {
     start: u64,
 }
 
-pub type Tag = u32;
+pub(super) type Tag = u32;
 
-pub fn walf(mut file: File) -> io::Result<(WalWriter, WalReader)> {
+pub(super) fn walf(mut file: File) -> io::Result<(WalWriter, WalReader)> {
     file.seek(SeekFrom::End(0))?;
     make_wal(file)
 }
 
 /// Opens file with mode suitable for walf
-pub fn open_file_for_wal(p: impl AsRef<Path>) -> io::Result<File> {
+pub(super) fn open_file_for_wal(p: impl AsRef<Path>) -> io::Result<File> {
     OpenOptions::new()
         .read(true)
         .write(true)
@@ -54,29 +54,8 @@ pub fn open_file_for_wal(p: impl AsRef<Path>) -> io::Result<File> {
         .open(p)
 }
 
-/// Creates wal reader and wal writer on the file.
-///
-/// WalWriter methods take `&mut` references so normally
-/// only one thread can access WalWriter at a time.
-/// WalReader methods take `&` reference — you can wrap
-/// WalReader in Arc and share it across threads.
-///
-/// Write to wal using `WalWriter::write`, which takes a
-/// byte slice and a tag (an opaque u32 value). It returns
-/// a `WalPosition` that can later be used to read back.
-///
-/// When write completes, data is in kernel buffers but not
-/// synced to disk. Call `WalWriter::sync` to flush to disk.
-///
-/// `WalReader::read` uses memory-mapped files and returns
-/// a `Bytes` pointing into the mapped region. All returned
-/// `Bytes` references hold a refcount to the mmap, so
-/// holding them keeps the wal file open.
-///
-/// To fully close the wal file, drop the reader, writer,
-/// **and** all buffers returned by `WalReader::read()`.
-#[allow(dead_code)]
-pub fn wal(path: impl AsRef<Path>) -> io::Result<(WalWriter, WalReader)> {
+#[cfg(test)]
+fn wal(path: impl AsRef<Path>) -> io::Result<(WalWriter, WalReader)> {
     let file = OpenOptions::new()
         .create(true)
         .append(true)
@@ -152,11 +131,11 @@ fn offset(p: u64) -> u64 {
 }
 
 impl WalWriter {
-    pub fn write(&mut self, tag: Tag, b: &[u8]) -> io::Result<WalPosition> {
+    pub(super) fn write(&mut self, tag: Tag, b: &[u8]) -> io::Result<WalPosition> {
         self.writev(tag, &[IoSlice::new(b)])
     }
 
-    pub fn writev(&mut self, tag: Tag, v: &[IoSlice]) -> io::Result<WalPosition> {
+    pub(super) fn writev(&mut self, tag: Tag, v: &[IoSlice]) -> io::Result<WalPosition> {
         let v_len = v.iter().map(|s| s.len()).sum::<usize>();
         let len = v_len as u64 + HEADER_LEN_BYTES;
         assert!(len <= MAP_SIZE, "Wal entry too big, {len} < {MAP_SIZE}");
@@ -196,16 +175,11 @@ impl WalWriter {
         Ok(position)
     }
 
-    pub fn sync(&self) -> io::Result<()> {
+    pub(super) fn sync(&self) -> io::Result<()> {
         self.file.sync_data()
     }
 
-    /// Allow to retrieve a 'syncer' instance that allows
-    /// to fsync wal to disk without acquiring a lock on wal itself.
-    ///
-    /// This allows to have an independent syncer thread that
-    /// does not share locks with consensus thread.
-    pub fn syncer(&self) -> io::Result<WalSyncer> {
+    pub(super) fn syncer(&self) -> io::Result<WalSyncer> {
         let file = self.file.try_clone()?;
         Ok(WalSyncer { file })
     }
@@ -232,7 +206,7 @@ fn split_header(combined: u128) -> (u64, u64, Tag) {
 }
 
 impl WalReader {
-    pub fn read(&self, position: WalPosition) -> io::Result<(Tag, Bytes)> {
+    pub(super) fn read(&self, position: WalPosition) -> io::Result<(Tag, Bytes)> {
         match self.try_read(position)? {
             Some(entry) => Ok(entry),
             None => panic!("No entry found at position {}", position.start),
@@ -267,14 +241,14 @@ impl WalReader {
 
     // Attempts cleaning internal mem maps, returning number of retained maps
     // Map can be freed when all buffers linked to this portion of a file are dropped
-    pub fn cleanup(&self) -> usize {
+    pub(super) fn cleanup(&self) -> usize {
         let mut maps = self.maps.lock();
         maps.retain(|_k, v| v.downcast_mut::<Mmap>().is_none());
         maps.len()
     }
 
     // Iter all entries up to writer position at the time iter_until(...) is called
-    pub fn iter_until(&self, w: &WalWriter) -> WalIterator<'_> {
+    pub(super) fn iter_until(&self, w: &WalWriter) -> WalIterator<'_> {
         WalIterator {
             wal_reader: self,
             position: Some(WalPosition { start: 0 }),
@@ -308,7 +282,7 @@ impl WalReader {
     }
 }
 
-pub struct WalIterator<'a> {
+pub(super) struct WalIterator<'a> {
     wal_reader: &'a WalReader,
     position: Option<WalPosition>,
     end_position: u64,
@@ -351,7 +325,7 @@ impl<'a> WalIterator<'a> {
 impl WalPosition {
     pub const MAX: WalPosition = WalPosition { start: u64::MAX };
 
-    pub fn add(&self, len: u64) -> Self {
+    fn add(&self, len: u64) -> Self {
         Self {
             start: self.start + len,
         }

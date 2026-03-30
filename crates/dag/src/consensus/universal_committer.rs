@@ -5,10 +5,10 @@ use std::{collections::VecDeque, sync::Arc};
 
 use super::{base_committer::BaseCommitter, LeaderStatus, DEFAULT_WAVE_LENGTH};
 use crate::{
-    block_store::BlockStore,
     committee::Committee,
     consensus::base_committer::BaseCommitterOptions,
     metrics::Metrics,
+    storage::BlockReader,
     types::{format_authority_round, AuthorityIndex, BlockReference, RoundNumber},
 };
 
@@ -16,7 +16,7 @@ use crate::{
 /// It can be configured to use a combination of different commit strategies, including
 /// multi-leaders, backup leaders, and pipelines.
 pub struct UniversalCommitter {
-    block_store: BlockStore,
+    block_reader: BlockReader,
     committers: Vec<BaseCommitter>,
     metrics: Arc<Metrics>,
 }
@@ -26,7 +26,7 @@ impl UniversalCommitter {
     /// ordered decided leaders.
     #[tracing::instrument(skip_all, fields(last_decided = %last_decided))]
     pub fn try_commit(&self, last_decided: BlockReference) -> Vec<LeaderStatus> {
-        let highest_known_round = self.block_store.highest_round();
+        let highest_known_round = self.block_reader.highest_round();
         let last_decided_round = last_decided.round();
         let last_decided_round_authority = (last_decided.round(), last_decided.authority);
 
@@ -101,7 +101,7 @@ impl UniversalCommitter {
 /// that is, a single leader and no pipeline.
 pub struct UniversalCommitterBuilder {
     committee: Arc<Committee>,
-    block_store: BlockStore,
+    block_reader: BlockReader,
     metrics: Arc<Metrics>,
     wave_length: RoundNumber,
     number_of_leaders: usize,
@@ -109,10 +109,14 @@ pub struct UniversalCommitterBuilder {
 }
 
 impl UniversalCommitterBuilder {
-    pub fn new(committee: Arc<Committee>, block_store: BlockStore, metrics: Arc<Metrics>) -> Self {
+    pub fn new(
+        committee: Arc<Committee>,
+        block_reader: BlockReader,
+        metrics: Arc<Metrics>,
+    ) -> Self {
         Self {
             committee,
-            block_store,
+            block_reader,
             metrics,
             wave_length: DEFAULT_WAVE_LENGTH,
             number_of_leaders: 1,
@@ -146,14 +150,14 @@ impl UniversalCommitterBuilder {
                     leader_offset: leader_offset as RoundNumber,
                 };
                 let committer =
-                    BaseCommitter::new(self.committee.clone(), self.block_store.clone())
+                    BaseCommitter::new(self.committee.clone(), self.block_reader.clone())
                         .with_options(options);
                 committers.push(committer);
             }
         }
 
         UniversalCommitter {
-            block_store: self.block_store,
+            block_reader: self.block_reader,
             committers,
             metrics: self.metrics,
         }

@@ -5,22 +5,22 @@ use std::{fmt::Display, sync::Arc};
 
 use super::{LeaderStatus, DEFAULT_WAVE_LENGTH};
 use crate::{
-    block_store::BlockStore,
     committee::{Committee, QuorumThreshold, StakeAggregator},
     consensus::MINIMUM_WAVE_LENGTH,
     data::Data,
+    storage::BlockReader,
     types::{format_authority_round, AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
 };
 
-/// The consensus protocol operates in 'waves'. Each wave is composed of a leader round, at least one
-/// voting round, and one decision round.
+/// The consensus protocol operates in 'waves'. Each wave is composed of a leader round, at least
+///  one voting round, and one decision round.
 type WaveNumber = u64;
 
 pub struct BaseCommitterOptions {
     /// The length of a wave (minimum 3)
     pub wave_length: u64,
-    /// The offset used in the leader-election protocol. THis is used by the multi-committer to ensure
-    /// that each [`BaseCommitter`] instance elects a different leader.
+    /// The offset used in the leader-election protocol. THis is used by the multi-committer to
+    ///  ensure that each [`BaseCommitter`] instance elects a different leader.
     pub leader_offset: u64,
     /// The offset of the first wave. This is used by the pipelined committer to ensure that each
     /// [`BaseCommitter`] instances operates on a different view of the dag.
@@ -37,23 +37,23 @@ impl Default for BaseCommitterOptions {
     }
 }
 
-/// The [`BaseCommitter`] contains the bare bone commit logic. Once instantiated, the method `try_direct_decide`
-/// and `try_indirect_decide` can be called at any time and any number of times (it is idempotent) to determine
-/// whether a leader can be committed or skipped.
+/// The [`BaseCommitter`] contains the bare bone commit logic. Once instantiated, the method
+/// `try_direct_decide` and `try_indirect_decide` can be called at any time and any number of times
+/// (it is idempotent) to determine whether a leader can be committed or skipped.
 pub struct BaseCommitter {
     /// The committee information
     committee: Arc<Committee>,
     /// Keep all block data
-    block_store: BlockStore,
+    block_reader: BlockReader,
     /// The options used by this committer
     options: BaseCommitterOptions,
 }
 
 impl BaseCommitter {
-    pub fn new(committee: Arc<Committee>, block_store: BlockStore) -> Self {
+    pub fn new(committee: Arc<Committee>, block_reader: BlockReader) -> Self {
         Self {
             committee,
-            block_store,
+            block_reader,
             options: BaseCommitterOptions::default(),
         }
     }
@@ -82,9 +82,9 @@ impl BaseCommitter {
         wave * wave_length + wave_length - 1 + self.options.round_offset
     }
 
-    /// The leader-elect protocol is offset by `leader_offset` to ensure that different committers
-    /// with different leader offsets elect different leaders for the same round number. This function
-    /// returns `None` if there are no leaders for the specified round.
+    /// The leader-elect protocol is offset by `leader_offset` to ensure that different
+    /// committers with different leader offsets elect different leaders for the same round number.
+    /// This function returns `None` if there are no leaders for the specified round.
     pub fn elect_leader(&self, round: RoundNumber) -> Option<AuthorityIndex> {
         let wave = self.wave_number(round);
         if self.leader_round(wave) != round {
@@ -96,10 +96,10 @@ impl BaseCommitter {
     }
 
     /// Find which block is supported at (author, round) by the given block.
-    /// Blocks can indirectly reference multiple other blocks at (author, round), but only one block at
-    /// (author, round)  will be supported by the given block. If block A supports B at (author, round),
-    /// it is guaranteed that any processed block by the same author that directly or indirectly includes
-    /// A will also support B at (author, round).
+    /// Blocks can indirectly reference multiple other blocks at (author, round), but only one
+    /// block at (author, round)  will be supported by the given block. If block A supports B at
+    /// (author, round), it is guaranteed that any processed block by the same author that directly
+    /// or indirectly includes. A will also support B at (author, round).
     fn find_support(
         &self,
         (author, round): (AuthorityIndex, RoundNumber),
@@ -117,7 +117,7 @@ impl BaseCommitter {
                 return Some(*include);
             }
             let include = self
-                .block_store
+                .block_reader
                 .get_block(*include)
                 .expect("We should have the whole sub-dag by now");
             if let Some(support) = self.find_support((author, round), &include) {
@@ -148,7 +148,7 @@ impl BaseCommitter {
         let mut votes_stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
         for reference in potential_certificate.includes() {
             let potential_vote = self
-                .block_store
+                .block_reader
                 .get_block(*reference)
                 .expect("We should have the whole sub-dag by now");
 
@@ -173,17 +173,17 @@ impl BaseCommitter {
         // Get the block(s) proposed by the leader. There could be more than one leader block
         // per round (produced by a Byzantine leader).
         let leader_blocks = self
-            .block_store
+            .block_reader
             .get_blocks_at_authority_round(leader, leader_round);
 
         // Get all blocks that could be potential certificates for the target leader. These blocks
         // are in the decision round of the target leader and are linked to the anchor.
         let wave = self.wave_number(leader_round);
         let decision_round = self.decision_round(wave);
-        let decision_blocks = self.block_store.get_blocks_by_round(decision_round);
+        let decision_blocks = self.block_reader.get_blocks_by_round(decision_round);
         let potential_certificates: Vec<_> = decision_blocks
             .iter()
-            .filter(|block| self.block_store.linked(anchor, block))
+            .filter(|block| self.block_reader.linked(anchor, block))
             .collect();
 
         // Use those potential certificates to determine which (if any) of the target leader
@@ -197,7 +197,8 @@ impl BaseCommitter {
             })
             .collect();
 
-        // There can be at most one certified leader, otherwise it means the BFT assumption is broken.
+        // There can be at most one certified leader, otherwise it means the BFT assumption
+        // is broken.
         if certified_leader_blocks.len() > 1 {
             panic!("More than one certified block at wave {wave} from leader {leader}")
         }
@@ -213,7 +214,7 @@ impl BaseCommitter {
     /// Check whether the specified leader has enough blames (that is, 2f+1 non-votes) to be
     /// directly skipped.
     fn enough_leader_blame(&self, voting_round: RoundNumber, leader: AuthorityIndex) -> bool {
-        let voting_blocks = self.block_store.get_blocks_by_round(voting_round);
+        let voting_blocks = self.block_reader.get_blocks_by_round(voting_round);
 
         let mut blame_stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
         for voting_block in &voting_blocks {
@@ -242,7 +243,7 @@ impl BaseCommitter {
         decision_round: RoundNumber,
         leader_block: &Data<StatementBlock>,
     ) -> bool {
-        let decision_blocks = self.block_store.get_blocks_by_round(decision_round);
+        let decision_blocks = self.block_reader.get_blocks_by_round(decision_round);
 
         let mut certificate_stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
         for decision_block in &decision_blocks {
@@ -259,8 +260,8 @@ impl BaseCommitter {
         false
     }
 
-    /// Apply the indirect decision rule to the specified leader to see whether we can indirect-commit
-    /// or indirect-skip it.
+    /// Apply the indirect decision rule to the specified leader to see whether we can
+    /// indirect-commit or indirect-skip it.
     #[tracing::instrument(skip_all, fields(leader = %format_authority_round(leader, leader_round)))]
     pub fn try_indirect_decide<'a>(
         &self,
@@ -289,8 +290,8 @@ impl BaseCommitter {
         LeaderStatus::Undecided(leader, leader_round)
     }
 
-    /// Apply the direct decision rule to the specified leader to see whether we can direct-commit or
-    /// direct-skip it.
+    /// Apply the direct decision rule to the specified leader to see whether we can direct-commit
+    /// or direct-skip it.
     #[tracing::instrument(skip_all, fields(leader = %format_authority_round(leader, leader_round)))]
     pub fn try_direct_decide(
         &self,
@@ -310,7 +311,7 @@ impl BaseCommitter {
         let wave = self.wave_number(leader_round);
         let decision_round = self.decision_round(wave);
         let leader_blocks = self
-            .block_store
+            .block_reader
             .get_blocks_at_authority_round(leader, leader_round);
         let mut leaders_with_enough_support: Vec<_> = leader_blocks
             .into_iter()

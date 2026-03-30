@@ -22,7 +22,7 @@ fn direct_commit() {
 
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
-        block_writer.into_block_store(),
+        block_writer.into_block_reader(),
         Metrics::new_for_test(0),
     )
     .with_wave_length(wave_length)
@@ -53,7 +53,7 @@ fn idempotence() {
 
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
-        block_writer.into_block_store(),
+        block_writer.into_block_reader(),
         Metrics::new_for_test(0),
     )
     .with_wave_length(wave_length)
@@ -87,7 +87,7 @@ fn multiple_direct_commit() {
 
         let committer = UniversalCommitterBuilder::new(
             committee.clone(),
-            block_writer.into_block_store(),
+            block_writer.into_block_reader(),
             Metrics::new_for_test(0),
         )
         .with_wave_length(wave_length)
@@ -124,7 +124,7 @@ fn direct_commit_late_call() {
 
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
-        block_writer.into_block_store(),
+        block_writer.into_block_reader(),
         Metrics::new_for_test(0),
     )
     .with_wave_length(wave_length)
@@ -160,7 +160,7 @@ fn no_genesis_commit() {
 
         let committer = UniversalCommitterBuilder::new(
             committee.clone(),
-            block_writer.into_block_store(),
+            block_writer.into_block_reader(),
             Metrics::new_for_test(0),
         )
         .with_wave_length(wave_length)
@@ -208,7 +208,7 @@ fn no_leader() {
     // Ensure no blocks are committed.
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
-        block_writer.into_block_store(),
+        block_writer.into_block_reader(),
         Metrics::new_for_test(0),
     )
     .with_wave_length(wave_length)
@@ -259,7 +259,7 @@ fn direct_skip() {
     // Ensure the omitted leader is skipped.
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
-        block_writer.into_block_store(),
+        block_writer.into_block_reader(),
         Metrics::new_for_test(0),
     )
     .with_wave_length(wave_length)
@@ -358,7 +358,7 @@ fn indirect_commit() {
     // Ensure we commit the first leaders.
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
-        block_writer.into_block_store(),
+        block_writer.into_block_reader(),
         Metrics::new_for_test(0),
     )
     .with_wave_length(wave_length)
@@ -434,7 +434,7 @@ fn indirect_skip() {
     // Ensure we commit the first 3 leaders, skip the 4th, and commit the last 2 leaders.
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
-        block_writer.into_block_store(),
+        block_writer.into_block_reader(),
         Metrics::new_for_test(0),
     )
     .with_wave_length(wave_length)
@@ -519,7 +519,7 @@ fn undecided() {
     // Ensure no blocks are committed.
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
-        block_writer.into_block_store(),
+        block_writer.into_block_reader(),
         Metrics::new_for_test(0),
     )
     .with_wave_length(wave_length)

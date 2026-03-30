@@ -68,7 +68,7 @@ impl Validator {
             committee.clone(),
             authority,
             Some(&private_config.certified_transactions_log()),
-            storage.block_store().clone(),
+            storage.block_reader().clone(),
             metrics.clone(),
             public_config.parameters.consensus_only,
         );

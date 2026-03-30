@@ -93,7 +93,7 @@ impl BlockDisseminator {
     ) -> Option<()> {
         let mut missing = Vec::new();
         for reference in references {
-            let stored_block = self.inner.block_store.get_block(reference);
+            let stored_block = self.inner.block_reader.get_block(reference);
             let found = stored_block.is_some();
             match stored_block {
                 // TODO: Should we be able to send more than one block in a single network message?
@@ -132,7 +132,7 @@ impl BlockDisseminator {
     ) -> Option<()> {
         loop {
             let notified = inner.notify.notified();
-            let blocks = inner.block_store.get_own_blocks(round, batch_size);
+            let blocks = inner.block_reader.get_own_blocks(round, batch_size);
             for block in blocks {
                 round = block.round();
                 to.send(NetworkMessage::Block(block)).await.ok()?;
@@ -171,7 +171,7 @@ impl BlockDisseminator {
     ) -> Option<()> {
         loop {
             let blocks = inner
-                .block_store
+                .block_reader
                 .get_others_blocks(round, author, batch_size);
             for block in blocks {
                 round = block.round();

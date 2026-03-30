@@ -18,7 +18,6 @@ use tokio::{
 
 use crate::{
     block_handler::CommitHandler,
-    block_store::BlockStore,
     committee::Committee,
     config::NodePublicConfig,
     core::Core,
@@ -26,6 +25,7 @@ use crate::{
     metrics::Metrics,
     network::{Connection, Network, NetworkMessage},
     runtime::{self, timestamp_utc, Handle, JoinError, JoinHandle},
+    storage::BlockReader,
     syncer::{Syncer, SyncerSignals},
     synchronizer::{BlockDisseminator, BlockFetcher, SynchronizerParameters},
     types::{format_authority_index, AuthorityIndex},
@@ -44,7 +44,7 @@ pub struct NetworkSyncer {
 
 pub struct NetworkSyncerInner {
     pub syncer: CoreThreadDispatcher,
-    pub block_store: BlockStore,
+    pub block_reader: BlockReader,
     pub notify: Arc<Notify>,
     committee: Arc<Committee>,
     stop: mpsc::Sender<()>,
@@ -70,7 +70,7 @@ impl NetworkSyncer {
         commit_handler.recover_committed(committed, state);
         let committee = core.committee().clone();
         let wal_syncer = core.wal_syncer();
-        let block_store = core.block_store().clone();
+        let block_reader = core.block_reader().clone();
         let epoch_closing_time = core.epoch_closing_time();
         let mut syncer = Syncer::new(
             core,
@@ -92,7 +92,7 @@ impl NetworkSyncer {
         let inner = Arc::new(NetworkSyncerInner {
             notify,
             syncer,
-            block_store,
+            block_reader,
             committee,
             stop: stop_sender.clone(),
             epoch_close_signal: epoch_sender.clone(),
@@ -186,7 +186,7 @@ impl NetworkSyncer {
         metrics: Arc<Metrics>,
     ) -> Option<()> {
         let last_seen = inner
-            .block_store
+            .block_reader
             .last_seen_by_authority(connection.peer_id as AuthorityIndex);
         connection
             .sender
@@ -258,7 +258,7 @@ impl NetworkSyncer {
         loop {
             let notified = inner.notify.notified();
             let round = inner
-                .block_store
+                .block_reader
                 .last_own_block_ref()
                 .map(|b| b.round())
                 .unwrap_or_default();
@@ -503,7 +503,7 @@ mod sim_tests {
         simulated_network.connect_all().await;
         let syncers = wait_for_epoch_to_close(network_syncers).await;
         for syncer in &syncers {
-            let block_store = syncer.core().block_store();
+            let block_reader = syncer.core().block_reader();
             let committee = syncer.core().committee().clone();
             let latest_committed_leader =
                 syncer.commit_handler().committed_leaders().last().unwrap();
@@ -513,7 +513,8 @@ mod sim_tests {
                 syncer.commit_handler().committed_leaders()
             );
 
-            let mut finalization_interpreter = FinalizationInterpreter::new(block_store, committee);
+            let mut finalization_interpreter =
+                FinalizationInterpreter::new(block_reader, committee);
             let finalized_tx_certifying_blocks =
                 finalization_interpreter.finalized_tx_certifying_blocks();
 
@@ -521,9 +522,9 @@ mod sim_tests {
                 // check if at least one certificate is committed
                 let mut committed = false;
                 for certifying_block in certificates {
-                    if block_store.linked(
-                        &block_store.get_block(*latest_committed_leader).unwrap(),
-                        &block_store.get_block(certifying_block).unwrap(),
+                    if block_reader.linked(
+                        &block_reader.get_block(*latest_committed_leader).unwrap(),
+                        &block_reader.get_block(certifying_block).unwrap(),
                     ) {
                         committed = true;
                         break;
