@@ -16,24 +16,20 @@ use crate::{
 pub struct RecoveredState {
     pub last_own_block: Option<OwnBlockData>,
     pub pending: VecDeque<(WalPosition, MetaStatement)>,
-    pub state: Option<Bytes>,
     pub unprocessed_blocks: Vec<Data<StatementBlock>>,
 
     pub last_committed_leader: Option<BlockReference>,
     pub committed_blocks: HashSet<BlockReference>,
-    pub committed_state: Option<Bytes>,
 }
 
 #[derive(Default)]
 pub(super) struct RecoveredStateBuilder {
     pending: BTreeMap<WalPosition, RawMetaStatement>,
     last_own_block: Option<OwnBlockData>,
-    state: Option<Bytes>,
     unprocessed_blocks: Vec<Data<StatementBlock>>,
 
     last_committed_leader: Option<BlockReference>,
     committed_blocks: HashSet<BlockReference>,
-    committed_state: Option<Bytes>,
 }
 
 impl RecoveredStateBuilder {
@@ -58,18 +54,12 @@ impl RecoveredStateBuilder {
         self.last_own_block = Some(own_block_data);
     }
 
-    pub(super) fn state(&mut self, state: Bytes) {
-        self.state = Some(state);
-        self.unprocessed_blocks.clear();
-    }
-
-    pub(super) fn commit_data(&mut self, commits: Vec<CommitData>, committed_state: Bytes) {
+    pub(super) fn commit_data(&mut self, commits: Vec<CommitData>) {
         for commit_data in commits {
             self.last_committed_leader = Some(commit_data.leader);
             self.committed_blocks
                 .extend(commit_data.sub_dag.into_iter());
         }
-        self.committed_state = Some(committed_state);
     }
 
     pub(super) fn build(self) -> RecoveredState {
@@ -81,11 +71,9 @@ impl RecoveredStateBuilder {
         RecoveredState {
             pending,
             last_own_block: self.last_own_block,
-            state: self.state,
             unprocessed_blocks: self.unprocessed_blocks,
             last_committed_leader: self.last_committed_leader,
             committed_blocks: self.committed_blocks,
-            committed_state: self.committed_state,
         }
     }
 }

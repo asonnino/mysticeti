@@ -66,8 +66,8 @@ impl NetworkSyncer {
         let handle = Handle::current();
         let notify = Arc::new(Notify::new());
         // todo - ugly, probably need to merge syncer and core
-        let (committed, state) = core.take_recovered_committed_blocks();
-        commit_handler.recover_committed(committed, state);
+        let committed = core.take_recovered_committed_blocks();
+        commit_handler.recover_committed(committed);
         let committee = core.committee().clone();
         let wal_syncer = core.wal_syncer();
         let block_reader = core.block_reader().clone();

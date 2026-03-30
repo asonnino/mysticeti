@@ -36,10 +36,7 @@ pub(super) struct AggregateMetrics {
     pub core_lock_enqueued: IntCounter,
     pub core_lock_dequeued: IntCounter,
 
-    pub block_handler_pending_certificates: IntGauge,
     pub block_handler_cleanup_util: IntCounter,
-
-    pub commit_handler_pending_certificates: IntGauge,
 
     pub missing_blocks: IntGaugeVec,
     pub block_sync_requests_sent: IntCounterVec,
@@ -148,21 +145,9 @@ impl AggregateMetrics {
                 registry,
             )
             .unwrap(),
-            block_handler_pending_certificates: register_int_gauge_with_registry!(
-                "block_handler_pending_certificates",
-                "Pending certs in block handler",
-                registry,
-            )
-            .unwrap(),
             block_handler_cleanup_util: register_int_counter_with_registry!(
                 "block_handler_cleanup_util",
                 "block_handler_cleanup_util",
-                registry,
-            )
-            .unwrap(),
-            commit_handler_pending_certificates: register_int_gauge_with_registry!(
-                "commit_handler_pending_certificates",
-                "Pending certs in commit handler",
                 registry,
             )
             .unwrap(),

@@ -48,10 +48,6 @@ impl PreciseMetrics {
     }
 
     fn create(registry: &Registry, committee_size: usize) -> (MetricsReporter, Observers) {
-        let (transaction_certified_latency_observer, transaction_certified_latency) =
-            histogram::histogram(registry, "transaction_certified_latency");
-        let (certificate_committed_latency_observer, certificate_committed_latency) =
-            histogram::histogram(registry, "certificate_committed_latency");
         let (transaction_committed_latency_observer, transaction_committed_latency) =
             histogram::histogram(registry, "transaction_committed_latency");
         let (proposed_block_size_bytes_observer, proposed_block_size_bytes) =
@@ -67,8 +63,6 @@ impl PreciseMetrics {
             histogram::vec_histogram(registry, "peer", "connection_latency", peer_labels);
 
         let reporter = MetricsReporter {
-            transaction_certified_latency,
-            certificate_committed_latency,
             transaction_committed_latency,
             proposed_block_size_bytes,
             proposed_block_transaction_count,
@@ -77,8 +71,6 @@ impl PreciseMetrics {
         };
 
         let observers = Observers {
-            transaction_certified_latency: transaction_certified_latency_observer,
-            certificate_committed_latency: certificate_committed_latency_observer,
             transaction_committed_latency: transaction_committed_latency_observer,
             proposed_block_size_bytes: proposed_block_size_bytes_observer,
             proposed_block_transaction_count: proposed_block_transaction_count_observer,
@@ -87,14 +79,6 @@ impl PreciseMetrics {
         };
 
         (reporter, observers)
-    }
-
-    pub fn observe_transaction_certified_latency(&self, d: Duration) {
-        self.observers.transaction_certified_latency.observe(d);
-    }
-
-    pub fn observe_certificate_committed_latency(&self, d: Duration) {
-        self.observers.certificate_committed_latency.observe(d);
     }
 
     pub fn observe_transaction_committed_latency(&self, d: Duration) {
@@ -144,8 +128,6 @@ impl PreciseMetrics {
 
 /// Temporary struct to pass observer halves from `build` to `from_parts`.
 struct Observers {
-    transaction_certified_latency: HistogramObserver<Duration>,
-    certificate_committed_latency: HistogramObserver<Duration>,
     transaction_committed_latency: HistogramObserver<Duration>,
     proposed_block_size_bytes: HistogramObserver<usize>,
     proposed_block_transaction_count: HistogramObserver<usize>,
@@ -159,8 +141,6 @@ enum ReporterState {
 }
 
 struct MetricsReporter {
-    transaction_certified_latency: HistogramReporter<Duration>,
-    certificate_committed_latency: HistogramReporter<Duration>,
     transaction_committed_latency: HistogramReporter<Duration>,
     proposed_block_size_bytes: HistogramReporter<usize>,
     proposed_block_transaction_count: HistogramReporter<usize>,
@@ -172,16 +152,12 @@ impl MetricsReporter {
     /// Drain all channels, compute percentiles, and write
     /// to Prometheus gauges.
     fn flush(&mut self) {
-        self.transaction_certified_latency.clear_receive_all();
-        self.certificate_committed_latency.clear_receive_all();
         self.transaction_committed_latency.clear_receive_all();
         self.proposed_block_size_bytes.clear_receive_all();
         self.proposed_block_transaction_count.clear_receive_all();
         self.proposed_block_vote_count.clear_receive_all();
         self.connection_latency.clear_receive_all();
 
-        self.transaction_certified_latency.report();
-        self.certificate_committed_latency.report();
         self.transaction_committed_latency.report();
         self.proposed_block_size_bytes.report();
         self.proposed_block_transaction_count.report();

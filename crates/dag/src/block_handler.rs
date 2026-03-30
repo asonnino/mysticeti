@@ -7,7 +7,6 @@ use std::{
     time::Duration,
 };
 
-use minibytes::Bytes;
 use parking_lot::Mutex;
 use tokio::sync::mpsc;
 
@@ -53,11 +52,7 @@ impl RealBlockHandler {
         Some(received)
     }
 
-    pub fn handle_blocks(
-        &mut self,
-        _blocks: &[Data<StatementBlock>],
-        require_response: bool,
-    ) -> Vec<BaseStatement> {
+    pub fn handle_blocks(&mut self, require_response: bool) -> Vec<BaseStatement> {
         let _timer = self
             .metrics
             .utilization_timer("BlockHandler::handle_blocks");
@@ -81,12 +76,6 @@ impl RealBlockHandler {
         }
         self.pending_transactions -= count;
     }
-
-    pub fn state(&self) -> Bytes {
-        Bytes::new()
-    }
-
-    pub fn recover_state(&mut self, _state: &Bytes) {}
 
     pub fn cleanup(&self) {
         let _timer = self.metrics.block_handler_cleanup_utilization_timer();
@@ -180,17 +169,8 @@ impl CommitHandler {
         committed
     }
 
-    pub fn aggregator_state(&self) -> Bytes {
-        Bytes::new()
-    }
-
-    pub fn recover_committed(&mut self, committed: HashSet<BlockReference>, state: Option<Bytes>) {
+    pub fn recover_committed(&mut self, committed: HashSet<BlockReference>) {
         assert!(self.commit_interpreter.committed.is_empty());
-        if state.is_some() {
-            assert!(!committed.is_empty());
-        } else {
-            assert!(committed.is_empty());
-        }
         self.commit_interpreter.committed = committed;
     }
 }

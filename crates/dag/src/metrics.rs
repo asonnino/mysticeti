@@ -97,26 +97,8 @@ impl Metrics {
         self.aggregate.wal_mappings.set(value);
     }
 
-    pub fn set_block_handler_pending_certificates(&self, value: i64) {
-        self.aggregate.block_handler_pending_certificates.set(value);
-    }
-
-    pub fn set_commit_handler_pending_certificates(&self, value: i64) {
-        self.aggregate
-            .commit_handler_pending_certificates
-            .set(value);
-    }
-
     pub fn benchmark_duration_secs(&self) -> u64 {
         self.aggregate.benchmark_duration.get()
-    }
-
-    pub fn observe_transaction_certified_latency(&self, d: Duration) {
-        self.precise.observe_transaction_certified_latency(d);
-    }
-
-    pub fn observe_certificate_committed_latency(&self, d: Duration) {
-        self.precise.observe_certificate_committed_latency(d);
     }
 
     pub fn observe_transaction_committed_latency(&self, d: Duration) {
@@ -327,18 +309,8 @@ mod test {
     fn set_gauges_roundtrip() {
         let metrics = Metrics::new_for_test(4);
         metrics.set_wal_mappings(42);
-        metrics.set_block_handler_pending_certificates(10);
-        metrics.set_commit_handler_pending_certificates(5);
         let snapshot = metrics.collect();
         assert_eq!(snapshot.metric("wal_mappings", &[]), 42.0);
-        assert_eq!(
-            snapshot.metric("block_handler_pending_certificates", &[]),
-            10.0,
-        );
-        assert_eq!(
-            snapshot.metric("commit_handler_pending_certificates", &[]),
-            5.0,
-        );
     }
 
     #[test]

@@ -7,8 +7,6 @@ use std::{
     sync::{atomic::AtomicU64, Arc},
 };
 
-use minibytes::Bytes;
-
 use crate::{
     block_handler::RealBlockHandler,
     block_manager::BlockManager,
@@ -46,7 +44,7 @@ pub struct Core {
     options: CoreOptions,
     signer: Signer,
     // todo - ugly, probably need to merge syncer and core
-    recovered_committed_blocks: Option<(HashSet<BlockReference>, Option<Bytes>)>,
+    recovered_committed_blocks: Option<HashSet<BlockReference>>,
     epoch_manager: EpochManager,
     rounds_in_epoch: RoundNumber,
     committer: UniversalCommitter,
@@ -65,7 +63,7 @@ pub enum MetaStatement {
 impl Core {
     #[allow(clippy::too_many_arguments)]
     pub fn open(
-        mut block_handler: RealBlockHandler,
+        block_handler: RealBlockHandler,
         authority: AuthorityIndex,
         committee: Arc<Committee>,
         private_config: NodePrivateConfig,
@@ -78,11 +76,9 @@ impl Core {
         let RecoveredState {
             last_own_block,
             mut pending,
-            state,
             unprocessed_blocks,
             last_committed_leader,
             committed_blocks,
-            committed_state,
         } = recovered;
         let mut threshold_clock = ThresholdClockAggregator::new(0);
         let last_own_block = if let Some(own_block) = last_own_block {
@@ -116,10 +112,6 @@ impl Core {
         };
         let block_manager = BlockManager::new(storage.block_reader().clone(), &committee);
 
-        if let Some(state) = state {
-            block_handler.recover_state(&state);
-        }
-
         let epoch_manager = EpochManager::new();
 
         let committer = UniversalCommitterBuilder::new(
@@ -152,7 +144,7 @@ impl Core {
             metrics,
             options,
             signer: private_config.keypair,
-            recovered_committed_blocks: Some((committed_blocks, committed_state)),
+            recovered_committed_blocks: Some(committed_blocks),
             epoch_manager,
             rounds_in_epoch: public_config.parameters.rounds_in_epoch,
             committer,
@@ -163,7 +155,7 @@ impl Core {
                 "Replaying {} blocks for transaction aggregator",
                 unprocessed_blocks.len()
             );
-            this.run_block_handler(&unprocessed_blocks);
+            this.run_block_handler();
         }
 
         this
@@ -187,15 +179,13 @@ impl Core {
                 .push_back((position, MetaStatement::Include(*processed.reference())));
             result.push(processed);
         }
-        self.run_block_handler(&result);
+        self.run_block_handler();
         result
     }
 
-    fn run_block_handler(&mut self, processed: &[Data<StatementBlock>]) {
+    fn run_block_handler(&mut self) {
         let _timer = self.metrics.utilization_timer("Core::run_block_handler");
-        let statements = self
-            .block_handler
-            .handle_blocks(processed, !self.epoch_changing());
+        let statements = self.block_handler.handle_blocks(!self.epoch_changing());
         let serialized_statements =
             bincode::serialize(&statements).expect("Payload serialization failed");
         let position = self.storage.write_payload(&serialized_statements);
@@ -375,11 +365,7 @@ impl Core {
         }
     }
 
-    pub fn handle_committed_subdag(
-        &mut self,
-        committed: Vec<CommittedSubDag>,
-        state: &Bytes,
-    ) -> Vec<CommitData> {
+    pub fn handle_committed_subdag(&mut self, committed: Vec<CommittedSubDag>) -> Vec<CommitData> {
         let mut commit_data = vec![];
         for commit in &committed {
             for block in &commit.blocks {
@@ -388,18 +374,13 @@ impl Core {
             }
             commit_data.push(CommitData::from(commit));
         }
-        self.write_state(); // todo - this can be done less frequently to reduce IO
-        self.storage.write_commits(&commit_data, state);
+        self.storage.write_commits(&commit_data);
         // todo - We should also persist state of the epoch manager, otherwise if validator
         // restarts during epoch change it will fork on the epoch change state.
         commit_data
     }
 
-    pub fn write_state(&mut self) {
-        self.storage.write_state(&self.block_handler.state());
-    }
-
-    pub fn take_recovered_committed_blocks(&mut self) -> (HashSet<BlockReference>, Option<Bytes>) {
+    pub fn take_recovered_committed_blocks(&mut self) -> HashSet<BlockReference> {
         self.recovered_committed_blocks
             .take()
             .expect("take_recovered_committed_blocks called twice")
@@ -594,7 +575,6 @@ mod test {
             eprintln!("{}: {}", core.authority, block);
             blocks.push(block.clone());
         }
-        cores.iter_mut().for_each(Core::write_state);
         drop(cores);
 
         let (_committee, mut cores) = committee_and_cores_persisted(4, Some(tmp.path()));

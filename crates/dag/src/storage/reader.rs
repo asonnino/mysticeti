@@ -71,13 +71,13 @@ impl BlockReader {
                     own_block
                 }
                 WAL_ENTRY_STATE => {
-                    builder.state(data);
+                    // Legacy: block handler state was written here before fast-path removal.
                     continue;
                 }
                 WAL_ENTRY_COMMIT => {
-                    let (commit_data, state) = bincode::deserialize(&data)
+                    let commit_data = bincode::deserialize(&data)
                         .expect("Failed to deserialized commit data from wal");
-                    builder.commit_data(commit_data, state);
+                    builder.commit_data(commit_data);
                     continue;
                 }
                 _ => {

@@ -8,8 +8,6 @@ pub(crate) mod wal;
 
 use std::{io, path::Path, sync::Arc};
 
-use minibytes::Bytes;
-
 use crate::{
     committee::Committee,
     data::Data,
@@ -18,10 +16,7 @@ use crate::{
 };
 
 use self::{
-    block_store::{
-        CommitData, OwnBlockData, WAL_ENTRY_BLOCK, WAL_ENTRY_COMMIT, WAL_ENTRY_PAYLOAD,
-        WAL_ENTRY_STATE,
-    },
+    block_store::{CommitData, OwnBlockData, WAL_ENTRY_BLOCK, WAL_ENTRY_COMMIT, WAL_ENTRY_PAYLOAD},
     state::RecoveredState,
     wal::{open_file_for_wal, walf, WalPosition, WalSyncer, WalWriter},
 };
@@ -66,19 +61,8 @@ impl Storage {
             .expect("Failed to write statements to wal")
     }
 
-    pub(crate) fn write_state(&mut self, state: &[u8]) {
-        #[cfg(feature = "simulator")]
-        if state.len() >= wal::MAX_ENTRY_SIZE {
-            return;
-        }
-        self.wal_writer
-            .write(WAL_ENTRY_STATE, state)
-            .expect("Write to wal has failed");
-    }
-
-    pub(crate) fn write_commits(&mut self, commits: &[CommitData], state: &Bytes) {
-        let serialized =
-            bincode::serialize(&(commits, state)).expect("Commits serialization failed");
+    pub(crate) fn write_commits(&mut self, commits: &[CommitData]) {
+        let serialized = bincode::serialize(commits).expect("Commits serialization failed");
         self.wal_writer
             .write(WAL_ENTRY_COMMIT, &serialized)
             .expect("Write to wal has failed");

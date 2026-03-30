@@ -128,8 +128,7 @@ impl Syncer {
             let committed_subdag = self
                 .commit_handler
                 .handle_commit(self.core.block_reader(), newly_committed);
-            self.core
-                .handle_committed_subdag(committed_subdag, &self.commit_handler.aggregator_state());
+            self.core.handle_committed_subdag(committed_subdag);
         }
     }
 
