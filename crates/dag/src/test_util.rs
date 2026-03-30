@@ -18,7 +18,7 @@ use crate::simulated_network::SimulatedNetwork;
 #[cfg(feature = "simulator")]
 use crate::syncer::SyncerSignals;
 use crate::{
-    block_handler::{BlockHandler, CommitHandler, TestBlockHandler},
+    block_handler::{BlockHandler, CommitHandler, RealBlockHandler, TestBlockHandler},
     block_store::{BlockStore, BlockWriter, OwnBlockData, WAL_ENTRY_BLOCK},
     committee::Committee,
     config::{self, NodePrivateConfig, NodePublicConfig},
@@ -36,36 +36,22 @@ pub fn committee(n: usize) -> Arc<Committee> {
     Committee::new_test(vec![1; n])
 }
 
-pub fn committee_and_cores(n: usize) -> (Arc<Committee>, Vec<Core<TestBlockHandler>>) {
-    committee_and_cores_persisted_epoch_duration(n, None, &NodePublicConfig::new_for_tests(n))
+// --- TestBlockHandler-based helpers (for syncer.rs sim test + core.rs tests) ---
+
+pub fn committee_and_test_cores(n: usize) -> (Arc<Committee>, Vec<Core<TestBlockHandler>>) {
+    committee_and_test_cores_persisted(n, None)
 }
 
-pub fn committee_and_cores_epoch_duration(
-    n: usize,
-    rounds_in_epoch: RoundNumber,
-) -> (Arc<Committee>, Vec<Core<TestBlockHandler>>) {
-    let mut config = NodePublicConfig::new_for_tests(n);
-    config.parameters.rounds_in_epoch = rounds_in_epoch;
-    committee_and_cores_persisted_epoch_duration(n, None, &config)
-}
-
-pub fn committee_and_cores_persisted(
+pub fn committee_and_test_cores_persisted(
     n: usize,
     path: Option<&Path>,
 ) -> (Arc<Committee>, Vec<Core<TestBlockHandler>>) {
-    committee_and_cores_persisted_epoch_duration(n, path, &NodePublicConfig::new_for_tests(n))
-}
-
-pub fn committee_and_cores_persisted_epoch_duration(
-    n: usize,
-    path: Option<&Path>,
-    public_config: &NodePublicConfig,
-) -> (Arc<Committee>, Vec<Core<TestBlockHandler>>) {
+    let public_config = NodePublicConfig::new_for_tests(n);
     let committee = committee(n);
     let cores: Vec<_> = committee
         .authorities()
         .map(|authority| {
-            let last_transaction = first_transaction_for_authority(authority);
+            let last_transaction = authority * 1_000_000;
             let metrics = Metrics::new_for_test(committee.len());
             let block_handler = TestBlockHandler::new(
                 last_transaction,
@@ -87,16 +73,13 @@ pub fn committee_and_cores_persisted_epoch_duration(
                 metrics.clone(),
                 &committee,
             );
-
             let private_config = NodePrivateConfig::new_for_tests(authority);
-
-            println!("Opening core {authority}");
             Core::open(
                 block_handler,
                 authority,
                 committee.clone(),
                 private_config,
-                public_config,
+                &public_config,
                 metrics,
                 recovered,
                 wal_writer,
@@ -107,13 +90,74 @@ pub fn committee_and_cores_persisted_epoch_duration(
     (committee, cores)
 }
 
-fn first_transaction_for_authority(authority: AuthorityIndex) -> u64 {
-    authority * 1_000_000
+// --- RealBlockHandler-based helpers (for net_sync tests, benchmarks) ---
+
+fn open_core_with_real_handler(
+    authority: AuthorityIndex,
+    committee: &Arc<Committee>,
+    public_config: &NodePublicConfig,
+    path: Option<&Path>,
+) -> Core<RealBlockHandler> {
+    let metrics = Metrics::new_for_test(committee.len());
+    let wal_file = if let Some(path) = path {
+        let wal_path = path.join(format!("{:03}.wal", authority));
+        open_file_for_wal(&wal_path).unwrap()
+    } else {
+        tempfile::tempfile().unwrap()
+    };
+    let (wal_writer, wal_reader) = walf(wal_file).expect("Failed to open wal");
+    let recovered = BlockStore::open(
+        authority,
+        Arc::new(wal_reader),
+        &wal_writer,
+        metrics.clone(),
+        committee,
+    );
+    let tx_log_file = tempfile::NamedTempFile::new().expect("Failed to create temp tx log");
+    let (block_handler, _tx_sender) = RealBlockHandler::new(
+        committee.clone(),
+        authority,
+        tx_log_file.path(),
+        recovered.block_store.clone(),
+        metrics.clone(),
+        false,
+    );
+    let private_config = NodePrivateConfig::new_for_tests(authority);
+    Core::open(
+        block_handler,
+        authority,
+        committee.clone(),
+        private_config,
+        public_config,
+        metrics,
+        recovered,
+        wal_writer,
+        CoreOptions::test(),
+    )
+}
+
+#[cfg(feature = "simulator")]
+pub fn committee_and_cores(n: usize) -> (Arc<Committee>, Vec<Core<RealBlockHandler>>) {
+    committee_and_cores_epoch_duration(n, config::node_defaults::default_rounds_in_epoch())
+}
+
+pub fn committee_and_cores_epoch_duration(
+    n: usize,
+    rounds_in_epoch: RoundNumber,
+) -> (Arc<Committee>, Vec<Core<RealBlockHandler>>) {
+    let mut public_config = NodePublicConfig::new_for_tests(n);
+    public_config.parameters.rounds_in_epoch = rounds_in_epoch;
+    let committee = committee(n);
+    let cores = committee
+        .authorities()
+        .map(|authority| open_core_with_real_handler(authority, &committee, &public_config, None))
+        .collect();
+    (committee, cores)
 }
 
 #[cfg(feature = "simulator")]
 pub fn committee_and_syncers(n: usize) -> (Arc<Committee>, Vec<Syncer<TestBlockHandler>>) {
-    let (committee, cores) = committee_and_cores(n);
+    let (committee, cores) = committee_and_test_cores(n);
     (
         committee.clone(),
         cores
@@ -156,7 +200,7 @@ pub async fn networks_and_addresses(metrics: &[Arc<Metrics>]) -> (Vec<Network>, 
 #[cfg(feature = "simulator")]
 pub fn simulated_network_syncers(
     n: usize,
-) -> (SimulatedNetwork, Vec<NetworkSyncer<TestBlockHandler>>) {
+) -> (SimulatedNetwork, Vec<NetworkSyncer<RealBlockHandler>>) {
     simulated_network_syncers_with_epoch_duration(
         n,
         config::node_defaults::default_rounds_in_epoch(),
@@ -167,7 +211,7 @@ pub fn simulated_network_syncers(
 pub fn simulated_network_syncers_with_epoch_duration(
     n: usize,
     rounds_in_epoch: RoundNumber,
-) -> (SimulatedNetwork, Vec<NetworkSyncer<TestBlockHandler>>) {
+) -> (SimulatedNetwork, Vec<NetworkSyncer<RealBlockHandler>>) {
     let (committee, cores) = committee_and_cores_epoch_duration(n, rounds_in_epoch);
     let (simulated_network, networks) = SimulatedNetwork::new(&committee);
     let public_config = config::NodePublicConfig::new_for_tests(n);
@@ -194,14 +238,14 @@ pub fn simulated_network_syncers_with_epoch_duration(
     (simulated_network, network_syncers)
 }
 
-pub async fn network_syncers(n: usize) -> Vec<NetworkSyncer<TestBlockHandler>> {
+pub async fn network_syncers(n: usize) -> Vec<NetworkSyncer<RealBlockHandler>> {
     network_syncers_with_epoch_duration(n, config::node_defaults::default_rounds_in_epoch()).await
 }
 
 pub async fn network_syncers_with_epoch_duration(
     n: usize,
     rounds_in_epoch: RoundNumber,
-) -> Vec<NetworkSyncer<TestBlockHandler>> {
+) -> Vec<NetworkSyncer<RealBlockHandler>> {
     let (committee, cores) = committee_and_cores_epoch_duration(n, rounds_in_epoch);
     let metrics: Vec<_> = cores.iter().map(|c| c.metrics.clone()).collect();
     let (networks, _) = networks_and_addresses(&metrics).await;

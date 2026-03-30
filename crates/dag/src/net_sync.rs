@@ -456,7 +456,7 @@ mod sim_tests {
 
     use super::NetworkSyncer;
     use crate::{
-        block_handler::TestBlockHandler,
+        block_handler::RealBlockHandler,
         config,
         config::NodePublicConfig,
         finalization_interpreter::FinalizationInterpreter,
@@ -471,8 +471,8 @@ mod sim_tests {
     };
 
     async fn wait_for_epoch_to_close(
-        network_syncers: Vec<NetworkSyncer<TestBlockHandler>>,
-    ) -> Vec<Syncer<TestBlockHandler>> {
+        network_syncers: Vec<NetworkSyncer<RealBlockHandler>>,
+    ) -> Vec<Syncer<RealBlockHandler>> {
         let mut any_closed = false;
         while !any_closed {
             for net_sync in network_syncers.iter() {
