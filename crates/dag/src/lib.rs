@@ -12,13 +12,11 @@ mod core_thread;
 mod crypto;
 mod data;
 mod epoch_close;
-mod finalization_interpreter;
 #[cfg(feature = "simulator")]
 mod future_simulator;
 pub mod metrics;
 pub mod net_sync;
 pub mod network;
-mod range_map;
 mod runtime;
 mod serde;
 #[cfg(test)]

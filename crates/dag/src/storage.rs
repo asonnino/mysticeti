@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub(crate) mod block_store;
-pub(crate) mod log;
 mod reader;
 pub(crate) mod state;
 pub(crate) mod wal;

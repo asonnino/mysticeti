@@ -440,7 +440,6 @@ mod sim_tests {
     use super::NetworkSyncer;
     use crate::{
         config,
-        finalization_interpreter::FinalizationInterpreter,
         future_simulator::SimulatedExecutorState,
         runtime,
         simulator_tracing::setup_simulator_tracing,
@@ -485,53 +484,6 @@ mod sim_tests {
         for syncer in &syncers {
             let commit_seq = syncer.commit_handler().committed_leaders();
             assert_eq!(canonical_commit_seq, commit_seq);
-        }
-        print_stats(&syncers);
-    }
-
-    #[test]
-    fn test_finalization_epoch_safety() {
-        SimulatedExecutorState::run(rng_at_seed(0), test_finalization_safety_async());
-    }
-
-    async fn test_finalization_safety_async() {
-        // todo - no cleanup of block store
-        let n = 4;
-        let rounds_in_epoch = 10;
-        let (simulated_network, network_syncers) =
-            simulated_network_syncers_with_epoch_duration(n, rounds_in_epoch);
-        simulated_network.connect_all().await;
-        let syncers = wait_for_epoch_to_close(network_syncers).await;
-        for syncer in &syncers {
-            let block_reader = syncer.core().block_reader();
-            let committee = syncer.core().committee().clone();
-            let latest_committed_leader =
-                syncer.commit_handler().committed_leaders().last().unwrap();
-
-            println!(
-                "Num of Committed leaders: {:?}",
-                syncer.commit_handler().committed_leaders()
-            );
-
-            let mut finalization_interpreter =
-                FinalizationInterpreter::new(block_reader, committee);
-            let finalized_tx_certifying_blocks =
-                finalization_interpreter.finalized_tx_certifying_blocks();
-
-            for (_, certificates) in finalized_tx_certifying_blocks {
-                // check if at least one certificate is committed
-                let mut committed = false;
-                for certifying_block in certificates {
-                    if block_reader.linked(
-                        &block_reader.get_block(*latest_committed_leader).unwrap(),
-                        &block_reader.get_block(certifying_block).unwrap(),
-                    ) {
-                        committed = true;
-                        break;
-                    }
-                }
-                assert!(committed);
-            }
         }
         print_stats(&syncers);
     }

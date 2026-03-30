@@ -17,7 +17,6 @@ pub type PublicKey = crate::crypto::PublicKey;
 use std::{
     fmt,
     hash::{Hash, Hasher},
-    ops::Range,
     time::Duration,
 };
 
@@ -28,17 +27,11 @@ use serde::{Deserialize, Serialize};
 pub use test::Dag;
 
 use crate::{
-    committee::{Committee, VoteRangeBuilder},
+    committee::Committee,
     crypto::{AsBytes, CryptoHash, SignatureBytes, Signer},
     data::Data,
     threshold_clock::threshold_clock_valid_non_genesis,
 };
-
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
-pub enum Vote {
-    Accept,
-    Reject(Option<TransactionLocator>),
-}
 
 pub type EpochStatus = bool;
 
@@ -61,12 +54,7 @@ pub struct BlockReference {
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub enum BaseStatement {
-    /// Authority Shares a transactions, without accepting it or not.
     Share(Transaction),
-    /// Authority votes to accept or reject a transaction.
-    Vote(TransactionLocator, Vote),
-    // For now only accept votes are batched
-    VoteRange(TransactionLocatorRange),
 }
 
 impl Hash for BlockReference {
@@ -202,38 +190,15 @@ impl StatementBlock {
         &self.statements
     }
 
-    // Todo - we should change the block so that it has all shared transactions in one vec
-    // This way this function will always return single TransactionLocatorRange instead of a vec
-    pub fn shared_ranges(&self) -> Vec<TransactionLocatorRange> {
-        let mut ranges = Vec::new();
-        let mut vote_range_builder = VoteRangeBuilder::default();
-        for (offset, statement) in self.statements.iter().enumerate() {
-            if let BaseStatement::Share(_) = statement {
-                if let Some(range) = vote_range_builder.add(offset as u64) {
-                    let range = TransactionLocatorRange::new(self.reference, range);
-                    ranges.push(range);
-                }
-            }
-        }
-        if let Some(range) = vote_range_builder.finish() {
-            let range = TransactionLocatorRange::new(self.reference, range);
-            ranges.push(range);
-        }
-        ranges
-    }
-
     pub fn shared_transactions(&self) -> impl Iterator<Item = (TransactionLocator, &Transaction)> {
         let reference = *self.reference();
         self.statements
             .iter()
             .enumerate()
-            .filter_map(move |(pos, statement)| {
-                if let BaseStatement::Share(tx) = statement {
-                    let locator = TransactionLocator::new(reference, pos as u64);
-                    Some((locator, tx))
-                } else {
-                    None
-                }
+            .map(move |(pos, statement)| {
+                let BaseStatement::Share(tx) = statement;
+                let locator = TransactionLocator::new(reference, pos as u64);
+                (locator, tx)
             })
     }
 
@@ -313,14 +278,6 @@ impl StatementBlock {
                 round
             );
         }
-        for statement in &self.statements {
-            // Also check duplicate statements?
-            match statement {
-                BaseStatement::Share(_) => {}
-                BaseStatement::Vote(_, _) => {}
-                BaseStatement::VoteRange(range) => range.verify()?,
-            }
-        }
         ensure!(
             threshold_clock_valid_non_genesis(self, committee),
             "Threshold clock is not valid"
@@ -339,13 +296,6 @@ pub struct TransactionLocator {
     offset: u64,
 }
 
-#[derive(Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Default)]
-pub struct TransactionLocatorRange {
-    block: BlockReference,
-    offset_start_inclusive: u64,
-    offset_end_exclusive: u64,
-}
-
 impl TransactionLocator {
     pub(crate) fn new(block: BlockReference, offset: u64) -> Self {
         Self { block, offset }
@@ -357,67 +307,6 @@ impl TransactionLocator {
 
     pub fn offset(&self) -> u64 {
         self.offset
-    }
-}
-
-impl TransactionLocatorRange {
-    pub(crate) fn new(block: BlockReference, range: Range<u64>) -> Self {
-        Self {
-            block,
-            offset_start_inclusive: range.start,
-            offset_end_exclusive: range.end,
-        }
-    }
-
-    pub fn one(locator: TransactionLocator) -> Self {
-        Self {
-            block: locator.block,
-            offset_start_inclusive: locator.offset,
-            offset_end_exclusive: locator.offset + 1,
-        }
-    }
-
-    pub fn locators(&self) -> impl Iterator<Item = TransactionLocator> + '_ {
-        self.range()
-            .map(|offset| TransactionLocator::new(self.block, offset))
-    }
-
-    pub fn len(&self) -> usize {
-        (self.offset_end_exclusive - self.offset_start_inclusive) as usize
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    pub fn verify(&self) -> eyre::Result<()> {
-        ensure!(
-            self.offset_end_exclusive >= self.offset_start_inclusive,
-            "offset_end_exclusive must be greater or equal offset_start_inclusive: {}, {}",
-            self.offset_end_exclusive,
-            self.offset_start_inclusive,
-        );
-        // todo - should have constant for max transactions per block and use it here
-        const MAX_LEN: u64 = 1024 * 1024;
-        let len = self.len() as u64;
-        ensure!(
-            len < MAX_LEN,
-            "Include is too large when uncompressed: {len}"
-        );
-        ensure!(
-            self.offset_end_exclusive < MAX_LEN,
-            "offset_end_exclusive is too large when uncompressed: {}",
-            self.offset_end_exclusive
-        );
-        Ok(())
-    }
-
-    pub fn range(&self) -> Range<u64> {
-        self.offset_start_inclusive..self.offset_end_exclusive
-    }
-
-    pub fn block(&self) -> &BlockReference {
-        &self.block
     }
 }
 
@@ -586,14 +475,6 @@ impl CryptoHash for TransactionLocator {
     }
 }
 
-impl CryptoHash for TransactionLocatorRange {
-    fn crypto_hash(&self, state: &mut impl Digest) {
-        self.block.crypto_hash(state);
-        self.offset_start_inclusive.crypto_hash(state);
-        self.offset_end_exclusive.crypto_hash(state);
-    }
-}
-
 impl CryptoHash for EpochStatus {
     fn crypto_hash(&self, state: &mut impl Digest) {
         match self {
@@ -607,13 +488,6 @@ impl fmt::Display for BaseStatement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             BaseStatement::Share(_tx) => write!(f, "tx"),
-            BaseStatement::Vote(id, Vote::Accept) => write!(f, "+{id:08}"),
-            BaseStatement::Vote(id, Vote::Reject(_)) => write!(f, "-{id:08}"),
-            BaseStatement::VoteRange(range) => write!(
-                f,
-                "+{}:{}:{}",
-                range.block, range.offset_start_inclusive, range.offset_end_exclusive
-            ),
         }
     }
 }

@@ -10,8 +10,6 @@ use rand::{rngs::StdRng, SeedableRng};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use zeroize::Zeroize;
 
-#[cfg(not(test))]
-use crate::types::Vote;
 use crate::{
     serde::{ByteRepr, BytesVisitor},
     types::{
@@ -106,23 +104,6 @@ impl BlockDigest {
                 BaseStatement::Share(tx) => {
                     [0].crypto_hash(hasher);
                     tx.crypto_hash(hasher);
-                }
-                BaseStatement::Vote(id, Vote::Accept) => {
-                    [1].crypto_hash(hasher);
-                    id.crypto_hash(hasher);
-                }
-                BaseStatement::Vote(id, Vote::Reject(None)) => {
-                    [2].crypto_hash(hasher);
-                    id.crypto_hash(hasher);
-                }
-                BaseStatement::Vote(id, Vote::Reject(Some(other))) => {
-                    [3].crypto_hash(hasher);
-                    id.crypto_hash(hasher);
-                    other.crypto_hash(hasher);
-                }
-                BaseStatement::VoteRange(range) => {
-                    [4].crypto_hash(hasher);
-                    range.crypto_hash(hasher);
                 }
             }
         }

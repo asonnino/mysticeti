@@ -156,21 +156,16 @@ impl BlockReader {
     }
 
     pub fn get_transaction(&self, locator: &TransactionLocator) -> Option<Transaction> {
-        self.get_block(*locator.block())
-            .and_then(|block| {
-                block
-                    .statements()
-                    .get(locator.offset() as usize)
-                    .cloned()
-                    .map(|statement| {
-                        if let BaseStatement::Share(transaction) = statement {
-                            Some(transaction)
-                        } else {
-                            None
-                        }
-                    })
-            })
-            .flatten()
+        self.get_block(*locator.block()).and_then(|block| {
+            block
+                .statements()
+                .get(locator.offset() as usize)
+                .cloned()
+                .map(|statement| {
+                    let BaseStatement::Share(transaction) = statement;
+                    transaction
+                })
+        })
     }
 
     #[cfg(test)]

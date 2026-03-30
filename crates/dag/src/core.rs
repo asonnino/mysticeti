@@ -312,18 +312,10 @@ impl Core {
     fn proposed_block_stats(&self, block: &Data<StatementBlock>) {
         self.metrics
             .observe_proposed_block_size_bytes(block.serialized_bytes().len());
-        let mut votes = 0usize;
-        let mut transactions = 0usize;
-        for statement in block.statements() {
-            match statement {
-                BaseStatement::Share(_) => transactions += 1,
-                BaseStatement::Vote(_, _) => votes += 1,
-                BaseStatement::VoteRange(range) => votes += range.len(),
-            }
-        }
+        let transactions = block.statements().len();
         self.metrics
             .observe_proposed_block_transaction_count(transactions);
-        self.metrics.observe_proposed_block_vote_count(votes);
+        self.metrics.observe_proposed_block_vote_count(0);
     }
 
     pub fn try_commit(&mut self) -> Vec<Data<StatementBlock>> {
