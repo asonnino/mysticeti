@@ -252,3 +252,103 @@ struct NetworkAddressTable {
     peer: char,
     address: String,
 }
+
+#[cfg(test)]
+mod test {
+    use std::time::Duration;
+
+    use super::Metrics;
+
+    #[test]
+    fn new_for_test_collect_roundtrip() {
+        let metrics = Metrics::new_for_test(4);
+        metrics.inc_block_store_entries();
+        metrics.inc_block_store_entries();
+        metrics.inc_submitted_transactions(100);
+        let snapshot = metrics.collect();
+        assert_eq!(snapshot.metric("block_store_entries", &[]), 2.0);
+        assert_eq!(snapshot.metric("submitted_transactions", &[]), 100.0);
+    }
+
+    #[test]
+    fn benchmark_duration_secs() {
+        let metrics = Metrics::new_for_test(4);
+        metrics.inc_benchmark_duration_by(10);
+        assert_eq!(metrics.benchmark_duration_secs(), 10);
+        metrics.inc_benchmark_duration_by(5);
+        assert_eq!(metrics.benchmark_duration_secs(), 15);
+    }
+
+    #[test]
+    fn labeled_metrics_roundtrip() {
+        let metrics = Metrics::new_for_test(4);
+        metrics.inc_committed_leaders("A", "direct");
+        metrics.inc_committed_leaders("A", "direct");
+        metrics.inc_committed_leaders("B", "indirect");
+        metrics.set_missing_blocks("A", 3);
+        metrics.inc_block_sync_requests_sent("A");
+        let snapshot = metrics.collect();
+        assert_eq!(
+            snapshot.metric(
+                "committed_leaders_total",
+                &[("authority", "A"), ("commit_type", "direct")]
+            ),
+            2.0
+        );
+        assert_eq!(
+            snapshot.metric(
+                "committed_leaders_total",
+                &[("authority", "B"), ("commit_type", "indirect")]
+            ),
+            1.0
+        );
+        assert_eq!(
+            snapshot.metric("missing_blocks", &[("authority", "A")]),
+            3.0,
+        );
+        assert_eq!(
+            snapshot.metric("block_sync_requests_sent", &[("authority", "A")]),
+            1.0
+        );
+    }
+
+    #[test]
+    fn observe_precise_metrics() {
+        let metrics = Metrics::new_for_test(4);
+        for i in 1..=100 {
+            metrics.observe_transaction_committed_latency(Duration::from_micros(i));
+        }
+        let snapshot = metrics.collect();
+        let p50 = snapshot.metric("transaction_committed_latency", &[("v", "p50")]);
+        assert!(p50 > 0.0, "p50 should be populated after flush");
+    }
+
+    #[test]
+    fn set_gauges_roundtrip() {
+        let metrics = Metrics::new_for_test(4);
+        metrics.set_wal_mappings(42);
+        metrics.set_block_handler_pending_certificates(10);
+        metrics.set_commit_handler_pending_certificates(5);
+        let snapshot = metrics.collect();
+        assert_eq!(snapshot.metric("wal_mappings", &[]), 42.0);
+        assert_eq!(
+            snapshot.metric("block_handler_pending_certificates", &[]),
+            10.0,
+        );
+        assert_eq!(
+            snapshot.metric("commit_handler_pending_certificates", &[]),
+            5.0,
+        );
+    }
+
+    #[test]
+    #[cfg(not(feature = "simulator"))]
+    #[should_panic(expected = "collect() is only available on test metrics")]
+    fn collect_panics_without_registry() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let _guard = runtime.enter();
+        let registry = prometheus::Registry::new();
+        let metrics = Metrics::new(&registry, 4, None);
+        metrics.collect();
+    }
+}

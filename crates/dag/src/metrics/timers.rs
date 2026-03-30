@@ -30,3 +30,56 @@ impl Drop for OwnedUtilizationTimer {
         self.metric.inc_by(self.start.elapsed().as_micros() as u64);
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::time::Duration;
+
+    use prometheus::{register_int_counter_with_registry, Registry};
+    use tokio::time::Instant;
+
+    use super::{OwnedUtilizationTimer, UtilizationTimer};
+
+    #[tokio::test(start_paused = true)]
+    async fn utilization_timer_records_on_drop() {
+        let registry = Registry::new();
+        let counter = register_int_counter_with_registry!("utilization", "help", registry).unwrap();
+        {
+            let _timer = UtilizationTimer {
+                metric: &counter,
+                start: Instant::now(),
+            };
+            tokio::time::advance(Duration::from_millis(50)).await;
+        }
+        assert_eq!(counter.get(), 50_000);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn owned_timer_records_on_drop() {
+        let registry = Registry::new();
+        let counter =
+            register_int_counter_with_registry!("owned_utilization", "help", registry).unwrap();
+        {
+            let _timer = OwnedUtilizationTimer {
+                metric: counter.clone(),
+                start: Instant::now(),
+            };
+            tokio::time::advance(Duration::from_millis(50)).await;
+        }
+        assert_eq!(counter.get(), 50_000);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn immediate_drop_records_zero() {
+        let registry = Registry::new();
+        let counter =
+            register_int_counter_with_registry!("immediate_drop", "help", registry).unwrap();
+        {
+            let _timer = UtilizationTimer {
+                metric: &counter,
+                start: Instant::now(),
+            };
+        }
+        assert_eq!(counter.get(), 0);
+    }
+}
