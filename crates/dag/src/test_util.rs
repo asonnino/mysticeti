@@ -24,6 +24,7 @@ use crate::{
     config::{self, NodePrivateConfig, NodePublicConfig},
     core::{Core, CoreOptions},
     data::Data,
+    log::TransactionLog,
     metrics::Metrics,
     net_sync::NetworkSyncer,
     network::Network,
@@ -127,6 +128,7 @@ pub fn committee_and_syncers(n: usize) -> (Arc<Committee>, Vec<Syncer<RealBlockH
                     committee.clone(),
                     core.block_handler().transaction_time.clone(),
                     Metrics::new_for_test(0),
+                    TransactionLog::noop(),
                 );
                 Syncer::new(
                     core,
@@ -181,6 +183,7 @@ pub fn simulated_network_syncers_with_epoch_duration(
             committee.clone(),
             core.block_handler().transaction_time.clone(),
             core.metrics.clone(),
+            TransactionLog::noop(),
         );
         let node_context = OverrideNodeContext::enter(Some(core.authority()));
         let network_syncer = NetworkSyncer::start(
@@ -215,6 +218,7 @@ pub async fn network_syncers_with_epoch_duration(
             committee.clone(),
             core.block_handler().transaction_time.clone(),
             Metrics::new_for_test(0),
+            TransactionLog::noop(),
         );
         let network_syncer = NetworkSyncer::start(
             network,

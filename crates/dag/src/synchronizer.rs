@@ -9,12 +9,11 @@ use tokio::sync::mpsc;
 
 use crate::{
     block_handler::BlockHandler,
-    committee::ProcessedTransactionHandler,
     metrics::Metrics,
     net_sync::{self, NetworkSyncerInner},
     network::NetworkMessage,
     runtime::{sleep, timestamp_utc, Handle, JoinHandle},
-    types::{AuthorityIndex, BlockReference, RoundNumber, TransactionLocator},
+    types::{AuthorityIndex, BlockReference, RoundNumber},
 };
 
 // TODO: A central controller will eventually dynamically update these parameters.
@@ -43,16 +42,11 @@ impl Default for SynchronizerParameters {
     }
 }
 
-pub struct BlockDisseminator<
-    H: BlockHandler,
-    P: ProcessedTransactionHandler<TransactionLocator> + Send = std::collections::HashSet<
-        TransactionLocator,
-    >,
-> {
+pub struct BlockDisseminator<H: BlockHandler> {
     /// The sender to the network.
     sender: mpsc::Sender<NetworkMessage>,
     /// The inner state of the network syncer.
-    inner: Arc<NetworkSyncerInner<H, P>>,
+    inner: Arc<NetworkSyncerInner<H>>,
     /// The handle of the task disseminating our own blocks.
     own_blocks: Option<JoinHandle<Option<()>>>,
     /// The handles of tasks disseminating other nodes' blocks.
@@ -63,14 +57,10 @@ pub struct BlockDisseminator<
     metrics: Arc<Metrics>,
 }
 
-impl<
-        H: BlockHandler + 'static,
-        P: ProcessedTransactionHandler<TransactionLocator> + Send + 'static,
-    > BlockDisseminator<H, P>
-{
+impl<H: BlockHandler + 'static> BlockDisseminator<H> {
     pub fn new(
         sender: mpsc::Sender<NetworkMessage>,
-        inner: Arc<NetworkSyncerInner<H, P>>,
+        inner: Arc<NetworkSyncerInner<H>>,
         parameters: SynchronizerParameters,
         metrics: Arc<Metrics>,
     ) -> Self {
@@ -137,7 +127,7 @@ impl<
 
     async fn stream_own_blocks(
         to: mpsc::Sender<NetworkMessage>,
-        inner: Arc<NetworkSyncerInner<H, P>>,
+        inner: Arc<NetworkSyncerInner<H>>,
         mut round: RoundNumber,
         batch_size: usize,
     ) -> Option<()> {
@@ -174,7 +164,7 @@ impl<
 
     async fn stream_others_blocks(
         to: mpsc::Sender<NetworkMessage>,
-        inner: Arc<NetworkSyncerInner<H, P>>,
+        inner: Arc<NetworkSyncerInner<H>>,
         mut round: RoundNumber,
         author: AuthorityIndex,
         batch_size: usize,
@@ -204,16 +194,12 @@ pub struct BlockFetcher {
 }
 
 impl BlockFetcher {
-    pub fn start<B, P>(
+    pub fn start<B: BlockHandler + 'static>(
         id: AuthorityIndex,
-        inner: Arc<NetworkSyncerInner<B, P>>,
+        inner: Arc<NetworkSyncerInner<B>>,
         metrics: Arc<Metrics>,
         enable: bool,
-    ) -> Self
-    where
-        B: BlockHandler + 'static,
-        P: ProcessedTransactionHandler<TransactionLocator> + Send + 'static,
-    {
+    ) -> Self {
         let (sender, receiver) = mpsc::channel(100);
         let worker = BlockFetcherWorker::new(id, inner, receiver, metrics, enable);
         let handle = Handle::current().spawn(worker.run());
@@ -244,14 +230,9 @@ impl BlockFetcher {
     }
 }
 
-struct BlockFetcherWorker<
-    B: BlockHandler,
-    P: ProcessedTransactionHandler<TransactionLocator> + Send = std::collections::HashSet<
-        TransactionLocator,
-    >,
-> {
+struct BlockFetcherWorker<B: BlockHandler> {
     id: AuthorityIndex,
-    inner: Arc<NetworkSyncerInner<B, P>>,
+    inner: Arc<NetworkSyncerInner<B>>,
     receiver: mpsc::Receiver<BlockFetcherMessage>,
     senders: HashMap<AuthorityIndex, mpsc::Sender<NetworkMessage>>,
     parameters: SynchronizerParameters,
@@ -261,14 +242,10 @@ struct BlockFetcherWorker<
     enable: bool,
 }
 
-impl<B, P> BlockFetcherWorker<B, P>
-where
-    B: BlockHandler + 'static,
-    P: ProcessedTransactionHandler<TransactionLocator> + Send + 'static,
-{
+impl<B: BlockHandler + 'static> BlockFetcherWorker<B> {
     pub fn new(
         id: AuthorityIndex,
-        inner: Arc<NetworkSyncerInner<B, P>>,
+        inner: Arc<NetworkSyncerInner<B>>,
         receiver: mpsc::Receiver<BlockFetcherMessage>,
         metrics: Arc<Metrics>,
         enable: bool,

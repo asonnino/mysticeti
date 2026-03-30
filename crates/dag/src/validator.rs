@@ -26,7 +26,7 @@ use crate::{
 };
 
 pub struct Validator {
-    network_synchronizer: NetworkSyncer<RealBlockHandler, TransactionLog>,
+    network_synchronizer: NetworkSyncer<RealBlockHandler>,
     metrics_handle: JoinHandle<()>,
 }
 
@@ -91,7 +91,7 @@ impl Validator {
         let committed_transaction_log =
             TransactionLog::start(private_config.committed_transactions_log())
                 .expect("Failed to open committed transaction log for write");
-        let commit_handler = CommitHandler::new_with_handler(
+        let commit_handler = CommitHandler::new(
             committee.clone(),
             block_handler.transaction_time.clone(),
             metrics.clone(),

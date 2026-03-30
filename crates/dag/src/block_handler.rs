@@ -15,7 +15,7 @@ use tokio::sync::mpsc;
 
 use crate::{
     block_store::BlockStore,
-    committee::{Committee, ProcessedTransactionHandler, QuorumThreshold, TransactionAggregator},
+    committee::{Committee, QuorumThreshold, TransactionAggregator},
     consensus::linearizer::{CommittedSubDag, Linearizer},
     data::Data,
     log::TransactionLog,
@@ -214,9 +214,9 @@ impl BlockHandler for RealBlockHandler {
     }
 }
 
-pub struct CommitHandler<H = HashSet<TransactionLocator>> {
+pub struct CommitHandler {
     commit_interpreter: Linearizer,
-    transaction_votes: TransactionAggregator<QuorumThreshold, H>,
+    transaction_votes: TransactionAggregator<QuorumThreshold, TransactionLog>,
     committee: Arc<Committee>,
     committed_leaders: Vec<BlockReference>,
     start_time: TimeInstant,
@@ -226,22 +226,12 @@ pub struct CommitHandler<H = HashSet<TransactionLocator>> {
     consensus_only: bool,
 }
 
-impl<H: ProcessedTransactionHandler<TransactionLocator> + Default> CommitHandler<H> {
+impl CommitHandler {
     pub fn new(
         committee: Arc<Committee>,
         transaction_time: Arc<Mutex<HashMap<TransactionLocator, TimeInstant>>>,
         metrics: Arc<Metrics>,
-    ) -> Self {
-        Self::new_with_handler(committee, transaction_time, metrics, Default::default())
-    }
-}
-
-impl<H: ProcessedTransactionHandler<TransactionLocator>> CommitHandler<H> {
-    pub fn new_with_handler(
-        committee: Arc<Committee>,
-        transaction_time: Arc<Mutex<HashMap<TransactionLocator, TimeInstant>>>,
-        metrics: Arc<Metrics>,
-        handler: H,
+        handler: TransactionLog,
     ) -> Self {
         let consensus_only = env::var("CONSENSUS_ONLY").is_ok();
         Self {

@@ -8,23 +8,19 @@ use tokio::sync::Notify;
 
 use crate::{
     block_handler::{BlockHandler, CommitHandler},
-    committee::ProcessedTransactionHandler,
     core::Core,
     data::Data,
     metrics::Metrics,
     runtime::timestamp_utc,
-    types::{AuthorityIndex, RoundNumber, StatementBlock, TransactionLocator},
+    types::{AuthorityIndex, RoundNumber, StatementBlock},
 };
 
-pub struct Syncer<
-    H: BlockHandler,
-    P: ProcessedTransactionHandler<TransactionLocator> = HashSet<TransactionLocator>,
-> {
+pub struct Syncer<H: BlockHandler> {
     core: Core<H>,
     force_new_block: bool,
     commit_period: u64,
     signals: SyncerSignals,
-    commit_handler: CommitHandler<P>,
+    commit_handler: CommitHandler,
     pub(crate) connected_authorities: HashSet<AuthorityIndex>,
     metrics: Arc<Metrics>,
 }
@@ -61,12 +57,12 @@ impl SyncerSignals {
     }
 }
 
-impl<H: BlockHandler, P: ProcessedTransactionHandler<TransactionLocator>> Syncer<H, P> {
+impl<H: BlockHandler> Syncer<H> {
     pub fn new(
         core: Core<H>,
         commit_period: u64,
         signals: SyncerSignals,
-        commit_handler: CommitHandler<P>,
+        commit_handler: CommitHandler,
         metrics: Arc<Metrics>,
     ) -> Self {
         let committee_size = core.committee().len();
@@ -137,7 +133,7 @@ impl<H: BlockHandler, P: ProcessedTransactionHandler<TransactionLocator>> Syncer
         }
     }
 
-    pub fn commit_handler(&self) -> &CommitHandler<P> {
+    pub fn commit_handler(&self) -> &CommitHandler {
         &self.commit_handler
     }
 

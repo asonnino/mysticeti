@@ -7,27 +7,20 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::{
     block_handler::BlockHandler,
-    committee::ProcessedTransactionHandler,
     data::Data,
     metrics::Metrics,
     syncer::Syncer,
-    types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock, TransactionLocator},
+    types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
 };
 
-pub struct CoreThreadDispatcher<
-    H: BlockHandler,
-    P: ProcessedTransactionHandler<TransactionLocator> + Send = HashSet<TransactionLocator>,
-> {
+pub struct CoreThreadDispatcher<H: BlockHandler> {
     sender: mpsc::Sender<CoreThreadCommand>,
-    join_handle: thread::JoinHandle<Syncer<H, P>>,
+    join_handle: thread::JoinHandle<Syncer<H>>,
     metrics: Arc<Metrics>,
 }
 
-pub struct CoreThread<
-    H: BlockHandler,
-    P: ProcessedTransactionHandler<TransactionLocator> + Send = HashSet<TransactionLocator>,
-> {
-    syncer: Syncer<H, P>,
+pub struct CoreThread<H: BlockHandler> {
+    syncer: Syncer<H>,
     receiver: mpsc::Receiver<CoreThreadCommand>,
 }
 
@@ -43,12 +36,8 @@ enum CoreThreadCommand {
     ConnectionDropped(AuthorityIndex, oneshot::Sender<()>),
 }
 
-impl<
-        H: BlockHandler + 'static,
-        P: ProcessedTransactionHandler<TransactionLocator> + Send + 'static,
-    > CoreThreadDispatcher<H, P>
-{
-    pub fn start(syncer: Syncer<H, P>) -> Self {
+impl<H: BlockHandler + 'static> CoreThreadDispatcher<H> {
+    pub fn start(syncer: Syncer<H>) -> Self {
         let (sender, receiver) = mpsc::channel(32);
         let metrics = syncer.core().metrics.clone();
         let core_thread = CoreThread { syncer, receiver };
@@ -63,7 +52,7 @@ impl<
         }
     }
 
-    pub fn stop(self) -> Syncer<H, P> {
+    pub fn stop(self) -> Syncer<H> {
         drop(self.sender);
         self.join_handle.join().unwrap()
     }
@@ -114,8 +103,8 @@ impl<
     }
 }
 
-impl<H: BlockHandler, P: ProcessedTransactionHandler<TransactionLocator> + Send> CoreThread<H, P> {
-    pub fn run(mut self) -> Syncer<H, P> {
+impl<H: BlockHandler> CoreThread<H> {
+    pub fn run(mut self) -> Syncer<H> {
         tracing::info!("Started core thread with tid {}", gettid::gettid());
         let metrics = self.syncer.core().metrics.clone();
         while let Some(command) = self.receiver.blocking_recv() {

@@ -7,29 +7,23 @@ use parking_lot::Mutex;
 
 use crate::{
     block_handler::BlockHandler,
-    committee::ProcessedTransactionHandler,
     data::Data,
     syncer::Syncer,
-    types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock, TransactionLocator},
+    types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
 };
 
-pub struct CoreThreadDispatcher<
-    H: BlockHandler,
-    P: ProcessedTransactionHandler<TransactionLocator> = HashSet<TransactionLocator>,
-> {
-    syncer: Mutex<Syncer<H, P>>,
+pub struct CoreThreadDispatcher<H: BlockHandler> {
+    syncer: Mutex<Syncer<H>>,
 }
 
-impl<H: BlockHandler + 'static, P: ProcessedTransactionHandler<TransactionLocator> + 'static>
-    CoreThreadDispatcher<H, P>
-{
-    pub fn start(syncer: Syncer<H, P>) -> Self {
+impl<H: BlockHandler + 'static> CoreThreadDispatcher<H> {
+    pub fn start(syncer: Syncer<H>) -> Self {
         Self {
             syncer: Mutex::new(syncer),
         }
     }
 
-    pub fn stop(self) -> Syncer<H, P> {
+    pub fn stop(self) -> Syncer<H> {
         self.syncer.into_inner()
     }
 

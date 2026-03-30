@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -19,7 +19,7 @@ use tokio::{
 use crate::{
     block_handler::{BlockHandler, CommitHandler},
     block_store::BlockStore,
-    committee::{Committee, ProcessedTransactionHandler},
+    committee::Committee,
     config::NodePublicConfig,
     core::Core,
     core_thread::CoreThreadDispatcher,
@@ -28,28 +28,22 @@ use crate::{
     runtime::{self, timestamp_utc, Handle, JoinError, JoinHandle},
     syncer::{Syncer, SyncerSignals},
     synchronizer::{BlockDisseminator, BlockFetcher, SynchronizerParameters},
-    types::{format_authority_index, AuthorityIndex, TransactionLocator},
+    types::{format_authority_index, AuthorityIndex},
     wal::WalSyncer,
 };
 
 /// The maximum number of blocks that can be requested in a single message.
 pub const MAXIMUM_BLOCK_REQUEST: usize = 10;
 
-pub struct NetworkSyncer<
-    H: BlockHandler,
-    P: ProcessedTransactionHandler<TransactionLocator> + Send = HashSet<TransactionLocator>,
-> {
-    inner: Arc<NetworkSyncerInner<H, P>>,
+pub struct NetworkSyncer<H: BlockHandler> {
+    inner: Arc<NetworkSyncerInner<H>>,
     main_task: JoinHandle<()>,
     syncer_task: oneshot::Receiver<()>,
     stop: mpsc::Receiver<()>,
 }
 
-pub struct NetworkSyncerInner<
-    H: BlockHandler,
-    P: ProcessedTransactionHandler<TransactionLocator> + Send = HashSet<TransactionLocator>,
-> {
-    pub syncer: CoreThreadDispatcher<H, P>,
+pub struct NetworkSyncerInner<H: BlockHandler> {
+    pub syncer: CoreThreadDispatcher<H>,
     pub block_store: BlockStore,
     pub notify: Arc<Notify>,
     committee: Arc<Committee>,
@@ -58,16 +52,12 @@ pub struct NetworkSyncerInner<
     pub epoch_closing_time: Arc<AtomicU64>,
 }
 
-impl<
-        H: BlockHandler + 'static,
-        P: ProcessedTransactionHandler<TransactionLocator> + Send + 'static,
-    > NetworkSyncer<H, P>
-{
+impl<H: BlockHandler + 'static> NetworkSyncer<H> {
     pub fn start(
         network: Network,
         mut core: Core<H>,
         commit_period: u64,
-        mut commit_handler: CommitHandler<P>,
+        mut commit_handler: CommitHandler,
         shutdown_grace_period: Duration,
         metrics: Arc<Metrics>,
         public_config: &NodePublicConfig,
@@ -131,7 +121,7 @@ impl<
         }
     }
 
-    pub async fn shutdown(self) -> Syncer<H, P> {
+    pub async fn shutdown(self) -> Syncer<H> {
         drop(self.stop);
         // todo - wait for network shutdown as well
         self.main_task.await.ok();
@@ -144,7 +134,7 @@ impl<
 
     async fn run(
         mut network: Network,
-        inner: Arc<NetworkSyncerInner<H, P>>,
+        inner: Arc<NetworkSyncerInner<H>>,
         epoch_close_signal: mpsc::Receiver<()>,
         shutdown_grace_period: Duration,
         block_fetcher: Arc<BlockFetcher>,
@@ -191,7 +181,7 @@ impl<
 
     async fn connection_task(
         mut connection: Connection,
-        inner: Arc<NetworkSyncerInner<H, P>>,
+        inner: Arc<NetworkSyncerInner<H>>,
         block_fetcher: Arc<BlockFetcher>,
         metrics: Arc<Metrics>,
     ) -> Option<()> {
@@ -260,7 +250,7 @@ impl<
     }
 
     async fn leader_timeout_task(
-        inner: Arc<NetworkSyncerInner<H, P>>,
+        inner: Arc<NetworkSyncerInner<H>>,
         mut epoch_close_signal: mpsc::Receiver<()>,
         shutdown_grace_period: Duration,
     ) -> Option<()> {
@@ -303,7 +293,7 @@ impl<
         }
     }
 
-    async fn cleanup_task(inner: Arc<NetworkSyncerInner<H, P>>) -> Option<()> {
+    async fn cleanup_task(inner: Arc<NetworkSyncerInner<H>>) -> Option<()> {
         let cleanup_interval = Duration::from_secs(10);
         loop {
             select! {
@@ -323,11 +313,7 @@ impl<
     }
 }
 
-impl<
-        H: BlockHandler + 'static,
-        P: ProcessedTransactionHandler<TransactionLocator> + Send + 'static,
-    > NetworkSyncerInner<H, P>
-{
+impl<H: BlockHandler + 'static> NetworkSyncerInner<H> {
     // Returns None either if channel is closed or NetworkSyncerInner receives stop signal
     async fn recv_or_stopped<T>(&self, channel: &mut mpsc::Receiver<T>) -> Option<T> {
         select! {
