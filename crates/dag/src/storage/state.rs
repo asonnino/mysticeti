@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, HashSet, VecDeque};
 use minibytes::Bytes;
 
 use crate::{
-    block_store::{BlockStore, CommitData, OwnBlockData},
+    block_store::{CommitData, OwnBlockData},
     core::MetaStatement,
     data::Data,
     types::{BlockReference, StatementBlock},
@@ -14,7 +14,6 @@ use crate::{
 };
 
 pub struct RecoveredState {
-    pub block_store: BlockStore,
     pub last_own_block: Option<OwnBlockData>,
     pub pending: VecDeque<(WalPosition, MetaStatement)>,
     pub state: Option<Bytes>,
@@ -73,7 +72,7 @@ impl RecoveredStateBuilder {
         self.committed_state = Some(committed_state);
     }
 
-    pub fn build(self, block_store: BlockStore) -> RecoveredState {
+    pub fn build(self) -> RecoveredState {
         let pending = self
             .pending
             .into_iter()
@@ -82,7 +81,6 @@ impl RecoveredStateBuilder {
         RecoveredState {
             pending,
             last_own_block: self.last_own_block,
-            block_store,
             state: self.state,
             unprocessed_blocks: self.unprocessed_blocks,
             last_committed_leader: self.last_committed_leader,

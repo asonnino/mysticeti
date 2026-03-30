@@ -19,7 +19,7 @@ use crate::simulated_network::SimulatedNetwork;
 use crate::syncer::SyncerSignals;
 use crate::{
     block_handler::{CommitHandler, RealBlockHandler},
-    block_store::{BlockStore, BlockWriter, OwnBlockData, WAL_ENTRY_BLOCK},
+    block_store::{BlockStore, BlockWriter, OwnBlockData},
     committee::Committee,
     config::{self, NodePrivateConfig, NodePublicConfig},
     core::{Core, CoreOptions},
@@ -28,9 +28,10 @@ use crate::{
     metrics::Metrics,
     net_sync::NetworkSyncer,
     network::Network,
+    storage::Storage,
     syncer::Syncer,
     types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
-    wal::{open_file_for_wal, walf, WalPosition, WalWriter},
+    wal::WalPosition,
 };
 
 pub fn committee(n: usize) -> Arc<Committee> {
@@ -46,25 +47,18 @@ fn open_core_with_real_handler(
     path: Option<&Path>,
 ) -> Core {
     let metrics = Metrics::new_for_test(committee.len());
-    let wal_file = if let Some(path) = path {
+    let (storage, recovered) = if let Some(path) = path {
         let wal_path = path.join(format!("{:03}.wal", authority));
-        open_file_for_wal(&wal_path).unwrap()
+        Storage::open(authority, &wal_path, metrics.clone(), committee)
+            .expect("Failed to open storage")
     } else {
-        tempfile::tempfile().unwrap()
+        Storage::new_for_tests(authority, metrics.clone(), committee)
     };
-    let (wal_writer, wal_reader) = walf(wal_file).expect("Failed to open wal");
-    let recovered = BlockStore::open(
-        authority,
-        Arc::new(wal_reader),
-        &wal_writer,
-        metrics.clone(),
-        committee,
-    );
     let (block_handler, _tx_sender) = RealBlockHandler::new(
         committee.clone(),
         authority,
         None,
-        recovered.block_store.clone(),
+        storage.block_store().clone(),
         metrics.clone(),
         true,
     );
@@ -76,8 +70,8 @@ fn open_core_with_real_handler(
         private_config,
         public_config,
         metrics,
+        storage,
         recovered,
-        wal_writer,
         CoreOptions::test(),
     )
 }
@@ -268,35 +262,17 @@ pub fn print_stats(syncers: &[Syncer]) {
 }
 
 pub struct TestBlockWriter {
-    block_store: BlockStore,
-    wal_writer: WalWriter,
+    storage: Storage,
 }
 
 impl TestBlockWriter {
     pub fn new(committee: &Committee) -> Self {
-        let file = tempfile::tempfile().unwrap();
-        let (wal_writer, wal_reader) = walf(file).unwrap();
-        let state = BlockStore::open(
-            0,
-            Arc::new(wal_reader),
-            &wal_writer,
-            Metrics::new_for_test(0),
-            committee,
-        );
-        let block_store = state.block_store;
-        Self {
-            block_store,
-            wal_writer,
-        }
+        let (storage, _recovered) = Storage::new_for_tests(0, Metrics::new_for_test(0), committee);
+        Self { storage }
     }
 
     pub fn add_block(&mut self, block: Data<StatementBlock>) -> WalPosition {
-        let pos = self
-            .wal_writer
-            .write(WAL_ENTRY_BLOCK, &bincode::serialize(&block).unwrap())
-            .unwrap();
-        self.block_store.insert_block(block, pos);
-        pos
+        self.storage.insert_block(block)
     }
 
     pub fn add_blocks(&mut self, blocks: Vec<Data<StatementBlock>>) {
@@ -306,21 +282,21 @@ impl TestBlockWriter {
     }
 
     pub fn into_block_store(self) -> BlockStore {
-        self.block_store
+        self.storage.block_store().clone()
     }
 
     pub fn block_store(&self) -> BlockStore {
-        self.block_store.clone()
+        self.storage.block_store().clone()
     }
 }
 
 impl BlockWriter for TestBlockWriter {
     fn insert_block(&mut self, block: Data<StatementBlock>) -> WalPosition {
-        (&mut self.wal_writer, &self.block_store).insert_block(block)
+        self.storage.insert_block(block)
     }
 
     fn insert_own_block(&mut self, block: &OwnBlockData) {
-        (&mut self.wal_writer, &self.block_store).insert_own_block(block)
+        self.storage.insert_own_block(block)
     }
 }
 

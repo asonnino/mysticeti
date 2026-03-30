@@ -1,16 +1,12 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    sync::{atomic::Ordering, Mutex},
-    time::Duration,
-};
+use std::{sync::Mutex, time::Duration};
 
-use prometheus::{register_int_gauge_with_registry, IntGauge, Registry};
+use prometheus::Registry;
 
 use super::histogram::{self, HistogramObserver, HistogramReporter, VecHistogramReporter};
 use crate::{
-    data::{IN_MEMORY_BLOCKS, IN_MEMORY_BLOCKS_BYTES},
     runtime::{self, JoinHandle},
     types::{format_authority_index, AuthorityIndex},
 };
@@ -78,18 +74,6 @@ impl PreciseMetrics {
             proposed_block_transaction_count,
             proposed_block_vote_count,
             connection_latency,
-            global_in_memory_blocks: register_int_gauge_with_registry!(
-                "global_in_memory_blocks",
-                "Number of blocks loaded in memory",
-                registry,
-            )
-            .unwrap(),
-            global_in_memory_blocks_bytes: register_int_gauge_with_registry!(
-                "global_in_memory_blocks_bytes",
-                "Total size of blocks in memory",
-                registry,
-            )
-            .unwrap(),
         };
 
         let observers = Observers {
@@ -182,19 +166,12 @@ struct MetricsReporter {
     proposed_block_transaction_count: HistogramReporter<usize>,
     proposed_block_vote_count: HistogramReporter<usize>,
     connection_latency: VecHistogramReporter<Duration>,
-    global_in_memory_blocks: IntGauge,
-    global_in_memory_blocks_bytes: IntGauge,
 }
 
 impl MetricsReporter {
     /// Drain all channels, compute percentiles, and write
     /// to Prometheus gauges.
     fn flush(&mut self) {
-        self.global_in_memory_blocks
-            .set(IN_MEMORY_BLOCKS.load(Ordering::Relaxed) as i64);
-        self.global_in_memory_blocks_bytes
-            .set(IN_MEMORY_BLOCKS_BYTES.load(Ordering::Relaxed) as i64);
-
         self.transaction_certified_latency.clear_receive_all();
         self.certificate_committed_latency.clear_receive_all();
         self.transaction_committed_latency.clear_receive_all();

@@ -3,7 +3,7 @@
 
 pub mod block_handler;
 mod block_manager;
-mod block_store;
+pub(crate) use storage::block_store;
 pub mod committee;
 pub mod config;
 pub mod consensus;
@@ -15,7 +15,7 @@ mod epoch_close;
 mod finalization_interpreter;
 #[cfg(feature = "simulator")]
 mod future_simulator;
-mod log;
+pub(crate) use storage::log;
 pub mod metrics;
 pub mod net_sync;
 pub mod network;
@@ -29,7 +29,8 @@ mod simulated_network;
 mod simulator;
 #[cfg(feature = "simulator")]
 mod simulator_tracing;
-mod state;
+pub(crate) use storage::state;
+mod storage;
 mod syncer;
 mod synchronizer;
 #[cfg(test)]
@@ -38,4 +39,4 @@ mod threshold_clock;
 mod transactions_generator;
 pub mod types;
 pub mod validator;
-mod wal;
+pub(crate) use storage::wal;

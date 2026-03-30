@@ -5,13 +5,11 @@ use std::{
     fmt,
     hash::{Hash, Hasher},
     ops::Deref,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+    sync::{Arc, OnceLock},
 };
 
 use minibytes::Bytes;
+use prometheus::IntGauge;
 use serde::{
     de::{DeserializeOwned, Error},
     Deserialize, Deserializer, Serialize, Serializer,
@@ -34,23 +32,44 @@ struct DataInner<T> {
     serialized: Bytes, // this is serialized as bincode regardless of underlining serialization
 }
 
-pub static IN_MEMORY_BLOCKS: AtomicUsize = AtomicUsize::new(0);
-pub static IN_MEMORY_BLOCKS_BYTES: AtomicUsize = AtomicUsize::new(0);
+static IN_MEMORY_BLOCKS: OnceLock<IntGauge> = OnceLock::new();
+static IN_MEMORY_BLOCKS_BYTES: OnceLock<IntGauge> = OnceLock::new();
+
+pub(crate) fn init_memory_gauges(blocks: IntGauge, bytes: IntGauge) {
+    IN_MEMORY_BLOCKS.set(blocks).ok();
+    IN_MEMORY_BLOCKS_BYTES.set(bytes).ok();
+}
+
+fn track_alloc(size: usize) {
+    if let Some(g) = IN_MEMORY_BLOCKS.get() {
+        g.inc();
+    }
+    if let Some(g) = IN_MEMORY_BLOCKS_BYTES.get() {
+        g.add(size as i64);
+    }
+}
+
+fn track_dealloc(size: usize) {
+    if let Some(g) = IN_MEMORY_BLOCKS.get() {
+        g.dec();
+    }
+    if let Some(g) = IN_MEMORY_BLOCKS_BYTES.get() {
+        g.sub(size as i64);
+    }
+}
 
 impl<T: Serialize + DeserializeOwned> Data<T> {
     pub fn new(t: T) -> Self {
         let serialized = bincode::serialize(&t).expect("Serialization should not fail");
         let serialized: Bytes = serialized.into();
-        IN_MEMORY_BLOCKS.fetch_add(1, Ordering::Relaxed);
-        IN_MEMORY_BLOCKS_BYTES.fetch_add(serialized.len(), Ordering::Relaxed);
+        track_alloc(serialized.len());
         Self(Arc::new(DataInner { t, serialized }))
     }
 
     // Important - use Data::from_bytes,
     // rather then Data::deserialize to avoid mem copy of serialized representation
     pub fn from_bytes(bytes: Bytes) -> bincode::Result<Self> {
-        IN_MEMORY_BLOCKS.fetch_add(1, Ordering::Relaxed);
-        IN_MEMORY_BLOCKS_BYTES.fetch_add(bytes.len(), Ordering::Relaxed);
+        track_alloc(bytes.len());
         let t = bincode::deserialize(&bytes)?;
         let inner = DataInner {
             t,
@@ -83,8 +102,7 @@ impl<T: Serialize> Serialize for Data<T> {
 
 impl<T> Drop for DataInner<T> {
     fn drop(&mut self) {
-        IN_MEMORY_BLOCKS.fetch_sub(1, Ordering::Relaxed);
-        IN_MEMORY_BLOCKS_BYTES.fetch_sub(self.serialized.len(), Ordering::Relaxed);
+        track_dealloc(self.serialized.len());
     }
 }
 
@@ -97,8 +115,7 @@ impl<'de, T: DeserializeOwned> Deserialize<'de> for Data<T> {
         let Ok(t) = bincode::deserialize(&serialized) else {
             return Err(D::Error::custom("Failed to deserialized inner bytes"));
         };
-        IN_MEMORY_BLOCKS.fetch_add(1, Ordering::Relaxed);
-        IN_MEMORY_BLOCKS_BYTES.fetch_add(serialized.len(), Ordering::Relaxed);
+        track_alloc(serialized.len());
         let serialized = serialized.into();
         Ok(Self(Arc::new(DataInner { t, serialized })))
     }

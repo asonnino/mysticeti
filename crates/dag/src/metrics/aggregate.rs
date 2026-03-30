@@ -51,7 +51,7 @@ pub(super) struct AggregateMetrics {
 
 impl AggregateMetrics {
     pub fn new(registry: &Registry) -> Self {
-        Self {
+        let metrics = Self {
             benchmark_duration: register_int_counter_with_registry!(
                 BENCHMARK_DURATION,
                 "Duration of the benchmark",
@@ -194,6 +194,23 @@ impl AggregateMetrics {
                 registry,
             )
             .unwrap(),
-        }
+        };
+
+        crate::data::init_memory_gauges(
+            register_int_gauge_with_registry!(
+                "global_in_memory_blocks",
+                "Number of blocks loaded in memory",
+                registry,
+            )
+            .unwrap(),
+            register_int_gauge_with_registry!(
+                "global_in_memory_blocks_bytes",
+                "Total size of blocks in memory",
+                registry,
+            )
+            .unwrap(),
+        );
+
+        metrics
     }
 }

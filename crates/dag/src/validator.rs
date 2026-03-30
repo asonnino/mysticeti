@@ -11,7 +11,6 @@ use eyre::{eyre, Context, Result};
 
 use crate::{
     block_handler::{CommitHandler, RealBlockHandler},
-    block_store::BlockStore,
     committee::Committee,
     config::{ClientParameters, NodePrivateConfig, NodePublicConfig},
     core::{Core, CoreOptions},
@@ -20,9 +19,9 @@ use crate::{
     net_sync::NetworkSyncer,
     network::Network,
     runtime::{JoinError, JoinHandle},
+    storage::Storage,
     transactions_generator::TransactionGenerator,
     types::AuthorityIndex,
-    wal::{self, walf},
 };
 
 pub struct Validator {
@@ -59,24 +58,17 @@ impl Validator {
         let metrics_handle =
             metrics::server::start_prometheus_server(binding_metrics_address, &registry);
 
-        // Open the block store.
-        let wal_file =
-            wal::open_file_for_wal(private_config.wal()).expect("Failed to open wal file");
-        let (wal_writer, wal_reader) = walf(wal_file).expect("Failed to open wal");
-        let recovered = BlockStore::open(
-            authority,
-            Arc::new(wal_reader),
-            &wal_writer,
-            metrics.clone(),
-            &committee,
-        );
+        // Open storage.
+        let (storage, recovered) =
+            Storage::open(authority, private_config.wal(), metrics.clone(), &committee)
+                .expect("Failed to open storage");
 
         // Boot the validator node.
         let (block_handler, block_sender) = RealBlockHandler::new(
             committee.clone(),
             authority,
             Some(&private_config.certified_transactions_log()),
-            recovered.block_store.clone(),
+            storage.block_store().clone(),
             metrics.clone(),
             public_config.parameters.consensus_only,
         );
@@ -104,8 +96,8 @@ impl Validator {
             private_config,
             &public_config,
             metrics.clone(),
+            storage,
             recovered,
-            wal_writer,
             CoreOptions::default(),
         );
         let network = Network::load(

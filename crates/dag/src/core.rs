@@ -12,10 +12,7 @@ use minibytes::Bytes;
 use crate::{
     block_handler::RealBlockHandler,
     block_manager::BlockManager,
-    block_store::{
-        BlockStore, BlockWriter, CommitData, OwnBlockData, WAL_ENTRY_COMMIT, WAL_ENTRY_PAYLOAD,
-        WAL_ENTRY_STATE,
-    },
+    block_store::{BlockStore, BlockWriter, CommitData, OwnBlockData},
     committee::Committee,
     config::{NodePrivateConfig, NodePublicConfig},
     consensus::{
@@ -28,9 +25,10 @@ use crate::{
     metrics::Metrics,
     runtime::timestamp_utc,
     state::RecoveredState,
+    storage::Storage,
     threshold_clock::ThresholdClockAggregator,
     types::{AuthorityIndex, BaseStatement, BlockReference, RoundNumber, StatementBlock},
-    wal::{WalPosition, WalSyncer, WalWriter},
+    wal::{WalPosition, WalSyncer},
 };
 
 pub struct Core {
@@ -42,8 +40,7 @@ pub struct Core {
     threshold_clock: ThresholdClockAggregator,
     pub(crate) committee: Arc<Committee>,
     last_commit_leader: BlockReference,
-    wal_writer: WalWriter,
-    block_store: BlockStore,
+    storage: Storage,
     pub(crate) metrics: Arc<Metrics>,
     options: CoreOptions,
     signer: Signer,
@@ -73,12 +70,11 @@ impl Core {
         private_config: NodePrivateConfig,
         public_config: &NodePublicConfig,
         metrics: Arc<Metrics>,
+        mut storage: Storage,
         recovered: RecoveredState,
-        mut wal_writer: WalWriter,
         options: CoreOptions,
     ) -> Self {
         let RecoveredState {
-            block_store,
             last_own_block,
             mut pending,
             state,
@@ -103,11 +99,10 @@ impl Core {
             // this is not great and some code reuse would be great
             let (own_genesis_block, other_genesis_blocks) = committee.genesis_blocks(authority);
             assert_eq!(own_genesis_block.author(), authority);
-            let mut block_writer = (&mut wal_writer, &block_store);
             for block in other_genesis_blocks {
                 let reference = *block.reference();
                 threshold_clock.add_block(reference, &committee);
-                let position = block_writer.insert_block(block);
+                let position = storage.insert_block(block);
                 pending.push_back((position, MetaStatement::Include(reference)));
             }
             threshold_clock.add_block(*own_genesis_block.reference(), &committee);
@@ -115,10 +110,10 @@ impl Core {
                 next_entry: WalPosition::MAX,
                 block: own_genesis_block,
             };
-            block_writer.insert_own_block(&own_block_data);
+            storage.insert_own_block(&own_block_data);
             own_block_data
         };
-        let block_manager = BlockManager::new(block_store.clone(), &committee);
+        let block_manager = BlockManager::new(storage.block_store().clone(), &committee);
 
         if let Some(state) = state {
             block_handler.recover_state(&state);
@@ -126,11 +121,14 @@ impl Core {
 
         let epoch_manager = EpochManager::new();
 
-        let committer =
-            UniversalCommitterBuilder::new(committee.clone(), block_store.clone(), metrics.clone())
-                .with_number_of_leaders(public_config.parameters.number_of_leaders)
-                .with_pipeline(public_config.parameters.enable_pipelining)
-                .build();
+        let committer = UniversalCommitterBuilder::new(
+            committee.clone(),
+            storage.block_store().clone(),
+            metrics.clone(),
+        )
+        .with_number_of_leaders(public_config.parameters.number_of_leaders)
+        .with_pipeline(public_config.parameters.enable_pipelining)
+        .build();
         tracing::info!(
             "Pipeline enabled: {}",
             public_config.parameters.enable_pipelining
@@ -149,8 +147,7 @@ impl Core {
             threshold_clock,
             committee,
             last_commit_leader: last_committed_leader.unwrap_or_default(),
-            wal_writer,
-            block_store,
+            storage,
             metrics,
             options,
             signer: private_config.keypair,
@@ -180,9 +177,7 @@ impl Core {
     // also want to change genesis initialization above
     pub fn add_blocks(&mut self, blocks: Vec<Data<StatementBlock>>) -> Vec<Data<StatementBlock>> {
         let _timer = self.metrics.utilization_timer("Core::add_blocks");
-        let processed = self
-            .block_manager
-            .add_blocks(blocks, &mut (&mut self.wal_writer, &self.block_store));
+        let processed = self.block_manager.add_blocks(blocks, &mut self.storage);
         let mut result = Vec::with_capacity(processed.len());
         for (position, processed) in processed.into_iter() {
             self.threshold_clock
@@ -202,10 +197,7 @@ impl Core {
             .handle_blocks(processed, !self.epoch_changing());
         let serialized_statements =
             bincode::serialize(&statements).expect("Payload serialization failed");
-        let position = self
-            .wal_writer
-            .write(WAL_ENTRY_PAYLOAD, &serialized_statements)
-            .expect("Failed to write statements to wal");
+        let position = self.storage.write_payload(&serialized_statements);
         self.pending
             .push_back((position, MetaStatement::Payload(statements)));
     }
@@ -240,7 +232,7 @@ impl Core {
         for (_, statement) in &taken {
             if let MetaStatement::Include(block_ref) = statement {
                 // for all the includes in the block, add the references in the block to the set
-                if let Some(block) = self.block_store.get_block(*block_ref) {
+                if let Some(block) = self.storage.block_store().get_block(*block_ref) {
                     references_in_block.extend(block.includes());
                 }
             }
@@ -280,12 +272,12 @@ impl Core {
         );
 
         let block = Data::new(block);
-        if block.serialized_bytes().len() > crate::wal::MAX_ENTRY_SIZE / 2 {
-            // Sanity check for now
+        if block.serialized_bytes().len() > crate::storage::wal::MAX_ENTRY_SIZE / 2 {
             panic!(
-                "Created an oversized block (check all limits set properly: {} > {}): {:?}",
+                "Created an oversized block \
+                (check all limits set properly: {} > {}): {:?}",
                 block.serialized_bytes().len(),
-                crate::wal::MAX_ENTRY_SIZE / 2,
+                crate::storage::wal::MAX_ENTRY_SIZE / 2,
                 block.detailed()
             );
         }
@@ -302,10 +294,10 @@ impl Core {
             next_entry,
             block: block.clone(),
         };
-        (&mut self.wal_writer, &self.block_store).insert_own_block(&self.last_own_block);
+        self.storage.insert_own_block(&self.last_own_block);
 
         if self.options.fsync {
-            self.wal_writer.sync().expect("Wal sync failed");
+            self.storage.sync();
         }
 
         tracing::debug!("Created block {block:?}");
@@ -313,9 +305,7 @@ impl Core {
     }
 
     pub fn wal_syncer(&self) -> WalSyncer {
-        self.wal_writer
-            .syncer()
-            .expect("Failed to create wal syncer")
+        self.storage.syncer()
     }
 
     fn proposed_block_stats(&self, block: &Data<StatementBlock>) {
@@ -358,7 +348,7 @@ impl Core {
     pub fn cleanup(&self) {
         const RETAIN_BELOW_COMMIT_ROUNDS: RoundNumber = 100;
 
-        self.block_store.cleanup(
+        self.storage.block_store().cleanup(
             self.last_commit_leader
                 .round()
                 .saturating_sub(RETAIN_BELOW_COMMIT_ROUNDS),
@@ -384,7 +374,8 @@ impl Core {
             let leader_round = quorum_round - 1;
             let mut leaders = self.committer.get_leaders(leader_round);
             leaders.retain(|leader| connected_authorities.contains(leader));
-            self.block_store
+            self.storage
+                .block_store()
                 .all_blocks_exists_at_authority_round(&leaders, leader_round)
         } else {
             false
@@ -405,30 +396,14 @@ impl Core {
             commit_data.push(CommitData::from(commit));
         }
         self.write_state(); // todo - this can be done less frequently to reduce IO
-        self.write_commits(&commit_data, state);
+        self.storage.write_commits(&commit_data, state);
         // todo - We should also persist state of the epoch manager, otherwise if validator
         // restarts during epoch change it will fork on the epoch change state.
         commit_data
     }
 
     pub fn write_state(&mut self) {
-        #[cfg(feature = "simulator")]
-        if self.block_handler().state().len() >= crate::wal::MAX_ENTRY_SIZE {
-            // todo - this is something needs a proper fix
-            // Need to revisit this after we have a proper synchronizer
-            // We need to put some limit/backpressure on the accumulator state
-            return;
-        }
-        self.wal_writer
-            .write(WAL_ENTRY_STATE, &self.block_handler().state())
-            .expect("Write to wal has failed");
-    }
-
-    pub fn write_commits(&mut self, commits: &[CommitData], state: &Bytes) {
-        let commits = bincode::serialize(&(commits, state)).expect("Commits serialization failed");
-        self.wal_writer
-            .write(WAL_ENTRY_COMMIT, &commits)
-            .expect("Write to wal has failed");
+        self.storage.write_state(&self.block_handler.state());
     }
 
     pub fn take_recovered_committed_blocks(&mut self) -> (HashSet<BlockReference>, Option<Bytes>) {
@@ -438,7 +413,7 @@ impl Core {
     }
 
     pub fn block_store(&self) -> &BlockStore {
-        &self.block_store
+        self.storage.block_store()
     }
 
     pub fn last_own_block(&self) -> &Data<StatementBlock> {

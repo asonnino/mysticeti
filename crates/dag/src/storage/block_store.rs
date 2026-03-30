@@ -61,7 +61,7 @@ impl BlockStore {
         wal_writer: &WalWriter,
         metrics: Arc<Metrics>,
         committee: &Committee,
-    ) -> RecoveredState {
+    ) -> (BlockStore, RecoveredState) {
         let last_seen_by_authority = committee.authorities().map(|_| 0).collect();
         let mut inner = BlockStoreInner {
             authority,
@@ -120,7 +120,7 @@ impl BlockStore {
             inner: Arc::new(RwLock::new(inner)),
             metrics,
         };
-        builder.build(this)
+        (this, builder.build())
     }
 
     pub fn insert_block(&self, block: Data<StatementBlock>, position: WalPosition) {
@@ -485,22 +485,6 @@ pub const WAL_ENTRY_STATE: Tag = 4;
 // this will require catching up for committed transactions
 // aggregator state.
 pub const WAL_ENTRY_COMMIT: Tag = 5;
-
-impl BlockWriter for (&mut WalWriter, &BlockStore) {
-    fn insert_block(&mut self, block: Data<StatementBlock>) -> WalPosition {
-        let pos = self
-            .0
-            .write(WAL_ENTRY_BLOCK, block.serialized_bytes())
-            .expect("Writing to wal failed");
-        self.1.insert_block(block, pos);
-        pos
-    }
-
-    fn insert_own_block(&mut self, data: &OwnBlockData) {
-        let block_pos = data.write_to_wal(self.0);
-        self.1.insert_block(data.block.clone(), block_pos);
-    }
-}
 
 // This data structure has a special serialization in/from
 // Bytes, see OwnBlockData::from_bytes/write_to_wal
