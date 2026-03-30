@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::sync::Notify;
 
 use crate::{
-    block_handler::{BlockHandler, CommitHandler},
+    block_handler::CommitHandler,
     core::Core,
     data::Data,
     metrics::Metrics,
@@ -15,8 +15,8 @@ use crate::{
     types::{AuthorityIndex, RoundNumber, StatementBlock},
 };
 
-pub struct Syncer<H: BlockHandler> {
-    core: Core<H>,
+pub struct Syncer {
+    core: Core,
     force_new_block: bool,
     commit_period: u64,
     signals: SyncerSignals,
@@ -57,9 +57,9 @@ impl SyncerSignals {
     }
 }
 
-impl<H: BlockHandler> Syncer<H> {
+impl Syncer {
     pub fn new(
-        core: Core<H>,
+        core: Core,
         commit_period: u64,
         signals: SyncerSignals,
         commit_handler: CommitHandler,
@@ -137,7 +137,7 @@ impl<H: BlockHandler> Syncer<H> {
         &self.commit_handler
     }
 
-    pub fn core(&self) -> &Core<H> {
+    pub fn core(&self) -> &Core {
         &self.core
     }
 
@@ -156,7 +156,6 @@ mod tests {
 
     use super::*;
     use crate::{
-        block_handler::RealBlockHandler,
         data::Data,
         simulator::{Scheduler, Simulator, SimulatorState},
         test_util::{check_commits, committee_and_syncers, rng_at_seed},
@@ -170,7 +169,7 @@ mod tests {
         DeliverBlock(Data<StatementBlock>),
     }
 
-    impl SimulatorState for Syncer<RealBlockHandler> {
+    impl SimulatorState for Syncer {
         type Event = SyncerEvent;
 
         fn handle_event(&mut self, event: Self::Event) {

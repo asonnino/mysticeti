@@ -10,7 +10,7 @@ use std::{
 use minibytes::Bytes;
 
 use crate::{
-    block_handler::BlockHandler,
+    block_handler::RealBlockHandler,
     block_manager::BlockManager,
     block_store::{
         BlockStore, BlockWriter, CommitData, OwnBlockData, WAL_ENTRY_COMMIT, WAL_ENTRY_PAYLOAD,
@@ -33,11 +33,11 @@ use crate::{
     wal::{WalPosition, WalSyncer, WalWriter},
 };
 
-pub struct Core<H: BlockHandler> {
+pub struct Core {
     block_manager: BlockManager,
     pending: VecDeque<(WalPosition, MetaStatement)>,
     last_own_block: OwnBlockData,
-    block_handler: H,
+    block_handler: RealBlockHandler,
     authority: AuthorityIndex,
     threshold_clock: ThresholdClockAggregator,
     pub(crate) committee: Arc<Committee>,
@@ -64,10 +64,10 @@ pub enum MetaStatement {
     Payload(Vec<BaseStatement>),
 }
 
-impl<H: BlockHandler> Core<H> {
+impl Core {
     #[allow(clippy::too_many_arguments)]
     pub fn open(
-        mut block_handler: H,
+        mut block_handler: RealBlockHandler,
         authority: AuthorityIndex,
         committee: Arc<Committee>,
         private_config: NodePrivateConfig,
@@ -453,7 +453,7 @@ impl<H: BlockHandler> Core<H> {
         self.authority
     }
 
-    pub fn block_handler(&self) -> &H {
+    pub fn block_handler(&self) -> &RealBlockHandler {
         &self.block_handler
     }
 
@@ -461,7 +461,7 @@ impl<H: BlockHandler> Core<H> {
         &self.block_manager
     }
 
-    pub fn block_handler_mut(&mut self) -> &mut H {
+    pub fn block_handler_mut(&mut self) -> &mut RealBlockHandler {
         &mut self.block_handler
     }
 

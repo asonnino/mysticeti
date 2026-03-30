@@ -26,7 +26,7 @@ use crate::{
 };
 
 pub struct Validator {
-    network_synchronizer: NetworkSyncer<RealBlockHandler>,
+    network_synchronizer: NetworkSyncer,
     metrics_handle: JoinHandle<()>,
 }
 

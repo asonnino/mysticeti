@@ -6,24 +6,23 @@ use std::collections::HashSet;
 use parking_lot::Mutex;
 
 use crate::{
-    block_handler::BlockHandler,
     data::Data,
     syncer::Syncer,
     types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
 };
 
-pub struct CoreThreadDispatcher<H: BlockHandler> {
-    syncer: Mutex<Syncer<H>>,
+pub struct CoreThreadDispatcher {
+    syncer: Mutex<Syncer>,
 }
 
-impl<H: BlockHandler + 'static> CoreThreadDispatcher<H> {
-    pub fn start(syncer: Syncer<H>) -> Self {
+impl CoreThreadDispatcher {
+    pub fn start(syncer: Syncer) -> Self {
         Self {
             syncer: Mutex::new(syncer),
         }
     }
 
-    pub fn stop(self) -> Syncer<H> {
+    pub fn stop(self) -> Syncer {
         self.syncer.into_inner()
     }
 

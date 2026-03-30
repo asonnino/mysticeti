@@ -17,7 +17,7 @@ use tokio::{
 };
 
 use crate::{
-    block_handler::{BlockHandler, CommitHandler},
+    block_handler::CommitHandler,
     block_store::BlockStore,
     committee::Committee,
     config::NodePublicConfig,
@@ -35,15 +35,15 @@ use crate::{
 /// The maximum number of blocks that can be requested in a single message.
 pub const MAXIMUM_BLOCK_REQUEST: usize = 10;
 
-pub struct NetworkSyncer<H: BlockHandler> {
-    inner: Arc<NetworkSyncerInner<H>>,
+pub struct NetworkSyncer {
+    inner: Arc<NetworkSyncerInner>,
     main_task: JoinHandle<()>,
     syncer_task: oneshot::Receiver<()>,
     stop: mpsc::Receiver<()>,
 }
 
-pub struct NetworkSyncerInner<H: BlockHandler> {
-    pub syncer: CoreThreadDispatcher<H>,
+pub struct NetworkSyncerInner {
+    pub syncer: CoreThreadDispatcher,
     pub block_store: BlockStore,
     pub notify: Arc<Notify>,
     committee: Arc<Committee>,
@@ -52,10 +52,10 @@ pub struct NetworkSyncerInner<H: BlockHandler> {
     pub epoch_closing_time: Arc<AtomicU64>,
 }
 
-impl<H: BlockHandler + 'static> NetworkSyncer<H> {
+impl NetworkSyncer {
     pub fn start(
         network: Network,
-        mut core: Core<H>,
+        mut core: Core,
         commit_period: u64,
         mut commit_handler: CommitHandler,
         shutdown_grace_period: Duration,
@@ -121,7 +121,7 @@ impl<H: BlockHandler + 'static> NetworkSyncer<H> {
         }
     }
 
-    pub async fn shutdown(self) -> Syncer<H> {
+    pub async fn shutdown(self) -> Syncer {
         drop(self.stop);
         // todo - wait for network shutdown as well
         self.main_task.await.ok();
@@ -134,7 +134,7 @@ impl<H: BlockHandler + 'static> NetworkSyncer<H> {
 
     async fn run(
         mut network: Network,
-        inner: Arc<NetworkSyncerInner<H>>,
+        inner: Arc<NetworkSyncerInner>,
         epoch_close_signal: mpsc::Receiver<()>,
         shutdown_grace_period: Duration,
         block_fetcher: Arc<BlockFetcher>,
@@ -181,7 +181,7 @@ impl<H: BlockHandler + 'static> NetworkSyncer<H> {
 
     async fn connection_task(
         mut connection: Connection,
-        inner: Arc<NetworkSyncerInner<H>>,
+        inner: Arc<NetworkSyncerInner>,
         block_fetcher: Arc<BlockFetcher>,
         metrics: Arc<Metrics>,
     ) -> Option<()> {
@@ -250,7 +250,7 @@ impl<H: BlockHandler + 'static> NetworkSyncer<H> {
     }
 
     async fn leader_timeout_task(
-        inner: Arc<NetworkSyncerInner<H>>,
+        inner: Arc<NetworkSyncerInner>,
         mut epoch_close_signal: mpsc::Receiver<()>,
         shutdown_grace_period: Duration,
     ) -> Option<()> {
@@ -293,7 +293,7 @@ impl<H: BlockHandler + 'static> NetworkSyncer<H> {
         }
     }
 
-    async fn cleanup_task(inner: Arc<NetworkSyncerInner<H>>) -> Option<()> {
+    async fn cleanup_task(inner: Arc<NetworkSyncerInner>) -> Option<()> {
         let cleanup_interval = Duration::from_secs(10);
         loop {
             select! {
@@ -313,7 +313,7 @@ impl<H: BlockHandler + 'static> NetworkSyncer<H> {
     }
 }
 
-impl<H: BlockHandler + 'static> NetworkSyncerInner<H> {
+impl NetworkSyncerInner {
     // Returns None either if channel is closed or NetworkSyncerInner receives stop signal
     async fn recv_or_stopped<T>(&self, channel: &mut mpsc::Receiver<T>) -> Option<T> {
         select! {
@@ -435,16 +435,11 @@ mod tests {
 #[cfg(test)]
 #[cfg(feature = "simulator")]
 mod sim_tests {
-    use std::{
-        sync::{atomic::Ordering, Arc},
-        time::Duration,
-    };
+    use std::{sync::atomic::Ordering, time::Duration};
 
     use super::NetworkSyncer;
     use crate::{
-        block_handler::RealBlockHandler,
         config,
-        config::NodePublicConfig,
         finalization_interpreter::FinalizationInterpreter,
         future_simulator::SimulatedExecutorState,
         runtime,
@@ -456,9 +451,7 @@ mod sim_tests {
         },
     };
 
-    async fn wait_for_epoch_to_close(
-        network_syncers: Vec<NetworkSyncer<RealBlockHandler>>,
-    ) -> Vec<Syncer<RealBlockHandler>> {
+    async fn wait_for_epoch_to_close(network_syncers: Vec<NetworkSyncer>) -> Vec<Syncer> {
         let mut any_closed = false;
         while !any_closed {
             for net_sync in network_syncers.iter() {
@@ -488,9 +481,9 @@ mod sim_tests {
             simulated_network_syncers_with_epoch_duration(n, rounds_in_epoch);
         simulated_network.connect_all().await;
         let syncers = wait_for_epoch_to_close(network_syncers).await;
-        let canonical_commit_seq = syncers[0].commit_handler().committed_leaders().clone();
+        let canonical_commit_seq = syncers[0].commit_handler().committed_leaders();
         for syncer in &syncers {
-            let commit_seq = syncer.commit_handler().committed_leaders().clone();
+            let commit_seq = syncer.commit_handler().committed_leaders();
             assert_eq!(canonical_commit_seq, commit_seq);
         }
         print_stats(&syncers);

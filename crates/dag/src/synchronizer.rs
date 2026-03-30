@@ -8,7 +8,6 @@ use rand::{seq::SliceRandom, thread_rng};
 use tokio::sync::mpsc;
 
 use crate::{
-    block_handler::BlockHandler,
     metrics::Metrics,
     net_sync::{self, NetworkSyncerInner},
     network::NetworkMessage,
@@ -42,11 +41,11 @@ impl Default for SynchronizerParameters {
     }
 }
 
-pub struct BlockDisseminator<H: BlockHandler> {
+pub struct BlockDisseminator {
     /// The sender to the network.
     sender: mpsc::Sender<NetworkMessage>,
     /// The inner state of the network syncer.
-    inner: Arc<NetworkSyncerInner<H>>,
+    inner: Arc<NetworkSyncerInner>,
     /// The handle of the task disseminating our own blocks.
     own_blocks: Option<JoinHandle<Option<()>>>,
     /// The handles of tasks disseminating other nodes' blocks.
@@ -57,10 +56,10 @@ pub struct BlockDisseminator<H: BlockHandler> {
     metrics: Arc<Metrics>,
 }
 
-impl<H: BlockHandler + 'static> BlockDisseminator<H> {
+impl BlockDisseminator {
     pub fn new(
         sender: mpsc::Sender<NetworkMessage>,
-        inner: Arc<NetworkSyncerInner<H>>,
+        inner: Arc<NetworkSyncerInner>,
         parameters: SynchronizerParameters,
         metrics: Arc<Metrics>,
     ) -> Self {
@@ -127,7 +126,7 @@ impl<H: BlockHandler + 'static> BlockDisseminator<H> {
 
     async fn stream_own_blocks(
         to: mpsc::Sender<NetworkMessage>,
-        inner: Arc<NetworkSyncerInner<H>>,
+        inner: Arc<NetworkSyncerInner>,
         mut round: RoundNumber,
         batch_size: usize,
     ) -> Option<()> {
@@ -164,7 +163,7 @@ impl<H: BlockHandler + 'static> BlockDisseminator<H> {
 
     async fn stream_others_blocks(
         to: mpsc::Sender<NetworkMessage>,
-        inner: Arc<NetworkSyncerInner<H>>,
+        inner: Arc<NetworkSyncerInner>,
         mut round: RoundNumber,
         author: AuthorityIndex,
         batch_size: usize,
@@ -194,9 +193,9 @@ pub struct BlockFetcher {
 }
 
 impl BlockFetcher {
-    pub fn start<B: BlockHandler + 'static>(
+    pub fn start(
         id: AuthorityIndex,
-        inner: Arc<NetworkSyncerInner<B>>,
+        inner: Arc<NetworkSyncerInner>,
         metrics: Arc<Metrics>,
         enable: bool,
     ) -> Self {
@@ -230,9 +229,9 @@ impl BlockFetcher {
     }
 }
 
-struct BlockFetcherWorker<B: BlockHandler> {
+struct BlockFetcherWorker {
     id: AuthorityIndex,
-    inner: Arc<NetworkSyncerInner<B>>,
+    inner: Arc<NetworkSyncerInner>,
     receiver: mpsc::Receiver<BlockFetcherMessage>,
     senders: HashMap<AuthorityIndex, mpsc::Sender<NetworkMessage>>,
     parameters: SynchronizerParameters,
@@ -242,10 +241,10 @@ struct BlockFetcherWorker<B: BlockHandler> {
     enable: bool,
 }
 
-impl<B: BlockHandler + 'static> BlockFetcherWorker<B> {
+impl BlockFetcherWorker {
     pub fn new(
         id: AuthorityIndex,
-        inner: Arc<NetworkSyncerInner<B>>,
+        inner: Arc<NetworkSyncerInner>,
         receiver: mpsc::Receiver<BlockFetcherMessage>,
         metrics: Arc<Metrics>,
         enable: bool,

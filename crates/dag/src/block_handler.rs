@@ -28,33 +28,6 @@ use crate::{
     },
 };
 
-pub trait BlockHandler: Send + Sync {
-    fn handle_blocks(
-        &mut self,
-        blocks: &[Data<StatementBlock>],
-        require_response: bool,
-    ) -> Vec<BaseStatement>;
-
-    fn handle_proposal(&mut self, block: &Data<StatementBlock>);
-
-    fn state(&self) -> Bytes;
-
-    fn recover_state(&mut self, _state: &Bytes);
-
-    fn cleanup(&self) {}
-}
-
-const REAL_BLOCK_HANDLER_TXN_SIZE: usize = 512;
-const REAL_BLOCK_HANDLER_TXN_GEN_STEP: usize = 32;
-const _: () = assert_constants();
-
-#[allow(dead_code)]
-const fn assert_constants() {
-    if !REAL_BLOCK_HANDLER_TXN_SIZE.is_multiple_of(REAL_BLOCK_HANDLER_TXN_GEN_STEP) {
-        panic!("REAL_BLOCK_HANDLER_TXN_SIZE % REAL_BLOCK_HANDLER_TXN_GEN_STEP != 0")
-    }
-}
-
 pub struct RealBlockHandler {
     transaction_votes: TransactionAggregator<QuorumThreshold, TransactionLog>,
     pub transaction_time: Arc<Mutex<HashMap<TransactionLocator, TimeInstant>>>,
@@ -101,9 +74,7 @@ impl RealBlockHandler {
         };
         (this, sender)
     }
-}
 
-impl RealBlockHandler {
     fn receive_with_limit(&mut self) -> Option<Vec<Transaction>> {
         if self.pending_transactions >= SOFT_MAX_PROPOSED_PER_BLOCK {
             return None;
@@ -137,10 +108,8 @@ impl RealBlockHandler {
         self.metrics
             .observe_latency_squared_s("owned", square_latency);
     }
-}
 
-impl BlockHandler for RealBlockHandler {
-    fn handle_blocks(
+    pub fn handle_blocks(
         &mut self,
         blocks: &[Data<StatementBlock>],
         require_response: bool,
@@ -183,7 +152,7 @@ impl BlockHandler for RealBlockHandler {
         response
     }
 
-    fn handle_proposal(&mut self, block: &Data<StatementBlock>) {
+    pub fn handle_proposal(&mut self, block: &Data<StatementBlock>) {
         // todo - this is not super efficient
         self.pending_transactions -= block.shared_transactions().count();
         let mut transaction_time = self.transaction_time.lock();
@@ -198,15 +167,15 @@ impl BlockHandler for RealBlockHandler {
         }
     }
 
-    fn state(&self) -> Bytes {
+    pub fn state(&self) -> Bytes {
         self.transaction_votes.state()
     }
 
-    fn recover_state(&mut self, state: &Bytes) {
+    pub fn recover_state(&mut self, state: &Bytes) {
         self.transaction_votes.with_state(state);
     }
 
-    fn cleanup(&self) {
+    pub fn cleanup(&self) {
         let _timer = self.metrics.block_handler_cleanup_utilization_timer();
         // todo - all of this should go away and we should measure tx latency differently
         let mut l = self.transaction_time.lock();

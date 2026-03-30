@@ -6,21 +6,20 @@ use std::{collections::HashSet, sync::Arc, thread};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{
-    block_handler::BlockHandler,
     data::Data,
     metrics::Metrics,
     syncer::Syncer,
     types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
 };
 
-pub struct CoreThreadDispatcher<H: BlockHandler> {
+pub struct CoreThreadDispatcher {
     sender: mpsc::Sender<CoreThreadCommand>,
-    join_handle: thread::JoinHandle<Syncer<H>>,
+    join_handle: thread::JoinHandle<Syncer>,
     metrics: Arc<Metrics>,
 }
 
-pub struct CoreThread<H: BlockHandler> {
-    syncer: Syncer<H>,
+pub struct CoreThread {
+    syncer: Syncer,
     receiver: mpsc::Receiver<CoreThreadCommand>,
 }
 
@@ -36,8 +35,8 @@ enum CoreThreadCommand {
     ConnectionDropped(AuthorityIndex, oneshot::Sender<()>),
 }
 
-impl<H: BlockHandler + 'static> CoreThreadDispatcher<H> {
-    pub fn start(syncer: Syncer<H>) -> Self {
+impl CoreThreadDispatcher {
+    pub fn start(syncer: Syncer) -> Self {
         let (sender, receiver) = mpsc::channel(32);
         let metrics = syncer.core().metrics.clone();
         let core_thread = CoreThread { syncer, receiver };
@@ -52,7 +51,7 @@ impl<H: BlockHandler + 'static> CoreThreadDispatcher<H> {
         }
     }
 
-    pub fn stop(self) -> Syncer<H> {
+    pub fn stop(self) -> Syncer {
         drop(self.sender);
         self.join_handle.join().unwrap()
     }
@@ -103,8 +102,8 @@ impl<H: BlockHandler + 'static> CoreThreadDispatcher<H> {
     }
 }
 
-impl<H: BlockHandler> CoreThread<H> {
-    pub fn run(mut self) -> Syncer<H> {
+impl CoreThread {
+    pub fn run(mut self) -> Syncer {
         tracing::info!("Started core thread with tid {}", gettid::gettid());
         let metrics = self.syncer.core().metrics.clone();
         while let Some(command) = self.receiver.blocking_recv() {
