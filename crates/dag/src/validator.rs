@@ -75,7 +75,7 @@ impl Validator {
         let (block_handler, block_sender) = RealBlockHandler::new(
             committee.clone(),
             authority,
-            &private_config.certified_transactions_log(),
+            Some(&private_config.certified_transactions_log()),
             recovered.block_store.clone(),
             metrics.clone(),
             public_config.parameters.consensus_only,

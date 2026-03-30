@@ -75,14 +75,18 @@ impl RealBlockHandler {
     pub fn new(
         committee: Arc<Committee>,
         authority: AuthorityIndex,
-        certified_transactions_log_path: &Path,
+        certified_transactions_log_path: Option<&Path>,
         block_store: BlockStore,
         metrics: Arc<Metrics>,
         consensus_only: bool,
     ) -> (Self, mpsc::Sender<Vec<Transaction>>) {
         let (sender, receiver) = mpsc::channel(1024);
-        let transaction_log = TransactionLog::start(certified_transactions_log_path)
-            .expect("Failed to open certified transaction log for write");
+        let transaction_log = match certified_transactions_log_path {
+            Some(path) => {
+                TransactionLog::start(path).expect("Failed to open certified transaction log")
+            }
+            None => TransactionLog::noop(),
+        };
 
         let this = Self {
             transaction_votes: TransactionAggregator::with_handler(transaction_log),
@@ -207,118 +211,6 @@ impl BlockHandler for RealBlockHandler {
         // todo - all of this should go away and we should measure tx latency differently
         let mut l = self.transaction_time.lock();
         l.retain(|_k, v| v.elapsed() < Duration::from_secs(10));
-    }
-}
-
-// Immediately votes and generates new transactions
-pub struct TestBlockHandler {
-    last_transaction: u64,
-    transaction_votes: TransactionAggregator<QuorumThreshold>,
-    pub transaction_time: Arc<Mutex<HashMap<TransactionLocator, TimeInstant>>>,
-    committee: Arc<Committee>,
-    authority: AuthorityIndex,
-    pub proposed: Vec<TransactionLocator>,
-
-    metrics: Arc<Metrics>,
-}
-
-impl TestBlockHandler {
-    pub fn new(
-        last_transaction: u64,
-        committee: Arc<Committee>,
-        authority: AuthorityIndex,
-        metrics: Arc<Metrics>,
-    ) -> Self {
-        Self {
-            last_transaction,
-            transaction_votes: Default::default(),
-            transaction_time: Default::default(),
-            committee,
-            authority,
-            proposed: Default::default(),
-            metrics,
-        }
-    }
-
-    pub fn is_certified(&self, locator: &TransactionLocator) -> bool {
-        self.transaction_votes.is_processed(locator)
-    }
-
-    pub fn make_transaction(i: u64) -> Transaction {
-        Transaction::new(i.to_le_bytes().to_vec())
-    }
-}
-
-impl BlockHandler for TestBlockHandler {
-    fn handle_blocks(
-        &mut self,
-        blocks: &[Data<StatementBlock>],
-        require_response: bool,
-    ) -> Vec<BaseStatement> {
-        // todo - this is ugly, but right now we need a way to recover self.last_transaction
-        let mut response = vec![];
-        if require_response {
-            for block in blocks {
-                if block.author() == self.authority {
-                    // We can see our own block in handle_blocks
-                    // this can happen during core recovery
-                    // Todo - we might also need to process pending Payload statements as well
-                    for statement in block.statements() {
-                        if let BaseStatement::Share(_) = statement {
-                            self.last_transaction += 1;
-                        }
-                    }
-                }
-            }
-            self.last_transaction += 1;
-            let next_transaction = Self::make_transaction(self.last_transaction);
-            response.push(BaseStatement::Share(next_transaction));
-        }
-        let transaction_time = self.transaction_time.lock();
-        for block in blocks {
-            tracing::debug!("Processing {block:?}");
-            let response_option: Option<&mut Vec<BaseStatement>> = if require_response {
-                Some(&mut response)
-            } else {
-                None
-            };
-            let processed =
-                self.transaction_votes
-                    .process_block(block, response_option, &self.committee);
-            for processed_locator in processed {
-                if let Some(instant) = transaction_time.get(&processed_locator) {
-                    self.metrics
-                        .observe_transaction_certified_latency(instant.elapsed());
-                }
-            }
-        }
-        response
-    }
-
-    fn handle_proposal(&mut self, block: &Data<StatementBlock>) {
-        let mut transaction_time = self.transaction_time.lock();
-        for (locator, _) in block.shared_transactions() {
-            transaction_time.insert(locator, TimeInstant::now());
-            self.proposed.push(locator);
-        }
-        for range in block.shared_ranges() {
-            self.transaction_votes
-                .register(range, self.authority, &self.committee);
-        }
-    }
-
-    fn state(&self) -> Bytes {
-        let state = (&self.transaction_votes.state(), &self.last_transaction);
-        let bytes =
-            bincode::serialize(&state).expect("Failed to serialize transaction aggregator state");
-        bytes.into()
-    }
-
-    fn recover_state(&mut self, state: &Bytes) {
-        let (transaction_votes, last_transaction) = bincode::deserialize(state)
-            .expect("Failed to deserialize transaction aggregator state");
-        self.transaction_votes.with_state(&transaction_votes);
-        self.last_transaction = last_transaction;
     }
 }
 

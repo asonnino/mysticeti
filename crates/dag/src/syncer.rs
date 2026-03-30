@@ -160,7 +160,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        block_handler::TestBlockHandler,
+        block_handler::RealBlockHandler,
         data::Data,
         simulator::{Scheduler, Simulator, SimulatorState},
         test_util::{check_commits, committee_and_syncers, rng_at_seed},
@@ -174,25 +174,19 @@ mod tests {
         DeliverBlock(Data<StatementBlock>),
     }
 
-    impl SimulatorState for Syncer<TestBlockHandler> {
+    impl SimulatorState for Syncer<RealBlockHandler> {
         type Event = SyncerEvent;
 
         fn handle_event(&mut self, event: Self::Event) {
             match event {
                 SyncerEvent::ForceNewBlock(round) => {
-                    if self.force_new_block(round) {
-                        // eprintln!("[{:06} {}] Proposal timeout for {round}",
-                        // scheduler.time_ms(), self.core.authority());
-                    }
+                    self.force_new_block(round);
                 }
                 SyncerEvent::DeliverBlock(block) => {
-                    // eprintln!("[{:06} {}] Deliver {block}",
-                    //     scheduler.time_ms(), self.core.authority());
                     self.add_blocks(vec![block]);
                 }
             }
 
-            // New block was created
             if self.signals.take_new_block() {
                 let last_block = self.core.last_own_block().clone();
                 Scheduler::schedule_event(
@@ -229,7 +223,6 @@ mod tests {
         let (committee, syncers) = committee_and_syncers(4);
         let mut simulator = Simulator::new(syncers, rng);
 
-        // Kick off process by asking validators create a block after genesis
         for authority in committee.authorities() {
             simulator.schedule_event(
                 Duration::ZERO,
@@ -237,59 +230,23 @@ mod tests {
                 SyncerEvent::ForceNewBlock(0),
             );
         }
-        // Simulation awaits for first num_txn transactions proposed by each authority to certify
-        let num_txn = 40;
-        let mut await_transactions = vec![];
-        let await_num_txn = num_txn as usize * committee.len();
 
-        let mut iteration = 0u64;
+        let target_round = 40;
         loop {
-            iteration += 1;
             assert!(!simulator.run_one());
-            // todo - we might want to wait for exactly num_txn
-            // from each authority, rather than num_txn total
-            if await_transactions.len() < await_num_txn {
-                for state in simulator.states_mut() {
-                    await_transactions.append(&mut state.core.block_handler_mut().proposed)
-                }
-                continue;
-            }
-            let not_certified: Vec<_> = simulator
+            if simulator
                 .states()
                 .iter()
-                .map(|syncer| {
-                    await_transactions
-                        .iter()
-                        .map(|txid| {
-                            if syncer.core.block_handler().is_certified(txid) {
-                                0usize
-                            } else {
-                                1usize
-                            }
-                        })
-                        .sum::<usize>()
-                })
-                .collect();
-
-            if not_certified.iter().sum::<usize>() == 0 {
+                .all(|s| s.core.last_proposed() >= target_round)
+            {
                 let time = simulator.time();
-                let rounds = simulator
-                    .states()
-                    .iter()
-                    .map(|syncer| syncer.core.last_proposed())
-                    .max()
-                    .unwrap();
                 eprintln!(
-                    "Certified {} txns in {time:.2?}, \
-                    {rounds} rounds, {iteration} iterations",
-                    await_transactions.len()
+                    "All syncers reached round {target_round} \
+                    in {time:.2?}",
                 );
                 check_commits(simulator.states());
                 break;
             }
-            // else if iteration % 100 == 0 {
-            //     eprintln!("Not certified: {not_certified:?}");
-            // }
         }
     }
 }

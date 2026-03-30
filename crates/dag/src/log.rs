@@ -24,6 +24,13 @@ impl TransactionLog {
         Ok(Self { ch: sender })
     }
 
+    /// No-op log for tests: the receiver is dropped immediately,
+    /// so sends fail silently and no memory accumulates.
+    pub fn noop() -> Self {
+        let (sender, _) = unbounded_channel();
+        Self { ch: sender }
+    }
+
     async fn run(mut file: File, mut receiver: UnboundedReceiver<Vec<TransactionLocator>>) {
         while let Some(id) = receiver.recv().await {
             writeln!(file, "{:?}", id).expect("Failed to write to transaction log");

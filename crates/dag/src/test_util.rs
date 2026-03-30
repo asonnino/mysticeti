@@ -18,7 +18,7 @@ use crate::simulated_network::SimulatedNetwork;
 #[cfg(feature = "simulator")]
 use crate::syncer::SyncerSignals;
 use crate::{
-    block_handler::{BlockHandler, CommitHandler, RealBlockHandler, TestBlockHandler},
+    block_handler::{BlockHandler, CommitHandler, RealBlockHandler},
     block_store::{BlockStore, BlockWriter, OwnBlockData, WAL_ENTRY_BLOCK},
     committee::Committee,
     config::{self, NodePrivateConfig, NodePublicConfig},
@@ -36,61 +36,7 @@ pub fn committee(n: usize) -> Arc<Committee> {
     Committee::new_test(vec![1; n])
 }
 
-// --- TestBlockHandler-based helpers (for syncer.rs sim test + core.rs tests) ---
-
-pub fn committee_and_test_cores(n: usize) -> (Arc<Committee>, Vec<Core<TestBlockHandler>>) {
-    committee_and_test_cores_persisted(n, None)
-}
-
-pub fn committee_and_test_cores_persisted(
-    n: usize,
-    path: Option<&Path>,
-) -> (Arc<Committee>, Vec<Core<TestBlockHandler>>) {
-    let public_config = NodePublicConfig::new_for_tests(n);
-    let committee = committee(n);
-    let cores: Vec<_> = committee
-        .authorities()
-        .map(|authority| {
-            let last_transaction = authority * 1_000_000;
-            let metrics = Metrics::new_for_test(committee.len());
-            let block_handler = TestBlockHandler::new(
-                last_transaction,
-                committee.clone(),
-                authority,
-                metrics.clone(),
-            );
-            let wal_file = if let Some(path) = path {
-                let wal_path = path.join(format!("{:03}.wal", authority));
-                open_file_for_wal(&wal_path).unwrap()
-            } else {
-                tempfile::tempfile().unwrap()
-            };
-            let (wal_writer, wal_reader) = walf(wal_file).expect("Failed to open wal");
-            let recovered = BlockStore::open(
-                authority,
-                Arc::new(wal_reader),
-                &wal_writer,
-                metrics.clone(),
-                &committee,
-            );
-            let private_config = NodePrivateConfig::new_for_tests(authority);
-            Core::open(
-                block_handler,
-                authority,
-                committee.clone(),
-                private_config,
-                &public_config,
-                metrics,
-                recovered,
-                wal_writer,
-                CoreOptions::test(),
-            )
-        })
-        .collect();
-    (committee, cores)
-}
-
-// --- RealBlockHandler-based helpers (for net_sync tests, benchmarks) ---
+// --- Core construction helpers ---
 
 fn open_core_with_real_handler(
     authority: AuthorityIndex,
@@ -113,11 +59,10 @@ fn open_core_with_real_handler(
         metrics.clone(),
         committee,
     );
-    let tx_log_file = tempfile::NamedTempFile::new().expect("Failed to create temp tx log");
     let (block_handler, _tx_sender) = RealBlockHandler::new(
         committee.clone(),
         authority,
-        tx_log_file.path(),
+        None,
         recovered.block_store.clone(),
         metrics.clone(),
         false,
@@ -136,9 +81,21 @@ fn open_core_with_real_handler(
     )
 }
 
-#[cfg(feature = "simulator")]
 pub fn committee_and_cores(n: usize) -> (Arc<Committee>, Vec<Core<RealBlockHandler>>) {
-    committee_and_cores_epoch_duration(n, config::node_defaults::default_rounds_in_epoch())
+    committee_and_cores_persisted(n, None)
+}
+
+pub fn committee_and_cores_persisted(
+    n: usize,
+    path: Option<&Path>,
+) -> (Arc<Committee>, Vec<Core<RealBlockHandler>>) {
+    let public_config = NodePublicConfig::new_for_tests(n);
+    let committee = committee(n);
+    let cores = committee
+        .authorities()
+        .map(|authority| open_core_with_real_handler(authority, &committee, &public_config, path))
+        .collect();
+    (committee, cores)
 }
 
 pub fn committee_and_cores_epoch_duration(
@@ -156,8 +113,8 @@ pub fn committee_and_cores_epoch_duration(
 }
 
 #[cfg(feature = "simulator")]
-pub fn committee_and_syncers(n: usize) -> (Arc<Committee>, Vec<Syncer<TestBlockHandler>>) {
-    let (committee, cores) = committee_and_test_cores(n);
+pub fn committee_and_syncers(n: usize) -> (Arc<Committee>, Vec<Syncer<RealBlockHandler>>) {
+    let (committee, cores) = committee_and_cores(n);
     (
         committee.clone(),
         cores

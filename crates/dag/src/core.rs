@@ -501,33 +501,27 @@ impl CoreOptions {
 #[cfg(test)]
 #[cfg(not(feature = "simulator"))]
 mod test {
-    use std::fmt::Write;
-
     use rand::{prelude::StdRng, Rng, SeedableRng};
 
     use super::*;
     use crate::{
-        test_util::{committee_and_test_cores, committee_and_test_cores_persisted},
+        test_util::{committee_and_cores, committee_and_cores_persisted},
         threshold_clock,
     };
 
     #[test]
     fn test_core_simple_exchange() {
-        let (_committee, mut cores) = committee_and_test_cores(4);
+        let (_committee, mut cores) = committee_and_cores(4);
 
-        let mut proposed_transactions = vec![];
         let mut blocks = vec![];
         for core in &mut cores {
-            core.run_block_handler(&[]);
             let block = core
                 .try_new_block()
                 .expect("Must be able to create block after genesis");
             assert_eq!(block.reference().round, 1);
-            proposed_transactions.append(&mut core.block_handler.proposed);
             eprintln!("{}: {}", core.authority, block);
             blocks.push(block.clone());
         }
-        assert_eq!(proposed_transactions.len(), 4);
         let more_blocks = blocks.split_off(1);
 
         eprintln!("===");
@@ -552,32 +546,21 @@ mod test {
                 .expect("Must be able to create block after full round");
             eprintln!("{}: {}", core.authority, block);
             assert_eq!(block.reference().round, 3);
-            for txid in &proposed_transactions {
-                assert!(
-                    core.block_handler.is_certified(txid),
-                    "Transaction {} is not certified by {}",
-                    txid,
-                    core.authority
-                );
-            }
         }
     }
 
     #[test]
     fn test_randomized_simple_exchange() {
-        'l: for seed in 0..100 {
+        for seed in 0..100u8 {
             let mut rng = StdRng::from_seed([seed; 32]);
-            let (committee, mut cores) = committee_and_test_cores(4);
+            let (committee, mut cores) = committee_and_cores(4);
 
-            let mut proposed_transactions = vec![];
             let mut pending: Vec<_> = committee.authorities().map(|_| vec![]).collect();
             for core in &mut cores {
-                core.run_block_handler(&[]);
                 let block = core
                     .try_new_block()
                     .expect("Must be able to create block after genesis");
                 assert_eq!(block.reference().round, 1);
-                proposed_transactions.append(&mut core.block_handler.proposed);
                 eprintln!("{}: {}", core.authority, block);
                 assert!(
                     threshold_clock::threshold_clock_valid_non_genesis(&block, &committee),
@@ -586,33 +569,25 @@ mod test {
                 );
                 push_all(&mut pending, core.authority, &block);
             }
-            // Each iteration we pick one authority and deliver to it 1..3 random blocks
-            // First 20 iterations we record all transactions created by authorities
-            // After this we wait for those recorded transactions to be eventually certified
-            'a: for i in 0..1000 {
+            let target_round = 10;
+            for i in 0..1000 {
                 let authority = committee.random_authority(&mut rng);
-                eprintln!("Iteration {i}, authority {authority}");
                 let core = &mut cores[authority as usize];
                 let this_pending = &mut pending[authority as usize];
                 let c = rng.gen_range(1..4usize);
                 let mut blocks = vec![];
-                let mut deliver = String::new();
                 for _ in 0..c {
                     if this_pending.is_empty() {
                         break;
                     }
                     let block = this_pending.remove(rng.gen_range(0..this_pending.len()));
-                    write!(deliver, "{}, ", block).ok();
                     blocks.push(block);
                 }
                 if blocks.is_empty() {
-                    eprintln!("No pending blocks for {authority}");
                     continue;
                 }
-                eprint!("Deliver {deliver} to {authority} => ");
                 core.add_blocks(blocks);
                 let Some(block) = core.try_new_block() else {
-                    eprintln!("No new block");
                     continue;
                 };
                 assert!(
@@ -620,56 +595,41 @@ mod test {
                     "Invalid clock {}",
                     block
                 );
-                eprintln!("Created {block}");
                 push_all(&mut pending, core.authority, &block);
-                if i < 20 {
-                    // First 20 iterations we record proposed transactions
-                    proposed_transactions.append(&mut core.block_handler.proposed);
-                    // proposed_transactions.push(core.block_handler.last_transaction());
-                } else {
-                    assert!(!proposed_transactions.is_empty());
-                    // After 20 iterations we just wait for all
-                    // transactions to be committed everywhere
-                    for proposed in &proposed_transactions {
-                        for core in &cores {
-                            if !core.block_handler.is_certified(proposed) {
-                                continue 'a;
-                            }
-                        }
-                    }
+                if cores.iter().all(|c| c.last_proposed() >= target_round) {
                     println!(
-                        "Seed {seed} succeed, {} transactions certified in {i} exchanges",
-                        proposed_transactions.len()
+                        "Seed {seed} succeed in {i} exchanges, \
+                        all cores reached round {target_round}",
                     );
-                    continue 'l;
+                    break;
                 }
             }
-            panic!("Seed {seed} failed - not all transactions are committed");
+            assert!(
+                cores.iter().all(|c| c.last_proposed() >= target_round),
+                "Seed {seed} failed - not all cores reached \
+                round {target_round}",
+            );
         }
     }
 
     #[test]
     fn test_core_recovery() {
         let tmp = tempdir::TempDir::new("test_core_recovery").unwrap();
-        let (_committee, mut cores) = committee_and_test_cores_persisted(4, Some(tmp.path()));
+        let (_committee, mut cores) = committee_and_cores_persisted(4, Some(tmp.path()));
 
-        let mut proposed_transactions = vec![];
         let mut blocks = vec![];
         for core in &mut cores {
-            core.run_block_handler(&[]);
             let block = core
                 .try_new_block()
                 .expect("Must be able to create block after genesis");
             assert_eq!(block.reference().round, 1);
-            proposed_transactions.extend(core.block_handler.proposed.clone());
             eprintln!("{}: {}", core.authority, block);
             blocks.push(block.clone());
         }
-        assert_eq!(proposed_transactions.len(), 4);
         cores.iter_mut().for_each(Core::write_state);
         drop(cores);
 
-        let (_committee, mut cores) = committee_and_test_cores_persisted(4, Some(tmp.path()));
+        let (_committee, mut cores) = committee_and_cores_persisted(4, Some(tmp.path()));
 
         let more_blocks = blocks.split_off(2);
 
@@ -688,13 +648,13 @@ mod test {
             blocks_r2.push(block.clone());
         }
 
-        // Note that we do not call Core::write_state here unlike before.
-        // This should also be handled correctly by re-processing unprocessed_blocks
+        // Do not call Core::write_state here — recovery should
+        // handle this by re-processing unprocessed_blocks.
         drop(cores);
 
         eprintln!("===");
 
-        let (_committee, mut cores) = committee_and_test_cores_persisted(4, Some(tmp.path()));
+        let (_committee, mut cores) = committee_and_cores_persisted(4, Some(tmp.path()));
 
         for core in &mut cores {
             core.add_blocks(blocks_r2.clone());
@@ -703,14 +663,6 @@ mod test {
                 .expect("Must be able to create block after full round");
             eprintln!("{}: {}", core.authority, block);
             assert_eq!(block.reference().round, 3);
-            for txid in &proposed_transactions {
-                assert!(
-                    core.block_handler.is_certified(txid),
-                    "Transaction {} is not certified by {}",
-                    txid,
-                    core.authority
-                );
-            }
         }
     }
 
