@@ -3,6 +3,7 @@
 
 use std::{
     collections::{HashMap, HashSet},
+    marker::PhantomData,
     sync::Arc,
     time::Duration,
 };
@@ -12,26 +13,28 @@ use tokio::sync::mpsc;
 
 use crate::{
     consensus::linearizer::{CommittedSubDag, Linearizer},
+    context::Ctx,
     data::Data,
     metrics::Metrics,
     runtime::{self, TimeInstant},
     storage::BlockReader,
-    transactions_generator::TransactionGenerator,
+    transactions_generator,
     types::{BaseStatement, BlockReference, StatementBlock, Transaction, TransactionLocator},
 };
 
-pub struct RealBlockHandler {
+pub struct RealBlockHandler<C: Ctx> {
     pub transaction_time: Arc<Mutex<HashMap<TransactionLocator, TimeInstant>>>,
     metrics: Arc<Metrics>,
     receiver: mpsc::Receiver<Vec<Transaction>>,
     pending_transactions: usize,
+    _ctx: PhantomData<C>,
 }
 
 /// The max number of transactions per block.
 // todo - This value should be in bytes because it is capped by the wal entry size.
 pub const SOFT_MAX_PROPOSED_PER_BLOCK: usize = 20 * 1000;
 
-impl RealBlockHandler {
+impl<C: Ctx> RealBlockHandler<C> {
     pub fn new(metrics: Arc<Metrics>) -> (Self, mpsc::Sender<Vec<Transaction>>) {
         let (sender, receiver) = mpsc::channel(1024);
         let this = Self {
@@ -39,6 +42,7 @@ impl RealBlockHandler {
             metrics,
             receiver,
             pending_transactions: 0, // todo - need to initialize correctly when loaded from disk
+            _ctx: PhantomData,
         };
         (this, sender)
     }
@@ -84,15 +88,16 @@ impl RealBlockHandler {
     }
 }
 
-pub struct CommitHandler {
+pub struct CommitHandler<C: Ctx> {
     commit_interpreter: Linearizer,
     committed_leaders: Vec<BlockReference>,
     start_time: TimeInstant,
     transaction_time: Arc<Mutex<HashMap<TransactionLocator, TimeInstant>>>,
     metrics: Arc<Metrics>,
+    _ctx: PhantomData<C>,
 }
 
-impl CommitHandler {
+impl<C: Ctx> CommitHandler<C> {
     pub fn new(
         transaction_time: Arc<Mutex<HashMap<TransactionLocator, TimeInstant>>>,
         metrics: Arc<Metrics>,
@@ -103,6 +108,7 @@ impl CommitHandler {
             start_time: TimeInstant::now(),
             transaction_time,
             metrics,
+            _ctx: PhantomData,
         }
     }
 
@@ -134,7 +140,7 @@ impl CommitHandler {
 
         // Record end-to-end latency. The first 8 bytes of the transaction are the timestamp of the
         // transaction submission.
-        let tx_submission_timestamp = TransactionGenerator::extract_timestamp(transaction);
+        let tx_submission_timestamp = transactions_generator::extract_timestamp(transaction);
         let latency = current_timestamp.saturating_sub(tx_submission_timestamp);
         let square_latency = latency.as_secs_f64().powf(2.0);
         self.metrics

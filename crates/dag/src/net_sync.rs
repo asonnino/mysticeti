@@ -20,6 +20,7 @@ use crate::{
     block_handler::CommitHandler,
     committee::Committee,
     config::NodePublicConfig,
+    context::Ctx,
     core::Core,
     core_thread::CoreThreadDispatcher,
     metrics::Metrics,
@@ -35,15 +36,15 @@ use crate::{
 /// The maximum number of blocks that can be requested in a single message.
 pub const MAXIMUM_BLOCK_REQUEST: usize = 10;
 
-pub struct NetworkSyncer {
-    inner: Arc<NetworkSyncerInner>,
+pub struct NetworkSyncer<C: Ctx> {
+    inner: Arc<NetworkSyncerInner<C>>,
     main_task: JoinHandle<()>,
     syncer_task: oneshot::Receiver<()>,
     stop: mpsc::Receiver<()>,
 }
 
-pub struct NetworkSyncerInner {
-    pub syncer: CoreThreadDispatcher,
+pub struct NetworkSyncerInner<C: Ctx> {
+    pub syncer: CoreThreadDispatcher<C>,
     pub block_reader: BlockReader,
     pub notify: Arc<Notify>,
     committee: Arc<Committee>,
@@ -52,12 +53,12 @@ pub struct NetworkSyncerInner {
     pub epoch_closing_time: Arc<AtomicU64>,
 }
 
-impl NetworkSyncer {
+impl<C: Ctx> NetworkSyncer<C> {
     pub fn start(
         network: Network,
-        mut core: Core,
+        mut core: Core<C>,
         commit_period: u64,
-        mut commit_handler: CommitHandler,
+        mut commit_handler: CommitHandler<C>,
         shutdown_grace_period: Duration,
         metrics: Arc<Metrics>,
         public_config: &NodePublicConfig,
@@ -121,7 +122,7 @@ impl NetworkSyncer {
         }
     }
 
-    pub async fn shutdown(self) -> Syncer {
+    pub async fn shutdown(self) -> Syncer<C> {
         drop(self.stop);
         // todo - wait for network shutdown as well
         self.main_task.await.ok();
@@ -134,10 +135,10 @@ impl NetworkSyncer {
 
     async fn run(
         mut network: Network,
-        inner: Arc<NetworkSyncerInner>,
+        inner: Arc<NetworkSyncerInner<C>>,
         epoch_close_signal: mpsc::Receiver<()>,
         shutdown_grace_period: Duration,
-        block_fetcher: Arc<BlockFetcher>,
+        block_fetcher: Arc<BlockFetcher<C>>,
         metrics: Arc<Metrics>,
     ) {
         let mut connections: HashMap<usize, JoinHandle<Option<()>>> = HashMap::new();
@@ -181,8 +182,8 @@ impl NetworkSyncer {
 
     async fn connection_task(
         mut connection: Connection,
-        inner: Arc<NetworkSyncerInner>,
-        block_fetcher: Arc<BlockFetcher>,
+        inner: Arc<NetworkSyncerInner<C>>,
+        block_fetcher: Arc<BlockFetcher<C>>,
         metrics: Arc<Metrics>,
     ) -> Option<()> {
         let last_seen = inner
@@ -250,7 +251,7 @@ impl NetworkSyncer {
     }
 
     async fn leader_timeout_task(
-        inner: Arc<NetworkSyncerInner>,
+        inner: Arc<NetworkSyncerInner<C>>,
         mut epoch_close_signal: mpsc::Receiver<()>,
         shutdown_grace_period: Duration,
     ) -> Option<()> {
@@ -293,7 +294,7 @@ impl NetworkSyncer {
         }
     }
 
-    async fn cleanup_task(inner: Arc<NetworkSyncerInner>) -> Option<()> {
+    async fn cleanup_task(inner: Arc<NetworkSyncerInner<C>>) -> Option<()> {
         let cleanup_interval = Duration::from_secs(10);
         loop {
             select! {
@@ -313,7 +314,7 @@ impl NetworkSyncer {
     }
 }
 
-impl NetworkSyncerInner {
+impl<C: Ctx> NetworkSyncerInner<C> {
     // Returns None either if channel is closed or NetworkSyncerInner receives stop signal
     async fn recv_or_stopped<T>(&self, channel: &mut mpsc::Receiver<T>) -> Option<T> {
         select! {
@@ -441,7 +442,7 @@ mod sim_tests {
     use crate::{
         config,
         future_simulator::SimulatedExecutorState,
-        runtime,
+        runtime::{self, DefaultCtx},
         simulator_tracing::setup_simulator_tracing,
         syncer::Syncer,
         test_util::{
@@ -450,7 +451,9 @@ mod sim_tests {
         },
     };
 
-    async fn wait_for_epoch_to_close(network_syncers: Vec<NetworkSyncer>) -> Vec<Syncer> {
+    async fn wait_for_epoch_to_close(
+        network_syncers: Vec<NetworkSyncer<DefaultCtx>>,
+    ) -> Vec<Syncer<DefaultCtx>> {
         let mut any_closed = false;
         while !any_closed {
             for net_sync in network_syncers.iter() {

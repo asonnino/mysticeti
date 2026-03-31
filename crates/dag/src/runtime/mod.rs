@@ -10,3 +10,9 @@ mod tokio_mod;
 pub use simulated::*;
 #[cfg(not(feature = "simulator"))]
 pub use tokio_mod::*;
+
+#[cfg(not(feature = "simulator"))]
+#[allow(dead_code)]
+pub type DefaultCtx = crate::context::TokioCtx;
+#[cfg(feature = "simulator")]
+pub type DefaultCtx = crate::context::SimulatedCtx;

@@ -8,6 +8,7 @@ use tokio::sync::Notify;
 
 use crate::{
     block_handler::CommitHandler,
+    context::Ctx,
     core::Core,
     data::Data,
     metrics::Metrics,
@@ -15,12 +16,12 @@ use crate::{
     types::{AuthorityIndex, RoundNumber, StatementBlock},
 };
 
-pub struct Syncer {
-    core: Core,
+pub struct Syncer<C: Ctx> {
+    core: Core<C>,
     force_new_block: bool,
     commit_period: u64,
     signals: SyncerSignals,
-    commit_handler: CommitHandler,
+    commit_handler: CommitHandler<C>,
     pub(crate) connected_authorities: HashSet<AuthorityIndex>,
     metrics: Arc<Metrics>,
 }
@@ -57,12 +58,12 @@ impl SyncerSignals {
     }
 }
 
-impl Syncer {
+impl<C: Ctx> Syncer<C> {
     pub fn new(
-        core: Core,
+        core: Core<C>,
         commit_period: u64,
         signals: SyncerSignals,
-        commit_handler: CommitHandler,
+        commit_handler: CommitHandler<C>,
         metrics: Arc<Metrics>,
     ) -> Self {
         let committee_size = core.committee().len();
@@ -132,11 +133,11 @@ impl Syncer {
         }
     }
 
-    pub fn commit_handler(&self) -> &CommitHandler {
+    pub fn commit_handler(&self) -> &CommitHandler<C> {
         &self.commit_handler
     }
 
-    pub fn core(&self) -> &Core {
+    pub fn core(&self) -> &Core<C> {
         &self.core
     }
 
@@ -168,7 +169,7 @@ mod tests {
         DeliverBlock(Data<StatementBlock>),
     }
 
-    impl SimulatorState for Syncer {
+    impl<C: Ctx> SimulatorState for Syncer<C> {
         type Event = SyncerEvent;
 
         fn handle_event(&mut self, event: Self::Event) {

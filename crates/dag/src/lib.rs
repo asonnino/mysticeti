@@ -7,6 +7,7 @@ pub(crate) use storage::block_store;
 pub mod committee;
 pub mod config;
 pub mod consensus;
+pub mod context;
 pub mod core;
 mod core_thread;
 mod crypto;

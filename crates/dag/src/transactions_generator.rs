@@ -1,28 +1,30 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{cmp::min, sync::Arc, time::Duration};
+use std::{cmp::min, marker::PhantomData, sync::Arc, time::Duration};
 
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use tokio::sync::mpsc;
 
 use crate::{
     config::{ClientParameters, NodePublicConfig},
+    context::Ctx,
     crypto::AsBytes,
     metrics::Metrics,
     runtime::{self, timestamp_utc},
     types::{AuthorityIndex, Transaction},
 };
 
-pub struct TransactionGenerator {
+pub struct TransactionGenerator<C: Ctx> {
     sender: mpsc::Sender<Vec<Transaction>>,
     rng: StdRng,
     client_parameters: ClientParameters,
     node_public_config: NodePublicConfig,
     metrics: Arc<Metrics>,
+    _ctx: PhantomData<C>,
 }
 
-impl TransactionGenerator {
+impl<C: Ctx> TransactionGenerator<C> {
     const TARGET_BLOCK_INTERVAL: Duration = Duration::from_millis(100);
 
     pub fn start(
@@ -45,6 +47,7 @@ impl TransactionGenerator {
                 client_parameters,
                 node_public_config,
                 metrics,
+                _ctx: PhantomData,
             }
             .run(),
         );
@@ -107,11 +110,11 @@ impl TransactionGenerator {
             }
         }
     }
+}
 
-    pub fn extract_timestamp(transaction: &Transaction) -> Duration {
-        let bytes = transaction.as_bytes()[0..8]
-            .try_into()
-            .expect("Transactions should be at least 8 bytes");
-        Duration::from_millis(u64::from_le_bytes(bytes))
-    }
+pub fn extract_timestamp(transaction: &Transaction) -> Duration {
+    let bytes = transaction.as_bytes()[0..8]
+        .try_into()
+        .expect("Transactions should be at least 8 bytes");
+    Duration::from_millis(u64::from_le_bytes(bytes))
 }

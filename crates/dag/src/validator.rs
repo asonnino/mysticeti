@@ -13,6 +13,7 @@ use crate::{
     block_handler::{CommitHandler, RealBlockHandler},
     committee::Committee,
     config::{ClientParameters, NodePrivateConfig, NodePublicConfig},
+    context::TokioCtx,
     core::{Core, CoreOptions},
     metrics::{self, Metrics},
     net_sync::NetworkSyncer,
@@ -24,7 +25,7 @@ use crate::{
 };
 
 pub struct Validator {
-    network_synchronizer: NetworkSyncer,
+    network_synchronizer: NetworkSyncer<TokioCtx>,
     metrics_handle: JoinHandle<()>,
 }
 
@@ -65,7 +66,7 @@ impl Validator {
         // Boot the validator node.
         let (block_handler, block_sender) = RealBlockHandler::new(metrics.clone());
 
-        TransactionGenerator::start(
+        TransactionGenerator::<TokioCtx>::start(
             block_sender,
             authority,
             client_parameters,

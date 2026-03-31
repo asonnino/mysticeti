@@ -17,6 +17,7 @@ use crate::{
         linearizer::CommittedSubDag,
         universal_committer::{UniversalCommitter, UniversalCommitterBuilder},
     },
+    context::Ctx,
     crypto::Signer,
     data::Data,
     epoch_close::EpochManager,
@@ -30,11 +31,11 @@ use crate::{
     wal::{WalPosition, WalSyncer},
 };
 
-pub struct Core {
+pub struct Core<C: Ctx> {
     block_manager: BlockManager,
     pending: VecDeque<(WalPosition, MetaStatement)>,
     last_own_block: OwnBlockData,
-    block_handler: RealBlockHandler,
+    block_handler: RealBlockHandler<C>,
     authority: AuthorityIndex,
     threshold_clock: ThresholdClockAggregator,
     pub(crate) committee: Arc<Committee>,
@@ -60,10 +61,10 @@ pub enum MetaStatement {
     Payload(Vec<BaseStatement>),
 }
 
-impl Core {
+impl<C: Ctx> Core<C> {
     #[allow(clippy::too_many_arguments)]
     pub fn open(
-        block_handler: RealBlockHandler,
+        block_handler: RealBlockHandler<C>,
         authority: AuthorityIndex,
         committee: Arc<Committee>,
         private_config: NodePrivateConfig,
@@ -402,7 +403,7 @@ impl Core {
         self.authority
     }
 
-    pub fn block_handler(&self) -> &RealBlockHandler {
+    pub fn block_handler(&self) -> &RealBlockHandler<C> {
         &self.block_handler
     }
 
@@ -410,7 +411,7 @@ impl Core {
         &self.block_manager
     }
 
-    pub fn block_handler_mut(&mut self) -> &mut RealBlockHandler {
+    pub fn block_handler_mut(&mut self) -> &mut RealBlockHandler<C> {
         &mut self.block_handler
     }
 

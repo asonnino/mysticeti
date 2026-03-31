@@ -8,6 +8,7 @@ use rand::{seq::SliceRandom, thread_rng};
 use tokio::sync::mpsc;
 
 use crate::{
+    context::Ctx,
     metrics::Metrics,
     net_sync::{self, NetworkSyncerInner},
     network::NetworkMessage,
@@ -41,11 +42,11 @@ impl Default for SynchronizerParameters {
     }
 }
 
-pub struct BlockDisseminator {
+pub struct BlockDisseminator<C: Ctx> {
     /// The sender to the network.
     sender: mpsc::Sender<NetworkMessage>,
     /// The inner state of the network syncer.
-    inner: Arc<NetworkSyncerInner>,
+    inner: Arc<NetworkSyncerInner<C>>,
     /// The handle of the task disseminating our own blocks.
     own_blocks: Option<JoinHandle<Option<()>>>,
     /// The handles of tasks disseminating other nodes' blocks.
@@ -56,10 +57,10 @@ pub struct BlockDisseminator {
     metrics: Arc<Metrics>,
 }
 
-impl BlockDisseminator {
+impl<C: Ctx> BlockDisseminator<C> {
     pub fn new(
         sender: mpsc::Sender<NetworkMessage>,
-        inner: Arc<NetworkSyncerInner>,
+        inner: Arc<NetworkSyncerInner<C>>,
         parameters: SynchronizerParameters,
         metrics: Arc<Metrics>,
     ) -> Self {
@@ -126,7 +127,7 @@ impl BlockDisseminator {
 
     async fn stream_own_blocks(
         to: mpsc::Sender<NetworkMessage>,
-        inner: Arc<NetworkSyncerInner>,
+        inner: Arc<NetworkSyncerInner<C>>,
         mut round: RoundNumber,
         batch_size: usize,
     ) -> Option<()> {
@@ -163,7 +164,7 @@ impl BlockDisseminator {
 
     async fn stream_others_blocks(
         to: mpsc::Sender<NetworkMessage>,
-        inner: Arc<NetworkSyncerInner>,
+        inner: Arc<NetworkSyncerInner<C>>,
         mut round: RoundNumber,
         author: AuthorityIndex,
         batch_size: usize,
@@ -187,22 +188,27 @@ enum BlockFetcherMessage {
     RemoveAuthority(AuthorityIndex),
 }
 
-pub struct BlockFetcher {
+pub struct BlockFetcher<C: Ctx> {
     sender: mpsc::Sender<BlockFetcherMessage>,
     handle: JoinHandle<Option<()>>,
+    _ctx: std::marker::PhantomData<C>,
 }
 
-impl BlockFetcher {
+impl<C: Ctx> BlockFetcher<C> {
     pub fn start(
         id: AuthorityIndex,
-        inner: Arc<NetworkSyncerInner>,
+        inner: Arc<NetworkSyncerInner<C>>,
         metrics: Arc<Metrics>,
         enable: bool,
     ) -> Self {
         let (sender, receiver) = mpsc::channel(100);
         let worker = BlockFetcherWorker::new(id, inner, receiver, metrics, enable);
         let handle = Handle::current().spawn(worker.run());
-        Self { sender, handle }
+        Self {
+            sender,
+            handle,
+            _ctx: std::marker::PhantomData,
+        }
     }
 
     pub async fn register_authority(
@@ -229,9 +235,9 @@ impl BlockFetcher {
     }
 }
 
-struct BlockFetcherWorker {
+struct BlockFetcherWorker<C: Ctx> {
     id: AuthorityIndex,
-    inner: Arc<NetworkSyncerInner>,
+    inner: Arc<NetworkSyncerInner<C>>,
     receiver: mpsc::Receiver<BlockFetcherMessage>,
     senders: HashMap<AuthorityIndex, mpsc::Sender<NetworkMessage>>,
     parameters: SynchronizerParameters,
@@ -241,10 +247,10 @@ struct BlockFetcherWorker {
     enable: bool,
 }
 
-impl BlockFetcherWorker {
+impl<C: Ctx> BlockFetcherWorker<C> {
     pub fn new(
         id: AuthorityIndex,
-        inner: Arc<NetworkSyncerInner>,
+        inner: Arc<NetworkSyncerInner<C>>,
         receiver: mpsc::Receiver<BlockFetcherMessage>,
         metrics: Arc<Metrics>,
         enable: bool,
