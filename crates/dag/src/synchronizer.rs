@@ -12,21 +12,14 @@ use crate::{
     metrics::Metrics,
     net_sync::{self, NetworkSyncerInner},
     network::NetworkMessage,
-    runtime::{sleep, timestamp_utc, Handle, JoinHandle},
     types::{AuthorityIndex, BlockReference, RoundNumber},
 };
 
-// TODO: A central controller will eventually dynamically update these parameters.
 pub struct SynchronizerParameters {
-    /// The maximum number of helpers per authority.
     pub maximum_helpers_per_authority: usize,
-    /// The number of blocks to send in a single batch.
     pub batch_size: usize,
-    /// The sampling precision with which to re-evaluate the sync strategy.
     pub sample_precision: Duration,
-    /// The grace period with which to eagerly sync missing blocks.
     pub grace_period: Duration,
-    /// The interval at which to send stream blocks authored by other nodes.
     pub stream_interval: Duration,
 }
 
@@ -43,17 +36,11 @@ impl Default for SynchronizerParameters {
 }
 
 pub struct BlockDisseminator<C: Ctx> {
-    /// The sender to the network.
     sender: mpsc::Sender<NetworkMessage>,
-    /// The inner state of the network syncer.
     inner: Arc<NetworkSyncerInner<C>>,
-    /// The handle of the task disseminating our own blocks.
-    own_blocks: Option<JoinHandle<Option<()>>>,
-    /// The handles of tasks disseminating other nodes' blocks.
-    other_blocks: Vec<JoinHandle<Option<()>>>,
-    /// The parameters of the synchronizer.
+    own_blocks: Option<C::JoinHandle<Option<()>>>,
+    other_blocks: Vec<C::JoinHandle<Option<()>>>,
     parameters: SynchronizerParameters,
-    /// Metrics.
     metrics: Arc<Metrics>,
 }
 
@@ -77,11 +64,11 @@ impl<C: Ctx> BlockDisseminator<C> {
     pub async fn shutdown(mut self) {
         let mut waiters = Vec::with_capacity(1 + self.other_blocks.len());
         if let Some(handle) = self.own_blocks.take() {
-            handle.abort();
+            C::abort(&handle);
             waiters.push(handle);
         }
         for handle in self.other_blocks {
-            handle.abort();
+            C::abort(&handle);
             waiters.push(handle);
         }
         join_all(waiters).await;
@@ -97,7 +84,6 @@ impl<C: Ctx> BlockDisseminator<C> {
             let stored_block = self.inner.block_reader.get_block(reference);
             let found = stored_block.is_some();
             match stored_block {
-                // TODO: Should we be able to send more than one block in a single network message?
                 Some(block) => self.sender.send(NetworkMessage::Block(block)).await.ok()?,
                 None => missing.push(reference),
             }
@@ -112,11 +98,11 @@ impl<C: Ctx> BlockDisseminator<C> {
 
     pub async fn disseminate_own_blocks(&mut self, round: RoundNumber) {
         if let Some(existing) = self.own_blocks.take() {
-            existing.abort();
+            C::abort(&existing);
             existing.await.ok();
         }
 
-        let handle = Handle::current().spawn(Self::stream_own_blocks(
+        let handle = C::spawn(Self::stream_own_blocks(
             self.sender.clone(),
             self.inner.clone(),
             round,
@@ -142,16 +128,13 @@ impl<C: Ctx> BlockDisseminator<C> {
         }
     }
 
-    // TODO:
-    // * There should be a new protocol message that indicate when we should stop this task.
-    // * Decide when to subscribe to a stream versus requesting specific blocks by ids.
     #[allow(dead_code)]
     pub fn disseminate_others_blocks(&mut self, round: RoundNumber, author: AuthorityIndex) {
         if self.other_blocks.len() >= self.parameters.maximum_helpers_per_authority {
             return;
         }
 
-        let handle = Handle::current().spawn(Self::stream_others_blocks(
+        let handle = C::spawn(Self::stream_others_blocks(
             self.sender.clone(),
             self.inner.clone(),
             round,
@@ -178,7 +161,7 @@ impl<C: Ctx> BlockDisseminator<C> {
                 round = block.round();
                 to.send(NetworkMessage::Block(block)).await.ok()?;
             }
-            sleep(stream_interval).await;
+            C::sleep(stream_interval).await;
         }
     }
 }
@@ -190,8 +173,7 @@ enum BlockFetcherMessage {
 
 pub struct BlockFetcher<C: Ctx> {
     sender: mpsc::Sender<BlockFetcherMessage>,
-    handle: JoinHandle<Option<()>>,
-    _ctx: std::marker::PhantomData<C>,
+    handle: C::JoinHandle<Option<()>>,
 }
 
 impl<C: Ctx> BlockFetcher<C> {
@@ -203,12 +185,8 @@ impl<C: Ctx> BlockFetcher<C> {
     ) -> Self {
         let (sender, receiver) = mpsc::channel(100);
         let worker = BlockFetcherWorker::new(id, inner, receiver, metrics, enable);
-        let handle = Handle::current().spawn(worker.run());
-        Self {
-            sender,
-            handle,
-            _ctx: std::marker::PhantomData,
-        }
+        let handle = C::spawn(worker.run());
+        Self { sender, handle }
     }
 
     pub async fn register_authority(
@@ -230,7 +208,7 @@ impl<C: Ctx> BlockFetcher<C> {
     }
 
     pub async fn shutdown(self) {
-        self.handle.abort();
+        C::abort(&self.handle);
         self.handle.await.ok();
     }
 }
@@ -242,7 +220,6 @@ struct BlockFetcherWorker<C: Ctx> {
     senders: HashMap<AuthorityIndex, mpsc::Sender<NetworkMessage>>,
     parameters: SynchronizerParameters,
     metrics: Arc<Metrics>,
-    /// Hold a timestamp of when blocks were first considered missing.
     missing: HashMap<BlockReference, Duration>,
     enable: bool,
 }
@@ -270,15 +247,21 @@ impl<C: Ctx> BlockFetcherWorker<C> {
     async fn run(mut self) -> Option<()> {
         loop {
             tokio::select! {
-                _ = sleep(self.parameters.sample_precision) => self.sync_strategy().await,
+                _ = C::sleep(self.parameters.sample_precision) => {
+                    self.sync_strategy().await
+                }
                 message = self.receiver.recv() => {
                     match message {
-                        Some(BlockFetcherMessage::RegisterAuthority(authority, sender)) => {
+                        Some(BlockFetcherMessage::RegisterAuthority(
+                            authority, sender,
+                        )) => {
                             self.senders.insert(authority, sender);
-                        },
-                        Some(BlockFetcherMessage::RemoveAuthority(authority)) => {
+                        }
+                        Some(BlockFetcherMessage::RemoveAuthority(
+                            authority,
+                        )) => {
                             self.senders.remove(&authority);
-                        },
+                        }
                         None => return None,
                     }
                 }
@@ -286,13 +269,12 @@ impl<C: Ctx> BlockFetcherWorker<C> {
         }
     }
 
-    /// A simple and naive strategy that requests missing blocks from random peers.
     async fn sync_strategy(&mut self) {
         if self.enable {
             return;
         }
 
-        let now = timestamp_utc();
+        let now = C::timestamp_utc();
         let mut to_request = Vec::new();
         let missing_blocks = self.inner.syncer.get_missing_blocks().await;
         for (authority, missing) in missing_blocks.into_iter().enumerate() {
@@ -303,17 +285,13 @@ impl<C: Ctx> BlockFetcherWorker<C> {
                 let time = self.missing.entry(reference).or_insert(now);
                 if now.checked_sub(*time).unwrap_or_default() >= self.parameters.grace_period {
                     to_request.push(reference);
-                    self.missing.remove(&reference); // todo - ensure we receive the block
+                    self.missing.remove(&reference);
                 }
             }
         }
         self.missing.retain(|_, time| {
             now.checked_sub(*time).unwrap_or_default() < self.parameters.grace_period
         });
-
-        // TODO: If we are missing many blocks from the same
-        // authority, it is likely a network partition. We should
-        // find another peer to temporarily sync blocks from.
 
         for chunks in to_request.chunks(net_sync::MAXIMUM_BLOCK_REQUEST) {
             let Some((peer, permit)) = self.sample_peer(&[self.id]) else {

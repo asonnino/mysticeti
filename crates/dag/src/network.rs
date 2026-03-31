@@ -25,7 +25,6 @@ use crate::{
     config::NodePublicConfig,
     data::Data,
     metrics::{print_network_address_table, Metrics},
-    runtime,
     types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
 };
 
@@ -221,7 +220,7 @@ impl Worker {
 
     async fn connect_and_handle(&self, delay: Duration, peer: SocketAddr) -> io::Result<()> {
         // this is critical to avoid race between active and passive connections
-        runtime::sleep(delay).await;
+        tokio::time::sleep(delay).await;
         let mut stream = loop {
             let socket = if self.bind_addr.is_ipv4() {
                 TcpSocket::new_v4().unwrap()

@@ -11,7 +11,6 @@ use crate::{
     context::Ctx,
     crypto::AsBytes,
     metrics::Metrics,
-    runtime::{self, timestamp_utc},
     types::{AuthorityIndex, Transaction},
 };
 
@@ -34,13 +33,14 @@ impl<C: Ctx> TransactionGenerator<C> {
         node_public_config: NodePublicConfig,
         metrics: Arc<Metrics>,
     ) {
-        assert!(client_parameters.transaction_size > 8 + 8); // 8 bytes timestamp + 8 bytes random
+        assert!(client_parameters.transaction_size > 8 + 8);
         tracing::info!(
             "Starting generator with {} transactions per second, initial delay {:?}",
             client_parameters.load,
             client_parameters.initial_delay
         );
-        runtime::Handle::current().spawn(
+        #[allow(clippy::let_underscore_future)]
+        let _ = C::spawn(
             Self {
                 sender,
                 rng: StdRng::seed_from_u64(seed),
@@ -65,16 +65,14 @@ impl<C: Ctx> TransactionGenerator<C> {
 
         let mut counter = 0;
         let mut tx_to_report = 0;
-        // 8 bytes
         let mut random: u64 = self.rng.gen();
-        // 8 bytes timestamp + 8 bytes random
         let zeros = vec![0u8; self.client_parameters.transaction_size - 16];
 
-        let mut interval = runtime::TimeInterval::new(Self::TARGET_BLOCK_INTERVAL);
-        runtime::sleep(self.client_parameters.initial_delay).await;
+        let mut interval = C::interval(Self::TARGET_BLOCK_INTERVAL);
+        C::sleep(self.client_parameters.initial_delay).await;
         loop {
-            interval.tick().await;
-            let timestamp = (timestamp_utc().as_millis() as u64).to_le_bytes();
+            C::interval_tick(&mut interval).await;
+            let timestamp = (C::timestamp_utc().as_millis() as u64).to_le_bytes();
 
             let mut block = Vec::with_capacity(target_block_size);
             let mut block_size = 0;
@@ -82,8 +80,8 @@ impl<C: Ctx> TransactionGenerator<C> {
                 random += counter;
 
                 let mut transaction = Vec::with_capacity(self.client_parameters.transaction_size);
-                transaction.extend_from_slice(&timestamp); // 8 bytes
-                transaction.extend_from_slice(&random.to_le_bytes()); // 8 bytes
+                transaction.extend_from_slice(&timestamp);
+                transaction.extend_from_slice(&random.to_le_bytes());
                 transaction.extend_from_slice(&zeros[..]);
 
                 block.push(Transaction::new(transaction));

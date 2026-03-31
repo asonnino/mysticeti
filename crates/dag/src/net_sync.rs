@@ -25,12 +25,10 @@ use crate::{
     core_thread::CoreThreadDispatcher,
     metrics::Metrics,
     network::{Connection, Network, NetworkMessage},
-    runtime::{self, timestamp_utc, Handle, JoinError, JoinHandle},
     storage::BlockReader,
     syncer::{Syncer, SyncerSignals},
     synchronizer::{BlockDisseminator, BlockFetcher, SynchronizerParameters},
     types::{format_authority_index, AuthorityIndex},
-    wal::WalSyncer,
 };
 
 /// The maximum number of blocks that can be requested in a single message.
@@ -38,7 +36,7 @@ pub const MAXIMUM_BLOCK_REQUEST: usize = 10;
 
 pub struct NetworkSyncer<C: Ctx> {
     inner: Arc<NetworkSyncerInner<C>>,
-    main_task: JoinHandle<()>,
+    main_task: C::JoinHandle<()>,
     syncer_task: oneshot::Receiver<()>,
     stop: mpsc::Receiver<()>,
 }
@@ -64,7 +62,6 @@ impl<C: Ctx> NetworkSyncer<C> {
         public_config: &NodePublicConfig,
     ) -> Self {
         let authority_index = core.authority();
-        let handle = Handle::current();
         let notify = Arc::new(Notify::new());
         // todo - ugly, probably need to merge syncer and core
         let committed = core.take_recovered_committed_blocks();
@@ -105,7 +102,7 @@ impl<C: Ctx> NetworkSyncer<C> {
             metrics.clone(),
             public_config.parameters.enable_synchronizer,
         ));
-        let main_task = handle.spawn(Self::run(
+        let main_task = C::spawn(Self::run(
             network,
             inner.clone(),
             epoch_receiver,
@@ -113,7 +110,7 @@ impl<C: Ctx> NetworkSyncer<C> {
             block_fetcher,
             metrics.clone(),
         ));
-        let syncer_task = AsyncWalSyncer::start(wal_syncer, stop_sender, epoch_sender);
+        let syncer_task = C::start_wal_syncer(wal_syncer, stop_sender, epoch_sender);
         Self {
             inner,
             main_task,
@@ -141,18 +138,16 @@ impl<C: Ctx> NetworkSyncer<C> {
         block_fetcher: Arc<BlockFetcher<C>>,
         metrics: Arc<Metrics>,
     ) {
-        let mut connections: HashMap<usize, JoinHandle<Option<()>>> = HashMap::new();
-        let handle = Handle::current();
-        let leader_timeout_task = handle.spawn(Self::leader_timeout_task(
+        let mut connections: HashMap<usize, C::JoinHandle<Option<()>>> = HashMap::new();
+        let leader_timeout_task = C::spawn(Self::leader_timeout_task(
             inner.clone(),
             epoch_close_signal,
             shutdown_grace_period,
         ));
-        let cleanup_task = handle.spawn(Self::cleanup_task(inner.clone()));
+        let cleanup_task = C::spawn(Self::cleanup_task(inner.clone()));
         while let Some(connection) = inner.recv_or_stopped(network.connection_receiver()).await {
             let peer_id = connection.peer_id;
             if let Some(task) = connections.remove(&peer_id) {
-                // wait until previous sync task completes
                 task.await.ok();
             }
 
@@ -160,7 +155,7 @@ impl<C: Ctx> NetworkSyncer<C> {
             let authority = peer_id as AuthorityIndex;
             block_fetcher.register_authority(authority, sender).await;
 
-            let task = handle.spawn(Self::connection_task(
+            let task = C::spawn(Self::connection_task(
                 connection,
                 inner.clone(),
                 block_fetcher.clone(),
@@ -266,7 +261,7 @@ impl<C: Ctx> NetworkSyncer<C> {
             let closing_time = inner.epoch_closing_time.load(Ordering::Relaxed);
             let shutdown_duration = if closing_time != 0 {
                 shutdown_grace_period.saturating_sub(
-                    timestamp_utc().saturating_sub(Duration::from_millis(closing_time)),
+                    C::timestamp_utc().saturating_sub(Duration::from_millis(closing_time)),
                 )
             } else {
                 Duration::MAX
@@ -275,7 +270,7 @@ impl<C: Ctx> NetworkSyncer<C> {
                 return None;
             }
             select! {
-                _sleep = runtime::sleep(leader_timeout) => {
+                _sleep = C::sleep(leader_timeout) => {
                     tracing::debug!("Timeout {round}");
                     // todo - more then one round timeout can happen, need to fix this
                     inner.syncer.force_new_block(round).await;
@@ -283,7 +278,7 @@ impl<C: Ctx> NetworkSyncer<C> {
                 _notified = notified => {
                     // restart loop
                 }
-                _epoch_shutdown = runtime::sleep(shutdown_duration) => {
+                _epoch_shutdown = C::sleep(shutdown_duration) => {
                     tracing::info!("Shutting down sync after epoch close");
                     epoch_close_signal.close();
                 }
@@ -298,7 +293,7 @@ impl<C: Ctx> NetworkSyncer<C> {
         let cleanup_interval = Duration::from_secs(10);
         loop {
             select! {
-                _sleep = runtime::sleep(cleanup_interval) => {
+                _sleep = C::sleep(cleanup_interval) => {
                     // Keep read lock for everything else
                     inner.syncer.cleanup().await;
                 }
@@ -309,7 +304,7 @@ impl<C: Ctx> NetworkSyncer<C> {
         }
     }
 
-    pub async fn await_completion(self) -> Result<(), JoinError> {
+    pub async fn await_completion(self) -> Result<(), C::JoinError> {
         self.main_task.await
     }
 }
@@ -339,72 +334,6 @@ impl<C: Ctx> NetworkSyncerInner<C> {
             }
             closed = self.epoch_close_signal.send(()) => {
                 assert!(closed.is_err());
-            }
-        }
-    }
-}
-
-pub struct AsyncWalSyncer {
-    wal_syncer: WalSyncer,
-    stop: mpsc::Sender<()>,
-    epoch_signal: mpsc::Sender<()>,
-    _sender: oneshot::Sender<()>,
-    runtime: tokio::runtime::Handle,
-}
-
-impl AsyncWalSyncer {
-    #[cfg(not(feature = "simulator"))]
-    pub fn start(
-        wal_syncer: WalSyncer,
-        stop: mpsc::Sender<()>,
-        epoch_signal: mpsc::Sender<()>,
-    ) -> oneshot::Receiver<()> {
-        let (sender, receiver) = oneshot::channel();
-        let this = Self {
-            wal_syncer,
-            stop,
-            epoch_signal,
-            _sender: sender,
-            runtime: tokio::runtime::Handle::current(),
-        };
-        std::thread::Builder::new()
-            .name("wal-syncer".to_string())
-            .spawn(move || this.run())
-            .expect("Failed to spawn wal-syncer");
-        receiver
-    }
-
-    #[cfg(feature = "simulator")]
-    pub fn start(
-        _wal_syncer: WalSyncer,
-        _stop: mpsc::Sender<()>,
-        _epoch_signal: mpsc::Sender<()>,
-    ) -> oneshot::Receiver<()> {
-        oneshot::channel().1
-    }
-
-    pub fn run(mut self) {
-        let runtime = self.runtime.clone();
-        loop {
-            if runtime.block_on(self.wait_next()) {
-                return;
-            }
-            self.wal_syncer.sync().expect("Failed to sync wal");
-        }
-    }
-
-    // Returns true to stop the task
-    async fn wait_next(&mut self) -> bool {
-        select! {
-            _wait = runtime::sleep(Duration::from_secs(1)) => {
-                false
-            }
-            _signal = self.stop.send(()) => {
-                true
-            }
-            _ = self.epoch_signal.send(()) => {
-                // might need to sync wal completely before shutting down
-                true
             }
         }
     }
@@ -441,8 +370,8 @@ mod sim_tests {
     use super::NetworkSyncer;
     use crate::{
         config,
+        context::{Ctx, DefaultCtx},
         future_simulator::SimulatedExecutorState,
-        runtime::{self, DefaultCtx},
         simulator_tracing::setup_simulator_tracing,
         syncer::Syncer,
         test_util::{
@@ -461,9 +390,9 @@ mod sim_tests {
                     any_closed = true;
                 }
             }
-            runtime::sleep(Duration::from_secs(10)).await;
+            DefaultCtx::sleep(Duration::from_secs(10)).await;
         }
-        runtime::sleep(config::node_defaults::default_shutdown_grace_period()).await;
+        DefaultCtx::sleep(config::node_defaults::default_shutdown_grace_period()).await;
         let mut syncers = vec![];
         for net_sync in network_syncers {
             let syncer = net_sync.shutdown().await;
@@ -500,7 +429,7 @@ mod sim_tests {
     async fn test_network_sync_sim_all_up_async() {
         let (simulated_network, network_syncers) = simulated_network_syncers(10);
         simulated_network.connect_all().await;
-        runtime::sleep(Duration::from_secs(20)).await;
+        DefaultCtx::sleep(Duration::from_secs(20)).await;
         let mut syncers = vec![];
         for network_syncer in network_syncers {
             let syncer = network_syncer.shutdown().await;
@@ -523,7 +452,7 @@ mod sim_tests {
         let (simulated_network, network_syncers) = simulated_network_syncers(10);
         simulated_network.connect_some(|a, _b| a != 0).await;
         println!("Started");
-        runtime::sleep(Duration::from_secs(40)).await;
+        DefaultCtx::sleep(Duration::from_secs(40)).await;
         println!("Done");
         let mut syncers = vec![];
         for network_syncer in network_syncers {
@@ -558,7 +487,7 @@ mod sim_tests {
             .await;
 
         println!("Started");
-        runtime::sleep(Duration::from_secs(40)).await;
+        DefaultCtx::sleep(Duration::from_secs(40)).await;
         println!("Done");
         let mut syncers = vec![];
         for network_syncer in network_syncers {
@@ -566,7 +495,6 @@ mod sim_tests {
             syncers.push(syncer);
         }
 
-        // Ensure no conflicts.
         check_commits(&syncers);
         print_stats(&syncers);
     }

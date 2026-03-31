@@ -6,10 +6,7 @@ use std::{sync::Mutex, time::Duration};
 use prometheus::Registry;
 
 use super::histogram::{self, HistogramObserver, HistogramReporter, VecHistogramReporter};
-use crate::{
-    runtime::{self, JoinHandle},
-    types::{format_authority_index, AuthorityIndex},
-};
+use crate::types::{format_authority_index, AuthorityIndex};
 
 const DEFAULT_REPORT_INTERVAL: Duration = Duration::from_secs(60);
 
@@ -31,7 +28,7 @@ impl PreciseMetrics {
         report_interval: Option<Duration>,
     ) -> Self {
         let (reporter, observers) = Self::create(registry, committee_size);
-        let handle = runtime::Handle::current()
+        let handle = tokio::runtime::Handle::current()
             .spawn(reporter.run(report_interval.unwrap_or(DEFAULT_REPORT_INTERVAL)));
         Self {
             observers,
@@ -136,7 +133,7 @@ struct Observers {
 }
 
 enum ReporterState {
-    Spawned(JoinHandle<()>),
+    Spawned(tokio::task::JoinHandle<()>),
     Test(Box<Mutex<MetricsReporter>>),
 }
 

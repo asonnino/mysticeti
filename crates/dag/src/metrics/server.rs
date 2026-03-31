@@ -7,7 +7,7 @@ use axum::{extract::State, http::StatusCode, routing::get, Router};
 use prometheus::{Registry, TextEncoder};
 use tokio::net::TcpListener;
 
-use crate::runtime::{Handle, JoinHandle};
+use tokio::{runtime::Handle, task::JoinHandle};
 
 pub const METRICS_ROUTE: &str = "/metrics";
 

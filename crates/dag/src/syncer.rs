@@ -12,7 +12,6 @@ use crate::{
     core::Core,
     data::Data,
     metrics::Metrics,
-    runtime::timestamp_utc,
     types::{AuthorityIndex, RoundNumber, StatementBlock},
 };
 
@@ -113,7 +112,7 @@ impl<C: Ctx> Syncer<C> {
             }; // No need to commit after epoch is safe to close
 
             let newly_committed = self.core.try_commit();
-            let utc_now = timestamp_utc();
+            let utc_now = C::timestamp_utc();
             if !newly_committed.is_empty() {
                 let committed_refs: Vec<_> = newly_committed
                     .iter()

@@ -3,7 +3,6 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    marker::PhantomData,
     sync::Arc,
     time::Duration,
 };
@@ -16,18 +15,16 @@ use crate::{
     context::Ctx,
     data::Data,
     metrics::Metrics,
-    runtime::{self, TimeInstant},
     storage::BlockReader,
     transactions_generator,
     types::{BaseStatement, BlockReference, StatementBlock, Transaction, TransactionLocator},
 };
 
 pub struct RealBlockHandler<C: Ctx> {
-    pub transaction_time: Arc<Mutex<HashMap<TransactionLocator, TimeInstant>>>,
+    pub transaction_time: Arc<Mutex<HashMap<TransactionLocator, C::Instant>>>,
     metrics: Arc<Metrics>,
     receiver: mpsc::Receiver<Vec<Transaction>>,
     pending_transactions: usize,
-    _ctx: PhantomData<C>,
 }
 
 /// The max number of transactions per block.
@@ -42,7 +39,6 @@ impl<C: Ctx> RealBlockHandler<C> {
             metrics,
             receiver,
             pending_transactions: 0, // todo - need to initialize correctly when loaded from disk
-            _ctx: PhantomData,
         };
         (this, sender)
     }
@@ -75,7 +71,7 @@ impl<C: Ctx> RealBlockHandler<C> {
         let mut transaction_time = self.transaction_time.lock();
         let mut count = 0usize;
         for (locator, _) in block.shared_transactions() {
-            transaction_time.insert(locator, TimeInstant::now());
+            transaction_time.insert(locator, C::now());
             count += 1;
         }
         self.pending_transactions -= count;
@@ -84,31 +80,29 @@ impl<C: Ctx> RealBlockHandler<C> {
     pub fn cleanup(&self) {
         let _timer = self.metrics.block_handler_cleanup_utilization_timer();
         let mut l = self.transaction_time.lock();
-        l.retain(|_k, v| v.elapsed() < Duration::from_secs(10));
+        l.retain(|_k, v| C::elapsed(v) < Duration::from_secs(10));
     }
 }
 
 pub struct CommitHandler<C: Ctx> {
     commit_interpreter: Linearizer,
     committed_leaders: Vec<BlockReference>,
-    start_time: TimeInstant,
-    transaction_time: Arc<Mutex<HashMap<TransactionLocator, TimeInstant>>>,
+    start_time: C::Instant,
+    transaction_time: Arc<Mutex<HashMap<TransactionLocator, C::Instant>>>,
     metrics: Arc<Metrics>,
-    _ctx: PhantomData<C>,
 }
 
 impl<C: Ctx> CommitHandler<C> {
     pub fn new(
-        transaction_time: Arc<Mutex<HashMap<TransactionLocator, TimeInstant>>>,
+        transaction_time: Arc<Mutex<HashMap<TransactionLocator, C::Instant>>>,
         metrics: Arc<Metrics>,
     ) -> Self {
         Self {
             commit_interpreter: Linearizer::new(),
             committed_leaders: vec![],
-            start_time: TimeInstant::now(),
+            start_time: C::now(),
             transaction_time,
             metrics,
-            _ctx: PhantomData,
         }
     }
 
@@ -116,30 +110,25 @@ impl<C: Ctx> CommitHandler<C> {
         &self.committed_leaders
     }
 
-    /// Note: these metrics are used to compute performance during benchmarks.
     fn update_metrics(
         &self,
-        block_creation: Option<&TimeInstant>,
+        block_creation: Option<&C::Instant>,
         current_timestamp: Duration,
         transaction: &Transaction,
     ) {
-        // Record inter-block latency.
         if let Some(instant) = block_creation {
-            let latency = instant.elapsed();
+            let latency = C::elapsed(instant);
             self.metrics.observe_transaction_committed_latency(latency);
             self.metrics
                 .observe_inter_block_latency_s("shared", latency.as_secs_f64());
         }
 
-        // Record benchmark start time.
-        let time_from_start = self.start_time.elapsed();
+        let time_from_start = C::elapsed(&self.start_time);
         let benchmark_duration = self.metrics.benchmark_duration_secs();
         if let Some(delta) = time_from_start.as_secs().checked_sub(benchmark_duration) {
             self.metrics.inc_benchmark_duration_by(delta);
         }
 
-        // Record end-to-end latency. The first 8 bytes of the transaction are the timestamp of the
-        // transaction submission.
         let tx_submission_timestamp = transactions_generator::extract_timestamp(transaction);
         let latency = current_timestamp.saturating_sub(tx_submission_timestamp);
         let square_latency = latency.as_secs_f64().powf(2.0);
@@ -154,7 +143,7 @@ impl<C: Ctx> CommitHandler<C> {
         block_reader: &BlockReader,
         committed_leaders: Vec<Data<StatementBlock>>,
     ) -> Vec<CommittedSubDag> {
-        let current_timestamp = runtime::timestamp_utc();
+        let current_timestamp = C::timestamp_utc();
 
         let committed = self
             .commit_interpreter

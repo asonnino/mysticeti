@@ -22,7 +22,6 @@ use crate::{
     data::Data,
     epoch_close::EpochManager,
     metrics::Metrics,
-    runtime::timestamp_utc,
     state::RecoveredState,
     storage::BlockReader,
     storage::Storage,
@@ -246,7 +245,7 @@ impl<C: Ctx> Core<C> {
         }
 
         assert!(!includes.is_empty());
-        let time_ns = timestamp_utc().as_nanos();
+        let time_ns = C::timestamp_utc().as_nanos();
         let block = StatementBlock::new_with_signer(
             self.authority,
             clock_round,
@@ -367,11 +366,12 @@ impl<C: Ctx> Core<C> {
     }
 
     pub fn handle_committed_subdag(&mut self, committed: Vec<CommittedSubDag>) -> Vec<CommitData> {
+        let now = C::timestamp_utc();
         let mut commit_data = vec![];
         for commit in &committed {
             for block in &commit.blocks {
                 self.epoch_manager
-                    .observe_committed_block(block, &self.committee);
+                    .observe_committed_block(block, &self.committee, now);
             }
             commit_data.push(CommitData::from(commit));
         }

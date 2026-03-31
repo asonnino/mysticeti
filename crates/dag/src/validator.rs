@@ -18,7 +18,6 @@ use crate::{
     metrics::{self, Metrics},
     net_sync::NetworkSyncer,
     network::Network,
-    runtime::{JoinError, JoinHandle},
     storage::Storage,
     transactions_generator::TransactionGenerator,
     types::AuthorityIndex,
@@ -26,7 +25,7 @@ use crate::{
 
 pub struct Validator {
     network_synchronizer: NetworkSyncer<TokioCtx>,
-    metrics_handle: JoinHandle<()>,
+    metrics_handle: tokio::task::JoinHandle<()>,
 }
 
 impl Validator {
@@ -112,7 +111,12 @@ impl Validator {
         })
     }
 
-    pub async fn await_completion(self) -> (Result<(), JoinError>, Result<(), JoinError>) {
+    pub async fn await_completion(
+        self,
+    ) -> (
+        Result<(), tokio::task::JoinError>,
+        Result<(), tokio::task::JoinError>,
+    ) {
         tokio::join!(
             self.network_synchronizer.await_completion(),
             self.metrics_handle

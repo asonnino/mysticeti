@@ -1,15 +1,17 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc,
+use std::{
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+    time::Duration,
 };
 
 use crate::{
     committee::{Committee, QuorumThreshold, StakeAggregator},
     data::Data,
-    runtime::timestamp_utc,
     types::{InternalEpochStatus, StatementBlock},
 };
 
@@ -35,13 +37,18 @@ impl EpochManager {
         }
     }
 
-    pub fn observe_committed_block(&mut self, block: &Data<StatementBlock>, committee: &Committee) {
+    pub fn observe_committed_block(
+        &mut self,
+        block: &Data<StatementBlock>,
+        committee: &Committee,
+        now: Duration,
+    ) {
         if block.epoch_changed() {
             let is_quorum = self.change_aggregator.add(block.author(), committee);
             if is_quorum && (self.epoch_status != InternalEpochStatus::SafeToClose) {
                 assert!(self.epoch_status == InternalEpochStatus::BeginChange);
                 self.epoch_close_time
-                    .store(timestamp_utc().as_millis() as u64, Ordering::Relaxed);
+                    .store(now.as_millis() as u64, Ordering::Relaxed);
                 tracing::info!("Epoch is now safe to close");
             }
         }

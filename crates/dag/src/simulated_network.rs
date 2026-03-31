@@ -8,9 +8,9 @@ use tokio::sync::mpsc;
 
 use crate::{
     committee::Committee,
+    context::{Ctx, SimulatedCtx},
     future_simulator::SimulatorContext,
     network::{Connection, Network},
-    runtime,
 };
 
 pub struct SimulatedNetwork {
@@ -76,12 +76,10 @@ impl SimulatedNetwork {
     fn latency_channel<T: Send + 'static + Debug>() -> (mpsc::Sender<T>, mpsc::Receiver<T>) {
         let (buf_sender, mut buf_receiver) = mpsc::channel(16);
         let (sender, receiver) = mpsc::channel(16);
-        runtime::Handle::current().spawn(async move {
+        SimulatedCtx::spawn(async move {
             while let Some(message) = buf_receiver.recv().await {
                 let latency = SimulatorContext::with_rng(|rng| rng.gen_range(Self::LATENCY_RANGE));
-                // println!("{} {:?} lat {latency:?}", SimulatorContext::time().as_millis(), message);
-                runtime::sleep(latency).await;
-                // println!("{} snd {:?} lat {latency:?}", SimulatorContext::time().as_millis(), message);
+                SimulatedCtx::sleep(latency).await;
                 if sender.send(message).await.is_err() {
                     return;
                 }
