@@ -147,7 +147,6 @@ impl<C: Ctx> Syncer<C> {
 }
 
 #[cfg(test)]
-#[cfg(feature = "simulator")]
 mod tests {
     use std::{ops::Range, time::Duration};
 

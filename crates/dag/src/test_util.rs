@@ -157,7 +157,7 @@ pub fn simulated_network_syncers_with_epoch_duration(
             core.metrics.clone(),
         );
         let node_context = OverrideNodeContext::enter(Some(core.authority()));
-        let network_syncer = NetworkSyncer::start(
+        let network_syncer = NetworkSyncer::start_for_test(
             network,
             core,
             3,

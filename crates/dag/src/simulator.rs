@@ -100,7 +100,7 @@ impl<'a, E: SimulatorState + 'static> Drop for SchedulerEnterGuard<'a, E> {
 
 thread_local! {
     static SCHEDULER: RefCell<Option<Box<dyn Any>>> = RefCell::new(None);
-    static SIMULATOR_TIME: Cell<Duration> = Cell::new(Duration::ZERO);
+    static SIMULATOR_TIME: Cell<Duration> = const {Cell::new(Duration::ZERO)};
 }
 
 pub fn simulator_time() -> Duration {

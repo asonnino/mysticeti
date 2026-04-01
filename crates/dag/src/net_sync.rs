@@ -54,16 +54,60 @@ pub struct NetworkSyncerInner<C: Ctx> {
 impl<C: Ctx> NetworkSyncer<C> {
     pub fn start(
         network: Network,
+        core: Core<C>,
+        commit_period: u64,
+        commit_handler: CommitHandler<C>,
+        shutdown_grace_period: Duration,
+        metrics: Arc<Metrics>,
+        public_config: &NodePublicConfig,
+    ) -> Self {
+        Self::start_inner(
+            network,
+            core,
+            commit_period,
+            commit_handler,
+            shutdown_grace_period,
+            metrics,
+            public_config,
+            CoreThreadDispatcher::start,
+        )
+    }
+
+    #[cfg(any(test, feature = "simulator"))]
+    pub fn start_for_test(
+        network: Network,
+        core: Core<C>,
+        commit_period: u64,
+        commit_handler: CommitHandler<C>,
+        shutdown_grace_period: Duration,
+        metrics: Arc<Metrics>,
+        public_config: &NodePublicConfig,
+    ) -> Self {
+        Self::start_inner(
+            network,
+            core,
+            commit_period,
+            commit_handler,
+            shutdown_grace_period,
+            metrics,
+            public_config,
+            CoreThreadDispatcher::new_for_test,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn start_inner(
+        network: Network,
         mut core: Core<C>,
         commit_period: u64,
         mut commit_handler: CommitHandler<C>,
         shutdown_grace_period: Duration,
         metrics: Arc<Metrics>,
         public_config: &NodePublicConfig,
+        make_dispatcher: fn(Syncer<C>) -> CoreThreadDispatcher<C>,
     ) -> Self {
         let authority_index = core.authority();
         let notify = Arc::new(Notify::new());
-        // todo - ugly, probably need to merge syncer and core
         let committed = core.take_recovered_committed_blocks();
         commit_handler.recover_committed(committed);
         let committee = core.committee().clone();
@@ -78,7 +122,7 @@ impl<C: Ctx> NetworkSyncer<C> {
             metrics.clone(),
         );
         syncer.force_new_block(0);
-        let syncer = CoreThreadDispatcher::start(syncer);
+        let syncer = make_dispatcher(syncer);
         let (stop_sender, stop_receiver) = mpsc::channel(1);
         // Occupy the only available permit, so that all
         // other calls to send() will block.
@@ -362,7 +406,6 @@ mod tests {
 }
 
 #[cfg(test)]
-#[cfg(feature = "simulator")]
 mod sim_tests {
     use std::{sync::atomic::Ordering, time::Duration};
 
@@ -482,7 +525,7 @@ mod sim_tests {
         let (simulated_network, network_syncers) = simulated_network_syncers(10);
         // Disconnect all A from all peers except for B.
         simulated_network
-            .connect_some(|a, b| a != 0 || (a == 0 && b == 1))
+            .connect_some(|a, b| a != 0 || b == 1)
             .await;
 
         println!("Started");
