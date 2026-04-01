@@ -340,7 +340,6 @@ impl<C: Ctx> NetworkSyncerInner<C> {
 }
 
 #[cfg(test)]
-#[cfg(not(feature = "simulator"))]
 mod tests {
     use std::time::Duration;
 
@@ -370,7 +369,7 @@ mod sim_tests {
     use super::NetworkSyncer;
     use crate::{
         config,
-        context::{Ctx, DefaultCtx},
+        context::{Ctx, SimulatedCtx},
         future_simulator::SimulatedExecutorState,
         simulator_tracing::setup_simulator_tracing,
         syncer::Syncer,
@@ -381,8 +380,8 @@ mod sim_tests {
     };
 
     async fn wait_for_epoch_to_close(
-        network_syncers: Vec<NetworkSyncer<DefaultCtx>>,
-    ) -> Vec<Syncer<DefaultCtx>> {
+        network_syncers: Vec<NetworkSyncer<SimulatedCtx>>,
+    ) -> Vec<Syncer<SimulatedCtx>> {
         let mut any_closed = false;
         while !any_closed {
             for net_sync in network_syncers.iter() {
@@ -390,9 +389,9 @@ mod sim_tests {
                     any_closed = true;
                 }
             }
-            DefaultCtx::sleep(Duration::from_secs(10)).await;
+            SimulatedCtx::sleep(Duration::from_secs(10)).await;
         }
-        DefaultCtx::sleep(config::node_defaults::default_shutdown_grace_period()).await;
+        SimulatedCtx::sleep(config::node_defaults::default_shutdown_grace_period()).await;
         let mut syncers = vec![];
         for net_sync in network_syncers {
             let syncer = net_sync.shutdown().await;
@@ -429,7 +428,7 @@ mod sim_tests {
     async fn test_network_sync_sim_all_up_async() {
         let (simulated_network, network_syncers) = simulated_network_syncers(10);
         simulated_network.connect_all().await;
-        DefaultCtx::sleep(Duration::from_secs(20)).await;
+        SimulatedCtx::sleep(Duration::from_secs(20)).await;
         let mut syncers = vec![];
         for network_syncer in network_syncers {
             let syncer = network_syncer.shutdown().await;
@@ -452,7 +451,7 @@ mod sim_tests {
         let (simulated_network, network_syncers) = simulated_network_syncers(10);
         simulated_network.connect_some(|a, _b| a != 0).await;
         println!("Started");
-        DefaultCtx::sleep(Duration::from_secs(40)).await;
+        SimulatedCtx::sleep(Duration::from_secs(40)).await;
         println!("Done");
         let mut syncers = vec![];
         for network_syncer in network_syncers {
@@ -487,7 +486,7 @@ mod sim_tests {
             .await;
 
         println!("Started");
-        DefaultCtx::sleep(Duration::from_secs(40)).await;
+        SimulatedCtx::sleep(Duration::from_secs(40)).await;
         println!("Done");
         let mut syncers = vec![];
         for network_syncer in network_syncers {

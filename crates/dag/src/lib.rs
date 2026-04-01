@@ -13,18 +13,17 @@ mod core_thread;
 mod crypto;
 mod data;
 mod epoch_close;
-#[cfg(feature = "simulator")]
+#[cfg(any(test, feature = "simulator"))]
 mod future_simulator;
 pub mod metrics;
 pub mod net_sync;
 pub mod network;
 mod serde;
-#[cfg(test)]
-#[cfg(feature = "simulator")]
+#[cfg(any(test, feature = "simulator"))]
 mod simulated_network;
-#[cfg(feature = "simulator")]
+#[cfg(any(test, feature = "simulator"))]
 mod simulator;
-#[cfg(feature = "simulator")]
+#[cfg(any(test, feature = "simulator"))]
 mod simulator_tracing;
 pub(crate) use storage::state;
 mod storage;

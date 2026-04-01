@@ -155,14 +155,14 @@ mod wal_syncer_tokio {
     }
 }
 
-#[cfg(feature = "simulator")]
+#[cfg(any(test, feature = "simulator"))]
 pub struct SimulatedCtx;
 
-#[cfg(feature = "simulator")]
+#[cfg(any(test, feature = "simulator"))]
 #[derive(Clone)]
 pub struct SimInstant(Duration);
 
-#[cfg(feature = "simulator")]
+#[cfg(any(test, feature = "simulator"))]
 impl Ctx for SimulatedCtx {
     type Instant = SimInstant;
     type Interval = Duration;
@@ -211,8 +211,3 @@ impl Ctx for SimulatedCtx {
         oneshot::channel().1
     }
 }
-
-#[cfg(not(feature = "simulator"))]
-pub type DefaultCtx = TokioCtx;
-#[cfg(feature = "simulator")]
-pub type DefaultCtx = SimulatedCtx;

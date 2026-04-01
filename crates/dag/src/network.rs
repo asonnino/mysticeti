@@ -51,7 +51,7 @@ pub struct Connection {
 }
 
 impl Network {
-    #[cfg(feature = "simulator")]
+    #[cfg(any(test, feature = "simulator"))]
     pub(crate) fn new_from_raw(connection_receiver: mpsc::Receiver<Connection>) -> Self {
         Self {
             connection_receiver,

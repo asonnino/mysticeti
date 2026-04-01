@@ -129,7 +129,6 @@ impl Validator {
 }
 
 #[cfg(test)]
-#[cfg(not(feature = "simulator"))]
 mod smoke_tests {
     use std::{collections::VecDeque, fs, net::SocketAddr, time::Duration};
 

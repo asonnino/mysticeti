@@ -314,7 +314,6 @@ mod test {
     }
 
     #[test]
-    #[cfg(not(feature = "simulator"))]
     #[should_panic(expected = "collect() is only available on test metrics")]
     fn collect_panics_without_registry() {
         let runtime = tokio::runtime::Runtime::new().unwrap();

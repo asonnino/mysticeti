@@ -1,9 +1,8 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-#[cfg(feature = "simulator")]
+#[cfg(any(test, feature = "simulator"))]
 mod simulated;
-#[cfg(not(feature = "simulator"))]
 mod spawned;
 
 #[cfg(feature = "simulator")]
