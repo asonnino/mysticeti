@@ -10,8 +10,10 @@ use tokio::sync::mpsc;
 use crate::{
     context::Ctx,
     metrics::Metrics,
-    net_sync::{self, NetworkSyncerInner},
-    network::NetworkMessage,
+    sync::{
+        net_sync::{self, NetworkSyncerInner},
+        network::NetworkMessage,
+    },
     types::{AuthorityIndex, BlockReference, RoundNumber},
 };
 

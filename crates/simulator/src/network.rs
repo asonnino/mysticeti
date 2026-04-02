@@ -10,7 +10,7 @@ use super::context::SimulatedCtx;
 use super::executor::SimulatorContext;
 use dag::committee::Committee;
 use dag::context::Ctx;
-use dag::network::{Connection, Network};
+use dag::sync::network::{Connection, Network};
 
 pub struct SimulatedNetwork {
     senders: Vec<mpsc::Sender<Connection>>,

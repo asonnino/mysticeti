@@ -12,11 +12,9 @@ pub mod consensus;
 pub mod context;
 pub mod core;
 pub mod metrics;
-pub mod net_sync;
-pub mod network;
 pub(crate) use storage::state;
 pub mod storage;
-mod synchronizer;
+pub mod sync;
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_util;
 mod transactions_generator;

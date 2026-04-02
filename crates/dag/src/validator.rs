@@ -18,9 +18,8 @@ use crate::{
         Core, CoreOptions,
     },
     metrics::{self, Metrics},
-    net_sync::NetworkSyncer,
-    network::Network,
     storage::Storage,
+    sync::{net_sync::NetworkSyncer, network::Network},
     transactions_generator::TransactionGenerator,
     types::AuthorityIndex,
 };

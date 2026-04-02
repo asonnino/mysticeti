@@ -21,9 +21,8 @@ use crate::{
     },
     data::Data,
     metrics::Metrics,
-    net_sync::NetworkSyncer,
-    network::Network,
     storage::{BlockReader, Storage, WalPosition},
+    sync::{net_sync::NetworkSyncer, network::Network},
     types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
 };
 

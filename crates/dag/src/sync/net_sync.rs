@@ -20,9 +20,11 @@ use crate::{
         Core,
     },
     metrics::Metrics,
-    network::{Connection, Network, NetworkMessage},
     storage::BlockReader,
-    synchronizer::{BlockDisseminator, BlockFetcher, SynchronizerParameters},
+    sync::{
+        network::{Connection, Network, NetworkMessage},
+        synchronizer::{BlockDisseminator, BlockFetcher, SynchronizerParameters},
+    },
     types::{format_authority_index, AuthorityIndex},
 };
 

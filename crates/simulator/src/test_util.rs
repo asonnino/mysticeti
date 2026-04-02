@@ -7,7 +7,7 @@ use super::network::SimulatedNetwork;
 use dag::config::NodePublicConfig;
 use dag::core::block_handler::CommitHandler;
 use dag::metrics::Metrics;
-use dag::net_sync::NetworkSyncer;
+use dag::sync::net_sync::NetworkSyncer;
 use dag::test_util::committee_and_cores;
 
 pub fn simulated_network_syncers(n: usize) -> (SimulatedNetwork, Vec<NetworkSyncer<SimulatedCtx>>) {
