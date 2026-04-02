@@ -10,16 +10,18 @@ use tokio::{
 };
 
 use crate::{
-    block_handler::CommitHandler,
     committee::Committee,
     config::NodePublicConfig,
     context::Ctx,
-    core::Core,
-    core_thread::CoreThreadDispatcher,
+    core::{
+        block_handler::CommitHandler,
+        core_thread::CoreThreadDispatcher,
+        syncer::{Syncer, SyncerSignals},
+        Core,
+    },
     metrics::Metrics,
     network::{Connection, Network, NetworkMessage},
     storage::BlockReader,
-    syncer::{Syncer, SyncerSignals},
     synchronizer::{BlockDisseminator, BlockFetcher, SynchronizerParameters},
     types::{format_authority_index, AuthorityIndex},
 };

@@ -8,11 +8,11 @@ use tokio::sync::{mpsc, oneshot};
 #[cfg(any(test, feature = "simulator"))]
 use parking_lot::Mutex;
 
+use super::syncer::Syncer;
 use crate::{
     context::Ctx,
     data::Data,
     metrics::Metrics,
-    syncer::Syncer,
     types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
 };
 

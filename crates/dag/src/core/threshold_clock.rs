@@ -84,9 +84,9 @@ mod tests {
     use super::*;
     use crate::types::Dag;
 
-    // Make a committee with 4 authorities each with Stake 1, and a block with 3 includes at round number zero
-    // check that if the includes are blocks the threshold_clock_valid returns false, but if it is only base statements
-    // it succeeds
+    // Make a committee with 4 authorities each with Stake 1, and a block with 3 includes at round
+    // number zero check that if the includes are blocks the threshold_clock_valid returns false,
+    // but if it is only base statements it succeeds
     #[test]
     fn test_threshold_clock_valid() {
         let committee = Committee::new_test(vec![1, 1, 1, 1]);

@@ -6,10 +6,9 @@ use std::sync::Arc;
 
 use tokio::sync::Notify;
 
+use super::{block_handler::CommitHandler, Core};
 use crate::{
-    block_handler::CommitHandler,
     context::Ctx,
-    core::Core,
     data::Data,
     metrics::Metrics,
     types::{AuthorityIndex, RoundNumber, StatementBlock},

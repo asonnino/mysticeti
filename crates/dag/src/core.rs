@@ -1,15 +1,23 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+pub mod block_handler;
+mod block_manager;
+pub mod core_thread;
+pub mod syncer;
+pub(crate) mod threshold_clock;
+
 use std::{
     collections::{HashSet, VecDeque},
     mem,
     sync::Arc,
 };
 
+use self::{
+    block_handler::RealBlockHandler, block_manager::BlockManager,
+    threshold_clock::ThresholdClockAggregator,
+};
 use crate::{
-    block_handler::RealBlockHandler,
-    block_manager::BlockManager,
     block_store::{CommitData, OwnBlockData},
     committee::Committee,
     config::{NodePrivateConfig, NodePublicConfig},
@@ -24,7 +32,6 @@ use crate::{
     state::RecoveredState,
     storage::BlockReader,
     storage::Storage,
-    threshold_clock::ThresholdClockAggregator,
     types::{AuthorityIndex, BaseStatement, BlockReference, RoundNumber, StatementBlock},
     wal::{WalPosition, WalSyncer},
 };
@@ -417,11 +424,11 @@ impl CoreOptions {
 mod test {
     use rand::{prelude::StdRng, Rng, SeedableRng};
 
+    use super::threshold_clock;
     use super::*;
     use crate::{
         context::TokioCtx,
         test_util::{committee_and_cores, committee_and_cores_persisted},
-        threshold_clock,
     };
 
     #[test]

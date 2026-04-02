@@ -10,11 +10,13 @@ use ::prometheus::Registry;
 use eyre::{eyre, Context, Result};
 
 use crate::{
-    block_handler::{CommitHandler, RealBlockHandler},
     committee::Committee,
     config::{ClientParameters, NodePrivateConfig, NodePublicConfig},
     context::TokioCtx,
-    core::{Core, CoreOptions},
+    core::{
+        block_handler::{CommitHandler, RealBlockHandler},
+        Core, CoreOptions,
+    },
     metrics::{self, Metrics},
     net_sync::NetworkSyncer,
     network::Network,

@@ -11,17 +11,19 @@ use futures::future::join_all;
 use rand::{rngs::StdRng, SeedableRng};
 
 use crate::{
-    block_handler::{CommitHandler, RealBlockHandler},
     committee::Committee,
     config::{NodePrivateConfig, NodePublicConfig},
     context::{Ctx, TokioCtx},
-    core::{Core, CoreOptions},
+    core::{
+        block_handler::{CommitHandler, RealBlockHandler},
+        syncer::Syncer,
+        Core, CoreOptions,
+    },
     data::Data,
     metrics::Metrics,
     net_sync::NetworkSyncer,
     network::Network,
     storage::{BlockReader, Storage, WalPosition},
-    syncer::Syncer,
     types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
 };
 

@@ -30,7 +30,7 @@ use super::{
     crypto::{AsBytes, CryptoHash, SignatureBytes, Signer},
     data::Data,
 };
-use crate::{committee::Committee, threshold_clock::threshold_clock_valid_non_genesis};
+use crate::{committee::Committee, core::threshold_clock::threshold_clock_valid_non_genesis};
 
 #[derive(Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Default)]
 pub struct BlockReference {

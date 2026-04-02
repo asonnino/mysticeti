@@ -4,8 +4,8 @@
 use super::context::SimulatedCtx;
 use super::executor::OverrideNodeContext;
 use super::network::SimulatedNetwork;
-use dag::block_handler::CommitHandler;
 use dag::config::NodePublicConfig;
+use dag::core::block_handler::CommitHandler;
 use dag::metrics::Metrics;
 use dag::net_sync::NetworkSyncer;
 use dag::test_util::committee_and_cores;
