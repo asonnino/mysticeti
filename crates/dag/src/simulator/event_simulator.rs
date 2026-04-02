@@ -79,7 +79,6 @@ where
 
     fn run_event(&mut self, state: usize, event: S::Event) {
         Scheduler::<S::Event>::enter(self.time, self.rng.take().unwrap());
-        // Exiting scheduler in the drop handler to make sure it rungs even if handle_event panics
         let guard = SchedulerEnterGuard { simulator: self };
         let state = &mut guard.simulator.states[state];
         state.handle_event(event);
@@ -156,12 +155,10 @@ impl<S: SimulatorState> Drop for Simulator<S>
 where
     S::Event: 'static,
 {
-    /// Drop simulator states in the context of the scheduler
-    /// This is mostly needed for future_simulator because some futures trigger waker while dropping
     fn drop(&mut self) {
         Scheduler::<S::Event>::enter(self.time, self.rng.take().unwrap());
         self.states.clear();
-        Scheduler::<S::Event>::exit(); // all scheduled events are ignored
+        Scheduler::<S::Event>::exit();
         SIMULATOR_TIME.with(|cell| cell.set(Duration::ZERO));
     }
 }
@@ -172,8 +169,6 @@ struct ScheduledEvent<E> {
     event: E,
 }
 
-// PartialOrd and Ord are implemented as inverse order on self.time
-// This is because rust's BinaryHeap is a max heap, and we care about events with lowest time
 impl<E> PartialOrd for ScheduledEvent<E> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))

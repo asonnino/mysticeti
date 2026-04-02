@@ -5,7 +5,7 @@ use std::{fmt::Debug, future::Future, time::Duration};
 
 use tokio::sync::{mpsc, oneshot};
 
-use crate::wal::WalSyncer;
+use crate::storage::WalSyncer;
 
 pub trait Ctx: Send + Sync + 'static {
     fn timestamp_utc() -> Duration;
@@ -98,7 +98,7 @@ mod wal_syncer_tokio {
         sync::{mpsc, oneshot},
     };
 
-    use crate::wal::WalSyncer;
+    use crate::storage::WalSyncer;
 
     struct AsyncWalSyncer {
         wal_syncer: WalSyncer,
@@ -152,62 +152,5 @@ mod wal_syncer_tokio {
                 }
             }
         }
-    }
-}
-
-#[cfg(any(test, feature = "simulator"))]
-pub struct SimulatedCtx;
-
-#[cfg(any(test, feature = "simulator"))]
-#[derive(Clone)]
-pub struct SimInstant(Duration);
-
-#[cfg(any(test, feature = "simulator"))]
-impl Ctx for SimulatedCtx {
-    type Instant = SimInstant;
-    type Interval = Duration;
-    type JoinHandle<T: Send + 'static> = crate::future_simulator::JoinHandle<T>;
-    type JoinError = crate::future_simulator::JoinError;
-
-    fn timestamp_utc() -> Duration {
-        crate::future_simulator::SimulatorContext::time()
-    }
-
-    fn sleep(duration: Duration) -> impl Future<Output = ()> + Send {
-        crate::future_simulator::Sleep::new(duration)
-    }
-
-    fn now() -> Self::Instant {
-        SimInstant(crate::future_simulator::SimulatorContext::time())
-    }
-
-    fn elapsed(instant: &Self::Instant) -> Duration {
-        crate::future_simulator::SimulatorContext::time() - instant.0
-    }
-
-    fn interval(period: Duration) -> Self::Interval {
-        period
-    }
-
-    fn interval_tick(interval: &mut Self::Interval) -> impl Future<Output = ()> + Send {
-        crate::future_simulator::Sleep::new(*interval)
-    }
-
-    fn spawn<T: Send + 'static>(
-        f: impl Future<Output = T> + Send + 'static,
-    ) -> Self::JoinHandle<T> {
-        crate::future_simulator::simulator_spawn(f)
-    }
-
-    fn abort<T: Send + 'static>(handle: &Self::JoinHandle<T>) {
-        handle.abort();
-    }
-
-    fn start_wal_syncer(
-        _wal_syncer: WalSyncer,
-        _stop: mpsc::Sender<()>,
-        _epoch_signal: mpsc::Sender<()>,
-    ) -> oneshot::Receiver<()> {
-        oneshot::channel().1
     }
 }

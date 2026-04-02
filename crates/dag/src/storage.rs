@@ -17,11 +17,12 @@ use crate::{
 
 use self::{
     block_store::{CommitData, OwnBlockData, WAL_ENTRY_BLOCK, WAL_ENTRY_COMMIT, WAL_ENTRY_PAYLOAD},
-    state::RecoveredState,
-    wal::{open_file_for_wal, walf, WalPosition, WalSyncer, WalWriter},
+    wal::{open_file_for_wal, walf, WalWriter},
 };
 
 pub use self::block_store::BlockReader;
+pub use self::state::RecoveredState;
+pub use self::wal::{WalPosition, WalSyncer};
 
 pub struct Storage {
     wal_writer: WalWriter,
@@ -42,7 +43,7 @@ impl Storage {
         Ok((Self { wal_writer, reader }, recovered))
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-utils"))]
     pub fn new_for_tests(
         authority: AuthorityIndex,
         metrics: Arc<Metrics>,

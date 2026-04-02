@@ -6,19 +6,17 @@ use std::{fmt::Debug, ops::Range, time::Duration};
 use rand::Rng;
 use tokio::sync::mpsc;
 
-use crate::{
-    committee::Committee,
-    context::{Ctx, SimulatedCtx},
-    future_simulator::SimulatorContext,
-    network::{Connection, Network},
-};
+use super::context::SimulatedCtx;
+use super::executor::SimulatorContext;
+use crate::committee::Committee;
+use crate::context::Ctx;
+use crate::network::{Connection, Network};
 
 pub struct SimulatedNetwork {
     senders: Vec<mpsc::Sender<Connection>>,
 }
 
 impl SimulatedNetwork {
-    // This is one way latency distribution, e.g. 1/2 RTT
     const LATENCY_RANGE: Range<Duration> = Duration::from_millis(50)..Duration::from_millis(100);
 
     pub fn new(committee: &Committee) -> (SimulatedNetwork, Vec<Network>) {
@@ -43,7 +41,6 @@ impl SimulatedNetwork {
         }
     }
 
-    /// Connects some peers, for which given should_connect function returns true
     pub async fn connect_some<F: Fn(usize, usize) -> bool>(&self, should_connect: F) {
         for a in 0..self.senders.len() {
             for b in a + 1..self.senders.len() {

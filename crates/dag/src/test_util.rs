@@ -14,19 +14,15 @@ use crate::{
     block_handler::{CommitHandler, RealBlockHandler},
     committee::Committee,
     config::{self, NodePrivateConfig, NodePublicConfig},
-    context::{Ctx, SimulatedCtx, TokioCtx},
+    context::{Ctx, TokioCtx},
     core::{Core, CoreOptions},
     data::Data,
-    future_simulator::OverrideNodeContext,
     metrics::Metrics,
     net_sync::NetworkSyncer,
     network::Network,
-    simulated_network::SimulatedNetwork,
-    storage::BlockReader,
-    storage::Storage,
-    syncer::{Syncer, SyncerSignals},
+    storage::{BlockReader, Storage, WalPosition},
+    syncer::Syncer,
     types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
-    wal::WalPosition,
 };
 
 pub fn committee(n: usize) -> Arc<Committee> {
@@ -96,29 +92,6 @@ fn committee_and_cores_with_config<C: Ctx>(
     (committee, cores)
 }
 
-pub fn committee_and_syncers(n: usize) -> (Arc<Committee>, Vec<Syncer<SimulatedCtx>>) {
-    let (committee, cores) = committee_and_cores::<SimulatedCtx>(n);
-    (
-        committee.clone(),
-        cores
-            .into_iter()
-            .map(|core| {
-                let commit_handler = CommitHandler::new(
-                    core.block_handler().transaction_time.clone(),
-                    Metrics::new_for_test(0),
-                );
-                Syncer::new(
-                    core,
-                    3,
-                    SyncerSignals::test(),
-                    commit_handler,
-                    Metrics::new_for_test(0),
-                )
-            })
-            .collect(),
-    )
-}
-
 pub async fn networks_and_addresses(metrics: &[Arc<Metrics>]) -> (Vec<Network>, Vec<SocketAddr>) {
     let host = Ipv4Addr::LOCALHOST;
     let addresses: Vec<_> = (0..metrics.len())
@@ -134,42 +107,6 @@ pub async fn networks_and_addresses(metrics: &[Arc<Metrics>]) -> (Vec<Network>, 
             });
     let networks = join_all(networks).await;
     (networks, addresses)
-}
-
-pub fn simulated_network_syncers(n: usize) -> (SimulatedNetwork, Vec<NetworkSyncer<SimulatedCtx>>) {
-    simulated_network_syncers_with_epoch_duration(
-        n,
-        config::node_defaults::default_rounds_in_epoch(),
-    )
-}
-
-pub fn simulated_network_syncers_with_epoch_duration(
-    n: usize,
-    rounds_in_epoch: RoundNumber,
-) -> (SimulatedNetwork, Vec<NetworkSyncer<SimulatedCtx>>) {
-    let (committee, cores) = committee_and_cores_epoch_duration::<SimulatedCtx>(n, rounds_in_epoch);
-    let (simulated_network, networks) = SimulatedNetwork::new(&committee);
-    let public_config = config::NodePublicConfig::new_for_tests(n);
-    let mut network_syncers = vec![];
-    for (network, core) in networks.into_iter().zip(cores.into_iter()) {
-        let commit_handler = CommitHandler::new(
-            core.block_handler().transaction_time.clone(),
-            core.metrics.clone(),
-        );
-        let node_context = OverrideNodeContext::enter(Some(core.authority()));
-        let network_syncer = NetworkSyncer::start_for_test(
-            network,
-            core,
-            3,
-            commit_handler,
-            config::node_defaults::default_shutdown_grace_period(),
-            Metrics::new_for_test(0),
-            &public_config,
-        );
-        drop(node_context);
-        network_syncers.push(network_syncer);
-    }
-    (simulated_network, network_syncers)
 }
 
 pub async fn network_syncers(n: usize) -> Vec<NetworkSyncer<TokioCtx>> {

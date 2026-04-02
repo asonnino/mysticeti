@@ -9,28 +9,22 @@ pub mod config;
 pub mod consensus;
 pub mod context;
 pub mod core;
-mod core_thread;
+pub mod core_thread;
 mod crypto;
-mod data;
+pub mod data;
 mod epoch_close;
-#[cfg(any(test, feature = "simulator"))]
-mod future_simulator;
 pub mod metrics;
 pub mod net_sync;
 pub mod network;
 mod serde;
 #[cfg(any(test, feature = "simulator"))]
-mod simulated_network;
-#[cfg(any(test, feature = "simulator"))]
-mod simulator;
-#[cfg(any(test, feature = "simulator"))]
-mod simulator_tracing;
+pub mod simulator;
 pub(crate) use storage::state;
-mod storage;
-mod syncer;
+pub mod storage;
+pub mod syncer;
 mod synchronizer;
-#[cfg(test)]
-mod test_util;
+#[cfg(any(test, feature = "test-utils"))]
+pub mod test_util;
 mod threshold_clock;
 mod transactions_generator;
 pub mod types;

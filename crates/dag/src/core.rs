@@ -40,7 +40,7 @@ pub struct Core<C: Ctx> {
     pub(crate) committee: Arc<Committee>,
     last_commit_leader: BlockReference,
     storage: Storage,
-    pub(crate) metrics: Arc<Metrics>,
+    pub metrics: Arc<Metrics>,
     options: CoreOptions,
     signer: Signer,
     // todo - ugly, probably need to merge syncer and core

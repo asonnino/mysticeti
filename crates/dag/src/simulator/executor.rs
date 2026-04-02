@@ -18,10 +18,8 @@ use tokio::{
     sync::{oneshot, Notify},
 };
 
-use crate::{
-    simulator::{Scheduler, Simulator, SimulatorState},
-    types::AuthorityIndex,
-};
+use super::event_simulator::{Scheduler, Simulator, SimulatorState};
+use crate::types::AuthorityIndex;
 
 #[derive(Default)]
 pub struct SimulatedExecutorState {
@@ -60,7 +58,6 @@ impl SimulatedExecutorState {
             node: None,
         };
         let task_id = state.create_task(task);
-        // todo - randomize delay
         simulator.schedule_event(
             Duration::from_nanos(1),
             0,
@@ -69,7 +66,6 @@ impl SimulatedExecutorState {
         join_handle
     }
 
-    /// Spawn the task on simulator and run simulator until it completes
     fn block_on<F: Future<Output = ()> + Send + 'static>(
         simulator: &mut Simulator<SimulatedExecutorState>,
         f: F,
@@ -78,7 +74,6 @@ impl SimulatedExecutorState {
         Self::run_until_complete(simulator, jh);
     }
 
-    /// Run the simulation until the spawned task completes
     fn run_until_complete(
         simulator: &mut Simulator<SimulatedExecutorState>,
         mut jh: JoinHandle<()>,
@@ -120,7 +115,8 @@ pub fn simulator_spawn<R: Send + 'static, F: Future<Output = R> + Send + 'static
 }
 
 thread_local! {
-    static CONTEXT: RefCell<Option<SimulatorContext>> = const { RefCell::new(None) };
+    static CONTEXT: RefCell<Option<SimulatorContext>> =
+        const { RefCell::new(None) };
 }
 
 pub struct SimulatorContext {
@@ -187,7 +183,7 @@ impl SimulatorContext {
 
     #[allow(dead_code)]
     pub fn time() -> Duration {
-        crate::simulator::simulator_time()
+        super::event_simulator::simulator_time()
     }
 }
 
@@ -228,9 +224,6 @@ impl<R> JoinHandle<R> {
         self.abort.notify_one();
     }
 
-    /// todo - this fn is not great(does not check try_recv error type), need to be rewritten
-    // This is organized as consume/return self to avoid re-entrance on success since channel
-    // state is mutated in this case
     fn check_complete(mut self) -> Result<(), Self> {
         if self.ch.try_recv().is_ok() {
             Ok(())
@@ -275,7 +268,6 @@ impl SimulatorState for SimulatedExecutorState {
                 let context = SimulatorContext::exit();
                 for task in context.spawned {
                     let id = self.create_task(task);
-                    // todo - randomize scheduling
                     Scheduler::schedule_event(
                         Duration::from_nanos(id as u64),
                         0,
@@ -295,7 +287,6 @@ impl Wake for Waker {
     }
 
     fn wake_by_ref(self: &Arc<Self>) {
-        // todo - randomize scheduling
         Scheduler::schedule_event(
             Duration::from_nanos(self.0 as u64),
             0,
@@ -331,7 +322,7 @@ impl Future for Sleep {
                 Poll::Pending
             }
             Sleep::WaitingUntil(deadline) => {
-                if crate::simulator::simulator_time() >= *deadline {
+                if super::event_simulator::simulator_time() >= *deadline {
                     Poll::Ready(())
                 } else {
                     Poll::Pending
