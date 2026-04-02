@@ -6,8 +6,6 @@ pub mod event_simulator;
 pub mod executor;
 pub mod network;
 pub mod sim_tracing;
-
-#[cfg(any(test, feature = "test-utils"))]
 pub mod test_util;
 
 #[cfg(test)]

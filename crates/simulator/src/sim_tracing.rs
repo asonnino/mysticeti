@@ -16,7 +16,7 @@ use tracing_subscriber::{
 };
 
 use super::executor::SimulatorContext;
-use crate::types::format_authority_index;
+use dag::types::format_authority_index;
 
 pub fn setup_simulator_tracing() {
     let env_log = env::var("RUST_LOG");

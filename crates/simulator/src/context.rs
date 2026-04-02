@@ -6,8 +6,8 @@ use std::{future::Future, time::Duration};
 use tokio::sync::{mpsc, oneshot};
 
 use super::executor::{simulator_spawn, JoinError, JoinHandle, SimulatorContext, Sleep};
-use crate::context::Ctx;
-use crate::storage::WalSyncer;
+use dag::context::Ctx;
+use dag::storage::WalSyncer;
 
 pub struct SimulatedCtx;
 

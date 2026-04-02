@@ -9,7 +9,10 @@ use std::{
     time::Duration,
 };
 
-use rand::{prelude::StdRng, SeedableRng};
+use rand::prelude::StdRng;
+
+#[cfg(test)]
+use rand::SeedableRng;
 
 pub struct Simulator<S: SimulatorState>
 where

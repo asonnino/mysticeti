@@ -8,9 +8,9 @@ use tokio::sync::mpsc;
 
 use super::context::SimulatedCtx;
 use super::executor::SimulatorContext;
-use crate::committee::Committee;
-use crate::context::Ctx;
-use crate::network::{Connection, Network};
+use dag::committee::Committee;
+use dag::context::Ctx;
+use dag::network::{Connection, Network};
 
 pub struct SimulatedNetwork {
     senders: Vec<mpsc::Sender<Connection>>,

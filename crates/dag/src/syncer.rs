@@ -139,13 +139,4 @@ impl<C: Ctx> Syncer<C> {
     pub fn core(&self) -> &Core<C> {
         &self.core
     }
-
-    pub fn take_new_block(&mut self) -> bool {
-        self.signals.take_new_block()
-    }
-
-    #[cfg(any(test, feature = "test-utils"))]
-    pub fn scheduler_state_id(&self) -> usize {
-        self.core.authority() as usize
-    }
 }

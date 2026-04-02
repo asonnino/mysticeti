@@ -18,8 +18,6 @@ mod epoch_close;
 pub mod metrics;
 pub mod net_sync;
 pub mod network;
-#[cfg(any(test, feature = "simulator"))]
-pub mod simulator;
 pub(crate) use storage::state;
 pub mod storage;
 pub mod syncer;

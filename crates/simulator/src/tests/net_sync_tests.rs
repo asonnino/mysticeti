@@ -3,17 +3,15 @@
 
 use std::{sync::atomic::Ordering, time::Duration};
 
-use super::super::context::SimulatedCtx;
-use super::super::executor::SimulatedExecutorState;
-use super::super::sim_tracing::setup_simulator_tracing;
-use super::super::test_util::{
-    simulated_network_syncers, simulated_network_syncers_with_epoch_duration,
-};
-use crate::config;
-use crate::context::Ctx;
-use crate::net_sync::NetworkSyncer;
-use crate::syncer::Syncer;
-use crate::test_util::{check_commits, print_stats, rng_at_seed};
+use crate::context::SimulatedCtx;
+use crate::executor::SimulatedExecutorState;
+use crate::sim_tracing::setup_simulator_tracing;
+use crate::test_util::{simulated_network_syncers, simulated_network_syncers_with_epoch_duration};
+use dag::config;
+use dag::context::Ctx;
+use dag::net_sync::NetworkSyncer;
+use dag::syncer::Syncer;
+use dag::test_util::{check_commits, print_stats, rng_at_seed};
 
 async fn wait_for_epoch_to_close(
     network_syncers: Vec<NetworkSyncer<SimulatedCtx>>,

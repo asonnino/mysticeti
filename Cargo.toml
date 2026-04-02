@@ -1,9 +1,10 @@
 [workspace]
 members = [
-    "crates/validator",
-    "crates/dag",
-    "crates/orchestrator",
-    "crates/minibytes",
+  "crates/validator",
+  "crates/dag",
+  "crates/orchestrator",
+  "crates/minibytes",
+  "crates/simulator",
 ]
 resolver = "2"
 
