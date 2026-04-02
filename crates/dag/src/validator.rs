@@ -97,7 +97,6 @@ impl Validator {
             core,
             public_config.parameters.wave_length,
             commit_handler,
-            public_config.parameters.shutdown_grace_period,
             metrics,
             &public_config,
         );

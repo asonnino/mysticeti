@@ -1,14 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::HashMap,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use futures::future::join_all;
 use tokio::{
@@ -47,8 +40,6 @@ pub struct NetworkSyncerInner<C: Ctx> {
     pub notify: Arc<Notify>,
     committee: Arc<Committee>,
     stop: mpsc::Sender<()>,
-    epoch_close_signal: mpsc::Sender<()>,
-    pub epoch_closing_time: Arc<AtomicU64>,
 }
 
 impl<C: Ctx> NetworkSyncer<C> {
@@ -57,7 +48,6 @@ impl<C: Ctx> NetworkSyncer<C> {
         core: Core<C>,
         commit_period: u64,
         commit_handler: CommitHandler<C>,
-        shutdown_grace_period: Duration,
         metrics: Arc<Metrics>,
         public_config: &NodePublicConfig,
     ) -> Self {
@@ -66,7 +56,6 @@ impl<C: Ctx> NetworkSyncer<C> {
             core,
             commit_period,
             commit_handler,
-            shutdown_grace_period,
             metrics,
             public_config,
             CoreThreadDispatcher::start,
@@ -79,7 +68,6 @@ impl<C: Ctx> NetworkSyncer<C> {
         core: Core<C>,
         commit_period: u64,
         commit_handler: CommitHandler<C>,
-        shutdown_grace_period: Duration,
         metrics: Arc<Metrics>,
         public_config: &NodePublicConfig,
     ) -> Self {
@@ -88,7 +76,6 @@ impl<C: Ctx> NetworkSyncer<C> {
             core,
             commit_period,
             commit_handler,
-            shutdown_grace_period,
             metrics,
             public_config,
             CoreThreadDispatcher::new_for_test,
@@ -101,7 +88,6 @@ impl<C: Ctx> NetworkSyncer<C> {
         mut core: Core<C>,
         commit_period: u64,
         mut commit_handler: CommitHandler<C>,
-        shutdown_grace_period: Duration,
         metrics: Arc<Metrics>,
         public_config: &NodePublicConfig,
         make_dispatcher: fn(Syncer<C>) -> CoreThreadDispatcher<C>,
@@ -113,7 +99,6 @@ impl<C: Ctx> NetworkSyncer<C> {
         let committee = core.committee().clone();
         let wal_syncer = core.wal_syncer();
         let block_reader = core.block_reader().clone();
-        let epoch_closing_time = core.epoch_closing_time();
         let mut syncer = Syncer::new(
             core,
             commit_period,
@@ -127,18 +112,12 @@ impl<C: Ctx> NetworkSyncer<C> {
         // Occupy the only available permit, so that all
         // other calls to send() will block.
         stop_sender.try_send(()).unwrap();
-        let (epoch_sender, epoch_receiver) = mpsc::channel(1);
-        // Occupy the only available permit, so that all
-        // other calls to send() will block.
-        epoch_sender.try_send(()).unwrap();
         let inner = Arc::new(NetworkSyncerInner {
             notify,
             syncer,
             block_reader,
             committee,
             stop: stop_sender.clone(),
-            epoch_close_signal: epoch_sender.clone(),
-            epoch_closing_time,
         });
         let block_fetcher = Arc::new(BlockFetcher::start(
             authority_index,
@@ -149,23 +128,16 @@ impl<C: Ctx> NetworkSyncer<C> {
         let main_task = C::spawn(Self::run(
             network,
             inner.clone(),
-            epoch_receiver,
-            shutdown_grace_period,
             block_fetcher,
             metrics.clone(),
         ));
-        let syncer_task = C::start_wal_syncer(wal_syncer, stop_sender, epoch_sender);
+        let syncer_task = C::start_wal_syncer(wal_syncer, stop_sender);
         Self {
             inner,
             main_task,
             stop: stop_receiver,
             syncer_task,
         }
-    }
-
-    #[cfg(any(test, feature = "test-utils"))]
-    pub fn epoch_closing_time(&self) -> &Arc<std::sync::atomic::AtomicU64> {
-        &self.inner.epoch_closing_time
     }
 
     pub async fn shutdown(self) -> Syncer<C> {
@@ -182,17 +154,11 @@ impl<C: Ctx> NetworkSyncer<C> {
     async fn run(
         mut network: Network,
         inner: Arc<NetworkSyncerInner<C>>,
-        epoch_close_signal: mpsc::Receiver<()>,
-        shutdown_grace_period: Duration,
         block_fetcher: Arc<BlockFetcher<C>>,
         metrics: Arc<Metrics>,
     ) {
         let mut connections: HashMap<usize, C::JoinHandle<Option<()>>> = HashMap::new();
-        let leader_timeout_task = C::spawn(Self::leader_timeout_task(
-            inner.clone(),
-            epoch_close_signal,
-            shutdown_grace_period,
-        ));
+        let leader_timeout_task = C::spawn(Self::leader_timeout_task(inner.clone()));
         let cleanup_task = C::spawn(Self::cleanup_task(inner.clone()));
         while let Some(connection) = inner.recv_or_stopped(network.connection_receiver()).await {
             let peer_id = connection.peer_id;
@@ -294,11 +260,7 @@ impl<C: Ctx> NetworkSyncer<C> {
         None
     }
 
-    async fn leader_timeout_task(
-        inner: Arc<NetworkSyncerInner<C>>,
-        mut epoch_close_signal: mpsc::Receiver<()>,
-        shutdown_grace_period: Duration,
-    ) -> Option<()> {
+    async fn leader_timeout_task(inner: Arc<NetworkSyncerInner<C>>) -> Option<()> {
         let leader_timeout = Duration::from_secs(1);
         loop {
             let notified = inner.notify.notified();
@@ -307,17 +269,6 @@ impl<C: Ctx> NetworkSyncer<C> {
                 .last_own_block_ref()
                 .map(|b| b.round())
                 .unwrap_or_default();
-            let closing_time = inner.epoch_closing_time.load(Ordering::Relaxed);
-            let shutdown_duration = if closing_time != 0 {
-                shutdown_grace_period.saturating_sub(
-                    C::timestamp_utc().saturating_sub(Duration::from_millis(closing_time)),
-                )
-            } else {
-                Duration::MAX
-            };
-            if Duration::is_zero(&shutdown_duration) {
-                return None;
-            }
             select! {
                 _sleep = C::sleep(leader_timeout) => {
                     tracing::debug!("Timeout {round}");
@@ -326,10 +277,6 @@ impl<C: Ctx> NetworkSyncer<C> {
                 }
                 _notified = notified => {
                     // restart loop
-                }
-                _epoch_shutdown = C::sleep(shutdown_duration) => {
-                    tracing::info!("Shutting down sync after epoch close");
-                    epoch_close_signal.close();
                 }
                 _stopped = inner.stopped() => {
                     return None;
@@ -366,10 +313,6 @@ impl<C: Ctx> NetworkSyncerInner<C> {
                 assert!(stopped.is_err());
                 None
             }
-            closed = self.epoch_close_signal.send(()) => {
-                assert!(closed.is_err());
-                None
-            }
             data = channel.recv() => {
                 data
             }
@@ -377,14 +320,8 @@ impl<C: Ctx> NetworkSyncerInner<C> {
     }
 
     async fn stopped(&self) {
-        select! {
-            stopped = self.stop.send(()) => {
-                assert!(stopped.is_err());
-            }
-            closed = self.epoch_close_signal.send(()) => {
-                assert!(closed.is_err());
-            }
-        }
+        let stopped = self.stop.send(()).await;
+        assert!(stopped.is_err());
     }
 }
 

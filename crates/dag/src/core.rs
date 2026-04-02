@@ -4,7 +4,7 @@
 use std::{
     collections::{HashSet, VecDeque},
     mem,
-    sync::{atomic::AtomicU64, Arc},
+    sync::Arc,
 };
 
 use crate::{
@@ -20,7 +20,6 @@ use crate::{
     context::Ctx,
     crypto::Signer,
     data::Data,
-    epoch_close::EpochManager,
     metrics::Metrics,
     state::RecoveredState,
     storage::BlockReader,
@@ -45,8 +44,6 @@ pub struct Core<C: Ctx> {
     signer: Signer,
     // todo - ugly, probably need to merge syncer and core
     recovered_committed_blocks: Option<HashSet<BlockReference>>,
-    epoch_manager: EpochManager,
-    rounds_in_epoch: RoundNumber,
     committer: UniversalCommitter,
 }
 
@@ -112,8 +109,6 @@ impl<C: Ctx> Core<C> {
         };
         let block_manager = BlockManager::new(storage.block_reader().clone(), &committee);
 
-        let epoch_manager = EpochManager::new();
-
         let committer = UniversalCommitterBuilder::new(
             committee.clone(),
             storage.block_reader().clone(),
@@ -145,8 +140,6 @@ impl<C: Ctx> Core<C> {
             options,
             signer: private_config.keypair,
             recovered_committed_blocks: Some(committed_blocks),
-            epoch_manager,
-            rounds_in_epoch: public_config.parameters.rounds_in_epoch,
             committer,
         };
 
@@ -185,7 +178,9 @@ impl<C: Ctx> Core<C> {
 
     fn run_block_handler(&mut self) {
         let _timer = self.metrics.utilization_timer("Core::run_block_handler");
-        let statements = self.block_handler.handle_blocks(!self.epoch_changing());
+        // Always accept transactions for now; pass `false` during shutdown
+        // to stop including new transactions in proposed blocks.
+        let statements = self.block_handler.handle_blocks(true);
         let serialized_statements =
             bincode::serialize(&statements).expect("Payload serialization failed");
         let position = self.storage.write_payload(&serialized_statements);
@@ -237,9 +232,7 @@ impl<C: Ctx> Core<C> {
                     }
                 }
                 MetaStatement::Payload(payload) => {
-                    if !self.epoch_changing() {
-                        statements.extend(payload);
-                    }
+                    statements.extend(payload);
                 }
             }
         }
@@ -252,7 +245,6 @@ impl<C: Ctx> Core<C> {
             includes,
             statements,
             time_ns,
-            self.epoch_changing(),
             &self.signer,
         );
         assert_eq!(
@@ -320,11 +312,6 @@ impl<C: Ctx> Core<C> {
             self.last_commit_leader = *last.reference();
         }
 
-        // todo: should ideally come from execution result of epoch smart contract
-        if self.last_commit_leader.round() > self.rounds_in_epoch {
-            self.epoch_manager.epoch_change_begun();
-        }
-
         sequence
     }
 
@@ -366,18 +353,8 @@ impl<C: Ctx> Core<C> {
     }
 
     pub fn handle_committed_subdag(&mut self, committed: Vec<CommittedSubDag>) -> Vec<CommitData> {
-        let now = C::timestamp_utc();
-        let mut commit_data = vec![];
-        for commit in &committed {
-            for block in &commit.blocks {
-                self.epoch_manager
-                    .observe_committed_block(block, &self.committee, now);
-            }
-            commit_data.push(CommitData::from(commit));
-        }
+        let commit_data: Vec<_> = committed.iter().map(CommitData::from).collect();
         self.storage.write_commits(&commit_data);
-        // todo - We should also persist state of the epoch manager, otherwise if validator
-        // restarts during epoch change it will fork on the epoch change state.
         commit_data
     }
 
@@ -417,18 +394,6 @@ impl<C: Ctx> Core<C> {
 
     pub fn committee(&self) -> &Arc<Committee> {
         &self.committee
-    }
-
-    pub fn epoch_closed(&self) -> bool {
-        self.epoch_manager.closed()
-    }
-
-    pub fn epoch_changing(&self) -> bool {
-        self.epoch_manager.changing()
-    }
-
-    pub fn epoch_closing_time(&self) -> Arc<AtomicU64> {
-        self.epoch_manager.closing_time()
     }
 }
 

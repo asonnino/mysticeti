@@ -107,10 +107,6 @@ impl<C: Ctx> Syncer<C> {
             self.signals.new_block_ready();
             self.force_new_block = false;
 
-            if self.core.epoch_closed() {
-                return;
-            }; // No need to commit after epoch is safe to close
-
             let newly_committed = self.core.try_commit();
             let utc_now = C::timestamp_utc();
             if !newly_committed.is_empty() {

@@ -13,7 +13,7 @@ use rand::{rngs::StdRng, SeedableRng};
 use crate::{
     block_handler::{CommitHandler, RealBlockHandler},
     committee::Committee,
-    config::{self, NodePrivateConfig, NodePublicConfig},
+    config::{NodePrivateConfig, NodePublicConfig},
     context::{Ctx, TokioCtx},
     core::{Core, CoreOptions},
     data::Data,
@@ -70,15 +70,6 @@ pub fn committee_and_cores_persisted<C: Ctx>(
     committee_and_cores_with_config(n, path, &public_config)
 }
 
-pub fn committee_and_cores_epoch_duration<C: Ctx>(
-    n: usize,
-    rounds_in_epoch: RoundNumber,
-) -> (Arc<Committee>, Vec<Core<C>>) {
-    let mut public_config = NodePublicConfig::new_for_tests(n);
-    public_config.parameters.rounds_in_epoch = rounds_in_epoch;
-    committee_and_cores_with_config(n, None, &public_config)
-}
-
 fn committee_and_cores_with_config<C: Ctx>(
     n: usize,
     path: Option<&Path>,
@@ -110,14 +101,7 @@ pub async fn networks_and_addresses(metrics: &[Arc<Metrics>]) -> (Vec<Network>, 
 }
 
 pub async fn network_syncers(n: usize) -> Vec<NetworkSyncer<TokioCtx>> {
-    network_syncers_with_epoch_duration(n, config::node_defaults::default_rounds_in_epoch()).await
-}
-
-pub async fn network_syncers_with_epoch_duration(
-    n: usize,
-    rounds_in_epoch: RoundNumber,
-) -> Vec<NetworkSyncer<TokioCtx>> {
-    let (_committee, cores) = committee_and_cores_epoch_duration::<TokioCtx>(n, rounds_in_epoch);
+    let (_committee, cores) = committee_and_cores::<TokioCtx>(n);
     let metrics: Vec<_> = cores.iter().map(|c| c.metrics.clone()).collect();
     let (networks, _) = networks_and_addresses(&metrics).await;
     let mut network_syncers = vec![];
@@ -131,7 +115,6 @@ pub async fn network_syncers_with_epoch_duration(
             core,
             3,
             commit_handler,
-            config::node_defaults::default_shutdown_grace_period(),
             Metrics::new_for_test(0),
             &NodePublicConfig::new_for_tests(n),
         );
@@ -238,7 +221,6 @@ pub fn build_dag(
                     includes.clone(),
                     vec![],
                     0,
-                    false,
                     Default::default(),
                 ));
                 (*block.reference(), block)
@@ -264,7 +246,6 @@ pub fn build_dag_layer(
             parents,
             vec![],
             0,
-            false,
             Default::default(),
         ));
 

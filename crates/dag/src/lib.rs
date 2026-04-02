@@ -14,7 +14,6 @@ pub mod consensus;
 pub mod context;
 pub mod core;
 pub mod core_thread;
-mod epoch_close;
 pub mod metrics;
 pub mod net_sync;
 pub mod network;

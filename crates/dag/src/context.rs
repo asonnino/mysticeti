@@ -28,11 +28,7 @@ pub trait Ctx: Send + Sync + 'static {
         -> Self::JoinHandle<T>;
     fn abort<T: Send + 'static>(handle: &Self::JoinHandle<T>);
 
-    fn start_wal_syncer(
-        wal_syncer: WalSyncer,
-        stop: mpsc::Sender<()>,
-        epoch_signal: mpsc::Sender<()>,
-    ) -> oneshot::Receiver<()>;
+    fn start_wal_syncer(wal_syncer: WalSyncer, stop: mpsc::Sender<()>) -> oneshot::Receiver<()>;
 }
 
 pub struct TokioCtx;
@@ -81,12 +77,8 @@ impl Ctx for TokioCtx {
         handle.abort();
     }
 
-    fn start_wal_syncer(
-        wal_syncer: WalSyncer,
-        stop: mpsc::Sender<()>,
-        epoch_signal: mpsc::Sender<()>,
-    ) -> oneshot::Receiver<()> {
-        wal_syncer_tokio::start(wal_syncer, stop, epoch_signal)
+    fn start_wal_syncer(wal_syncer: WalSyncer, stop: mpsc::Sender<()>) -> oneshot::Receiver<()> {
+        wal_syncer_tokio::start(wal_syncer, stop)
     }
 }
 
@@ -103,21 +95,15 @@ mod wal_syncer_tokio {
     struct AsyncWalSyncer {
         wal_syncer: WalSyncer,
         stop: mpsc::Sender<()>,
-        epoch_signal: mpsc::Sender<()>,
         _sender: oneshot::Sender<()>,
         runtime: tokio::runtime::Handle,
     }
 
-    pub(super) fn start(
-        wal_syncer: WalSyncer,
-        stop: mpsc::Sender<()>,
-        epoch_signal: mpsc::Sender<()>,
-    ) -> oneshot::Receiver<()> {
+    pub(super) fn start(wal_syncer: WalSyncer, stop: mpsc::Sender<()>) -> oneshot::Receiver<()> {
         let (sender, receiver) = oneshot::channel();
         let syncer = AsyncWalSyncer {
             wal_syncer,
             stop,
-            epoch_signal,
             _sender: sender,
             runtime: tokio::runtime::Handle::current(),
         };
@@ -145,9 +131,6 @@ mod wal_syncer_tokio {
                     false
                 }
                 _signal = self.stop.send(()) => {
-                    true
-                }
-                _ = self.epoch_signal.send(()) => {
                     true
                 }
             }

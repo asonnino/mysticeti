@@ -54,11 +54,7 @@ impl Ctx for SimulatedCtx {
         handle.abort();
     }
 
-    fn start_wal_syncer(
-        _wal_syncer: WalSyncer,
-        _stop: mpsc::Sender<()>,
-        _epoch_signal: mpsc::Sender<()>,
-    ) -> oneshot::Receiver<()> {
+    fn start_wal_syncer(_wal_syncer: WalSyncer, _stop: mpsc::Sender<()>) -> oneshot::Receiver<()> {
         oneshot::channel().1
     }
 }

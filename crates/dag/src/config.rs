@@ -37,10 +37,6 @@ pub struct NodeParameters {
     pub leader_timeout: Duration,
     #[serde(default = "node_defaults::default_max_block_size")]
     pub max_block_size: usize,
-    #[serde(default = "node_defaults::default_rounds_in_epoch")]
-    pub rounds_in_epoch: RoundNumber,
-    #[serde(default = "node_defaults::default_shutdown_grace_period")]
-    pub shutdown_grace_period: Duration,
     #[serde(default = "node_defaults::default_number_of_leaders")]
     pub number_of_leaders: usize,
     #[serde(default = "node_defaults::default_enable_pipelining")]
@@ -62,14 +58,6 @@ pub mod node_defaults {
         4 * 1024 * 1024
     }
 
-    pub fn default_rounds_in_epoch() -> super::RoundNumber {
-        super::RoundNumber::MAX
-    }
-
-    pub fn default_shutdown_grace_period() -> std::time::Duration {
-        std::time::Duration::from_secs(2)
-    }
-
     pub fn default_number_of_leaders() -> usize {
         2
     }
@@ -89,8 +77,6 @@ impl Default for NodeParameters {
             wave_length: node_defaults::default_wave_length(),
             leader_timeout: node_defaults::default_leader_timeout(),
             max_block_size: node_defaults::default_max_block_size(),
-            rounds_in_epoch: node_defaults::default_rounds_in_epoch(),
-            shutdown_grace_period: node_defaults::default_shutdown_grace_period(),
             number_of_leaders: node_defaults::default_number_of_leaders(),
             enable_pipelining: node_defaults::default_enable_pipelining(),
             enable_synchronizer: node_defaults::default_enable_synchronizer(),
