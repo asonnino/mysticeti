@@ -10,7 +10,7 @@ use rand::{rngs::StdRng, SeedableRng};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use zeroize::Zeroize;
 
-use crate::{
+use super::{
     serde::{ByteRepr, BytesVisitor},
     types::{
         AuthorityIndex, BaseStatement, BlockReference, EpochStatus, RoundNumber, StatementBlock,

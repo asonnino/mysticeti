@@ -9,10 +9,10 @@ pub struct Transaction {
 }
 
 pub type RoundNumber = u64;
-pub type BlockDigest = crate::crypto::BlockDigest;
+pub type BlockDigest = super::crypto::BlockDigest;
 pub type Stake = u64;
 pub type KeyPair = u64;
-pub type PublicKey = crate::crypto::PublicKey;
+pub type PublicKey = super::crypto::PublicKey;
 
 use std::{
     fmt,
@@ -26,12 +26,11 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 pub use test::Dag;
 
-use crate::{
-    committee::Committee,
+use super::{
     crypto::{AsBytes, CryptoHash, SignatureBytes, Signer},
     data::Data,
-    threshold_clock::threshold_clock_valid_non_genesis,
 };
+use crate::{committee::Committee, threshold_clock::threshold_clock_valid_non_genesis};
 
 pub type EpochStatus = bool;
 
