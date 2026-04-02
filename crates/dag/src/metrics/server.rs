@@ -3,7 +3,7 @@
 
 use std::net::SocketAddr;
 
-use axum::{extract::State, http::StatusCode, routing::get, Router};
+use axum::{Router, extract::State, http::StatusCode, routing::get};
 use prometheus::{Registry, TextEncoder};
 use tokio::net::TcpListener;
 

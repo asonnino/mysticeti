@@ -3,7 +3,7 @@
 
 use std::{ops::AddAssign, time::Duration};
 
-use prometheus::{register_int_gauge_vec_with_registry, IntGaugeVec, Registry};
+use prometheus::{IntGaugeVec, Registry, register_int_gauge_vec_with_registry};
 use tokio::sync::mpsc;
 
 const REPORT_PER_MILLES: [usize; 3] = [500, 900, 990];
@@ -228,7 +228,7 @@ mod test {
 
     use prometheus::Registry;
 
-    use super::{histogram, precise_histogram, vec_histogram, AsPrometheusMetric};
+    use super::{AsPrometheusMetric, histogram, precise_histogram, vec_histogram};
 
     #[test]
     fn per_milles_basic() {

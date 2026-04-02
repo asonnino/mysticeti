@@ -3,13 +3,13 @@
 
 use std::{fmt::Display, sync::Arc};
 
-use super::{LeaderStatus, DEFAULT_WAVE_LENGTH};
+use super::{DEFAULT_WAVE_LENGTH, LeaderStatus};
 use crate::{
     committee::{Committee, QuorumThreshold, StakeAggregator},
     consensus::MINIMUM_WAVE_LENGTH,
     data::Data,
     storage::BlockReader,
-    types::{format_authority_round, AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
+    types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock, format_authority_round},
 };
 
 /// The consensus protocol operates in 'waves'. Each wave is composed of a leader round, at least

@@ -1,4 +1,5 @@
 [workspace]
+resolver = "3"
 members = [
   "crates/validator",
   "crates/dag",
@@ -6,18 +7,35 @@ members = [
   "crates/minibytes",
   "crates/simulator",
 ]
-resolver = "2"
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+publish = false
 
 [workspace.dependencies]
-tokio = { version = "1.28.1", features = ["full"] }
-futures = "0.3.28"
-serde = { version = "1.0.163", features = ["derive"] }
-eyre = "0.6.8"
-color-eyre = "0.6.2"
 clap = { version = "4.3.3", features = ["derive"] }
-tracing = "0.1.37"
-tempfile = "3.6.0"
+color-eyre = "0.6.2"
+eyre = "0.6.8"
+futures = "0.3.28"
+memmap2 = "0.7.0"
+prometheus = "0.13.3"
+rand = "0.8.5"
 reqwest = { version = "0.11.18", features = ["json"] }
+serde = { version = "1.0.163", features = ["derive"] }
+serde_yaml = "0.9.33"
+tempfile = "3.6.0"
+tokio = { version = "1.28.1", features = [
+  "sync",
+  "time",
+  "rt",
+  "rt-multi-thread",
+  "macros",
+  "net",
+  "io-util",
+] }
+tracing = "0.1.37"
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 
 [profile.release]
 panic = "abort"

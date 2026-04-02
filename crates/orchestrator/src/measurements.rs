@@ -10,7 +10,7 @@ use std::{
     time::Duration,
 };
 
-use prettytable::{row, Table};
+use prettytable::{Table, row};
 use prometheus_parse::Scrape;
 use serde::{Deserialize, Serialize};
 
@@ -438,7 +438,7 @@ mod test {
             # HELP block_handler_cleanup_util block_handler_cleanup_util
             # TYPE block_handler_cleanup_util counter
             block_handler_cleanup_util 2440
-            # HELP block_handler_pending_certificates Number of pending certificates in block handler
+            # HELP block_handler_pending_certificates Number of pending cert in block handler
             # TYPE block_handler_pending_certificates gauge
             block_handler_pending_certificates 0
             # HELP block_store_cleanup_util block_store_cleanup_util
@@ -453,10 +453,10 @@ mod test {
             # HELP block_store_unloaded_blocks Blocks unloaded from wal position during cleanup
             # TYPE block_store_unloaded_blocks counter
             block_store_unloaded_blocks 19088
-            # HELP commit_handler_pending_certificates Number of pending certificates in commit handler
+            # HELP commit_handler_pending_certificates Number of pending cert in commit handler
             # TYPE commit_handler_pending_certificates gauge
             commit_handler_pending_certificates 7749
-            # HELP committed_leaders_total Total number of (direct or indirect) committed leaders per authority
+            # HELP committed_leaders_total Total number of committed leaders per authority
             # TYPE committed_leaders_total counter
             committed_leaders_total{authority="0",commit_type="direct-commit"} 4871
             committed_leaders_total{authority="0",commit_type="indirect-skip"} 1

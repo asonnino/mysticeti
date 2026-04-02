@@ -6,8 +6,8 @@ use std::fmt;
 use digest::Digest;
 #[cfg(not(test))]
 use ed25519_consensus::Signature;
-use rand::{rngs::StdRng, SeedableRng};
-use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+use rand::{SeedableRng, rngs::StdRng};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use zeroize::Zeroize;
 
 use super::{

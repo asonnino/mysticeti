@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use tokio::sync::Notify;
 
-use super::{block_handler::CommitHandler, Core};
+use super::{Core, block_handler::CommitHandler};
 use crate::{
     context::Ctx,
     data::Data,

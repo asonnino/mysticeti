@@ -3,10 +3,10 @@
 
 use crate::{
     consensus::{
-        universal_committer::UniversalCommitterBuilder, LeaderStatus, DEFAULT_WAVE_LENGTH,
+        DEFAULT_WAVE_LENGTH, LeaderStatus, universal_committer::UniversalCommitterBuilder,
     },
     metrics::Metrics,
-    test_util::{build_dag, build_dag_layer, committee, TestBlockWriter},
+    test_util::{TestBlockWriter, build_dag, build_dag_layer, committee},
     types::BlockReference,
 };
 
@@ -130,7 +130,7 @@ fn direct_commit_late_call() {
     assert_eq!(sequence.len(), n as usize);
     for (i, leader_block) in sequence.iter().enumerate() {
         let leader_round = (i as u64 + 1) * wave_length;
-        if let LeaderStatus::Commit(ref block) = leader_block {
+        if let LeaderStatus::Commit(block) = leader_block {
             assert_eq!(block.author(), committee.elect_leader(leader_round));
         } else {
             panic!("Expected a committed leader")

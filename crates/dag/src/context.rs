@@ -25,7 +25,7 @@ pub trait Ctx: Send + Sync + 'static {
         + Unpin;
     type JoinError: Send + Debug + 'static;
     fn spawn<T: Send + 'static>(f: impl Future<Output = T> + Send + 'static)
-        -> Self::JoinHandle<T>;
+    -> Self::JoinHandle<T>;
     fn abort<T: Send + 'static>(handle: &Self::JoinHandle<T>);
 
     fn start_wal_syncer(wal_syncer: WalSyncer, stop: mpsc::Sender<()>) -> oneshot::Receiver<()>;

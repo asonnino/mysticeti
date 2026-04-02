@@ -3,10 +3,10 @@
 
 use crate::{
     consensus::{
-        universal_committer::UniversalCommitterBuilder, LeaderStatus, DEFAULT_WAVE_LENGTH,
+        DEFAULT_WAVE_LENGTH, LeaderStatus, universal_committer::UniversalCommitterBuilder,
     },
     metrics::Metrics,
-    test_util::{build_dag, build_dag_layer, committee, TestBlockWriter},
+    test_util::{TestBlockWriter, build_dag, build_dag_layer, committee},
     types::BlockReference,
 };
 
@@ -534,7 +534,7 @@ fn indirect_skip() {
         let leader_round_1 = wave_length;
         let leader_offset = n as u64;
         let leader_1 = committee.elect_leader(leader_round_1 + leader_offset);
-        if let LeaderStatus::Commit(ref block) = status {
+        if let LeaderStatus::Commit(block) = status {
             assert_eq!(block.author(), leader_1);
         } else {
             panic!("Expected a committed leader")

@@ -3,7 +3,7 @@
 
 use std::{
     cell::RefCell,
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     future::Future,
     pin::Pin,
     sync::Arc,
@@ -15,7 +15,7 @@ use futures::FutureExt;
 use rand::prelude::StdRng;
 use tokio::{
     select,
-    sync::{oneshot, Notify},
+    sync::{Notify, oneshot},
 };
 
 use super::event_simulator::{Scheduler, Simulator, SimulatorState};

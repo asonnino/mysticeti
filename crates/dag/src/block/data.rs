@@ -11,8 +11,8 @@ use std::{
 use minibytes::Bytes;
 use prometheus::IntGauge;
 use serde::{
-    de::{DeserializeOwned, Error},
     Deserialize, Deserializer, Serialize, Serializer,
+    de::{DeserializeOwned, Error},
 };
 
 /// Data<T> carries both the value and it's serialized bytes.

@@ -4,16 +4,16 @@
 use std::{collections::HashMap, io, net::SocketAddr, ops::Range, sync::Arc, time::Duration};
 
 use futures::{
-    future::{select, select_all, Either},
     FutureExt,
+    future::{Either, select, select_all},
 };
-use rand::{prelude::ThreadRng, Rng};
+use rand::{Rng, prelude::ThreadRng};
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{
-        tcp::{OwnedReadHalf, OwnedWriteHalf},
         TcpListener, TcpSocket, TcpStream,
+        tcp::{OwnedReadHalf, OwnedWriteHalf},
     },
     runtime::Handle,
     select,
@@ -24,7 +24,7 @@ use tokio::{
 use crate::{
     config::NodePublicConfig,
     data::Data,
-    metrics::{print_network_address_table, Metrics},
+    metrics::{Metrics, print_network_address_table},
     types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
 };
 

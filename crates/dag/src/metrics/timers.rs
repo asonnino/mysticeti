@@ -35,7 +35,7 @@ impl Drop for OwnedUtilizationTimer {
 mod test {
     use std::time::Duration;
 
-    use prometheus::{register_int_counter_with_registry, Registry};
+    use prometheus::{Registry, register_int_counter_with_registry};
     use tokio::time::Instant;
 
     use super::{OwnedUtilizationTimer, UtilizationTimer};

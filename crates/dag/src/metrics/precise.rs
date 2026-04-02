@@ -6,7 +6,7 @@ use std::{sync::Mutex, time::Duration};
 use prometheus::Registry;
 
 use super::histogram::{self, HistogramObserver, HistogramReporter, VecHistogramReporter};
-use crate::types::{format_authority_index, AuthorityIndex};
+use crate::types::{AuthorityIndex, format_authority_index};
 
 const DEFAULT_REPORT_INTERVAL: Duration = Duration::from_secs(60);
 

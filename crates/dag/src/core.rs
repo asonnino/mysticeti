@@ -422,7 +422,7 @@ impl CoreOptions {
 
 #[cfg(test)]
 mod test {
-    use rand::{prelude::StdRng, Rng, SeedableRng};
+    use rand::{Rng, SeedableRng, prelude::StdRng};
 
     use super::threshold_clock;
     use super::*;

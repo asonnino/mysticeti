@@ -18,7 +18,7 @@ pub use self::aggregate::{BENCHMARK_DURATION, LATENCY_S, LATENCY_SQUARED_S};
 pub use self::snapshot::MetricsSnapshot;
 pub use self::timers::{OwnedUtilizationTimer, UtilizationTimer};
 use self::{aggregate::AggregateMetrics, precise::PreciseMetrics};
-use crate::types::{format_authority_index, AuthorityIndex};
+use crate::types::{AuthorityIndex, format_authority_index};
 
 pub struct Metrics {
     aggregate: AggregateMetrics,

@@ -1,12 +1,13 @@
 [package]
 name = "simulator"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
 
 [dependencies]
 dag = { path = "../dag", features = ["test-utils"] }
 futures = { workspace = true }
-rand = "0.8.5"
+rand = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+tracing-subscriber = { workspace = true }

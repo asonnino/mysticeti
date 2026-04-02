@@ -5,7 +5,7 @@ use std::fmt::Display;
 
 use crate::{
     data::Data,
-    types::{format_authority_round, AuthorityIndex, RoundNumber, StatementBlock},
+    types::{AuthorityIndex, RoundNumber, StatementBlock, format_authority_round},
 };
 
 pub mod base_committer;
@@ -15,8 +15,8 @@ pub mod universal_committer;
 #[cfg(test)]
 mod tests;
 
-/// Default wave length for all committers. A longer wave_length increases the chance of committing the leader
-/// under asynchrony at the cost of latency in the common case.
+/// Default wave length for all committers. A longer wave_length increases the chance of
+/// committing the leader under asynchrony at the cost of latency in the common case.
 pub const DEFAULT_WAVE_LENGTH: RoundNumber = MINIMUM_WAVE_LENGTH;
 
 /// We need at least one leader round, one voting round, and one decision round.

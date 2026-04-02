@@ -17,7 +17,7 @@ use crate::{
 
 use self::{
     block_store::{CommitData, OwnBlockData, WAL_ENTRY_BLOCK, WAL_ENTRY_COMMIT, WAL_ENTRY_PAYLOAD},
-    wal::{open_file_for_wal, walf, WalWriter},
+    wal::{WalWriter, open_file_for_wal, walf},
 };
 
 pub use self::block_store::BlockReader;

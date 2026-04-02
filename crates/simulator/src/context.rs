@@ -5,7 +5,7 @@ use std::{future::Future, time::Duration};
 
 use tokio::sync::{mpsc, oneshot};
 
-use super::executor::{simulator_spawn, JoinError, JoinHandle, SimulatorContext, Sleep};
+use super::executor::{JoinError, JoinHandle, SimulatorContext, Sleep, simulator_spawn};
 use dag::context::Ctx;
 use dag::storage::WalSyncer;
 

@@ -14,7 +14,7 @@ use dag::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::{ProtocolCommands, ProtocolMetrics, ProtocolParameters, BINARY_PATH};
+use super::{BINARY_PATH, ProtocolCommands, ProtocolMetrics, ProtocolParameters};
 use crate::{benchmark::BenchmarkParameters, client::Instance, settings::Settings};
 
 #[derive(Clone, Serialize, Deserialize, Default)]

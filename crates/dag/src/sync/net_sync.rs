@@ -6,7 +6,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use futures::future::join_all;
 use tokio::{
     select,
-    sync::{mpsc, oneshot, Notify},
+    sync::{Notify, mpsc, oneshot},
 };
 
 use crate::{
@@ -14,10 +14,10 @@ use crate::{
     config::NodePublicConfig,
     context::Ctx,
     core::{
+        Core,
         block_handler::CommitHandler,
         core_thread::CoreThreadDispatcher,
         syncer::{Syncer, SyncerSignals},
-        Core,
     },
     metrics::Metrics,
     storage::BlockReader,
@@ -25,7 +25,7 @@ use crate::{
         network::{Connection, Network, NetworkMessage},
         synchronizer::{BlockDisseminator, BlockFetcher, SynchronizerParameters},
     },
-    types::{format_authority_index, AuthorityIndex},
+    types::{AuthorityIndex, format_authority_index},
 };
 
 /// The maximum number of blocks that can be requested in a single message.

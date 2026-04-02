@@ -6,16 +6,16 @@ use std::{
     sync::Arc,
 };
 
-use ::prometheus::Registry;
-use eyre::{eyre, Context, Result};
+use eyre::{Context, Result, eyre};
+use prometheus::Registry;
 
 use crate::{
     committee::Committee,
     config::{ClientParameters, NodePrivateConfig, NodePublicConfig},
     context::TokioCtx,
     core::{
-        block_handler::{CommitHandler, RealBlockHandler},
         Core, CoreOptions,
+        block_handler::{CommitHandler, RealBlockHandler},
     },
     metrics::{self, Metrics},
     storage::Storage,

@@ -3,7 +3,7 @@
 
 use std::{cmp::min, marker::PhantomData, sync::Arc, time::Duration};
 
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::StdRng};
 use tokio::sync::mpsc;
 
 use crate::{
@@ -65,7 +65,7 @@ impl<C: Ctx> TransactionGenerator<C> {
 
         let mut counter = 0;
         let mut tx_to_report = 0;
-        let mut random: u64 = self.rng.gen();
+        let mut random: u64 = self.rng.r#gen();
         let zeros = vec![0u8; self.client_parameters.transaction_size - 16];
 
         let mut interval = C::interval(Self::TARGET_BLOCK_INTERVAL);

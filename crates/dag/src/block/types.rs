@@ -485,7 +485,7 @@ mod test {
         sync::Arc,
     };
 
-    use rand::{prelude::SliceRandom, Rng};
+    use rand::{Rng, prelude::SliceRandom};
 
     use super::*;
 
@@ -590,7 +590,7 @@ mod test {
 
         fn next(&mut self) -> Option<Self::Item> {
             let next = self.1.next()?;
-            Some(self.0 .0.get(&next).unwrap())
+            Some(self.0.0.get(&next).unwrap())
         }
     }
 

@@ -123,7 +123,7 @@ impl BlockManager {
 
 #[cfg(test)]
 mod tests {
-    use rand::{prelude::StdRng, SeedableRng};
+    use rand::{SeedableRng, prelude::StdRng};
 
     use super::*;
     use crate::{metrics::Metrics, types::Dag};

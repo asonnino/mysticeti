@@ -3,7 +3,7 @@
 
 use std::fmt;
 
-use prometheus::{proto::MetricFamily, TextEncoder};
+use prometheus::{TextEncoder, proto::MetricFamily};
 
 /// A point-in-time snapshot of all metrics from a Prometheus
 /// registry. Test-only — no production cost.
@@ -64,8 +64,8 @@ impl fmt::Display for MetricsSnapshot {
 mod test {
     use super::MetricsSnapshot;
     use prometheus::{
-        register_int_counter_vec_with_registry, register_int_counter_with_registry,
-        register_int_gauge_with_registry, Registry,
+        Registry, register_int_counter_vec_with_registry, register_int_counter_with_registry,
+        register_int_gauge_with_registry,
     };
 
     fn collect_snapshot(registry: &Registry) -> MetricsSnapshot {

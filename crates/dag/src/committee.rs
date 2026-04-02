@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     config::ImportExport,
-    crypto::{dummy_public_key, PublicKey, Signer},
+    crypto::{PublicKey, Signer, dummy_public_key},
     data::Data,
     types::{AuthorityIndex, AuthoritySet, Stake, StatementBlock},
 };

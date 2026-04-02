@@ -5,14 +5,13 @@ use std::env;
 
 use tracing::{Event, Subscriber};
 use tracing_subscriber::{
+    FmtSubscriber,
     fmt::{
-        format,
+        FmtContext, FormatEvent, FormatFields, format,
         format::{Compact, Format, Writer},
         time::FormatTime,
-        FmtContext, FormatEvent, FormatFields,
     },
     registry::LookupSpan,
-    FmtSubscriber,
 };
 
 use super::executor::SimulatorContext;

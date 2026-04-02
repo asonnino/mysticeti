@@ -225,10 +225,11 @@ impl BlockStore {
         if reference.round > self.last_own_block.map(|r| r.round).unwrap_or_default() {
             self.last_own_block = Some(*reference);
         }
-        assert!(self
-            .own_blocks
-            .insert(reference.round, reference.digest)
-            .is_none());
+        assert!(
+            self.own_blocks
+                .insert(reference.round, reference.digest)
+                .is_none()
+        );
     }
 
     pub(super) fn last_own_block(&self) -> Option<BlockReference> {

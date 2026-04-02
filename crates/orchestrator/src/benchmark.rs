@@ -5,7 +5,7 @@ use std::fmt::{Debug, Display};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{protocol::ProtocolParameters, settings::Settings, ClientParameters, NodeParameters};
+use crate::{ClientParameters, NodeParameters, protocol::ProtocolParameters, settings::Settings};
 
 /// Shortcut avoiding to use the generic version of the benchmark parameters.
 pub type BenchmarkParameters = BenchmarkParametersGeneric<NodeParameters, ClientParameters>;

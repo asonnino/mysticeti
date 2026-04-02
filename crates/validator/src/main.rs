@@ -15,8 +15,8 @@ use dag::{
     types::AuthorityIndex,
     validator::Validator,
 };
-use eyre::{eyre, Context, Result};
-use tracing_subscriber::{filter::LevelFilter, fmt, EnvFilter};
+use eyre::{Context, Result, eyre};
+use tracing_subscriber::{EnvFilter, filter::LevelFilter, fmt};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -242,7 +242,7 @@ async fn dryrun(authority: AuthorityIndex, committee_size: usize) -> Result<()> 
             return Err(e).wrap_err(format!(
                 "Failed to remove directory '{}'",
                 working_dir.display()
-            ))
+            ));
         }
     }
     match fs::create_dir_all(&private_config.storage_path) {
@@ -251,7 +251,7 @@ async fn dryrun(authority: AuthorityIndex, committee_size: usize) -> Result<()> 
             return Err(e).wrap_err(format!(
                 "Failed to create directory '{}'",
                 working_dir.display()
-            ))
+            ));
         }
     }
 

@@ -8,16 +8,16 @@ use std::{
 };
 
 use futures::future::join_all;
-use rand::{rngs::StdRng, SeedableRng};
+use rand::{SeedableRng, rngs::StdRng};
 
 use crate::{
     committee::Committee,
     config::{NodePrivateConfig, NodePublicConfig},
     context::{Ctx, TokioCtx},
     core::{
+        Core, CoreOptions,
         block_handler::{CommitHandler, RealBlockHandler},
         syncer::Syncer,
-        Core, CoreOptions,
     },
     data::Data,
     metrics::Metrics,
