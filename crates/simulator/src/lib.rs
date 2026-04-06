@@ -9,9 +9,6 @@ pub mod network;
 pub mod runner;
 pub mod sim_tracing;
 
-#[cfg(test)]
-mod tests;
-
 pub use config::{NetworkTopology, SimulationConfig};
 pub use context::{SimInstant, SimulatedCtx};
 pub use event_simulator::{Scheduler, Simulator, SimulatorState};

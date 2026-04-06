@@ -1,11 +1,11 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::config::{NetworkTopology, SimulationConfig};
-use crate::runner::SimulationRunner;
+use dag::config::ImportExport;
+use simulator::{NetworkTopology, SimulationConfig, SimulationRunner};
 
 #[test]
-fn test_runner_full_mesh() {
+fn full_mesh() {
     let config = SimulationConfig::default();
     let runner = SimulationRunner::new(config);
     let results = runner.run();
@@ -16,7 +16,7 @@ fn test_runner_full_mesh() {
 }
 
 #[test]
-fn test_runner_one_down() {
+fn one_down() {
     let config = SimulationConfig {
         topology: NetworkTopology::OneDown(0),
         duration_secs: 40,
@@ -29,7 +29,7 @@ fn test_runner_one_down() {
 }
 
 #[test]
-fn test_config_yaml_round_trip() {
+fn config_yaml_round_trip() {
     let config = SimulationConfig {
         committee_size: 7,
         latency_min_ms: 10,
@@ -54,15 +54,30 @@ fn test_config_yaml_round_trip() {
 }
 
 #[test]
-fn test_runner_from_yaml() {
+fn from_yaml() {
     let config = SimulationConfig::default();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("sim.yaml");
 
-    use dag::config::ImportExport;
     config.print(&path).unwrap();
 
     let runner = SimulationRunner::from_yaml(&path).unwrap();
     assert_eq!(runner.config().committee_size, 10);
     assert_eq!(runner.config().duration_secs, 20);
+}
+
+/// The vote-per-transaction fast path causes oversized blocks
+/// during catch-up after a partition heals.
+#[test]
+#[ignore = "oversized blocks from vote-per-tx fast path"]
+fn network_partition() {
+    let config = SimulationConfig {
+        topology: NetworkTopology::Partition(vec![vec![0, 1], vec![2, 3, 4, 5, 6, 7, 8, 9]]),
+        duration_secs: 40,
+        ..Default::default()
+    };
+    let runner = SimulationRunner::new(config);
+    let results = runner.run();
+
+    assert!(results.commits_consistent);
 }
