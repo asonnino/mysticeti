@@ -14,23 +14,32 @@ use dag::sync::network::{Connection, Network};
 
 pub struct SimulatedNetwork {
     senders: Vec<mpsc::Sender<Connection>>,
+    latency_range: Range<Duration>,
 }
 
 impl SimulatedNetwork {
-    const LATENCY_RANGE: Range<Duration> = Duration::from_millis(50)..Duration::from_millis(100);
+    pub fn default_latency_range() -> Range<Duration> {
+        Duration::from_millis(50)..Duration::from_millis(100)
+    }
 
-    pub fn new(committee: &Committee) -> (SimulatedNetwork, Vec<Network>) {
+    pub fn new(
+        committee: &Committee,
+        latency_range: Range<Duration>,
+    ) -> (SimulatedNetwork, Vec<Network>) {
         let (networks, senders): (Vec<_>, Vec<_>) = committee
             .authorities()
             .map(|_| {
-                let (connection_sender, connection_receiver) = mpsc::channel(16);
-                (
-                    Network::new_from_raw(connection_receiver),
-                    connection_sender,
-                )
+                let (sender, receiver) = mpsc::channel(16);
+                (Network::new_from_raw(receiver), sender)
             })
             .unzip();
-        (Self { senders }, networks)
+        (
+            Self {
+                senders,
+                latency_range,
+            },
+            networks,
+        )
     }
 
     pub async fn connect_all(&self) {
@@ -52,8 +61,8 @@ impl SimulatedNetwork {
     }
 
     pub async fn connect(&self, a: usize, b: usize) {
-        let (a_sender, a_receiver) = Self::latency_channel();
-        let (b_sender, b_receiver) = Self::latency_channel();
+        let (a_sender, a_receiver) = self.latency_channel();
+        let (b_sender, b_receiver) = self.latency_channel();
         let a_connection = Connection {
             peer_id: b,
             sender: b_sender,
@@ -70,12 +79,13 @@ impl SimulatedNetwork {
         b.send(b_connection).await.ok();
     }
 
-    fn latency_channel<T: Send + 'static + Debug>() -> (mpsc::Sender<T>, mpsc::Receiver<T>) {
+    fn latency_channel<T: Send + 'static + Debug>(&self) -> (mpsc::Sender<T>, mpsc::Receiver<T>) {
         let (buf_sender, mut buf_receiver) = mpsc::channel(16);
         let (sender, receiver) = mpsc::channel(16);
+        let range = self.latency_range.clone();
         SimulatedCtx::spawn(async move {
             while let Some(message) = buf_receiver.recv().await {
-                let latency = SimulatorContext::with_rng(|rng| rng.gen_range(Self::LATENCY_RANGE));
+                let latency = SimulatorContext::with_rng(|rng| rng.gen_range(range.clone()));
                 SimulatedCtx::sleep(latency).await;
                 if sender.send(message).await.is_err() {
                     return;
