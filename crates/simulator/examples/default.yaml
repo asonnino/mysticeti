@@ -1,0 +1,32 @@
+# Example simulation configuration.
+#
+# All fields are optional and fall back to sensible defaults.
+# Use this file as a starting point:
+#   cargo run -p validator -- simulate --config-path path/to/config.yaml
+#
+# To dump the built-in defaults:
+#   cargo run -p validator -- simulate --print-default-config
+committee_size: 10
+latency_min_ms: 50
+latency_max_ms: 100
+duration_secs: 20
+rng_seed: 0
+commit_period: 3
+# Network topology. Options:
+#   FullMesh                   - every node connected to every other
+#   OneDown: <node_index>      - one node isolated from the rest
+#   Star: <center_index>       - star topology with a center node
+#   Partition:                 - partition into groups of node indices
+#     - [0, 1]
+#     - [2, 3, 4, 5, 6, 7, 8, 9]
+topology: FullMesh
+# Consensus parameters (all optional, shown with defaults).
+node_parameters:
+  wave_length: 3
+  leader_timeout:
+    secs: 2
+    nanos: 0
+  max_block_size: 4194304
+  number_of_leaders: 2
+  enable_pipelining: true
+  enable_synchronizer: false

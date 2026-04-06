@@ -3899,6 +3899,8 @@ dependencies = [
  "color-eyre",
  "dag",
  "eyre",
+ "serde_yaml",
+ "simulator",
  "tokio",
  "tracing",
  "tracing-subscriber",

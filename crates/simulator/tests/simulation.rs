@@ -1,6 +1,8 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::path::PathBuf;
+
 use dag::config::{ImportExport, NodeParameters};
 use simulator::{NetworkTopology, SimulationConfig, SimulationRunner};
 
@@ -106,6 +108,16 @@ fn custom_node_parameters() {
         ..Default::default()
     };
     let runner = SimulationRunner::new(config);
+    let results = runner.run();
+
+    assert!(results.commits_consistent);
+    assert!(!results.committed_leaders.is_empty());
+}
+
+#[test]
+fn from_example_config() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/default.yaml");
+    let runner = SimulationRunner::from_yaml(&path).unwrap();
     let results = runner.run();
 
     assert!(results.commits_consistent);

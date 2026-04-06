@@ -16,6 +16,7 @@ use dag::{
     validator::Validator,
 };
 use eyre::{Context, Result, eyre};
+use simulator::{SimulationConfig, SimulationRunner};
 use tracing_subscriber::{EnvFilter, filter::LevelFilter, fmt};
 
 #[derive(Parser)]
@@ -60,6 +61,16 @@ enum Operation {
         #[clap(long, value_name = "FILE")]
         client_parameters_path: String,
     },
+    /// Run a simulated network from a YAML config file.
+    Simulate {
+        /// Path to the simulation config YAML file.
+        /// If not provided, runs with default parameters.
+        #[clap(long, value_name = "FILE")]
+        config_path: Option<PathBuf>,
+        /// Print the default configuration to stdout and exit.
+        #[clap(long)]
+        print_default_config: bool,
+    },
     /// Deploy a local validator for test. Dryrun mode uses
     /// default keys and committee configurations.
     DryRun {
@@ -74,15 +85,19 @@ enum Operation {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Nice colored error messages.
     color_eyre::install()?;
-    let filter = EnvFilter::builder()
-        .with_default_directive(LevelFilter::INFO.into())
-        .from_env_lossy();
-    fmt().with_env_filter(filter).init();
+    let args = Args::parse();
 
-    // Parse the command line arguments.
-    match Args::parse().operation {
+    // The simulate subcommand sets up its own tracing
+    // subscriber tuned for simulated time.
+    if !matches!(args.operation, Operation::Simulate { .. }) {
+        let filter = EnvFilter::builder()
+            .with_default_directive(LevelFilter::INFO.into())
+            .from_env_lossy();
+        fmt().with_env_filter(filter).init();
+    }
+
+    match args.operation {
         Operation::BenchmarkGenesis {
             ips,
             working_directory,
@@ -103,6 +118,13 @@ async fn main() -> Result<()> {
                 client_parameters_path,
             )
             .await?
+        }
+        Operation::Simulate {
+            config_path,
+            print_default_config,
+        } => {
+            tokio::task::spawn_blocking(move || simulate(config_path, print_default_config))
+                .await??
         }
         Operation::DryRun {
             authority,
@@ -265,6 +287,35 @@ async fn dryrun(authority: AuthorityIndex, committee_size: usize) -> Result<()> 
     .await?;
     let (network_result, _metrics_result) = validator.await_completion().await;
     network_result.expect("Validator crashed");
+
+    Ok(())
+}
+
+fn simulate(config_path: Option<PathBuf>, print_default_config: bool) -> Result<()> {
+    if print_default_config {
+        let config = SimulationConfig::default();
+        let yaml = serde_yaml::to_string(&config).map_err(eyre::Report::msg)?;
+        println!("{yaml}");
+        return Ok(());
+    }
+
+    let config = match config_path {
+        Some(path) => SimulationConfig::load(&path).wrap_err("Failed to load simulation config")?,
+        None => SimulationConfig::default(),
+    };
+
+    println!("Running simulation: {config:?}");
+    let results = SimulationRunner::new(config).run();
+
+    println!();
+    if results.commits_consistent {
+        println!("Commits consistent across all validators");
+    } else {
+        eprintln!("ERROR: Commits DIVERGED");
+    }
+    for (i, leaders) in results.committed_leaders.iter().enumerate() {
+        println!("  Validator {i}: {} committed leaders", leaders.len());
+    }
 
     Ok(())
 }
