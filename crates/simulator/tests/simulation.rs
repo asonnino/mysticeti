@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use dag::config::ImportExport;
+use dag::config::{ImportExport, NodeParameters};
 use simulator::{NetworkTopology, SimulationConfig, SimulationRunner};
 
 #[test]
@@ -66,10 +66,53 @@ fn from_yaml() {
     assert_eq!(runner.config().duration_secs, 20);
 }
 
-/// The vote-per-transaction fast path causes oversized blocks
-/// during catch-up after a partition heals.
 #[test]
-#[ignore = "oversized blocks from vote-per-tx fast path"]
+fn star_topology() {
+    let config = SimulationConfig {
+        topology: NetworkTopology::Star(0),
+        duration_secs: 20,
+        ..Default::default()
+    };
+    let runner = SimulationRunner::new(config);
+    let results = runner.run();
+
+    assert!(results.commits_consistent);
+    assert!(!results.committed_leaders.is_empty());
+}
+
+#[test]
+fn small_committee() {
+    let config = SimulationConfig {
+        committee_size: 4,
+        duration_secs: 20,
+        ..Default::default()
+    };
+    let runner = SimulationRunner::new(config);
+    let results = runner.run();
+
+    assert!(results.commits_consistent);
+    assert!(!results.committed_leaders.is_empty());
+}
+
+#[test]
+fn custom_node_parameters() {
+    let config = SimulationConfig {
+        node_parameters: NodeParameters {
+            number_of_leaders: 1,
+            wave_length: 4,
+            ..Default::default()
+        },
+        duration_secs: 20,
+        ..Default::default()
+    };
+    let runner = SimulationRunner::new(config);
+    let results = runner.run();
+
+    assert!(results.commits_consistent);
+    assert!(!results.committed_leaders.is_empty());
+}
+
+#[test]
 fn network_partition() {
     let config = SimulationConfig {
         topology: NetworkTopology::Partition(vec![vec![0, 1], vec![2, 3, 4, 5, 6, 7, 8, 9]]),
