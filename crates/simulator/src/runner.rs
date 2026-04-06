@@ -1,12 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    io,
-    path::Path,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{io, path::Path, time::Duration};
 
 use dag::{
     config::{ImportExport, NodePublicConfig},
@@ -52,22 +47,9 @@ impl SimulationRunner {
 
     pub fn run(&self) -> SimulationResults {
         setup_simulator_tracing();
-
         let config = self.config.clone();
-        let results: Arc<Mutex<Option<SimulationResults>>> = Arc::new(Mutex::new(None));
-        let handle = results.clone();
-
         let rng = rng_at_seed(config.rng_seed);
-        SimulatedExecutorState::run(rng, async move {
-            let r = run_simulation(config).await;
-            *handle.lock().unwrap() = Some(r);
-        });
-
-        results
-            .lock()
-            .unwrap()
-            .take()
-            .expect("simulation did not produce results")
+        SimulatedExecutorState::run(rng, run_simulation(config))
     }
 }
 

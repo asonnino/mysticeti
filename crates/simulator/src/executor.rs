@@ -38,9 +38,9 @@ struct Task {
 }
 
 impl SimulatedExecutorState {
-    pub fn run<F: Future<Output = ()> + Send + 'static>(rng: StdRng, f: F) {
+    pub fn run<R: Send + 'static, F: Future<Output = R> + Send + 'static>(rng: StdRng, f: F) -> R {
         let mut simulator = Self::new_simulator(rng);
-        Self::block_on(&mut simulator, f);
+        Self::block_on(&mut simulator, f)
     }
 
     fn new_simulator(rng: StdRng) -> Simulator<SimulatedExecutorState> {
@@ -66,27 +66,23 @@ impl SimulatedExecutorState {
         join_handle
     }
 
-    fn block_on<F: Future<Output = ()> + Send + 'static>(
+    fn block_on<R: Send + 'static, F: Future<Output = R> + Send + 'static>(
         simulator: &mut Simulator<SimulatedExecutorState>,
         f: F,
-    ) {
+    ) -> R {
         let jh = Self::spawn_at(simulator, f);
-        Self::run_until_complete(simulator, jh);
+        Self::run_until_complete(simulator, jh)
     }
 
-    fn run_until_complete(
+    fn run_until_complete<R: Send + 'static>(
         simulator: &mut Simulator<SimulatedExecutorState>,
-        mut jh: JoinHandle<()>,
-    ) {
+        mut jh: JoinHandle<R>,
+    ) -> R {
         loop {
             assert!(!simulator.run_one());
             match jh.check_complete() {
-                Ok(()) => {
-                    break;
-                }
-                Err(njh) => {
-                    jh = njh;
-                }
+                Ok(value) => break value,
+                Err(njh) => jh = njh,
             }
         }
     }
@@ -223,11 +219,10 @@ impl<R> JoinHandle<R> {
         self.abort.notify_one();
     }
 
-    fn check_complete(mut self) -> Result<(), Self> {
-        if self.ch.try_recv().is_ok() {
-            Ok(())
-        } else {
-            Err(self)
+    fn check_complete(mut self) -> Result<R, Self> {
+        match self.ch.try_recv() {
+            Ok(Ok(value)) => Ok(value),
+            _ => Err(self),
         }
     }
 }
