@@ -7,6 +7,7 @@ use super::{DEFAULT_WAVE_LENGTH, LeaderStatus, base_committer::BaseCommitter};
 use crate::{
     committee::Committee,
     consensus::base_committer::BaseCommitterOptions,
+    consensus_api::DagConsensus,
     metrics::Metrics,
     storage::BlockReader,
     types::{AuthorityIndex, BlockReference, RoundNumber, format_authority_round},
@@ -161,5 +162,15 @@ impl UniversalCommitterBuilder {
             committers,
             metrics: self.metrics,
         }
+    }
+}
+
+impl DagConsensus for UniversalCommitter {
+    fn try_commit(&self, last_decided: BlockReference) -> Vec<LeaderStatus> {
+        self.try_commit(last_decided)
+    }
+
+    fn get_leaders(&self, round: RoundNumber) -> Vec<AuthorityIndex> {
+        self.get_leaders(round)
     }
 }

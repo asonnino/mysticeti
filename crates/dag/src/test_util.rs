@@ -13,6 +13,7 @@ use rand::{SeedableRng, rngs::StdRng};
 use crate::{
     committee::Committee,
     config::{NodePrivateConfig, NodePublicConfig},
+    consensus::universal_committer::{UniversalCommitter, UniversalCommitterBuilder},
     context::{Ctx, TokioCtx},
     core::{
         Core, CoreOptions,
@@ -35,7 +36,7 @@ fn open_core<C: Ctx>(
     committee: &Arc<Committee>,
     public_config: &NodePublicConfig,
     path: Option<&Path>,
-) -> Core<C> {
+) -> Core<C, UniversalCommitter> {
     let metrics = Metrics::new_for_test(committee.len());
     let (storage, recovered) = if let Some(path) = path {
         let wal_path = path.join(format!("{:03}.wal", authority));
@@ -44,6 +45,14 @@ fn open_core<C: Ctx>(
     } else {
         Storage::new_for_tests(authority, metrics.clone(), committee)
     };
+    let committer = UniversalCommitterBuilder::new(
+        committee.clone(),
+        storage.block_reader().clone(),
+        metrics.clone(),
+    )
+    .with_number_of_leaders(public_config.parameters.number_of_leaders)
+    .with_pipeline(public_config.parameters.enable_pipelining)
+    .build();
     let (block_handler, _tx_sender) = RealBlockHandler::new(metrics.clone());
     let private_config = NodePrivateConfig::new_for_tests(authority);
     Core::open(
@@ -51,22 +60,22 @@ fn open_core<C: Ctx>(
         authority,
         committee.clone(),
         private_config,
-        public_config,
         metrics,
         storage,
         recovered,
         CoreOptions::test(),
+        committer,
     )
 }
 
-pub fn committee_and_cores<C: Ctx>(n: usize) -> (Arc<Committee>, Vec<Core<C>>) {
+pub fn committee_and_cores<C: Ctx>(n: usize) -> (Arc<Committee>, Vec<Core<C, UniversalCommitter>>) {
     committee_and_cores_persisted(n, None)
 }
 
 pub fn committee_and_cores_persisted<C: Ctx>(
     n: usize,
     path: Option<&Path>,
-) -> (Arc<Committee>, Vec<Core<C>>) {
+) -> (Arc<Committee>, Vec<Core<C, UniversalCommitter>>) {
     let public_config = NodePublicConfig::new_for_tests(n);
     committee_and_cores_with_config(n, path, &public_config)
 }
@@ -75,7 +84,7 @@ fn committee_and_cores_with_config<C: Ctx>(
     n: usize,
     path: Option<&Path>,
     public_config: &NodePublicConfig,
-) -> (Arc<Committee>, Vec<Core<C>>) {
+) -> (Arc<Committee>, Vec<Core<C, UniversalCommitter>>) {
     let committee = committee(n);
     let cores = committee
         .authorities()
@@ -101,7 +110,7 @@ pub async fn networks_and_addresses(metrics: &[Arc<Metrics>]) -> (Vec<Network>, 
     (networks, addresses)
 }
 
-pub async fn network_syncers(n: usize) -> Vec<NetworkSyncer<TokioCtx>> {
+pub async fn network_syncers(n: usize) -> Vec<NetworkSyncer<TokioCtx, UniversalCommitter>> {
     let (_committee, cores) = committee_and_cores::<TokioCtx>(n);
     let metrics: Vec<_> = cores.iter().map(|c| c.metrics.clone()).collect();
     let (networks, _) = networks_and_addresses(&metrics).await;
@@ -131,7 +140,7 @@ pub fn rng_at_seed(seed: u64) -> StdRng {
     StdRng::from_seed(seed)
 }
 
-pub fn check_commits<C: Ctx>(syncers: &[Syncer<C>]) {
+pub fn check_commits<C: Ctx>(syncers: &[Syncer<C, UniversalCommitter>]) {
     let commits = syncers
         .iter()
         .map(|state| state.commit_handler().committed_leaders());
@@ -151,7 +160,7 @@ pub fn check_commits<C: Ctx>(syncers: &[Syncer<C>]) {
     eprintln!("Max commit sequence: {max_commit:?}");
 }
 
-pub fn print_stats<C: Ctx>(syncers: &[Syncer<C>]) {
+pub fn print_stats<C: Ctx>(syncers: &[Syncer<C, UniversalCommitter>]) {
     use crate::types::format_authority_index;
     for s in syncers {
         let authority = format_authority_index(s.core().authority());

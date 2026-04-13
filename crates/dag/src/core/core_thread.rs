@@ -10,24 +10,25 @@ use parking_lot::Mutex;
 
 use super::syncer::Syncer;
 use crate::{
+    consensus_api::DagConsensus,
     context::Ctx,
     data::Data,
     metrics::Metrics,
     types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
 };
 
-pub struct CoreThreadDispatcher<C: Ctx> {
-    inner: Inner<C>,
+pub struct CoreThreadDispatcher<C: Ctx, D: DagConsensus> {
+    inner: Inner<C, D>,
 }
 
-enum Inner<C: Ctx> {
+enum Inner<C: Ctx, D: DagConsensus> {
     Spawned {
         sender: mpsc::Sender<CoreThreadCommand>,
-        join_handle: thread::JoinHandle<Syncer<C>>,
+        join_handle: thread::JoinHandle<Syncer<C, D>>,
         metrics: Arc<Metrics>,
     },
     #[cfg(any(test, feature = "simulator"))]
-    Test(Box<Mutex<Syncer<C>>>),
+    Test(Box<Mutex<Syncer<C, D>>>),
 }
 
 enum CoreThreadCommand {
@@ -39,8 +40,8 @@ enum CoreThreadCommand {
     ConnectionDropped(AuthorityIndex, oneshot::Sender<()>),
 }
 
-impl<C: Ctx> CoreThreadDispatcher<C> {
-    pub fn start(syncer: Syncer<C>) -> Self {
+impl<C: Ctx, D: DagConsensus + Send + 'static> CoreThreadDispatcher<C, D> {
+    pub fn start(syncer: Syncer<C, D>) -> Self {
         let (sender, receiver) = mpsc::channel(32);
         let metrics = syncer.core().metrics.clone();
         let core_thread = CoreThread { syncer, receiver };
@@ -58,13 +59,13 @@ impl<C: Ctx> CoreThreadDispatcher<C> {
     }
 
     #[cfg(any(test, feature = "simulator"))]
-    pub fn new_for_test(syncer: Syncer<C>) -> Self {
+    pub fn new_for_test(syncer: Syncer<C, D>) -> Self {
         Self {
             inner: Inner::Test(Box::new(Mutex::new(syncer))),
         }
     }
 
-    pub fn stop(self) -> Syncer<C> {
+    pub fn stop(self) -> Syncer<C, D> {
         match self.inner {
             Inner::Spawned {
                 sender,
@@ -184,13 +185,13 @@ impl<C: Ctx> CoreThreadDispatcher<C> {
     }
 }
 
-struct CoreThread<C: Ctx> {
-    syncer: Syncer<C>,
+struct CoreThread<C: Ctx, D: DagConsensus> {
+    syncer: Syncer<C, D>,
     receiver: mpsc::Receiver<CoreThreadCommand>,
 }
 
-impl<C: Ctx> CoreThread<C> {
-    fn run(mut self) -> Syncer<C> {
+impl<C: Ctx, D: DagConsensus> CoreThread<C, D> {
+    fn run(mut self) -> Syncer<C, D> {
         tracing::info!("Started core thread with tid {}", gettid::gettid());
         let metrics = self.syncer.core().metrics.clone();
         while let Some(command) = self.receiver.blocking_recv() {

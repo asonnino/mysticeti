@@ -12,6 +12,7 @@ use tokio::{
 use crate::{
     committee::Committee,
     config::NodePublicConfig,
+    consensus_api::DagConsensus,
     context::Ctx,
     core::{
         Core,
@@ -31,25 +32,25 @@ use crate::{
 /// The maximum number of blocks that can be requested in a single message.
 pub const MAXIMUM_BLOCK_REQUEST: usize = 10;
 
-pub struct NetworkSyncer<C: Ctx> {
-    inner: Arc<NetworkSyncerInner<C>>,
+pub struct NetworkSyncer<C: Ctx, D: DagConsensus> {
+    inner: Arc<NetworkSyncerInner<C, D>>,
     main_task: C::JoinHandle<()>,
     syncer_task: oneshot::Receiver<()>,
     stop: mpsc::Receiver<()>,
 }
 
-pub struct NetworkSyncerInner<C: Ctx> {
-    pub syncer: CoreThreadDispatcher<C>,
+pub struct NetworkSyncerInner<C: Ctx, D: DagConsensus> {
+    pub syncer: CoreThreadDispatcher<C, D>,
     pub block_reader: BlockReader,
     pub notify: Arc<Notify>,
     committee: Arc<Committee>,
     stop: mpsc::Sender<()>,
 }
 
-impl<C: Ctx> NetworkSyncer<C> {
+impl<C: Ctx, D: DagConsensus + Send + 'static> NetworkSyncer<C, D> {
     pub fn start(
         network: Network,
-        core: Core<C>,
+        core: Core<C, D>,
         commit_period: u64,
         commit_handler: CommitHandler<C>,
         metrics: Arc<Metrics>,
@@ -69,7 +70,7 @@ impl<C: Ctx> NetworkSyncer<C> {
     #[cfg(any(test, feature = "simulator"))]
     pub fn start_for_test(
         network: Network,
-        core: Core<C>,
+        core: Core<C, D>,
         commit_period: u64,
         commit_handler: CommitHandler<C>,
         metrics: Arc<Metrics>,
@@ -89,12 +90,12 @@ impl<C: Ctx> NetworkSyncer<C> {
     #[allow(clippy::too_many_arguments)]
     fn start_inner(
         network: Network,
-        mut core: Core<C>,
+        mut core: Core<C, D>,
         commit_period: u64,
         mut commit_handler: CommitHandler<C>,
         metrics: Arc<Metrics>,
         public_config: &NodePublicConfig,
-        make_dispatcher: fn(Syncer<C>) -> CoreThreadDispatcher<C>,
+        make_dispatcher: fn(Syncer<C, D>) -> CoreThreadDispatcher<C, D>,
     ) -> Self {
         let authority_index = core.authority();
         let notify = Arc::new(Notify::new());
@@ -144,7 +145,7 @@ impl<C: Ctx> NetworkSyncer<C> {
         }
     }
 
-    pub async fn shutdown(self) -> Syncer<C> {
+    pub async fn shutdown(self) -> Syncer<C, D> {
         drop(self.stop);
         // todo - wait for network shutdown as well
         self.main_task.await.ok();
@@ -157,7 +158,7 @@ impl<C: Ctx> NetworkSyncer<C> {
 
     async fn run(
         mut network: Network,
-        inner: Arc<NetworkSyncerInner<C>>,
+        inner: Arc<NetworkSyncerInner<C, D>>,
         block_fetcher: Arc<BlockFetcher<C>>,
         metrics: Arc<Metrics>,
     ) {
@@ -196,7 +197,7 @@ impl<C: Ctx> NetworkSyncer<C> {
 
     async fn connection_task(
         mut connection: Connection,
-        inner: Arc<NetworkSyncerInner<C>>,
+        inner: Arc<NetworkSyncerInner<C, D>>,
         block_fetcher: Arc<BlockFetcher<C>>,
         metrics: Arc<Metrics>,
     ) -> Option<()> {
@@ -264,7 +265,7 @@ impl<C: Ctx> NetworkSyncer<C> {
         None
     }
 
-    async fn leader_timeout_task(inner: Arc<NetworkSyncerInner<C>>) -> Option<()> {
+    async fn leader_timeout_task(inner: Arc<NetworkSyncerInner<C, D>>) -> Option<()> {
         let leader_timeout = Duration::from_secs(1);
         loop {
             let notified = inner.notify.notified();
@@ -289,7 +290,7 @@ impl<C: Ctx> NetworkSyncer<C> {
         }
     }
 
-    async fn cleanup_task(inner: Arc<NetworkSyncerInner<C>>) -> Option<()> {
+    async fn cleanup_task(inner: Arc<NetworkSyncerInner<C, D>>) -> Option<()> {
         let cleanup_interval = Duration::from_secs(10);
         loop {
             select! {
@@ -309,7 +310,7 @@ impl<C: Ctx> NetworkSyncer<C> {
     }
 }
 
-impl<C: Ctx> NetworkSyncerInner<C> {
+impl<C: Ctx, D: DagConsensus> NetworkSyncerInner<C, D> {
     // Returns None either if channel is closed or NetworkSyncerInner receives stop signal
     async fn recv_or_stopped<T>(&self, channel: &mut mpsc::Receiver<T>) -> Option<T> {
         select! {

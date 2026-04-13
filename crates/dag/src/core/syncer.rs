@@ -7,6 +7,7 @@ use std::sync::Arc;
 use tokio::sync::Notify;
 
 use super::{Core, block_handler::CommitHandler};
+use crate::consensus_api::DagConsensus;
 use crate::{
     context::Ctx,
     data::Data,
@@ -14,8 +15,8 @@ use crate::{
     types::{AuthorityIndex, RoundNumber, StatementBlock},
 };
 
-pub struct Syncer<C: Ctx> {
-    core: Core<C>,
+pub struct Syncer<C: Ctx, D: DagConsensus> {
+    core: Core<C, D>,
     force_new_block: bool,
     commit_period: u64,
     signals: SyncerSignals,
@@ -56,9 +57,9 @@ impl SyncerSignals {
     }
 }
 
-impl<C: Ctx> Syncer<C> {
+impl<C: Ctx, D: DagConsensus> Syncer<C, D> {
     pub fn new(
-        core: Core<C>,
+        core: Core<C, D>,
         commit_period: u64,
         signals: SyncerSignals,
         commit_handler: CommitHandler<C>,
@@ -131,7 +132,7 @@ impl<C: Ctx> Syncer<C> {
         &self.commit_handler
     }
 
-    pub fn core(&self) -> &Core<C> {
+    pub fn core(&self) -> &Core<C, D> {
         &self.core
     }
 }

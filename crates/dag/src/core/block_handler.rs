@@ -11,7 +11,7 @@ use parking_lot::Mutex;
 use tokio::sync::mpsc;
 
 use crate::{
-    consensus::linearizer::{CommittedSubDag, Linearizer},
+    consensus_api::{CommittedSubDag, Linearizer},
     context::Ctx,
     data::Data,
     metrics::Metrics,

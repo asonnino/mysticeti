@@ -20,11 +20,8 @@ use self::{
 use crate::{
     block_store::{CommitData, OwnBlockData},
     committee::Committee,
-    config::{NodePrivateConfig, NodePublicConfig},
-    consensus::{
-        linearizer::CommittedSubDag,
-        universal_committer::{UniversalCommitter, UniversalCommitterBuilder},
-    },
+    config::NodePrivateConfig,
+    consensus_api::{CommittedSubDag, DagConsensus},
     context::Ctx,
     crypto::Signer,
     data::Data,
@@ -36,7 +33,7 @@ use crate::{
     wal::{WalPosition, WalSyncer},
 };
 
-pub struct Core<C: Ctx> {
+pub struct Core<C: Ctx, D: DagConsensus> {
     block_manager: BlockManager,
     pending: VecDeque<(WalPosition, MetaStatement)>,
     last_own_block: OwnBlockData,
@@ -51,7 +48,7 @@ pub struct Core<C: Ctx> {
     signer: Signer,
     // todo - ugly, probably need to merge syncer and core
     recovered_committed_blocks: Option<HashSet<BlockReference>>,
-    committer: UniversalCommitter,
+    committer: D,
 }
 
 pub struct CoreOptions {
@@ -64,18 +61,18 @@ pub enum MetaStatement {
     Payload(Vec<BaseStatement>),
 }
 
-impl<C: Ctx> Core<C> {
+impl<C: Ctx, D: DagConsensus> Core<C, D> {
     #[allow(clippy::too_many_arguments)]
     pub fn open(
         block_handler: RealBlockHandler<C>,
         authority: AuthorityIndex,
         committee: Arc<Committee>,
         private_config: NodePrivateConfig,
-        public_config: &NodePublicConfig,
         metrics: Arc<Metrics>,
         mut storage: Storage,
         recovered: RecoveredState,
         options: CoreOptions,
+        committer: D,
     ) -> Self {
         let RecoveredState {
             last_own_block,
@@ -120,23 +117,6 @@ impl<C: Ctx> Core<C> {
             own_block_data
         };
         let block_manager = BlockManager::new(storage.block_reader().clone(), &committee);
-
-        let committer = UniversalCommitterBuilder::new(
-            committee.clone(),
-            storage.block_reader().clone(),
-            metrics.clone(),
-        )
-        .with_number_of_leaders(public_config.parameters.number_of_leaders)
-        .with_pipeline(public_config.parameters.enable_pipelining)
-        .build();
-        tracing::info!(
-            "Pipeline enabled: {}",
-            public_config.parameters.enable_pipelining
-        );
-        tracing::info!(
-            "Number of leaders: {}",
-            public_config.parameters.number_of_leaders
-        );
 
         let mut this = Self {
             block_manager,

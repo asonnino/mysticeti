@@ -11,7 +11,7 @@ use minibytes::Bytes;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    consensus::linearizer::CommittedSubDag,
+    consensus_api::CommittedSubDag,
     data::Data,
     types::{AuthorityIndex, BlockDigest, BlockReference, RoundNumber, StatementBlock},
     wal::{Tag, WalPosition, WalWriter},

@@ -10,6 +10,7 @@ pub(crate) use storage::block_store;
 pub mod committee;
 pub mod config;
 pub mod consensus;
+pub mod consensus_api;
 pub mod context;
 pub mod core;
 pub mod metrics;

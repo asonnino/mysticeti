@@ -8,6 +8,7 @@ use rand::{seq::SliceRandom, thread_rng};
 use tokio::sync::mpsc;
 
 use crate::{
+    consensus_api::DagConsensus,
     context::Ctx,
     metrics::Metrics,
     sync::{
@@ -37,19 +38,19 @@ impl Default for SynchronizerParameters {
     }
 }
 
-pub struct BlockDisseminator<C: Ctx> {
+pub struct BlockDisseminator<C: Ctx, D: DagConsensus> {
     sender: mpsc::Sender<NetworkMessage>,
-    inner: Arc<NetworkSyncerInner<C>>,
+    inner: Arc<NetworkSyncerInner<C, D>>,
     own_blocks: Option<C::JoinHandle<Option<()>>>,
     other_blocks: Vec<C::JoinHandle<Option<()>>>,
     parameters: SynchronizerParameters,
     metrics: Arc<Metrics>,
 }
 
-impl<C: Ctx> BlockDisseminator<C> {
+impl<C: Ctx, D: DagConsensus + Send + 'static> BlockDisseminator<C, D> {
     pub fn new(
         sender: mpsc::Sender<NetworkMessage>,
-        inner: Arc<NetworkSyncerInner<C>>,
+        inner: Arc<NetworkSyncerInner<C, D>>,
         parameters: SynchronizerParameters,
         metrics: Arc<Metrics>,
     ) -> Self {
@@ -115,7 +116,7 @@ impl<C: Ctx> BlockDisseminator<C> {
 
     async fn stream_own_blocks(
         to: mpsc::Sender<NetworkMessage>,
-        inner: Arc<NetworkSyncerInner<C>>,
+        inner: Arc<NetworkSyncerInner<C, D>>,
         mut round: RoundNumber,
         batch_size: usize,
     ) -> Option<()> {
@@ -149,7 +150,7 @@ impl<C: Ctx> BlockDisseminator<C> {
 
     async fn stream_others_blocks(
         to: mpsc::Sender<NetworkMessage>,
-        inner: Arc<NetworkSyncerInner<C>>,
+        inner: Arc<NetworkSyncerInner<C, D>>,
         mut round: RoundNumber,
         author: AuthorityIndex,
         batch_size: usize,
@@ -179,9 +180,9 @@ pub struct BlockFetcher<C: Ctx> {
 }
 
 impl<C: Ctx> BlockFetcher<C> {
-    pub fn start(
+    pub fn start<D: DagConsensus + Send + 'static>(
         id: AuthorityIndex,
-        inner: Arc<NetworkSyncerInner<C>>,
+        inner: Arc<NetworkSyncerInner<C, D>>,
         metrics: Arc<Metrics>,
         enable: bool,
     ) -> Self {
@@ -215,9 +216,9 @@ impl<C: Ctx> BlockFetcher<C> {
     }
 }
 
-struct BlockFetcherWorker<C: Ctx> {
+struct BlockFetcherWorker<C: Ctx, D: DagConsensus> {
     id: AuthorityIndex,
-    inner: Arc<NetworkSyncerInner<C>>,
+    inner: Arc<NetworkSyncerInner<C, D>>,
     receiver: mpsc::Receiver<BlockFetcherMessage>,
     senders: HashMap<AuthorityIndex, mpsc::Sender<NetworkMessage>>,
     parameters: SynchronizerParameters,
@@ -226,10 +227,10 @@ struct BlockFetcherWorker<C: Ctx> {
     enable: bool,
 }
 
-impl<C: Ctx> BlockFetcherWorker<C> {
+impl<C: Ctx, D: DagConsensus + Send + 'static> BlockFetcherWorker<C, D> {
     pub fn new(
         id: AuthorityIndex,
-        inner: Arc<NetworkSyncerInner<C>>,
+        inner: Arc<NetworkSyncerInner<C, D>>,
         receiver: mpsc::Receiver<BlockFetcherMessage>,
         metrics: Arc<Metrics>,
         enable: bool,

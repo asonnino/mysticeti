@@ -12,6 +12,7 @@ use prometheus::Registry;
 use crate::{
     committee::Committee,
     config::{ClientParameters, NodePrivateConfig, NodePublicConfig},
+    consensus::universal_committer::UniversalCommitterBuilder,
     context::TokioCtx,
     core::{
         Core, CoreOptions,
@@ -24,8 +25,10 @@ use crate::{
     types::AuthorityIndex,
 };
 
+use crate::consensus::universal_committer::UniversalCommitter;
+
 pub struct Validator {
-    network_synchronizer: NetworkSyncer<TokioCtx>,
+    network_synchronizer: NetworkSyncer<TokioCtx, UniversalCommitter>,
     metrics_handle: tokio::task::JoinHandle<()>,
 }
 
@@ -75,16 +78,32 @@ impl Validator {
         );
         let commit_handler =
             CommitHandler::new(block_handler.transaction_time.clone(), metrics.clone());
+        let committer = UniversalCommitterBuilder::new(
+            committee.clone(),
+            storage.block_reader().clone(),
+            metrics.clone(),
+        )
+        .with_number_of_leaders(public_config.parameters.number_of_leaders)
+        .with_pipeline(public_config.parameters.enable_pipelining)
+        .build();
+        tracing::info!(
+            "Pipeline enabled: {}",
+            public_config.parameters.enable_pipelining
+        );
+        tracing::info!(
+            "Number of leaders: {}",
+            public_config.parameters.number_of_leaders
+        );
         let core = Core::open(
             block_handler,
             authority,
             committee.clone(),
             private_config,
-            &public_config,
             metrics.clone(),
             storage,
             recovered,
             CoreOptions::default(),
+            committer,
         );
         let network = Network::load(
             &public_config,
