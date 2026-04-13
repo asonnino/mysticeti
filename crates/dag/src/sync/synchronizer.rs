@@ -8,7 +8,7 @@ use rand::{seq::SliceRandom, thread_rng};
 use tokio::sync::mpsc;
 
 use crate::{
-    consensus_api::DagConsensus,
+    consensus::DagConsensus,
     context::Ctx,
     metrics::Metrics,
     sync::{

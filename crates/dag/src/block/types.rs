@@ -284,7 +284,7 @@ impl TransactionLocator {
 }
 
 impl BlockReference {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-utils"))]
     pub fn new_test(authority: AuthorityIndex, round: RoundNumber) -> Self {
         if round == 0 {
             StatementBlock::new_genesis(authority).reference

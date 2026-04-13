@@ -10,7 +10,7 @@ use parking_lot::Mutex;
 
 use super::syncer::Syncer;
 use crate::{
-    consensus_api::DagConsensus,
+    consensus::DagConsensus,
     context::Ctx,
     data::Data,
     metrics::Metrics,

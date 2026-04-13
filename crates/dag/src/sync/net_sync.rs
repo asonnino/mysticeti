@@ -12,7 +12,7 @@ use tokio::{
 use crate::{
     committee::Committee,
     config::NodePublicConfig,
-    consensus_api::DagConsensus,
+    consensus::DagConsensus,
     context::Ctx,
     core::{
         Core,
@@ -327,27 +327,5 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncerInner<C, D> {
     async fn stopped(&self) {
         let stopped = self.stop.send(()).await;
         assert!(stopped.is_err());
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::time::Duration;
-
-    use crate::test_util::{check_commits, network_syncers};
-
-    #[tokio::test]
-    async fn test_network_sync() {
-        let network_syncers = network_syncers(4).await;
-        println!("Started");
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        println!("Done");
-        let mut syncers = vec![];
-        for network_syncer in network_syncers {
-            let syncer = network_syncer.shutdown().await;
-            syncers.push(syncer);
-        }
-
-        check_commits(&syncers);
     }
 }

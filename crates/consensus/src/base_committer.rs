@@ -3,10 +3,10 @@
 
 use std::{fmt::Display, sync::Arc};
 
-use super::{DEFAULT_WAVE_LENGTH, LeaderStatus};
-use crate::{
+use crate::{DEFAULT_WAVE_LENGTH, MINIMUM_WAVE_LENGTH};
+use dag::{
     committee::{Committee, QuorumThreshold, StakeAggregator},
-    consensus::MINIMUM_WAVE_LENGTH,
+    consensus::LeaderStatus,
     data::Data,
     storage::BlockReader,
     types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock, format_authority_round},

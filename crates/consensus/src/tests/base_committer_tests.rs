@@ -1,10 +1,9 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    consensus::{
-        DEFAULT_WAVE_LENGTH, LeaderStatus, universal_committer::UniversalCommitterBuilder,
-    },
+use crate::{DEFAULT_WAVE_LENGTH, universal_committer::UniversalCommitterBuilder};
+use dag::{
+    consensus::LeaderStatus,
     metrics::Metrics,
     storage::Storage,
     test_util::{build_dag, build_dag_layer, committee},

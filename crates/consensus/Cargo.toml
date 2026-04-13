@@ -1,0 +1,16 @@
+[package]
+name = "mysticeti-consensus"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+dag = { path = "../dag" }
+tracing = { workspace = true }
+
+[dev-dependencies]
+dag = { path = "../dag", features = ["test-utils"] }
+tracing-test = "0.2.4"
+
+[features]
+test-utils = ["dag/test-utils"]

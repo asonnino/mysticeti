@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::sync::Notify;
 
 use super::{Core, block_handler::CommitHandler};
-use crate::consensus_api::DagConsensus;
+use crate::consensus::DagConsensus;
 use crate::{
     context::Ctx,
     data::Data,

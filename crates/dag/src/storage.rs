@@ -79,7 +79,7 @@ impl Storage {
             .expect("Failed to create wal syncer")
     }
 
-    pub(crate) fn block_reader(&self) -> &BlockReader {
+    pub fn block_reader(&self) -> &BlockReader {
         &self.reader
     }
 

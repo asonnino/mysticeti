@@ -9,9 +9,10 @@ use dag::{
     core::block_handler::CommitHandler,
     metrics::{Metrics, MetricsSnapshot},
     sync::net_sync::NetworkSyncer,
-    test_util::{committee_and_cores, rng_at_seed},
+    test_util::rng_at_seed,
     types::BlockReference,
 };
+use mysticeti_consensus::test_util::committee_and_cores;
 
 use crate::{
     config::{NetworkTopology, SimulationConfig},

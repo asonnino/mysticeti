@@ -3,11 +3,13 @@
 
 use std::{collections::VecDeque, sync::Arc};
 
-use super::{DEFAULT_WAVE_LENGTH, LeaderStatus, base_committer::BaseCommitter};
 use crate::{
+    DEFAULT_WAVE_LENGTH,
+    base_committer::{BaseCommitter, BaseCommitterOptions},
+};
+use dag::{
     committee::Committee,
-    consensus::base_committer::BaseCommitterOptions,
-    consensus_api::DagConsensus,
+    consensus::{DagConsensus, LeaderStatus},
     metrics::Metrics,
     storage::BlockReader,
     types::{AuthorityIndex, BlockReference, RoundNumber, format_authority_round},

@@ -6,6 +6,7 @@ publish.workspace = true
 
 [dependencies]
 dag = { path = "../dag", features = ["test-utils"] }
+mysticeti-consensus = { path = "../consensus", features = ["test-utils"] }
 futures = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true }

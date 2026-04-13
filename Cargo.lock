@@ -2226,6 +2226,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mysticeti-consensus"
+version = "0.1.0"
+dependencies = [
+ "dag",
+ "tracing",
+ "tracing-test",
+]
+
+[[package]]
 name = "native-tls"
 version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3320,6 +3329,7 @@ version = "0.1.0"
 dependencies = [
  "dag",
  "futures",
+ "mysticeti-consensus",
  "rand 0.8.5",
  "serde",
  "serde_yaml",
@@ -3899,8 +3909,13 @@ dependencies = [
  "color-eyre",
  "dag",
  "eyre",
+ "mysticeti-consensus",
+ "prometheus",
+ "rand 0.8.5",
+ "reqwest",
  "serde_yaml",
  "simulator",
+ "tempdir",
  "tokio",
  "tracing",
  "tracing-subscriber",

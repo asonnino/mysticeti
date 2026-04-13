@@ -3,6 +3,7 @@ resolver = "3"
 members = [
   "crates/validator",
   "crates/dag",
+  "crates/consensus",
   "crates/orchestrator",
   "crates/minibytes",
   "crates/simulator",

@@ -3,7 +3,6 @@
 
 use std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
-    path::Path,
     sync::Arc,
 };
 
@@ -12,85 +11,18 @@ use rand::{SeedableRng, rngs::StdRng};
 
 use crate::{
     committee::Committee,
-    config::{NodePrivateConfig, NodePublicConfig},
-    consensus::universal_committer::{UniversalCommitter, UniversalCommitterBuilder},
-    context::{Ctx, TokioCtx},
-    core::{
-        Core, CoreOptions,
-        block_handler::{CommitHandler, RealBlockHandler},
-        syncer::Syncer,
-    },
+    consensus::DagConsensus,
+    context::Ctx,
+    core::syncer::Syncer,
     data::Data,
     metrics::Metrics,
     storage::Storage,
-    sync::{net_sync::NetworkSyncer, network::Network},
+    sync::network::Network,
     types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
 };
 
 pub fn committee(n: usize) -> Arc<Committee> {
     Committee::new_test(vec![1; n])
-}
-
-fn open_core<C: Ctx>(
-    authority: AuthorityIndex,
-    committee: &Arc<Committee>,
-    public_config: &NodePublicConfig,
-    path: Option<&Path>,
-) -> Core<C, UniversalCommitter> {
-    let metrics = Metrics::new_for_test(committee.len());
-    let (storage, recovered) = if let Some(path) = path {
-        let wal_path = path.join(format!("{:03}.wal", authority));
-        Storage::open(authority, &wal_path, metrics.clone(), committee)
-            .expect("Failed to open storage")
-    } else {
-        Storage::new_for_tests(authority, metrics.clone(), committee)
-    };
-    let committer = UniversalCommitterBuilder::new(
-        committee.clone(),
-        storage.block_reader().clone(),
-        metrics.clone(),
-    )
-    .with_number_of_leaders(public_config.parameters.number_of_leaders)
-    .with_pipeline(public_config.parameters.enable_pipelining)
-    .build();
-    let (block_handler, _tx_sender) = RealBlockHandler::new(metrics.clone());
-    let private_config = NodePrivateConfig::new_for_tests(authority);
-    Core::open(
-        block_handler,
-        authority,
-        committee.clone(),
-        private_config,
-        metrics,
-        storage,
-        recovered,
-        CoreOptions::test(),
-        committer,
-    )
-}
-
-pub fn committee_and_cores<C: Ctx>(n: usize) -> (Arc<Committee>, Vec<Core<C, UniversalCommitter>>) {
-    committee_and_cores_persisted(n, None)
-}
-
-pub fn committee_and_cores_persisted<C: Ctx>(
-    n: usize,
-    path: Option<&Path>,
-) -> (Arc<Committee>, Vec<Core<C, UniversalCommitter>>) {
-    let public_config = NodePublicConfig::new_for_tests(n);
-    committee_and_cores_with_config(n, path, &public_config)
-}
-
-fn committee_and_cores_with_config<C: Ctx>(
-    n: usize,
-    path: Option<&Path>,
-    public_config: &NodePublicConfig,
-) -> (Arc<Committee>, Vec<Core<C, UniversalCommitter>>) {
-    let committee = committee(n);
-    let cores = committee
-        .authorities()
-        .map(|authority| open_core(authority, &committee, public_config, path))
-        .collect();
-    (committee, cores)
 }
 
 pub async fn networks_and_addresses(metrics: &[Arc<Metrics>]) -> (Vec<Network>, Vec<SocketAddr>) {
@@ -110,29 +42,6 @@ pub async fn networks_and_addresses(metrics: &[Arc<Metrics>]) -> (Vec<Network>, 
     (networks, addresses)
 }
 
-pub async fn network_syncers(n: usize) -> Vec<NetworkSyncer<TokioCtx, UniversalCommitter>> {
-    let (_committee, cores) = committee_and_cores::<TokioCtx>(n);
-    let metrics: Vec<_> = cores.iter().map(|c| c.metrics.clone()).collect();
-    let (networks, _) = networks_and_addresses(&metrics).await;
-    let mut network_syncers = vec![];
-    for (network, core) in networks.into_iter().zip(cores.into_iter()) {
-        let commit_handler = CommitHandler::new(
-            core.block_handler().transaction_time.clone(),
-            Metrics::new_for_test(0),
-        );
-        let network_syncer = NetworkSyncer::start(
-            network,
-            core,
-            3,
-            commit_handler,
-            Metrics::new_for_test(0),
-            &NodePublicConfig::new_for_tests(n),
-        );
-        network_syncers.push(network_syncer);
-    }
-    network_syncers
-}
-
 pub fn rng_at_seed(seed: u64) -> StdRng {
     let bytes = seed.to_le_bytes();
     let mut seed = [0u8; 32];
@@ -140,7 +49,7 @@ pub fn rng_at_seed(seed: u64) -> StdRng {
     StdRng::from_seed(seed)
 }
 
-pub fn check_commits<C: Ctx>(syncers: &[Syncer<C, UniversalCommitter>]) {
+pub fn check_commits<C: Ctx, D: DagConsensus>(syncers: &[Syncer<C, D>]) {
     let commits = syncers
         .iter()
         .map(|state| state.commit_handler().committed_leaders());
@@ -160,7 +69,7 @@ pub fn check_commits<C: Ctx>(syncers: &[Syncer<C, UniversalCommitter>]) {
     eprintln!("Max commit sequence: {max_commit:?}");
 }
 
-pub fn print_stats<C: Ctx>(syncers: &[Syncer<C, UniversalCommitter>]) {
+pub fn print_stats<C: Ctx, D: DagConsensus>(syncers: &[Syncer<C, D>]) {
     use crate::types::format_authority_index;
     for s in syncers {
         let authority = format_authority_index(s.core().authority());

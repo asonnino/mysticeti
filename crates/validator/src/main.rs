@@ -9,15 +9,17 @@ use std::{
 };
 
 use clap::Parser;
+mod validator;
+
 use dag::{
     committee::Committee,
     config::{ClientParameters, ImportExport, NodeParameters, NodePrivateConfig, NodePublicConfig},
     types::AuthorityIndex,
-    validator::Validator,
 };
 use eyre::{Context, Result, eyre};
 use simulator::{SimulationConfig, SimulationRunner};
 use tracing_subscriber::{EnvFilter, filter::LevelFilter, fmt};
+use validator::Validator;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
