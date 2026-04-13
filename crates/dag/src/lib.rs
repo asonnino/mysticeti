@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub mod block;
+pub(crate) use block::crypto;
+pub use block::data;
 pub use block::types;
-pub(crate) use block::{crypto, data};
 
 pub(crate) use storage::block_store;
 pub mod committee;

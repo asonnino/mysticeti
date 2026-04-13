@@ -98,7 +98,12 @@ impl<C: Ctx> Core<C> {
             // Initialize empty block store
             // A lot of this code is shared with Self::add_blocks,
             // this is not great and some code reuse would be great
-            let (own_genesis_block, other_genesis_blocks) = committee.genesis_blocks(authority);
+            let own_genesis_block = StatementBlock::new_genesis(authority);
+            let other_genesis_blocks: Vec<_> = committee
+                .authorities()
+                .filter(|&a| a != authority)
+                .map(StatementBlock::new_genesis)
+                .collect();
             assert_eq!(own_genesis_block.author(), authority);
             for block in other_genesis_blocks {
                 let reference = *block.reference();

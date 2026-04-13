@@ -9,8 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     config::ImportExport,
     crypto::{PublicKey, Signer, dummy_public_key},
-    data::Data,
-    types::{AuthorityIndex, AuthoritySet, Stake, StatementBlock},
+    types::{AuthorityIndex, AuthoritySet, Stake},
 };
 
 #[derive(Serialize, Deserialize)]
@@ -79,25 +78,6 @@ impl Committee {
 
     pub fn authorities(&self) -> Range<AuthorityIndex> {
         0u64..(self.authorities.len() as AuthorityIndex)
-    }
-
-    /// Return own genesis block and other genesis blocks
-    pub fn genesis_blocks(
-        &self,
-        for_authority: AuthorityIndex,
-    ) -> (Data<StatementBlock>, Vec<Data<StatementBlock>>) {
-        let other_blocks: Vec<_> = self
-            .authorities()
-            .filter_map(|a| {
-                if a == for_authority {
-                    None
-                } else {
-                    Some(StatementBlock::new_genesis(a))
-                }
-            })
-            .collect();
-        let own_genesis_block = StatementBlock::new_genesis(for_authority);
-        (own_genesis_block, other_blocks)
     }
 
     pub fn is_valid(&self, amount: Stake) -> bool {
