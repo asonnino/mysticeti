@@ -11,16 +11,16 @@ use dag::{
     config::{self, ClientParameters, NodePrivateConfig, NodePublicConfig},
     types::AuthorityIndex,
 };
-use validator::{builder::ValidatorBuilder, prometheus, validator::ValidatorHandle};
+use replica::{builder::ReplicaBuilder, prometheus, replica::ReplicaHandle};
 
-async fn run_validator(
+async fn run_replica(
     authority: AuthorityIndex,
     committee: &Arc<Committee>,
     public_config: &NodePublicConfig,
     private_config: NodePrivateConfig,
     client_parameters: &ClientParameters,
-) -> ValidatorHandle {
-    let mut builder = ValidatorBuilder::new(
+) -> ReplicaHandle {
+    let mut builder = ReplicaBuilder::new(
         authority,
         committee.clone(),
         public_config.clone(),
@@ -55,13 +55,13 @@ async fn await_for_commits(addresses: Vec<SocketAddr>) {
 }
 
 #[tokio::test]
-async fn validator_commit() {
+async fn replica_commit() {
     let committee_size = 4;
     let committee = Committee::new_for_benchmarks(committee_size);
     let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(0);
     let client_parameters = ClientParameters::default();
 
-    let dir = TempDir::new("validator_commit").unwrap();
+    let dir = TempDir::new("replica_commit").unwrap();
     let private_configs = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size);
     private_configs.iter().for_each(|private_config| {
         fs::create_dir_all(&private_config.storage_path).unwrap();
@@ -70,7 +70,7 @@ async fn validator_commit() {
     let mut handles = Vec::new();
     for (i, private_config) in private_configs.into_iter().enumerate() {
         handles.push(
-            run_validator(
+            run_replica(
                 i as AuthorityIndex,
                 &committee,
                 &public_config,
@@ -98,13 +98,13 @@ async fn validator_commit() {
 }
 
 #[tokio::test]
-async fn validator_sync() {
+async fn replica_sync() {
     let committee_size = 4;
     let committee = Committee::new_for_benchmarks(committee_size);
     let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(100);
     let client_parameters = ClientParameters::default();
 
-    let dir = TempDir::new("validator_sync").unwrap();
+    let dir = TempDir::new("replica_sync").unwrap();
     let private_configs = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size);
     private_configs.iter().for_each(|private_config| {
         fs::create_dir_all(&private_config.storage_path).unwrap();
@@ -116,7 +116,7 @@ async fn validator_sync() {
             continue;
         }
         handles.push(
-            run_validator(
+            run_replica(
                 i as AuthorityIndex,
                 &committee,
                 &public_config,
@@ -146,7 +146,7 @@ async fn validator_sync() {
     let private_config =
         NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size).remove(authority);
     handles.push(
-        run_validator(
+        run_replica(
             authority as AuthorityIndex,
             &committee,
             &public_config,
@@ -173,13 +173,13 @@ async fn validator_sync() {
 }
 
 #[tokio::test]
-async fn validator_crash_faults() {
+async fn replica_crash_faults() {
     let committee_size = 4;
     let committee = Committee::new_for_benchmarks(committee_size);
     let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(200);
     let client_parameters = ClientParameters::default();
 
-    let dir = TempDir::new("validator_crash_faults").unwrap();
+    let dir = TempDir::new("replica_crash_faults").unwrap();
     let private_configs = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size);
     private_configs.iter().for_each(|private_config| {
         fs::create_dir_all(&private_config.storage_path).unwrap();
@@ -191,7 +191,7 @@ async fn validator_crash_faults() {
             continue;
         }
         handles.push(
-            run_validator(
+            run_replica(
                 i as AuthorityIndex,
                 &committee,
                 &public_config,

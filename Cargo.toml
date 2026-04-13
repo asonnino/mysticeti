@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
-  "crates/validator",
+  "crates/replica",
   "crates/dag",
   "crates/consensus",
   "crates/orchestrator",

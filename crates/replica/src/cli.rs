@@ -7,7 +7,7 @@ use clap::Parser;
 use dag::types::AuthorityIndex;
 use tracing_subscriber::filter::LevelFilter;
 
-/// Mysticeti consensus validator node.
+/// Mysticeti consensus replica.
 #[derive(Parser)]
 #[command(author, version, propagate_version = true)]
 pub struct Args {
@@ -37,7 +37,7 @@ pub enum Operation {
         node_parameters_path: Option<PathBuf>,
     },
 
-    /// Run a single validator node from config files.
+    /// Run a single replica from config files.
     Run {
         /// Authority index of this node.
         #[arg(long, value_name = "INT")]

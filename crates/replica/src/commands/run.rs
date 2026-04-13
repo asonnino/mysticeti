@@ -14,7 +14,7 @@ use dag::{
 use eyre::{Result, eyre};
 use tracing_subscriber::filter::LevelFilter;
 
-use crate::{builder::ValidatorBuilder, tracing::ValidatorTracing};
+use crate::{builder::ReplicaBuilder, tracing::ReplicaTracing};
 
 pub async fn run(
     authority: AuthorityIndex,
@@ -25,11 +25,11 @@ pub async fn run(
     log_level: Option<LevelFilter>,
 ) -> Result<()> {
     match log_level {
-        Some(level) => ValidatorTracing::new(level),
-        None => ValidatorTracing::default(),
+        Some(level) => ReplicaTracing::new(level),
+        None => ReplicaTracing::default(),
     }
     .setup();
-    tracing::info!("Starting validator {authority}");
+    tracing::info!("Starting replica {authority}");
 
     // Load all configuration files.
     let committee = Committee::load(&committee_path)?;
@@ -49,8 +49,8 @@ pub async fn run(
         .network_address(authority)
         .ok_or(eyre!("No network address for authority {authority}"))?;
 
-    // Build and run the validator (blocks forever).
-    let handle = ValidatorBuilder::new(
+    // Build and run the replica (blocks forever).
+    let handle = ReplicaBuilder::new(
         authority,
         Arc::new(committee),
         public_config,
@@ -63,7 +63,7 @@ pub async fn run(
     .await?;
 
     tracing::info!("Metrics server listening on {metrics_address}");
-    tracing::info!("Validator {authority} listening on {network_address}");
+    tracing::info!("Replica {authority} listening on {network_address}");
 
     handle.join().await
 }

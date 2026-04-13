@@ -109,7 +109,7 @@ impl ProtocolCommands for MysticetiProtocol {
         );
 
         let genesis = [
-            &format!("./{BINARY_PATH}/validator"),
+            &format!("./{BINARY_PATH}/replica"),
             "test-genesis",
             &format!(
                 "--ips {ips} --working-directory {} --node-parameters-path {}",
@@ -149,7 +149,7 @@ impl ProtocolCommands for MysticetiProtocol {
                 let client_parameters_path = self.working_dir.join("client-parameters.yaml");
 
                 let run = [
-                    &format!("./{BINARY_PATH}/validator"),
+                    &format!("./{BINARY_PATH}/replica"),
                     "run",
                     &format!("--authority {authority}"),
                     &format!("--committee-path {}", committee_path.display()),
@@ -205,7 +205,7 @@ impl ProtocolMetrics for MysticetiProtocol {
         let node_config = config::NodePublicConfig::new_for_benchmarks(ips, node_parameters);
         let metrics_paths = node_config
             .all_metric_addresses()
-            .map(|x| format!("{x}{}", validator::prometheus::METRICS_ROUTE));
+            .map(|x| format!("{x}{}", replica::prometheus::METRICS_ROUTE));
 
         instances.into_iter().zip(metrics_paths).collect()
     }

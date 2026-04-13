@@ -2379,6 +2379,7 @@ dependencies = [
  "prettytable-rs",
  "prometheus-parse",
  "rand 0.8.5",
+ "replica",
  "reqwest",
  "serde",
  "serde_json",
@@ -2388,7 +2389,6 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
- "validator",
 ]
 
 [[package]]
@@ -2860,6 +2860,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3acd125665422973a33ac9d3dd2df85edad0f4ae9b00dafb1a05e43a9f5ef8e7"
 dependencies = [
  "winapi",
+]
+
+[[package]]
+name = "replica"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "clap",
+ "color-eyre",
+ "consensus",
+ "dag",
+ "eyre",
+ "prometheus",
+ "rand 0.8.5",
+ "reqwest",
+ "serde",
+ "serde_yaml",
+ "simulator",
+ "tempdir",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -3900,28 +3922,6 @@ checksum = "a68d3c8f01c0cfa54a75291d83601161799e4a89a39e0929f4b0354d88757a37"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "validator"
-version = "0.1.0"
-dependencies = [
- "axum",
- "clap",
- "color-eyre",
- "consensus",
- "dag",
- "eyre",
- "prometheus",
- "rand 0.8.5",
- "reqwest",
- "serde",
- "serde_yaml",
- "simulator",
- "tempdir",
- "tokio",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

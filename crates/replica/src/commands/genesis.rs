@@ -11,7 +11,7 @@ use dag::{
 use eyre::{Context, Result};
 use tracing_subscriber::filter::LevelFilter;
 
-use crate::tracing::ValidatorTracing;
+use crate::tracing::ReplicaTracing;
 
 pub fn test_genesis(
     ips: Vec<IpAddr>,
@@ -20,8 +20,8 @@ pub fn test_genesis(
     log_level: Option<LevelFilter>,
 ) -> Result<()> {
     match log_level {
-        Some(level) => ValidatorTracing::new(level),
-        None => ValidatorTracing::default(),
+        Some(level) => ReplicaTracing::new(level),
+        None => ReplicaTracing::default(),
     }
     .setup();
 

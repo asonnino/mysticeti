@@ -11,9 +11,9 @@ use dag::{
     types::AuthorityIndex,
 };
 
-use crate::validator::Validator;
+use crate::replica::Replica;
 
-pub struct ValidatorBuilder {
+pub struct ReplicaBuilder {
     authority: AuthorityIndex,
     committee: Arc<Committee>,
     public_config: NodePublicConfig,
@@ -23,7 +23,7 @@ pub struct ValidatorBuilder {
     client_parameters: Option<ClientParameters>,
 }
 
-impl ValidatorBuilder {
+impl ReplicaBuilder {
     pub fn new(
         authority: AuthorityIndex,
         committee: Arc<Committee>,
@@ -56,8 +56,8 @@ impl ValidatorBuilder {
         self
     }
 
-    pub fn build(self) -> Validator {
-        Validator::new(
+    pub fn build(self) -> Replica {
+        Replica::new(
             self.authority,
             self.committee,
             self.public_config,

@@ -16,7 +16,7 @@ use eyre::{Context, Result};
 use serde::{Deserialize, Serialize};
 use tracing_subscriber::filter::LevelFilter;
 
-use crate::{banner, builder::ValidatorBuilder, tracing::ValidatorTracing};
+use crate::{banner, builder::ReplicaBuilder, tracing::ReplicaTracing};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TestbedConfig {
@@ -49,8 +49,8 @@ pub async fn local_testbed(
 
     banner::print_banner("Local Testbed");
     match log_level {
-        Some(level) => ValidatorTracing::new(level),
-        None => ValidatorTracing::new(LevelFilter::DEBUG),
+        Some(level) => ReplicaTracing::new(level),
+        None => ReplicaTracing::new(LevelFilter::DEBUG),
     }
     .setup();
 
@@ -95,7 +95,7 @@ pub async fn local_testbed(
     let mut handles = Vec::with_capacity(committee_size);
     for (i, private_config) in private_configs.into_iter().enumerate() {
         let authority = i as AuthorityIndex;
-        let mut builder = ValidatorBuilder::new(
+        let mut builder = ReplicaBuilder::new(
             authority,
             committee.clone(),
             public_config.clone(),

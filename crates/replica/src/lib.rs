@@ -7,5 +7,5 @@ pub mod cli;
 pub mod commands;
 pub mod generator;
 pub mod prometheus;
+pub mod replica;
 pub mod tracing;
-pub mod validator;

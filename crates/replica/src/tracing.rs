@@ -4,13 +4,13 @@
 use tracing_subscriber::{EnvFilter, filter::LevelFilter, fmt};
 
 /// Our crate names for targeted filtering.
-const TARGET_CRATES: &[&str] = &["dag", "consensus", "validator"];
+const TARGET_CRATES: &[&str] = &["dag", "consensus", "replica"];
 
-pub struct ValidatorTracing {
+pub struct ReplicaTracing {
     level: LevelFilter,
 }
 
-impl Default for ValidatorTracing {
+impl Default for ReplicaTracing {
     fn default() -> Self {
         Self {
             level: LevelFilter::INFO,
@@ -18,7 +18,7 @@ impl Default for ValidatorTracing {
     }
 }
 
-impl ValidatorTracing {
+impl ReplicaTracing {
     pub fn new(level: LevelFilter) -> Self {
         Self { level }
     }

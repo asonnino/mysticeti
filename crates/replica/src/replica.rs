@@ -30,7 +30,7 @@ use crate::generator::TransactionGenerator;
 
 use crate::prometheus as metrics_server;
 
-pub struct Validator {
+pub struct Replica {
     authority: AuthorityIndex,
     committee: Arc<Committee>,
     public_config: NodePublicConfig,
@@ -40,7 +40,7 @@ pub struct Validator {
     client_parameters: Option<ClientParameters>,
 }
 
-impl Validator {
+impl Replica {
     pub(crate) fn new(
         authority: AuthorityIndex,
         committee: Arc<Committee>,
@@ -61,7 +61,7 @@ impl Validator {
         }
     }
 
-    pub async fn run(self) -> Result<ValidatorHandle> {
+    pub async fn run(self) -> Result<ReplicaHandle> {
         let metrics = Metrics::new(&self.registry, self.committee.len(), None);
 
         // Start the metrics HTTP server if configured.
@@ -144,7 +144,7 @@ impl Validator {
             &self.public_config,
         );
 
-        Ok(ValidatorHandle {
+        Ok(ReplicaHandle {
             authority: self.authority,
             network_synchronizer,
             metrics_handle,
@@ -153,14 +153,14 @@ impl Validator {
     }
 }
 
-pub struct ValidatorHandle {
+pub struct ReplicaHandle {
     authority: AuthorityIndex,
     network_synchronizer: NetworkSyncer<TokioCtx, UniversalCommitter>,
     metrics_handle: Option<JoinHandle<()>>,
     tx_sender: Option<mpsc::Sender<Vec<Transaction>>>,
 }
 
-impl ValidatorHandle {
+impl ReplicaHandle {
     pub fn stop(&self) {
         // TODO: propagate stop signal into Core/Syncer for
         // graceful drain of in-flight blocks.
@@ -178,12 +178,12 @@ impl ValidatorHandle {
             result = self.network_synchronizer
                 .await_completion() => {
                 result.map_err(|error| eyre!(
-                    "Validator {} crashed: {error}", self.authority
+                    "Replica {} crashed: {error}", self.authority
                 ))
             }
             result = metrics_future => {
                 result.map_err(|error| eyre!(
-                    "Metrics server for validator {} crashed: {error}",
+                    "Metrics server for replica {} crashed: {error}",
                     self.authority
                 ))
             }

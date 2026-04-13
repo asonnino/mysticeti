@@ -3,7 +3,7 @@
 
 use clap::Parser;
 use eyre::Result;
-use validator::{
+use replica::{
     cli::{Args, Operation},
     commands,
 };
