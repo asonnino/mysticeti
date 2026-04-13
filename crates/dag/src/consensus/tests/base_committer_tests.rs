@@ -6,7 +6,8 @@ use crate::{
         DEFAULT_WAVE_LENGTH, LeaderStatus, universal_committer::UniversalCommitterBuilder,
     },
     metrics::Metrics,
-    test_util::{TestBlockWriter, build_dag, build_dag_layer, committee},
+    storage::Storage,
+    test_util::{build_dag, build_dag_layer, committee},
     types::BlockReference,
 };
 
@@ -16,12 +17,12 @@ use crate::{
 fn direct_commit() {
     let committee = committee(4);
 
-    let mut block_writer = TestBlockWriter::new(&committee);
-    build_dag(&committee, &mut block_writer, None, 5);
+    let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
+    build_dag(&committee, &mut storage, None, 5);
 
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
-        block_writer.into_block_reader(),
+        storage.block_reader().clone(),
         Metrics::new_for_test(0),
     )
     .build();
@@ -44,12 +45,12 @@ fn direct_commit() {
 fn idempotence() {
     let committee = committee(4);
 
-    let mut block_writer = TestBlockWriter::new(&committee);
-    build_dag(&committee, &mut block_writer, None, 5);
+    let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
+    build_dag(&committee, &mut storage, None, 5);
 
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
-        block_writer.into_block_reader(),
+        storage.block_reader().clone(),
         Metrics::new_for_test(0),
     )
     .build();
@@ -76,12 +77,12 @@ fn multiple_direct_commit() {
     let mut last_committed = BlockReference::new_test(0, 0);
     for n in 1..=10 {
         let enough_blocks = wave_length * (n + 1) - 1;
-        let mut block_writer = TestBlockWriter::new(&committee);
-        build_dag(&committee, &mut block_writer, None, enough_blocks);
+        let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
+        build_dag(&committee, &mut storage, None, enough_blocks);
 
         let committer = UniversalCommitterBuilder::new(
             committee.clone(),
-            block_writer.into_block_reader(),
+            storage.block_reader().clone(),
             Metrics::new_for_test(0),
         )
         .with_wave_length(wave_length)
@@ -112,12 +113,12 @@ fn direct_commit_late_call() {
 
     let n = 10;
     let enough_blocks = wave_length * (n + 1) - 1;
-    let mut block_writer = TestBlockWriter::new(&committee);
-    build_dag(&committee, &mut block_writer, None, enough_blocks);
+    let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
+    build_dag(&committee, &mut storage, None, enough_blocks);
 
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
-        block_writer.into_block_reader(),
+        storage.block_reader().clone(),
         Metrics::new_for_test(0),
     )
     .with_wave_length(wave_length)
@@ -147,12 +148,12 @@ fn no_genesis_commit() {
 
     let first_commit_round = 2 * wave_length - 1;
     for r in 0..first_commit_round {
-        let mut block_writer = TestBlockWriter::new(&committee);
-        build_dag(&committee, &mut block_writer, None, r);
+        let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
+        build_dag(&committee, &mut storage, None, r);
 
         let committer = UniversalCommitterBuilder::new(
             committee.clone(),
-            block_writer.into_block_reader(),
+            storage.block_reader().clone(),
             Metrics::new_for_test(0),
         )
         .with_wave_length(wave_length)
@@ -172,11 +173,11 @@ fn no_leader() {
     let committee = committee(4);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
-    let mut block_writer = TestBlockWriter::new(&committee);
+    let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
 
     // Add enough blocks to finish wave 0.
     let decision_round_0 = wave_length - 1;
-    let references = build_dag(&committee, &mut block_writer, None, decision_round_0);
+    let references = build_dag(&committee, &mut storage, None, decision_round_0);
 
     // Add enough blocks to reach the decision round of the first leader (but without the leader).
     let leader_round_1 = wave_length;
@@ -186,20 +187,15 @@ fn no_leader() {
         .authorities()
         .filter(|&authority| authority != leader_1)
         .map(|authority| (authority, references.clone()));
-    let references = build_dag_layer(connections.collect(), &mut block_writer);
+    let references = build_dag_layer(connections.collect(), &mut storage);
 
     let decision_round_1 = 2 * wave_length - 1;
-    build_dag(
-        &committee,
-        &mut block_writer,
-        Some(references),
-        decision_round_1,
-    );
+    build_dag(&committee, &mut storage, Some(references), decision_round_1);
 
     // Ensure no blocks are committed.
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
-        block_writer.into_block_reader(),
+        storage.block_reader().clone(),
         Metrics::new_for_test(0),
     )
     .with_wave_length(wave_length)
@@ -225,11 +221,11 @@ fn direct_skip() {
     let committee = committee(4);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
-    let mut block_writer = TestBlockWriter::new(&committee);
+    let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
 
     // Add enough blocks to reach the first leader.
     let leader_round_1 = wave_length;
-    let references_1 = build_dag(&committee, &mut block_writer, None, leader_round_1);
+    let references_1 = build_dag(&committee, &mut storage, None, leader_round_1);
 
     // Filter out that leader.
     let references_without_leader_1: Vec<_> = references_1
@@ -241,7 +237,7 @@ fn direct_skip() {
     let decision_round_1 = 2 * wave_length - 1;
     build_dag(
         &committee,
-        &mut block_writer,
+        &mut storage,
         Some(references_without_leader_1),
         decision_round_1,
     );
@@ -249,7 +245,7 @@ fn direct_skip() {
     // Ensure the leader is skipped.
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
-        block_writer.into_block_reader(),
+        storage.block_reader().clone(),
         Metrics::new_for_test(0),
     )
     .with_wave_length(wave_length)
@@ -275,11 +271,11 @@ fn indirect_commit() {
     let committee = committee(4);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
-    let mut block_writer = TestBlockWriter::new(&committee);
+    let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
 
     // Add enough blocks to reach the 1st leader.
     let leader_round_1 = wave_length;
-    let references_1 = build_dag(&committee, &mut block_writer, None, leader_round_1);
+    let references_1 = build_dag(&committee, &mut storage, None, leader_round_1);
 
     // Filter out that leader.
     let references_without_leader_1: Vec<_> = references_1
@@ -295,7 +291,7 @@ fn indirect_commit() {
         .map(|authority| (authority, references_1.clone()))
         .collect();
     let references_with_votes_for_leader_1 =
-        build_dag_layer(connections_with_leader_1, &mut block_writer);
+        build_dag_layer(connections_with_leader_1, &mut storage);
 
     let connections_without_leader_1 = committee
         .authorities()
@@ -303,7 +299,7 @@ fn indirect_commit() {
         .map(|authority| (authority, references_without_leader_1.clone()))
         .collect();
     let references_without_votes_for_leader_1 =
-        build_dag_layer(connections_without_leader_1, &mut block_writer);
+        build_dag_layer(connections_without_leader_1, &mut storage);
 
     // Only f+1 validators certify the 1st leader.
     let mut references_3 = Vec::new();
@@ -315,7 +311,7 @@ fn indirect_commit() {
         .collect();
     references_3.extend(build_dag_layer(
         connections_with_votes_for_leader_1,
-        &mut block_writer,
+        &mut storage,
     ));
 
     let references: Vec<_> = references_without_votes_for_leader_1
@@ -330,14 +326,14 @@ fn indirect_commit() {
         .collect();
     references_3.extend(build_dag_layer(
         connections_without_votes_for_leader_1,
-        &mut block_writer,
+        &mut storage,
     ));
 
     // Add enough blocks to decide the 2nd leader.
     let decision_round_3 = 3 * wave_length - 1;
     build_dag(
         &committee,
-        &mut block_writer,
+        &mut storage,
         Some(references_3),
         decision_round_3,
     );
@@ -345,7 +341,7 @@ fn indirect_commit() {
     // Ensure we commit the 1st leader.
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
-        block_writer.into_block_reader(),
+        storage.block_reader().clone(),
         Metrics::new_for_test(0),
     )
     .with_wave_length(wave_length)
@@ -372,11 +368,11 @@ fn indirect_skip() {
     let committee = committee(4);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
-    let mut block_writer = TestBlockWriter::new(&committee);
+    let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
 
     // Add enough blocks to reach the 2nd leader.
     let leader_round_2 = 2 * wave_length;
-    let references_2 = build_dag(&committee, &mut block_writer, None, leader_round_2);
+    let references_2 = build_dag(&committee, &mut storage, None, leader_round_2);
 
     // Filter out that leader.
     let leader_2 = committee.elect_leader(leader_round_2);
@@ -394,34 +390,23 @@ fn indirect_skip() {
         .take(committee.validity_threshold() as usize)
         .map(|authority| (authority, references_2.clone()))
         .collect();
-    references.extend(build_dag_layer(
-        connections_with_leader_2,
-        &mut block_writer,
-    ));
+    references.extend(build_dag_layer(connections_with_leader_2, &mut storage));
 
     let connections_without_leader_2 = committee
         .authorities()
         .skip(committee.validity_threshold() as usize)
         .map(|authority| (authority, references_without_leader_2.clone()))
         .collect();
-    references.extend(build_dag_layer(
-        connections_without_leader_2,
-        &mut block_writer,
-    ));
+    references.extend(build_dag_layer(connections_without_leader_2, &mut storage));
 
     // Add enough blocks to reach the decision round of the 3rd leader.
     let decision_round_3 = 4 * wave_length - 1;
-    build_dag(
-        &committee,
-        &mut block_writer,
-        Some(references),
-        decision_round_3,
-    );
+    build_dag(&committee, &mut storage, Some(references), decision_round_3);
 
     // Ensure we commit the leaders of wave 1 and 3
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
-        block_writer.into_block_reader(),
+        storage.block_reader().clone(),
         Metrics::new_for_test(0),
     )
     .with_wave_length(wave_length)
@@ -467,11 +452,11 @@ fn undecided() {
     let committee = committee(4);
     let wave_length = DEFAULT_WAVE_LENGTH;
 
-    let mut block_writer = TestBlockWriter::new(&committee);
+    let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
 
     // Add enough blocks to reach the first leader.
     let leader_round_1 = wave_length;
-    let references_1 = build_dag(&committee, &mut block_writer, None, leader_round_1);
+    let references_1 = build_dag(&committee, &mut storage, None, leader_round_1);
 
     // Filter out that leader.
     let references_without_leader_1: Vec<_> = references_1
@@ -489,21 +474,16 @@ fn undecided() {
         .collect();
 
     let connections = leader_connection.into_iter().chain(non_leader_connections);
-    let references = build_dag_layer(connections.collect(), &mut block_writer);
+    let references = build_dag_layer(connections.collect(), &mut storage);
 
     // Add enough blocks to reach the decision round of the first leader.
     let decision_round_1 = 2 * wave_length - 1;
-    build_dag(
-        &committee,
-        &mut block_writer,
-        Some(references),
-        decision_round_1,
-    );
+    build_dag(&committee, &mut storage, Some(references), decision_round_1);
 
     // Ensure no blocks are committed.
     let committer = UniversalCommitterBuilder::new(
         committee.clone(),
-        block_writer.into_block_reader(),
+        storage.block_reader().clone(),
         Metrics::new_for_test(0),
     )
     .with_wave_length(wave_length)

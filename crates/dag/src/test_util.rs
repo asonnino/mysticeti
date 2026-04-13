@@ -21,7 +21,7 @@ use crate::{
     },
     data::Data,
     metrics::Metrics,
-    storage::{BlockReader, Storage, WalPosition},
+    storage::Storage,
     sync::{net_sync::NetworkSyncer, network::Network},
     types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
 };
@@ -160,34 +160,9 @@ pub fn print_stats<C: Ctx>(syncers: &[Syncer<C>]) {
     }
 }
 
-pub struct TestBlockWriter {
-    storage: Storage,
-}
-
-impl TestBlockWriter {
-    pub fn new(committee: &Committee) -> Self {
-        let (storage, _recovered) = Storage::new_for_tests(0, Metrics::new_for_test(0), committee);
-        Self { storage }
-    }
-
-    pub fn add_block(&mut self, block: Data<StatementBlock>) -> WalPosition {
-        self.storage.insert_block(block)
-    }
-
-    pub fn add_blocks(&mut self, blocks: Vec<Data<StatementBlock>>) {
-        for block in blocks {
-            self.add_block(block);
-        }
-    }
-
-    pub fn into_block_reader(self) -> BlockReader {
-        self.storage.block_reader().clone()
-    }
-}
-
 pub fn build_dag(
     committee: &Committee,
-    block_writer: &mut TestBlockWriter,
+    storage: &mut Storage,
     start: Option<Vec<BlockReference>>,
     stop: RoundNumber,
 ) -> Vec<BlockReference> {
@@ -206,7 +181,9 @@ pub fn build_dag(
                 .map(StatementBlock::new_genesis)
                 .map(|block| (*block.reference(), block))
                 .unzip();
-            block_writer.add_blocks(genesis);
+            for block in genesis {
+                storage.insert_block(block);
+            }
             references
         }
     };
@@ -227,7 +204,9 @@ pub fn build_dag(
                 (*block.reference(), block)
             })
             .unzip();
-        block_writer.add_blocks(blocks);
+        for block in blocks {
+            storage.insert_block(block);
+        }
         includes = references;
     }
 
@@ -236,7 +215,7 @@ pub fn build_dag(
 
 pub fn build_dag_layer(
     connections: Vec<(AuthorityIndex, Vec<BlockReference>)>,
-    block_writer: &mut TestBlockWriter,
+    storage: &mut Storage,
 ) -> Vec<BlockReference> {
     let mut references = Vec::new();
     for (authority, parents) in connections {
@@ -251,7 +230,7 @@ pub fn build_dag_layer(
         ));
 
         references.push(*block.reference());
-        block_writer.add_block(block);
+        storage.insert_block(block);
     }
     references
 }
