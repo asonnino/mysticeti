@@ -7,6 +7,7 @@ use std::{
     path::PathBuf,
 };
 
+use ::prometheus::Registry;
 use dag::{
     committee::Committee,
     config::{ClientParameters, ImportExport, NodeParameters, NodePrivateConfig, NodePublicConfig},
@@ -14,8 +15,9 @@ use dag::{
 };
 use eyre::{Context, Result};
 use serde::{Deserialize, Serialize};
+use tracing_subscriber::filter::LevelFilter;
 
-use crate::validator::Validator;
+use crate::{banner, tracing::ValidatorTracing, validator::ValidatorBuilder};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TestbedConfig {
@@ -36,17 +38,32 @@ impl Default for TestbedConfig {
 
 impl ImportExport for TestbedConfig {}
 
-pub async fn local_testbed(config_path: Option<PathBuf>, dump_config: bool) -> Result<()> {
+pub async fn local_testbed(
+    config_path: Option<PathBuf>,
+    dump_config: bool,
+    log_level: Option<LevelFilter>,
+) -> Result<()> {
     if dump_config {
-        let config = TestbedConfig::default();
-        let yaml = serde_yaml::to_string(&config).map_err(eyre::Report::msg)?;
-        println!("{yaml}");
+        println!("{}", TestbedConfig::default().to_yaml());
         return Ok(());
     }
 
+    banner::print_banner("Local Testbed");
+    match log_level {
+        Some(level) => ValidatorTracing::new(level),
+        None => ValidatorTracing::new(LevelFilter::DEBUG),
+    }
+    .setup();
+
     let config = match config_path {
-        Some(path) => TestbedConfig::load(&path).wrap_err("Failed to load testbed config")?,
-        None => TestbedConfig::default(),
+        Some(path) => {
+            tracing::info!("Loading testbed config from {}", path.display());
+            TestbedConfig::load(&path)?
+        }
+        None => {
+            tracing::info!("Using default testbed config");
+            TestbedConfig::default()
+        }
     };
 
     let committee_size = config.committee_size;
@@ -79,15 +96,20 @@ pub async fn local_testbed(config_path: Option<PathBuf>, dump_config: bool) -> R
     let mut validators = Vec::with_capacity(committee_size);
     for (i, private_config) in private_configs.into_iter().enumerate() {
         let authority = i as AuthorityIndex;
-        let validator = Validator::start(
+        let mut builder = ValidatorBuilder::new(
             authority,
             committee.clone(),
             public_config.clone(),
             private_config,
             config.client_parameters.clone(),
-        )
-        .await?;
-        validators.push(validator);
+            Registry::new(),
+        );
+
+        if let Some(address) = public_config.metrics_address(authority) {
+            builder = builder.with_metrics_server(address);
+        }
+
+        validators.push(builder.start().await?);
     }
 
     tracing::info!("All {committee_size} validators running. Press Ctrl-C to stop.");

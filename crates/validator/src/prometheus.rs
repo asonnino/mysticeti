@@ -3,8 +3,8 @@
 
 use std::net::SocketAddr;
 
+use ::prometheus::{Registry, TextEncoder};
 use axum::{Router, extract::State, http::StatusCode, routing::get};
-use prometheus::{Registry, TextEncoder};
 use tokio::net::TcpListener;
 
 use tokio::{runtime::Handle, task::JoinHandle};

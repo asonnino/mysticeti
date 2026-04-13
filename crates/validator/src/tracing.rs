@@ -4,26 +4,33 @@
 use tracing_subscriber::{EnvFilter, filter::LevelFilter, fmt};
 
 /// Our crate names for targeted filtering.
-const OUR_CRATES: &[&str] = &["dag", "consensus", "validator"];
+const TARGET_CRATES: &[&str] = &["dag", "consensus", "validator"];
 
-pub struct ValidatorTracing;
+pub struct ValidatorTracing {
+    level: LevelFilter,
+}
+
+impl Default for ValidatorTracing {
+    fn default() -> Self {
+        Self {
+            level: LevelFilter::INFO,
+        }
+    }
+}
 
 impl ValidatorTracing {
-    /// Set up tracing with the default level (INFO).
-    /// `RUST_LOG` env var takes precedence.
-    pub fn setup() {
-        Self::setup_with_level(LevelFilter::INFO);
+    pub fn new(level: LevelFilter) -> Self {
+        Self { level }
     }
 
-    /// Set up tracing with an explicit level.
     /// Only our crates are shown at the requested level; third-party
     /// libraries are silenced to WARN. `RUST_LOG` overrides everything.
-    pub fn setup_with_level(level: LevelFilter) {
+    pub fn setup(self) {
         let mut filter = EnvFilter::builder()
             .with_default_directive(LevelFilter::WARN.into())
             .from_env_lossy();
-        for our_crate in OUR_CRATES {
-            if let Ok(directive) = format!("{our_crate}={level}").parse() {
+        for target in TARGET_CRATES {
+            if let Ok(directive) = format!("{target}={}", self.level).parse() {
                 filter = filter.add_directive(directive);
             }
         }

@@ -4,7 +4,6 @@
 mod aggregate;
 mod histogram;
 mod precise;
-pub mod server;
 mod snapshot;
 mod timers;
 
@@ -38,7 +37,7 @@ impl Metrics {
         Arc::new(Self {
             aggregate,
             precise,
-            registry: None,
+            registry: None, // Not needed in production
         })
     }
 

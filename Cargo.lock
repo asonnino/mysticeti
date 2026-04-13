@@ -969,7 +969,6 @@ dependencies = [
 name = "dag"
 version = "0.1.0"
 dependencies = [
- "axum",
  "bincode",
  "blake2",
  "crc32fast",
@@ -992,6 +991,7 @@ dependencies = [
  "tabled",
  "tempdir",
  "tempfile",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
  "tracing-core",
@@ -2388,6 +2388,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "validator",
 ]
 
 [[package]]
@@ -3905,6 +3906,7 @@ dependencies = [
 name = "validator"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "clap",
  "color-eyre",
  "consensus",

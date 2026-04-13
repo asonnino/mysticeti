@@ -1,11 +1,11 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{io, path::Path, time::Duration};
+use std::{path::Path, time::Duration};
 
 use consensus::test_util::committee_and_cores;
 use dag::{
-    config::{ImportExport, NodePublicConfig},
+    config::{ConfigError, ImportExport, NodePublicConfig},
     context::Ctx,
     core::block_handler::CommitHandler,
     metrics::{Metrics, MetricsSnapshot},
@@ -37,7 +37,7 @@ impl SimulationRunner {
         Self { config }
     }
 
-    pub fn from_yaml(path: impl AsRef<Path>) -> Result<Self, io::Error> {
+    pub fn from_yaml(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
         let config = SimulationConfig::load(path)?;
         Ok(Self::new(config))
     }

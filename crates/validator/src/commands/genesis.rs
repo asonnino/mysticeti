@@ -9,56 +9,70 @@ use dag::{
     types::AuthorityIndex,
 };
 use eyre::{Context, Result};
+use tracing_subscriber::filter::LevelFilter;
 
-pub fn benchmark_genesis(
+use crate::tracing::ValidatorTracing;
+
+pub fn test_genesis(
     ips: Vec<IpAddr>,
     working_directory: PathBuf,
     node_parameters_path: Option<PathBuf>,
+    log_level: Option<LevelFilter>,
 ) -> Result<()> {
-    tracing::info!("Generating benchmark genesis files");
+    match log_level {
+        Some(level) => ValidatorTracing::new(level),
+        None => ValidatorTracing::default(),
+    }
+    .setup();
+
+    let committee_size = ips.len();
+    tracing::info!("Generating test genesis for {committee_size} validators");
+
+    // Create the output directory for all genesis files.
     fs::create_dir_all(&working_directory).wrap_err(format!(
-        "Failed to create directory '{}'",
+        "Failed to create working directory '{}'",
         working_directory.display()
     ))?;
 
-    let committee_size = ips.len();
-    let mut committee_path = working_directory.clone();
-    committee_path.push(Committee::DEFAULT_FILENAME);
-    Committee::new_for_benchmarks(committee_size)
-        .print(&committee_path)
-        .wrap_err("Failed to print committee file")?;
-    tracing::info!("Generated committee file: {}", committee_path.display());
+    // Generate the committee file (maps authorities to stakes).
+    let committee = Committee::new_for_benchmarks(committee_size);
+    let committee_path = working_directory.join(Committee::DEFAULT_FILENAME);
+    committee.print(&committee_path)?;
+    tracing::info!("Wrote {}", committee_path.display());
 
+    // Load custom node parameters or fall back to defaults.
     let node_parameters = match node_parameters_path {
-        Some(path) => NodeParameters::load(&path).wrap_err(format!(
-            "Failed to load parameters file '{}'",
-            path.display()
-        ))?,
-        None => NodeParameters::default(),
+        Some(path) => {
+            tracing::info!("Loading node parameters from {}", path.display());
+            NodeParameters::load(&path)?
+        }
+        None => {
+            tracing::info!("Using default node parameters");
+            NodeParameters::default()
+        }
     };
 
-    let node_public_config = NodePublicConfig::new_for_benchmarks(ips, Some(node_parameters));
-    let mut node_public_config_path = working_directory.clone();
-    node_public_config_path.push(NodePublicConfig::DEFAULT_FILENAME);
-    node_public_config
-        .print(&node_public_config_path)
-        .wrap_err("Failed to print parameters file")?;
-    tracing::info!(
-        "Generated public node config file: {}",
-        node_public_config_path.display()
-    );
+    // Generate the public config (network addresses, parameters).
+    let public_config = NodePublicConfig::new_for_benchmarks(ips, Some(node_parameters));
+    let public_config_path = working_directory.join(NodePublicConfig::DEFAULT_FILENAME);
+    public_config.print(&public_config_path)?;
+    tracing::info!("Wrote {}", public_config_path.display());
 
-    let node_private_configs =
-        NodePrivateConfig::new_for_benchmarks(&working_directory, committee_size);
-    for (i, private_config) in node_private_configs.into_iter().enumerate() {
-        fs::create_dir_all(&private_config.storage_path)
-            .expect("Failed to create storage directory");
-        let path = working_directory.join(NodePrivateConfig::default_filename(i as AuthorityIndex));
-        private_config
-            .print(&path)
-            .wrap_err("Failed to print private config file")?;
-        tracing::info!("Generated private config file: {}", path.display());
+    // Generate one private config per validator (keys, storage path).
+    let private_configs = NodePrivateConfig::new_for_benchmarks(&working_directory, committee_size);
+    for (i, private_config) in private_configs.into_iter().enumerate() {
+        let authority = i as AuthorityIndex;
+        fs::create_dir_all(&private_config.storage_path).wrap_err(format!(
+            "Failed to create storage directory for validator {authority}"
+        ))?;
+        let path = working_directory.join(NodePrivateConfig::default_filename(authority));
+        private_config.print(&path)?;
+        tracing::info!("Wrote {}", path.display());
     }
 
+    tracing::info!(
+        "Test genesis for {committee_size} validators ready in '{}'",
+        working_directory.display()
+    );
     Ok(())
 }

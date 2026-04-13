@@ -5,6 +5,7 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+axum = "0.7"
 clap = { workspace = true }
 color-eyre = { workspace = true }
 eyre = { workspace = true }

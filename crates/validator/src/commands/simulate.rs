@@ -4,27 +4,52 @@
 use std::path::PathBuf;
 
 use dag::config::ImportExport;
-use eyre::{Context, Result};
-use simulator::{SimulationConfig, SimulationRunner};
+use eyre::{Result, eyre};
+use simulator::{SimulationConfig, SimulationRunner, SimulatorTracing};
+use tracing_subscriber::filter::LevelFilter;
 
-pub async fn simulate(config_path: Option<PathBuf>, dump_config: bool) -> Result<()> {
+use crate::banner;
+
+pub async fn simulate(
+    config_path: Option<PathBuf>,
+    dump_config: bool,
+    log_level: Option<LevelFilter>,
+) -> Result<()> {
+    // Print default config to stdout and exit.
     if dump_config {
-        let config = SimulationConfig::default();
-        let yaml = serde_yaml::to_string(&config).map_err(eyre::Report::msg)?;
-        println!("{yaml}");
+        println!("{}", SimulationConfig::default().to_yaml());
         return Ok(());
     }
 
-    let config = match config_path {
-        Some(path) => SimulationConfig::load(&path).wrap_err("Failed to load simulation config")?,
-        None => SimulationConfig::default(),
+    banner::print_banner("Simulator");
+    match log_level {
+        Some(level) => SimulatorTracing::setup_with_filter(&level.to_string()),
+        None => SimulatorTracing::setup(),
     };
 
-    println!("Running simulation: {config:?}");
+    // Load simulation config or fall back to defaults.
+    let config = match config_path {
+        Some(path) => {
+            tracing::info!("Loading simulation config from {}", path.display());
+            SimulationConfig::load(&path)?
+        }
+        None => {
+            tracing::info!("Using default simulation config");
+            SimulationConfig::default()
+        }
+    };
+    tracing::info!(
+        "Running simulation with {} validators for {}s",
+        config.committee_size,
+        config.duration_secs
+    );
+
+    // Run the simulation on a blocking thread (it uses simulated time, not tokio).
     let results = tokio::task::spawn_blocking(move || SimulationRunner::new(config).run())
         .await
-        .expect("Simulation task panicked");
+        .map_err(|error| eyre!("Simulation task panicked: {error}"))?;
 
+    // Report results.
     println!();
     if results.commits_consistent {
         println!("Commits consistent across all validators");

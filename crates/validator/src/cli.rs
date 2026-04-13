@@ -22,9 +22,10 @@ pub struct Args {
 
 #[derive(Parser)]
 pub enum Operation {
-    /// Generate committee, public config, and private key files for
-    /// all validators. Only suitable for benchmarks (exposes all keys).
-    BenchmarkGenesis {
+    /// Generate test genesis files (committee, public config, and
+    /// private keys) for all validators. All keys are written to disk
+    /// in plaintext — do NOT use in production.
+    TestGenesis {
         /// IP addresses of all validators.
         #[arg(long, value_name = "ADDR", value_delimiter = ' ', num_args(4..))]
         ips: Vec<IpAddr>,

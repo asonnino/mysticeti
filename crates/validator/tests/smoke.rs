@@ -1,21 +1,44 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::VecDeque, fs, net::SocketAddr, time::Duration};
+use std::{collections::VecDeque, fs, net::SocketAddr, sync::Arc, time::Duration};
 
+use ::prometheus::Registry;
 use tempdir::TempDir;
 use tokio::time;
 
 use dag::{
     committee::Committee,
     config::{self, ClientParameters, NodePrivateConfig, NodePublicConfig},
-    metrics,
     types::AuthorityIndex,
 };
-use validator::validator::Validator;
+use validator::{prometheus, validator::ValidatorBuilder};
+
+async fn start_validator(
+    authority: AuthorityIndex,
+    committee: &Arc<Committee>,
+    public_config: &NodePublicConfig,
+    private_config: NodePrivateConfig,
+    client_parameters: &ClientParameters,
+) -> validator::validator::Validator {
+    let mut builder = ValidatorBuilder::new(
+        authority,
+        committee.clone(),
+        public_config.clone(),
+        private_config,
+        client_parameters.clone(),
+        Registry::new(),
+    );
+
+    if let Some(address) = public_config.metrics_address(authority) {
+        builder = builder.with_metrics_server(address);
+    }
+
+    builder.start().await.unwrap()
+}
 
 async fn check_commit(address: &SocketAddr) -> Result<bool, reqwest::Error> {
-    let route = metrics::server::METRICS_ROUTE;
+    let route = prometheus::METRICS_ROUTE;
     let res = reqwest::get(format!("http://{address}{route}")).await?;
     let string = res.text().await?;
     let commit = string.contains("committed_leaders_total");
@@ -49,15 +72,14 @@ async fn validator_commit() {
 
     for (i, private_config) in private_configs.into_iter().enumerate() {
         let authority = i as AuthorityIndex;
-        let validator = Validator::start(
+        let validator = start_validator(
             authority,
-            committee.clone(),
-            public_config.clone(),
+            &committee,
+            &public_config,
             private_config,
-            client_parameters.clone(),
+            &client_parameters,
         )
-        .await
-        .unwrap();
+        .await;
         handles.push(validator.await_completion());
     }
 
@@ -69,7 +91,9 @@ async fn validator_commit() {
 
     tokio::select! {
         _ = await_for_commits(addresses) => (),
-        _ = time::sleep(timeout) => panic!("Failed to gather commits within a few timeouts"),
+        _ = time::sleep(timeout) => {
+            panic!("Failed to gather commits within a few timeouts")
+        },
     }
 }
 
@@ -92,15 +116,14 @@ async fn validator_sync() {
             continue;
         }
         let authority = i as AuthorityIndex;
-        let validator = Validator::start(
+        let validator = start_validator(
             authority,
-            committee.clone(),
-            public_config.clone(),
+            &committee,
+            &public_config,
             private_config,
-            client_parameters.clone(),
+            &client_parameters,
         )
-        .await
-        .unwrap();
+        .await;
         handles.push(validator.await_completion());
     }
 
@@ -112,21 +135,22 @@ async fn validator_sync() {
     let timeout = config::node_defaults::default_leader_timeout() * 5;
     tokio::select! {
         _ = await_for_commits(addresses) => (),
-        _ = time::sleep(timeout) => panic!("Failed to gather commits within a few timeouts"),
+        _ = time::sleep(timeout) => {
+            panic!("Failed to gather commits within a few timeouts")
+        },
     }
 
     let authority = 0;
     let private_config =
         NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size).remove(authority);
-    let validator = Validator::start(
+    let validator = start_validator(
         authority as AuthorityIndex,
-        committee.clone(),
-        public_config.clone(),
+        &committee,
+        &public_config,
         private_config,
-        client_parameters,
+        &client_parameters,
     )
-    .await
-    .unwrap();
+    .await;
     handles.push(validator.await_completion());
 
     let address = public_config
@@ -137,7 +161,9 @@ async fn validator_sync() {
     let timeout = config::node_defaults::default_leader_timeout() * 5;
     tokio::select! {
         _ = await_for_commits(vec![address]) => (),
-        _ = time::sleep(timeout) => panic!("Failed to gather commits within a few timeouts"),
+        _ = time::sleep(timeout) => {
+            panic!("Failed to gather commits within a few timeouts")
+        },
     }
 }
 
@@ -160,15 +186,14 @@ async fn validator_crash_faults() {
             continue;
         }
         let authority = i as AuthorityIndex;
-        let validator = Validator::start(
+        let validator = start_validator(
             authority,
-            committee.clone(),
-            public_config.clone(),
+            &committee,
+            &public_config,
             private_config,
-            client_parameters.clone(),
+            &client_parameters,
         )
-        .await
-        .unwrap();
+        .await;
         handles.push(validator.await_completion());
     }
 
@@ -181,6 +206,8 @@ async fn validator_crash_faults() {
 
     tokio::select! {
         _ = await_for_commits(addresses) => (),
-        _ = time::sleep(timeout) => panic!("Failed to gather commits within a few timeouts"),
+        _ = time::sleep(timeout) => {
+            panic!("Failed to gather commits within a few timeouts")
+        },
     }
 }

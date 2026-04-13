@@ -15,17 +15,44 @@ use crate::{
     types::{AuthorityIndex, PublicKey, RoundNumber},
 };
 
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigError {
+    #[error("{path}: {source}")]
+    Io { path: PathBuf, source: io::Error },
+    #[error("{path}: {source}")]
+    Format {
+        path: PathBuf,
+        source: serde_yaml::Error,
+    },
+}
+
 pub trait ImportExport: Serialize + DeserializeOwned {
-    fn load<P: AsRef<Path>>(path: P) -> Result<Self, io::Error> {
-        let content = fs::read_to_string(&path)?;
-        let object = serde_yaml::from_str(&content).map_err(io::Error::other)?;
-        Ok(object)
+    fn load<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
+        let path = path.as_ref();
+        let content = fs::read_to_string(path).map_err(|source| ConfigError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        serde_yaml::from_str(&content).map_err(|source| ConfigError::Format {
+            path: path.to_path_buf(),
+            source,
+        })
     }
 
-    fn print<P: AsRef<Path>>(&self, path: P) -> Result<(), io::Error> {
-        let content =
-            serde_yaml::to_string(self).expect("Failed to serialize object to YAML string");
-        fs::write(&path, content)
+    fn to_yaml(&self) -> String {
+        serde_yaml::to_string(self).expect("Failed to serialize config to YAML")
+    }
+
+    fn print<P: AsRef<Path>>(&self, path: P) -> Result<(), ConfigError> {
+        let path = path.as_ref();
+        let content = serde_yaml::to_string(self).map_err(|source| ConfigError::Format {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        fs::write(path, content).map_err(|source| ConfigError::Io {
+            path: path.to_path_buf(),
+            source,
+        })
     }
 }
 

@@ -110,7 +110,7 @@ impl ProtocolCommands for MysticetiProtocol {
 
         let genesis = [
             &format!("./{BINARY_PATH}/validator"),
-            "benchmark-genesis",
+            "test-genesis",
             &format!(
                 "--ips {ips} --working-directory {} --node-parameters-path {}",
                 self.working_dir.display(),
@@ -205,7 +205,7 @@ impl ProtocolMetrics for MysticetiProtocol {
         let node_config = config::NodePublicConfig::new_for_benchmarks(ips, node_parameters);
         let metrics_paths = node_config
             .all_metric_addresses()
-            .map(|x| format!("{x}{}", dag::metrics::server::METRICS_ROUTE));
+            .map(|x| format!("{x}{}", validator::prometheus::METRICS_ROUTE));
 
         instances.into_iter().zip(metrics_paths).collect()
     }

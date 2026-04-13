@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
-    net::{IpAddr, Ipv4Addr},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::Arc,
 };
 
-use eyre::{Context, Result, eyre};
-use prometheus::Registry;
+use ::prometheus::Registry;
+use color_eyre::eyre::{Result, eyre};
+use tokio::task::JoinHandle;
 
 use consensus::universal_committer::{UniversalCommitter, UniversalCommitterBuilder};
 use dag::{
@@ -18,82 +19,131 @@ use dag::{
         Core, CoreOptions,
         block_handler::{CommitHandler, RealBlockHandler},
     },
-    metrics::{self, Metrics},
+    metrics::Metrics,
     storage::Storage,
     sync::{net_sync::NetworkSyncer, network::Network},
     transactions_generator::TransactionGenerator,
     types::AuthorityIndex,
 };
 
+use crate::prometheus as metrics_server;
+
 pub struct Validator {
+    authority: AuthorityIndex,
     network_synchronizer: NetworkSyncer<TokioCtx, UniversalCommitter>,
-    metrics_handle: tokio::task::JoinHandle<()>,
+    metrics_handle: Option<JoinHandle<()>>,
 }
 
 impl Validator {
-    pub async fn start(
+    pub async fn await_completion(self) -> Result<()> {
+        match self.metrics_handle {
+            Some(metrics_handle) => {
+                tokio::select! {
+                    result = self.network_synchronizer
+                        .await_completion() => {
+                        result.map_err(|error| eyre!(
+                            "Validator {} crashed: {error}",
+                            self.authority
+                        ))
+                    }
+                    result = metrics_handle => {
+                        result.map_err(|error| eyre!(
+                            "Metrics server for validator {} crashed: {error}",
+                            self.authority
+                        ))
+                    }
+                }
+            }
+            None => self
+                .network_synchronizer
+                .await_completion()
+                .await
+                .map_err(|error| eyre!("Validator {} crashed: {error}", self.authority)),
+        }
+    }
+}
+
+pub struct ValidatorBuilder {
+    authority: AuthorityIndex,
+    committee: Arc<Committee>,
+    public_config: NodePublicConfig,
+    private_config: NodePrivateConfig,
+    client_parameters: ClientParameters,
+    registry: Registry,
+    metrics_server_address: Option<SocketAddr>,
+}
+
+impl ValidatorBuilder {
+    pub fn new(
         authority: AuthorityIndex,
         committee: Arc<Committee>,
         public_config: NodePublicConfig,
         private_config: NodePrivateConfig,
         client_parameters: ClientParameters,
-    ) -> Result<Self> {
-        let network_address = public_config
-            .network_address(authority)
-            .ok_or(eyre!("No network address for authority {authority}"))
-            .wrap_err("Unknown authority")?;
-        let mut binding_network_address = network_address;
-        binding_network_address.set_ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+        registry: Registry,
+    ) -> Self {
+        Self {
+            authority,
+            committee,
+            public_config,
+            private_config,
+            client_parameters,
+            registry,
+            metrics_server_address: None,
+        }
+    }
 
-        let metrics_address = public_config
-            .metrics_address(authority)
-            .ok_or(eyre!("No metrics address for authority {authority}"))
-            .wrap_err("Unknown authority")?;
-        let mut binding_metrics_address = metrics_address;
-        binding_metrics_address.set_ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+    pub fn with_metrics_server(mut self, address: SocketAddr) -> Self {
+        self.metrics_server_address = Some(address);
+        self
+    }
 
-        let registry = Registry::new();
-        let metrics = Metrics::new(&registry, committee.len(), None);
+    pub async fn start(self) -> Result<Validator> {
+        let metrics = Metrics::new(&self.registry, self.committee.len(), None);
 
-        let metrics_handle =
-            metrics::server::start_prometheus_server(binding_metrics_address, &registry);
+        let metrics_handle = self
+            .metrics_server_address
+            .map(|address| metrics_server::start_prometheus_server(address, &self.registry));
 
-        let (storage, recovered) =
-            Storage::open(authority, private_config.wal(), metrics.clone(), &committee)
-                .expect("Failed to open storage");
+        let network_address = self
+            .public_config
+            .network_address(self.authority)
+            .ok_or(eyre!("No network address for authority {}", self.authority))?;
+        let mut binding_address = network_address;
+        binding_address.set_ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+
+        let (storage, recovered) = Storage::open(
+            self.authority,
+            self.private_config.wal(),
+            metrics.clone(),
+            &self.committee,
+        )
+        .expect("Failed to open storage");
 
         let (block_handler, block_sender) = RealBlockHandler::new(metrics.clone());
 
         TransactionGenerator::<TokioCtx>::start(
             block_sender,
-            authority,
-            client_parameters,
-            public_config.clone(),
+            self.authority,
+            self.client_parameters,
+            self.public_config.clone(),
             metrics.clone(),
         );
         let commit_handler =
             CommitHandler::new(block_handler.transaction_time.clone(), metrics.clone());
         let committer = UniversalCommitterBuilder::new(
-            committee.clone(),
+            self.committee.clone(),
             storage.block_reader().clone(),
             metrics.clone(),
         )
-        .with_number_of_leaders(public_config.parameters.number_of_leaders)
-        .with_pipeline(public_config.parameters.enable_pipelining)
+        .with_number_of_leaders(self.public_config.parameters.number_of_leaders)
+        .with_pipeline(self.public_config.parameters.enable_pipelining)
         .build();
-        tracing::info!(
-            "Pipeline enabled: {}",
-            public_config.parameters.enable_pipelining
-        );
-        tracing::info!(
-            "Number of leaders: {}",
-            public_config.parameters.number_of_leaders
-        );
         let core = Core::open(
             block_handler,
-            authority,
-            committee.clone(),
-            private_config,
+            self.authority,
+            self.committee.clone(),
+            self.private_config,
             metrics.clone(),
             storage,
             recovered,
@@ -101,39 +151,25 @@ impl Validator {
             committer,
         );
         let network = Network::load(
-            &public_config,
-            authority,
-            binding_network_address,
+            &self.public_config,
+            self.authority,
+            binding_address,
             metrics.clone(),
         )
         .await;
         let network_synchronizer = NetworkSyncer::start(
             network,
             core,
-            public_config.parameters.wave_length,
+            self.public_config.parameters.wave_length,
             commit_handler,
             metrics,
-            &public_config,
+            &self.public_config,
         );
 
-        tracing::info!("Validator {authority} listening on {network_address}");
-        tracing::info!("Validator {authority} exposing metrics on {metrics_address}");
-
-        Ok(Self {
+        Ok(Validator {
+            authority: self.authority,
             network_synchronizer,
             metrics_handle,
         })
-    }
-
-    pub async fn await_completion(
-        self,
-    ) -> (
-        Result<(), tokio::task::JoinError>,
-        Result<(), tokio::task::JoinError>,
-    ) {
-        tokio::join!(
-            self.network_synchronizer.await_completion(),
-            self.metrics_handle
-        )
     }
 }
