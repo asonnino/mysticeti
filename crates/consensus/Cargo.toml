@@ -1,5 +1,5 @@
 [package]
-name = "mysticeti-consensus"
+name = "consensus"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true

@@ -15,7 +15,7 @@ version = "0.1.0"
 publish = false
 
 [workspace.dependencies]
-clap = { version = "4.3.3", features = ["derive"] }
+clap = { version = "4.5", features = ["derive"] }
 color-eyre = "0.6.2"
 eyre = "0.6.8"
 futures = "0.3.28"
@@ -35,6 +35,7 @@ tokio = { version = "1.28.1", features = [
   "net",
   "io-util",
   "parking_lot",
+  "signal",
 ] }
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }

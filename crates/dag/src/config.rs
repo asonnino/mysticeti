@@ -225,7 +225,7 @@ impl NodePrivateConfig {
 
 impl ImportExport for NodePrivateConfig {}
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ClientParameters {
     /// The number of transactions to send to the network per second.
     #[serde(default = "client_defaults::default_load")]

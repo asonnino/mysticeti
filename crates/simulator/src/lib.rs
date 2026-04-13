@@ -7,7 +7,7 @@ pub mod event_simulator;
 pub mod executor;
 pub mod network;
 pub mod runner;
-pub mod sim_tracing;
+pub mod tracing;
 
 pub use config::{NetworkTopology, SimulationConfig};
 pub use context::{SimInstant, SimulatedCtx};
@@ -17,4 +17,4 @@ pub use executor::{
 };
 pub use network::SimulatedNetwork;
 pub use runner::{SimulationResults, SimulationRunner};
-pub use sim_tracing::setup_simulator_tracing;
+pub use tracing::SimulatorTracing;

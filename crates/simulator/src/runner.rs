@@ -3,6 +3,7 @@
 
 use std::{io, path::Path, time::Duration};
 
+use consensus::test_util::committee_and_cores;
 use dag::{
     config::{ImportExport, NodePublicConfig},
     context::Ctx,
@@ -12,14 +13,13 @@ use dag::{
     test_util::rng_at_seed,
     types::BlockReference,
 };
-use mysticeti_consensus::test_util::committee_and_cores;
 
 use crate::{
     config::{NetworkTopology, SimulationConfig},
     context::SimulatedCtx,
     executor::{OverrideNodeContext, SimulatedExecutorState},
     network::SimulatedNetwork,
-    sim_tracing::setup_simulator_tracing,
+    tracing::SimulatorTracing,
 };
 
 pub struct SimulationResults {
@@ -47,7 +47,7 @@ impl SimulationRunner {
     }
 
     pub fn run(&self) -> SimulationResults {
-        setup_simulator_tracing();
+        SimulatorTracing::setup();
         let config = self.config.clone();
         let rng = rng_at_seed(config.rng_seed);
         SimulatedExecutorState::run(rng, run_simulation(config))

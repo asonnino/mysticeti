@@ -9,8 +9,9 @@ clap = { workspace = true }
 color-eyre = { workspace = true }
 eyre = { workspace = true }
 dag = { path = "../dag" }
-mysticeti-consensus = { path = "../consensus" }
+consensus = { path = "../consensus" }
 prometheus = { workspace = true }
+serde = { workspace = true }
 serde_yaml = { workspace = true }
 simulator = { path = "../simulator" }
 tokio = { workspace = true }
@@ -19,7 +20,7 @@ tracing-subscriber = { workspace = true }
 
 [dev-dependencies]
 dag = { path = "../dag", features = ["test-utils"] }
-mysticeti-consensus = { path = "../consensus", features = ["test-utils"] }
+consensus = { path = "../consensus", features = ["test-utils"] }
 rand = { workspace = true }
 reqwest = { workspace = true }
 tempdir = "0.3.7"
