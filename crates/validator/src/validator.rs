@@ -8,10 +8,11 @@ use std::{
 
 use ::prometheus::Registry;
 use color_eyre::eyre::{Result, eyre};
-use tokio::task::JoinHandle;
+use tokio::{sync::mpsc, task::JoinHandle};
 
 use consensus::universal_committer::{UniversalCommitter, UniversalCommitterBuilder};
 use dag::{
+    block::types::Transaction,
     committee::Committee,
     config::{ClientParameters, NodePrivateConfig, NodePublicConfig},
     context::TokioCtx,
@@ -30,81 +31,44 @@ use crate::prometheus as metrics_server;
 
 pub struct Validator {
     authority: AuthorityIndex,
-    network_synchronizer: NetworkSyncer<TokioCtx, UniversalCommitter>,
-    metrics_handle: Option<JoinHandle<()>>,
-}
-
-impl Validator {
-    pub async fn await_completion(self) -> Result<()> {
-        match self.metrics_handle {
-            Some(metrics_handle) => {
-                tokio::select! {
-                    result = self.network_synchronizer
-                        .await_completion() => {
-                        result.map_err(|error| eyre!(
-                            "Validator {} crashed: {error}",
-                            self.authority
-                        ))
-                    }
-                    result = metrics_handle => {
-                        result.map_err(|error| eyre!(
-                            "Metrics server for validator {} crashed: {error}",
-                            self.authority
-                        ))
-                    }
-                }
-            }
-            None => self
-                .network_synchronizer
-                .await_completion()
-                .await
-                .map_err(|error| eyre!("Validator {} crashed: {error}", self.authority)),
-        }
-    }
-}
-
-pub struct ValidatorBuilder {
-    authority: AuthorityIndex,
     committee: Arc<Committee>,
     public_config: NodePublicConfig,
     private_config: NodePrivateConfig,
-    client_parameters: ClientParameters,
     registry: Registry,
     metrics_server_address: Option<SocketAddr>,
+    client_parameters: Option<ClientParameters>,
 }
 
-impl ValidatorBuilder {
-    pub fn new(
+impl Validator {
+    pub(crate) fn new(
         authority: AuthorityIndex,
         committee: Arc<Committee>,
         public_config: NodePublicConfig,
         private_config: NodePrivateConfig,
-        client_parameters: ClientParameters,
         registry: Registry,
+        metrics_server_address: Option<SocketAddr>,
+        client_parameters: Option<ClientParameters>,
     ) -> Self {
         Self {
             authority,
             committee,
             public_config,
             private_config,
-            client_parameters,
             registry,
-            metrics_server_address: None,
+            metrics_server_address,
+            client_parameters,
         }
     }
 
-    pub fn with_metrics_server(mut self, address: SocketAddr) -> Self {
-        self.metrics_server_address = Some(address);
-        self
-    }
-
-    pub async fn start(self) -> Result<Validator> {
+    pub async fn run(self) -> Result<ValidatorHandle> {
         let metrics = Metrics::new(&self.registry, self.committee.len(), None);
 
+        // Start the metrics HTTP server if configured.
         let metrics_handle = self
             .metrics_server_address
             .map(|address| metrics_server::start_prometheus_server(address, &self.registry));
 
+        // Resolve the network binding address.
         let network_address = self
             .public_config
             .network_address(self.authority)
@@ -112,6 +76,7 @@ impl ValidatorBuilder {
         let mut binding_address = network_address;
         binding_address.set_ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
 
+        // Open storage and recover state.
         let (storage, recovered) = Storage::open(
             self.authority,
             self.private_config.wal(),
@@ -120,15 +85,25 @@ impl ValidatorBuilder {
         )
         .expect("Failed to open storage");
 
-        let (block_handler, block_sender) = RealBlockHandler::new(metrics.clone());
+        // Set up block handling.
+        let (block_handler, block_sender) = RealBlockHandler::<TokioCtx>::new(metrics.clone());
 
-        TransactionGenerator::<TokioCtx>::start(
-            block_sender,
-            self.authority,
-            self.client_parameters,
-            self.public_config.clone(),
-            metrics.clone(),
-        );
+        // Start the load generator or expose the tx channel.
+        let tx_sender = match self.client_parameters {
+            Some(params) => {
+                TransactionGenerator::<TokioCtx>::start(
+                    block_sender,
+                    self.authority,
+                    params,
+                    self.public_config.clone(),
+                    metrics.clone(),
+                );
+                None
+            }
+            None => Some(block_sender),
+        };
+
+        // Build the committer and core.
         let commit_handler =
             CommitHandler::new(block_handler.transaction_time.clone(), metrics.clone());
         let committer = UniversalCommitterBuilder::new(
@@ -150,6 +125,8 @@ impl ValidatorBuilder {
             CoreOptions::default(),
             committer,
         );
+
+        // Bind the network and start the synchronizer.
         let network = Network::load(
             &self.public_config,
             self.authority,
@@ -166,10 +143,60 @@ impl ValidatorBuilder {
             &self.public_config,
         );
 
-        Ok(Validator {
+        Ok(ValidatorHandle {
             authority: self.authority,
             network_synchronizer,
             metrics_handle,
+            tx_sender,
         })
+    }
+}
+
+pub struct ValidatorHandle {
+    authority: AuthorityIndex,
+    network_synchronizer: NetworkSyncer<TokioCtx, UniversalCommitter>,
+    metrics_handle: Option<JoinHandle<()>>,
+    tx_sender: Option<mpsc::Sender<Vec<Transaction>>>,
+}
+
+impl ValidatorHandle {
+    pub fn stop(&self) {
+        // TODO: propagate stop signal into Core/Syncer for
+        // graceful drain of in-flight blocks.
+    }
+
+    pub async fn join(self) -> Result<()> {
+        let metrics_future = async {
+            match self.metrics_handle {
+                Some(handle) => handle.await,
+                None => std::future::pending().await,
+            }
+        };
+
+        tokio::select! {
+            result = self.network_synchronizer
+                .await_completion() => {
+                result.map_err(|error| eyre!(
+                    "Validator {} crashed: {error}", self.authority
+                ))
+            }
+            result = metrics_future => {
+                result.map_err(|error| eyre!(
+                    "Metrics server for validator {} crashed: {error}",
+                    self.authority
+                ))
+            }
+        }
+    }
+
+    pub async fn submit(&self, transactions: Vec<Transaction>) -> Result<()> {
+        let sender = self
+            .tx_sender
+            .as_ref()
+            .ok_or(eyre!("Cannot submit: load generator is active"))?;
+        sender
+            .send(transactions)
+            .await
+            .map_err(|_| eyre!("Transaction channel closed"))
     }
 }

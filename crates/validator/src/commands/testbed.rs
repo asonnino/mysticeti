@@ -7,7 +7,6 @@ use std::{
     path::PathBuf,
 };
 
-use ::prometheus::Registry;
 use dag::{
     committee::Committee,
     config::{ClientParameters, ImportExport, NodeParameters, NodePrivateConfig, NodePublicConfig},
@@ -17,7 +16,7 @@ use eyre::{Context, Result};
 use serde::{Deserialize, Serialize};
 use tracing_subscriber::filter::LevelFilter;
 
-use crate::{banner, tracing::ValidatorTracing, validator::ValidatorBuilder};
+use crate::{banner, builder::ValidatorBuilder, tracing::ValidatorTracing};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TestbedConfig {
@@ -93,7 +92,7 @@ pub async fn local_testbed(
 
     tracing::info!("Starting local testbed with {committee_size} validators");
 
-    let mut validators = Vec::with_capacity(committee_size);
+    let mut handles = Vec::with_capacity(committee_size);
     for (i, private_config) in private_configs.into_iter().enumerate() {
         let authority = i as AuthorityIndex;
         let mut builder = ValidatorBuilder::new(
@@ -101,15 +100,14 @@ pub async fn local_testbed(
             committee.clone(),
             public_config.clone(),
             private_config,
-            config.client_parameters.clone(),
-            Registry::new(),
-        );
+        )
+        .with_load_generator(config.client_parameters.clone());
 
         if let Some(address) = public_config.metrics_address(authority) {
             builder = builder.with_metrics_server(address);
         }
 
-        validators.push(builder.start().await?);
+        handles.push(builder.build().run().await?);
     }
 
     tracing::info!("All {committee_size} validators running. Press Ctrl-C to stop.");
@@ -119,7 +117,7 @@ pub async fn local_testbed(
         .wrap_err("Failed to listen for Ctrl-C")?;
 
     tracing::info!("Shutting down...");
-    drop(validators);
+    drop(handles);
 
     Ok(())
 }

@@ -3,7 +3,6 @@
 
 use std::{collections::VecDeque, fs, net::SocketAddr, sync::Arc, time::Duration};
 
-use ::prometheus::Registry;
 use tempdir::TempDir;
 use tokio::time;
 
@@ -12,29 +11,28 @@ use dag::{
     config::{self, ClientParameters, NodePrivateConfig, NodePublicConfig},
     types::AuthorityIndex,
 };
-use validator::{prometheus, validator::ValidatorBuilder};
+use validator::{builder::ValidatorBuilder, prometheus, validator::ValidatorHandle};
 
-async fn start_validator(
+async fn run_validator(
     authority: AuthorityIndex,
     committee: &Arc<Committee>,
     public_config: &NodePublicConfig,
     private_config: NodePrivateConfig,
     client_parameters: &ClientParameters,
-) -> validator::validator::Validator {
+) -> ValidatorHandle {
     let mut builder = ValidatorBuilder::new(
         authority,
         committee.clone(),
         public_config.clone(),
         private_config,
-        client_parameters.clone(),
-        Registry::new(),
-    );
+    )
+    .with_load_generator(client_parameters.clone());
 
     if let Some(address) = public_config.metrics_address(authority) {
         builder = builder.with_metrics_server(address);
     }
 
-    builder.start().await.unwrap()
+    builder.build().run().await.unwrap()
 }
 
 async fn check_commit(address: &SocketAddr) -> Result<bool, reqwest::Error> {
@@ -63,24 +61,24 @@ async fn validator_commit() {
     let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(0);
     let client_parameters = ClientParameters::default();
 
-    let mut handles = Vec::new();
     let dir = TempDir::new("validator_commit").unwrap();
     let private_configs = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size);
     private_configs.iter().for_each(|private_config| {
         fs::create_dir_all(&private_config.storage_path).unwrap();
     });
 
+    let mut handles = Vec::new();
     for (i, private_config) in private_configs.into_iter().enumerate() {
-        let authority = i as AuthorityIndex;
-        let validator = start_validator(
-            authority,
-            &committee,
-            &public_config,
-            private_config,
-            &client_parameters,
-        )
-        .await;
-        handles.push(validator.await_completion());
+        handles.push(
+            run_validator(
+                i as AuthorityIndex,
+                &committee,
+                &public_config,
+                private_config,
+                &client_parameters,
+            )
+            .await,
+        );
     }
 
     let addresses = public_config
@@ -92,7 +90,9 @@ async fn validator_commit() {
     tokio::select! {
         _ = await_for_commits(addresses) => (),
         _ = time::sleep(timeout) => {
-            panic!("Failed to gather commits within a few timeouts")
+            panic!(
+                "Failed to gather commits within a few timeouts"
+            )
         },
     }
 }
@@ -104,27 +104,27 @@ async fn validator_sync() {
     let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(100);
     let client_parameters = ClientParameters::default();
 
-    let mut handles = Vec::new();
     let dir = TempDir::new("validator_sync").unwrap();
     let private_configs = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size);
     private_configs.iter().for_each(|private_config| {
         fs::create_dir_all(&private_config.storage_path).unwrap();
     });
 
+    let mut handles = Vec::new();
     for (i, private_config) in private_configs.into_iter().enumerate() {
         if i == 0 {
             continue;
         }
-        let authority = i as AuthorityIndex;
-        let validator = start_validator(
-            authority,
-            &committee,
-            &public_config,
-            private_config,
-            &client_parameters,
-        )
-        .await;
-        handles.push(validator.await_completion());
+        handles.push(
+            run_validator(
+                i as AuthorityIndex,
+                &committee,
+                &public_config,
+                private_config,
+                &client_parameters,
+            )
+            .await,
+        );
     }
 
     let addresses = public_config
@@ -136,22 +136,25 @@ async fn validator_sync() {
     tokio::select! {
         _ = await_for_commits(addresses) => (),
         _ = time::sleep(timeout) => {
-            panic!("Failed to gather commits within a few timeouts")
+            panic!(
+                "Failed to gather commits within a few timeouts"
+            )
         },
     }
 
     let authority = 0;
     let private_config =
         NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size).remove(authority);
-    let validator = start_validator(
-        authority as AuthorityIndex,
-        &committee,
-        &public_config,
-        private_config,
-        &client_parameters,
-    )
-    .await;
-    handles.push(validator.await_completion());
+    handles.push(
+        run_validator(
+            authority as AuthorityIndex,
+            &committee,
+            &public_config,
+            private_config,
+            &client_parameters,
+        )
+        .await,
+    );
 
     let address = public_config
         .all_metric_addresses()
@@ -162,7 +165,9 @@ async fn validator_sync() {
     tokio::select! {
         _ = await_for_commits(vec![address]) => (),
         _ = time::sleep(timeout) => {
-            panic!("Failed to gather commits within a few timeouts")
+            panic!(
+                "Failed to gather commits within a few timeouts"
+            )
         },
     }
 }
@@ -174,27 +179,27 @@ async fn validator_crash_faults() {
     let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(200);
     let client_parameters = ClientParameters::default();
 
-    let mut handles = Vec::new();
     let dir = TempDir::new("validator_crash_faults").unwrap();
     let private_configs = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size);
     private_configs.iter().for_each(|private_config| {
         fs::create_dir_all(&private_config.storage_path).unwrap();
     });
 
+    let mut handles = Vec::new();
     for (i, private_config) in private_configs.into_iter().enumerate() {
         if i == 0 {
             continue;
         }
-        let authority = i as AuthorityIndex;
-        let validator = start_validator(
-            authority,
-            &committee,
-            &public_config,
-            private_config,
-            &client_parameters,
-        )
-        .await;
-        handles.push(validator.await_completion());
+        handles.push(
+            run_validator(
+                i as AuthorityIndex,
+                &committee,
+                &public_config,
+                private_config,
+                &client_parameters,
+            )
+            .await,
+        );
     }
 
     let addresses = public_config
@@ -207,7 +212,9 @@ async fn validator_crash_faults() {
     tokio::select! {
         _ = await_for_commits(addresses) => (),
         _ = time::sleep(timeout) => {
-            panic!("Failed to gather commits within a few timeouts")
+            panic!(
+                "Failed to gather commits within a few timeouts"
+            )
         },
     }
 }

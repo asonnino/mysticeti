@@ -6,7 +6,6 @@ use std::{
     sync::Arc,
 };
 
-use ::prometheus::Registry;
 use dag::{
     committee::Committee,
     config::{ClientParameters, ImportExport, NodePrivateConfig, NodePublicConfig},
@@ -15,7 +14,7 @@ use dag::{
 use eyre::{Result, eyre};
 use tracing_subscriber::filter::LevelFilter;
 
-use crate::{tracing::ValidatorTracing, validator::ValidatorBuilder};
+use crate::{builder::ValidatorBuilder, tracing::ValidatorTracing};
 
 pub async fn run(
     authority: AuthorityIndex,
@@ -38,32 +37,33 @@ pub async fn run(
     let private_config = NodePrivateConfig::load(&private_config_path)?;
     let client_parameters = ClientParameters::load(&client_parameters_path)?;
 
-    // Resolve the metrics address for this authority and bind to
-    // 0.0.0.0 so the server is reachable from outside the host.
+    // Resolve the metrics address for this authority and bind
+    // to 0.0.0.0 so the server is reachable from outside.
     let metrics_address = public_config
         .metrics_address(authority)
         .ok_or(eyre!("No metrics address for authority {authority}"))?;
     let mut binding_address = metrics_address;
     binding_address.set_ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
-    tracing::info!("Metrics server listening on {metrics_address}");
 
     let network_address = public_config
         .network_address(authority)
         .ok_or(eyre!("No network address for authority {authority}"))?;
 
-    // Start the validator with metrics and block forever.
-    let validator = ValidatorBuilder::new(
+    // Build and run the validator (blocks forever).
+    let handle = ValidatorBuilder::new(
         authority,
         Arc::new(committee),
         public_config,
         private_config,
-        client_parameters,
-        Registry::new(),
     )
+    .with_load_generator(client_parameters)
     .with_metrics_server(binding_address)
-    .start()
+    .build()
+    .run()
     .await?;
+
+    tracing::info!("Metrics server listening on {metrics_address}");
     tracing::info!("Validator {authority} listening on {network_address}");
 
-    validator.await_completion().await
+    handle.join().await
 }
