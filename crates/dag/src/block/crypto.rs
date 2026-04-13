@@ -106,6 +106,7 @@ impl BlockDigest {
     }
 }
 
+#[cfg_attr(test, allow(dead_code))]
 pub trait AsBytes {
     // This is pretty much same as AsRef<[u8]>
     //

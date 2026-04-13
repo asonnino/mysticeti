@@ -470,6 +470,13 @@ impl Transaction {
     pub fn into_data(self) -> Vec<u8> {
         self.data
     }
+
+    pub fn extract_timestamp(&self) -> Duration {
+        let bytes = self.data[0..8]
+            .try_into()
+            .expect("Transaction should be at least 8 bytes");
+        Duration::from_millis(u64::from_le_bytes(bytes))
+    }
 }
 
 impl AsBytes for Transaction {

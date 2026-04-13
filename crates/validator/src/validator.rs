@@ -23,9 +23,10 @@ use dag::{
     metrics::Metrics,
     storage::Storage,
     sync::{net_sync::NetworkSyncer, network::Network},
-    transactions_generator::TransactionGenerator,
     types::AuthorityIndex,
 };
+
+use crate::generator::TransactionGenerator;
 
 use crate::prometheus as metrics_server;
 
@@ -91,7 +92,7 @@ impl Validator {
         // Start the load generator or expose the tx channel.
         let tx_sender = match self.client_parameters {
             Some(params) => {
-                TransactionGenerator::<TokioCtx>::start(
+                TransactionGenerator::start(
                     block_sender,
                     self.authority,
                     params,

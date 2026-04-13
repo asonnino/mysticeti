@@ -12,6 +12,7 @@ eyre = { workspace = true }
 dag = { path = "../dag" }
 consensus = { path = "../consensus" }
 prometheus = { workspace = true }
+rand = { workspace = true }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
 simulator = { path = "../simulator" }
@@ -22,7 +23,6 @@ tracing-subscriber = { workspace = true }
 [dev-dependencies]
 dag = { path = "../dag", features = ["test-utils"] }
 consensus = { path = "../consensus", features = ["test-utils"] }
-rand = { workspace = true }
 reqwest = { workspace = true }
 tempdir = "0.3.7"
 tokio = { workspace = true, features = ["test-util"] }

@@ -5,6 +5,7 @@ pub mod banner;
 pub mod builder;
 pub mod cli;
 pub mod commands;
+pub mod generator;
 pub mod prometheus;
 pub mod tracing;
 pub mod validator;

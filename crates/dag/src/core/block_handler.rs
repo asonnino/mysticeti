@@ -16,7 +16,6 @@ use crate::{
     data::Data,
     metrics::Metrics,
     storage::BlockReader,
-    transactions_generator,
     types::{BaseStatement, BlockReference, StatementBlock, Transaction, TransactionLocator},
 };
 
@@ -129,7 +128,7 @@ impl<C: Ctx> CommitHandler<C> {
             self.metrics.inc_benchmark_duration_by(delta);
         }
 
-        let tx_submission_timestamp = transactions_generator::extract_timestamp(transaction);
+        let tx_submission_timestamp = transaction.extract_timestamp();
         let latency = current_timestamp.saturating_sub(tx_submission_timestamp);
         let square_latency = latency.as_secs_f64().powf(2.0);
         self.metrics

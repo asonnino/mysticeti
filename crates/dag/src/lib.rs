@@ -18,5 +18,4 @@ pub mod storage;
 pub mod sync;
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_util;
-pub mod transactions_generator;
 pub(crate) use storage::wal;

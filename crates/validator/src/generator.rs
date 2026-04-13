@@ -1,29 +1,31 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{cmp::min, marker::PhantomData, sync::Arc, time::Duration};
-
-use rand::{Rng, SeedableRng, rngs::StdRng};
-use tokio::sync::mpsc;
-
-use crate::{
-    config::{ClientParameters, NodePublicConfig},
-    context::Ctx,
-    crypto::AsBytes,
-    metrics::Metrics,
-    types::{AuthorityIndex, Transaction},
+use std::{
+    cmp::min,
+    sync::Arc,
+    time::{Duration, SystemTime},
 };
 
-pub struct TransactionGenerator<C: Ctx> {
+use rand::{Rng, SeedableRng, rngs::StdRng};
+use tokio::{sync::mpsc, time};
+
+use dag::{
+    block::types::Transaction,
+    config::{ClientParameters, NodePublicConfig},
+    metrics::Metrics,
+    types::AuthorityIndex,
+};
+
+pub struct TransactionGenerator {
     sender: mpsc::Sender<Vec<Transaction>>,
     rng: StdRng,
     client_parameters: ClientParameters,
     node_public_config: NodePublicConfig,
     metrics: Arc<Metrics>,
-    _ctx: PhantomData<C>,
 }
 
-impl<C: Ctx> TransactionGenerator<C> {
+impl TransactionGenerator {
     const TARGET_BLOCK_INTERVAL: Duration = Duration::from_millis(100);
 
     pub fn start(
@@ -39,21 +41,19 @@ impl<C: Ctx> TransactionGenerator<C> {
             client_parameters.load,
             client_parameters.initial_delay
         );
-        #[allow(clippy::let_underscore_future)]
-        let _ = C::spawn(
+        tokio::spawn(
             Self {
                 sender,
                 rng: StdRng::seed_from_u64(seed),
                 client_parameters,
                 node_public_config,
                 metrics,
-                _ctx: PhantomData,
             }
             .run(),
         );
     }
 
-    pub async fn run(mut self) {
+    async fn run(mut self) {
         let load = self.client_parameters.load;
         let transactions_per_block_interval = load.div_ceil(10);
         tracing::info!(
@@ -68,11 +68,14 @@ impl<C: Ctx> TransactionGenerator<C> {
         let mut random: u64 = self.rng.r#gen();
         let zeros = vec![0u8; self.client_parameters.transaction_size - 16];
 
-        let mut interval = C::interval(Self::TARGET_BLOCK_INTERVAL);
-        C::sleep(self.client_parameters.initial_delay).await;
+        let mut interval = time::interval(Self::TARGET_BLOCK_INTERVAL);
+        time::sleep(self.client_parameters.initial_delay).await;
         loop {
-            C::interval_tick(&mut interval).await;
-            let timestamp = (C::timestamp_utc().as_millis() as u64).to_le_bytes();
+            interval.tick().await;
+            let now = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap();
+            let timestamp = (now.as_millis() as u64).to_le_bytes();
 
             let mut block = Vec::with_capacity(target_block_size);
             let mut block_size = 0;
@@ -108,11 +111,4 @@ impl<C: Ctx> TransactionGenerator<C> {
             }
         }
     }
-}
-
-pub fn extract_timestamp(transaction: &Transaction) -> Duration {
-    let bytes = transaction.as_bytes()[0..8]
-        .try_into()
-        .expect("Transactions should be at least 8 bytes");
-    Duration::from_millis(u64::from_le_bytes(bytes))
 }
