@@ -5,7 +5,7 @@ pub type AuthorityIndex = u64;
 
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
 pub struct Transaction {
-    data: Vec<u8>,
+    data: Bytes,
 }
 
 pub type RoundNumber = u64;
@@ -22,6 +22,7 @@ use std::{
 
 use digest::Digest;
 use eyre::{bail, ensure};
+use minibytes::Bytes;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
 pub use test::Dag;
@@ -457,7 +458,7 @@ impl fmt::Display for BaseStatement {
 }
 
 impl Transaction {
-    pub fn new(data: Vec<u8>) -> Self {
+    pub fn new(data: Bytes) -> Self {
         Self { data }
     }
 
@@ -467,7 +468,7 @@ impl Transaction {
     }
 
     #[allow(dead_code)]
-    pub fn into_data(self) -> Vec<u8> {
+    pub fn into_data(self) -> Bytes {
         self.data
     }
 

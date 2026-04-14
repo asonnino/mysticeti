@@ -2872,6 +2872,7 @@ dependencies = [
  "consensus",
  "dag",
  "eyre",
+ "minibytes",
  "prometheus",
  "rand 0.8.5",
  "reqwest",

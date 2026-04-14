@@ -11,6 +11,7 @@ color-eyre = { workspace = true }
 eyre = { workspace = true }
 dag = { path = "../dag" }
 consensus = { path = "../consensus" }
+minibytes = { path = "../minibytes", default-features = false }
 prometheus = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true }
