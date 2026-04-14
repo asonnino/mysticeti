@@ -10,14 +10,14 @@ use dag::{
     core::block_handler::CommitHandler,
     metrics::{Metrics, MetricsSnapshot},
     sync::net_sync::NetworkSyncer,
-    test_util::rng_at_seed,
     types::BlockReference,
 };
+use rand::{SeedableRng, rngs::StdRng};
 
 use crate::{
     config::{NetworkTopology, SimulationConfig},
-    context::SimulatedCtx,
-    executor::{OverrideNodeContext, SimulatedExecutorState},
+    context::{NodeScope, SimulatorContext},
+    executor::SimulatedExecutorState,
     network::SimulatedNetwork,
     tracing::SimulatorTracing,
 };
@@ -49,14 +49,14 @@ impl SimulationRunner {
     pub fn run(&self) -> SimulationResults {
         SimulatorTracing::setup();
         let config = self.config.clone();
-        let rng = rng_at_seed(config.rng_seed);
+        let rng = StdRng::seed_from_u64(config.rng_seed);
         SimulatedExecutorState::run(rng, run_simulation(config))
     }
 }
 
 async fn run_simulation(config: SimulationConfig) -> SimulationResults {
     let committee_size = config.committee_size;
-    let (committee, cores) = committee_and_cores::<SimulatedCtx>(committee_size);
+    let (committee, cores) = committee_and_cores::<SimulatorContext>(committee_size);
 
     let (simulated_network, networks) = SimulatedNetwork::new(&committee, config.latency_range());
 
@@ -69,7 +69,7 @@ async fn run_simulation(config: SimulationConfig) -> SimulationResults {
             core.block_handler().transaction_time.clone(),
             core.metrics.clone(),
         );
-        let node_context = OverrideNodeContext::enter(Some(core.authority()));
+        let node_context = NodeScope::enter(Some(core.authority()));
         let network_syncer = NetworkSyncer::start_for_test(
             network,
             core,
@@ -85,7 +85,7 @@ async fn run_simulation(config: SimulationConfig) -> SimulationResults {
     apply_topology(&simulated_network, &config.topology).await;
 
     let duration = Duration::from_secs(config.duration_secs);
-    SimulatedCtx::sleep(duration).await;
+    SimulatorContext::sleep(duration).await;
 
     let mut syncers = vec![];
     for network_syncer in network_syncers {

@@ -7,29 +7,31 @@ use serde::{Deserialize, Serialize};
 
 use dag::config::{ImportExport, NodeParameters};
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub enum NetworkTopology {
+    #[default]
+    FullMesh,
+    OneDown(usize),
+    Partition(Vec<Vec<usize>>),
+    Star(usize),
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SimulationConfig {
     #[serde(default = "defaults::committee_size")]
     pub committee_size: usize,
-
     #[serde(default = "defaults::latency_min_ms")]
     pub latency_min_ms: u64,
-
     #[serde(default = "defaults::latency_max_ms")]
     pub latency_max_ms: u64,
-
     #[serde(default)]
     pub topology: NetworkTopology,
-
     #[serde(default = "defaults::duration_secs")]
     pub duration_secs: u64,
-
     #[serde(default)]
     pub rng_seed: u64,
-
     #[serde(default = "defaults::commit_period")]
     pub commit_period: u64,
-
     #[serde(default)]
     pub node_parameters: NodeParameters,
 }
@@ -58,15 +60,6 @@ impl SimulationConfig {
 }
 
 impl ImportExport for SimulationConfig {}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub enum NetworkTopology {
-    #[default]
-    FullMesh,
-    OneDown(usize),
-    Partition(Vec<Vec<usize>>),
-    Star(usize),
-}
 
 mod defaults {
     pub fn committee_size() -> usize {

@@ -10,11 +10,9 @@ pub mod runner;
 pub mod tracing;
 
 pub use config::{NetworkTopology, SimulationConfig};
-pub use context::{SimInstant, SimulatedCtx};
+pub use context::{NodeScope, SimulatorContext, SimulatorInstant};
 pub use event_simulator::{Scheduler, Simulator, SimulatorState};
-pub use executor::{
-    JoinError, JoinHandle, OverrideNodeContext, SimulatedExecutorState, SimulatorContext, Sleep,
-};
+pub use executor::{JoinError, JoinHandle, SimulatedExecutorState, Sleep};
 pub use network::SimulatedNetwork;
 pub use runner::{SimulationResults, SimulationRunner};
 pub use tracing::SimulatorTracing;

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
-    cell::RefCell,
     collections::{HashMap, hash_map::Entry},
     future::Future,
     pin::Pin,
@@ -18,8 +17,8 @@ use tokio::{
     sync::{Notify, oneshot},
 };
 
+use super::context::{SimulatorContext, Task};
 use super::event_simulator::{Scheduler, Simulator, SimulatorState};
-use dag::types::AuthorityIndex;
 
 #[derive(Default)]
 pub struct SimulatedExecutorState {
@@ -30,11 +29,6 @@ pub struct SimulatedExecutorState {
 pub struct JoinHandle<R> {
     ch: Pin<Box<oneshot::Receiver<Result<R, JoinError>>>>,
     abort: Arc<Notify>,
-}
-
-struct Task {
-    f: Pin<Box<dyn Future<Output = ()>>>,
-    node: Option<AuthorityIndex>,
 }
 
 impl SimulatedExecutorState {
@@ -99,92 +93,20 @@ impl SimulatedExecutorState {
 pub fn simulator_spawn<R: Send + 'static, F: Future<Output = R> + Send + 'static>(
     f: F,
 ) -> JoinHandle<R> {
-    SimulatorContext::with(|context| {
-        let (task, join_handle) = make_task(f);
-        let task = Task {
-            f: task,
-            node: context.current_node,
-        };
-        context.spawned.push(task);
-        join_handle
-    })
-}
-
-thread_local! {
-    static CONTEXT: RefCell<Option<SimulatorContext>> = const { RefCell::new(None) };
-}
-
-pub struct SimulatorContext {
-    spawned: Vec<Task>,
-    task_id: usize,
-    current_node: Option<AuthorityIndex>,
-}
-
-impl SimulatorContext {
-    pub fn new(task_id: usize, current_node: Option<AuthorityIndex>) -> Self {
-        Self {
-            spawned: Default::default(),
-            task_id,
-            current_node,
-        }
-    }
-
-    pub fn with<R, F: FnOnce(&mut SimulatorContext) -> R>(f: F) -> R {
-        CONTEXT.with(|ctx| {
-            f(ctx
-                .borrow_mut()
-                .as_mut()
-                .expect("Not running in simulator context"))
-        })
-    }
-
-    pub fn task_id() -> usize {
-        CONTEXT.with(|ctx| {
-            ctx.borrow()
-                .as_ref()
-                .expect("Not running in simulator context")
-                .task_id
-        })
-    }
-
-    pub fn current_node() -> Option<AuthorityIndex> {
-        CONTEXT.with(|ctx| {
-            ctx.borrow()
-                .as_ref()
-                .expect("Not running in simulator context")
-                .current_node
-        })
-    }
-
-    pub fn enter(self) {
-        CONTEXT.with(|ctx| {
-            let mut ctx = ctx.borrow_mut();
-            assert!(ctx.is_none(), "Can not re-enter simulator context");
-            *ctx = Some(self);
-        })
-    }
-
-    pub fn exit() -> Self {
-        CONTEXT.with(|ctx| {
-            ctx.borrow_mut()
-                .take()
-                .expect("Not running in simulator context - can not exit")
-        })
-    }
-
-    pub fn with_rng<R, F: FnOnce(&mut StdRng) -> R>(f: F) -> R {
-        Scheduler::<ExecutorStateEvent>::with_rng(f)
-    }
-
-    #[allow(dead_code)]
-    pub fn time() -> Duration {
-        super::event_simulator::simulator_time()
-    }
+    let mut context = SimulatorContext::exit();
+    let (task, join_handle) = make_task(f);
+    let task = Task {
+        f: task,
+        node: context.current_node,
+    };
+    context.spawned.push(task);
+    context.enter();
+    join_handle
 }
 
 fn make_task<R: Send + 'static, F: Future<Output = R> + Send + 'static>(
     f: F,
-) -> (Pin<Box<dyn Future<Output = ()>>>, JoinHandle<R>) {
+) -> (Pin<Box<dyn Future<Output = ()> + Send>>, JoinHandle<R>) {
     let (s, r) = oneshot::channel();
     let abort = Arc::new(Notify::new());
     let task = task(f, s, abort.clone());
@@ -323,32 +245,5 @@ impl Future for Sleep {
                 }
             }
         }
-    }
-}
-
-pub struct OverrideNodeContext {
-    prev: Option<AuthorityIndex>,
-}
-
-impl OverrideNodeContext {
-    pub fn enter(new: Option<AuthorityIndex>) -> Self {
-        let prev = CONTEXT.with(|ctx| {
-            let mut ctx = ctx.borrow_mut();
-            let ctx = ctx.as_mut().expect("Not running in simulator context");
-            let prev = ctx.current_node;
-            ctx.current_node = new;
-            prev
-        });
-        Self { prev }
-    }
-}
-
-impl Drop for OverrideNodeContext {
-    fn drop(&mut self) {
-        CONTEXT.with(|ctx| {
-            let mut ctx = ctx.borrow_mut();
-            let ctx = ctx.as_mut().expect("Not running in simulator context");
-            ctx.current_node = self.prev;
-        });
     }
 }

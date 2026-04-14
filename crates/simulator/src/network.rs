@@ -6,8 +6,7 @@ use std::{fmt::Debug, ops::Range, time::Duration};
 use rand::Rng;
 use tokio::sync::mpsc;
 
-use super::context::SimulatedCtx;
-use super::executor::SimulatorContext;
+use super::context::SimulatorContext;
 use dag::committee::Committee;
 use dag::context::Ctx;
 use dag::sync::network::{Connection, Network};
@@ -83,10 +82,10 @@ impl SimulatedNetwork {
         let (buf_sender, mut buf_receiver) = mpsc::channel(16);
         let (sender, receiver) = mpsc::channel(16);
         let range = self.latency_range.clone();
-        SimulatedCtx::spawn(async move {
+        SimulatorContext::spawn(async move {
             while let Some(message) = buf_receiver.recv().await {
                 let latency = SimulatorContext::with_rng(|rng| rng.gen_range(range.clone()));
-                SimulatedCtx::sleep(latency).await;
+                SimulatorContext::sleep(latency).await;
                 if sender.send(message).await.is_err() {
                     return;
                 }

@@ -14,7 +14,7 @@ use tracing_subscriber::{
     registry::LookupSpan,
 };
 
-use super::executor::SimulatorContext;
+use super::context::SimulatorContext;
 use dag::types::format_authority_index;
 
 pub struct SimulatorTracing;
