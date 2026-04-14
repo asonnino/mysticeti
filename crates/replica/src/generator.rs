@@ -12,111 +12,154 @@ use rand::{Rng, SeedableRng, rngs::StdRng};
 use tokio::{sync::mpsc, time};
 
 use dag::{
-    block::types::Transaction,
-    config::{ClientParameters, NodePublicConfig},
-    metrics::Metrics,
-    types::AuthorityIndex,
+    block::types::Transaction, config::ClientParameters, metrics::Metrics, types::AuthorityIndex,
 };
 
 pub struct TransactionGenerator {
     sender: mpsc::Sender<Vec<Transaction>>,
-    rng: StdRng,
-    client_parameters: ClientParameters,
-    node_public_config: NodePublicConfig,
+    max_block_size: usize,
     metrics: Arc<Metrics>,
 }
 
 impl TransactionGenerator {
     const TARGET_BLOCK_INTERVAL: Duration = Duration::from_millis(100);
+    const HEADER_SIZE: usize = 8 + 8; // timestamp + random
 
     pub fn start(
         sender: mpsc::Sender<Vec<Transaction>>,
         seed: AuthorityIndex,
         client_parameters: ClientParameters,
-        node_public_config: NodePublicConfig,
+        max_block_size: usize,
         metrics: Arc<Metrics>,
     ) {
-        assert!(client_parameters.transaction_size > 8 + 8);
+        assert!(
+            client_parameters.transaction_size > Self::HEADER_SIZE,
+            "transaction_size must be greater than {} bytes",
+            Self::HEADER_SIZE
+        );
         tracing::info!(
             "Starting generator with {} transactions per second, initial delay {:?}",
             client_parameters.load,
             client_parameters.initial_delay
         );
+        let mut rng = StdRng::seed_from_u64(seed);
+        let random = rng.r#gen();
         tokio::spawn(
             Self {
                 sender,
-                rng: StdRng::seed_from_u64(seed),
-                client_parameters,
-                node_public_config,
+                max_block_size,
                 metrics,
             }
-            .run(),
+            .run(client_parameters, random),
         );
     }
 
-    async fn run(mut self) {
-        let load = self.client_parameters.load;
-        let tx_per_interval = load.div_ceil(10);
-        let tx_size = self.client_parameters.transaction_size;
+    fn fill_batch(
+        buffer: &mut Vec<u8>,
+        transaction_size: usize,
+        transactions_per_interval: usize,
+        timestamp_ms: u64,
+        counter: &mut u64,
+        random: &mut u64,
+    ) -> Bytes {
+        for i in 0..transactions_per_interval {
+            *random += *counter;
+            let offset = i * transaction_size;
+            buffer[offset..offset + 8].copy_from_slice(&timestamp_ms.to_le_bytes());
+            buffer[offset + 8..offset + 16].copy_from_slice(&random.to_le_bytes());
+            *counter += 1;
+        }
+        let batch_size = transaction_size * transactions_per_interval;
+        Bytes::from(mem::replace(buffer, vec![0u8; batch_size]))
+    }
+
+    async fn ship_blocks(
+        &self,
+        batch: &Bytes,
+        transaction_size: usize,
+        transactions_per_interval: usize,
+        block_capacity: usize,
+    ) -> bool {
+        let mut block = Vec::with_capacity(block_capacity);
+        let mut block_size = 0;
+        for i in 0..transactions_per_interval {
+            let start = i * transaction_size;
+            let end = start + transaction_size;
+            block.push(Transaction::new(batch.slice(start..end)));
+            block_size += transaction_size;
+
+            if block_size >= self.max_block_size {
+                let full_block = mem::replace(&mut block, Vec::with_capacity(block_capacity));
+                if self.sender.send(full_block).await.is_err() {
+                    return false;
+                }
+                block_size = 0;
+            }
+        }
+        if !block.is_empty() {
+            return self.sender.send(block).await.is_ok();
+        }
+        true
+    }
+
+    async fn run(self, client_parameters: ClientParameters, mut random: u64) {
+        let load = client_parameters.load;
+        let transaction_size = client_parameters.transaction_size;
+        let intervals_per_second = 1000 / Self::TARGET_BLOCK_INTERVAL.as_millis() as usize;
+        let transactions_per_interval = load.div_ceil(intervals_per_second);
         tracing::info!(
-            "Generating {tx_per_interval} transactions per {} ms",
+            "Generating {transactions_per_interval} transactions per {} ms",
             Self::TARGET_BLOCK_INTERVAL.as_millis()
         );
-        let max_block_size = self.node_public_config.parameters.max_block_size;
-        let block_capacity = (max_block_size / tx_size).min(tx_per_interval);
+        let block_capacity =
+            (self.max_block_size / transaction_size).min(transactions_per_interval);
 
         let mut counter = 0u64;
-        let mut tx_to_report = 0u64;
-        let mut random: u64 = self.rng.r#gen();
-        let batch_size = tx_size * tx_per_interval;
+        let mut transactions_to_report = 0u64;
+        let batch_size = transaction_size * transactions_per_interval;
         let mut buffer = vec![0u8; batch_size];
 
+        // Cache the system clock at startup and derive
+        // subsequent timestamps from a monotonic instant,
+        // avoiding repeated clock syscalls in the hot loop.
         let base_system_time = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap();
         let base_instant = Instant::now();
 
         let mut interval = time::interval(Self::TARGET_BLOCK_INTERVAL);
-        time::sleep(self.client_parameters.initial_delay).await;
+        time::sleep(client_parameters.initial_delay).await;
         loop {
             interval.tick().await;
-            let elapsed = base_instant.elapsed();
-            let timestamp_ms = (base_system_time + elapsed).as_millis() as u64;
+            let timestamp_ms = (base_system_time + base_instant.elapsed()).as_millis() as u64;
 
-            // Fill the reusable buffer with all transactions.
-            for i in 0..tx_per_interval {
-                random += counter;
-                let offset = i * tx_size;
-                buffer[offset..offset + 8].copy_from_slice(&timestamp_ms.to_le_bytes());
-                buffer[offset + 8..offset + 16].copy_from_slice(&random.to_le_bytes());
-                counter += 1;
-            }
-            let batch = Bytes::from(mem::replace(&mut buffer, vec![0u8; batch_size]));
+            let batch = Self::fill_batch(
+                &mut buffer,
+                transaction_size,
+                transactions_per_interval,
+                timestamp_ms,
+                &mut counter,
+                &mut random,
+            );
 
-            let mut block = Vec::with_capacity(block_capacity);
-            let mut block_size = 0;
-            for i in 0..tx_per_interval {
-                let tx_bytes = batch.slice(i * tx_size..(i + 1) * tx_size);
-                block.push(Transaction::new(tx_bytes));
-                block_size += tx_size;
-
-                if block_size >= max_block_size {
-                    let full_block = mem::replace(&mut block, Vec::with_capacity(block_capacity));
-                    if self.sender.send(full_block).await.is_err() {
-                        return;
-                    }
-                    block_size = 0;
-                }
-            }
-
-            if !block.is_empty() && self.sender.send(block).await.is_err() {
+            if !self
+                .ship_blocks(
+                    &batch,
+                    transaction_size,
+                    transactions_per_interval,
+                    block_capacity,
+                )
+                .await
+            {
+                tracing::warn!("Transaction channel closed, stopping generator");
                 return;
             }
 
-            tx_to_report += tx_per_interval as u64;
+            transactions_to_report += transactions_per_interval as u64;
             if counter.is_multiple_of(10_000) {
-                self.metrics.inc_submitted_transactions(tx_to_report);
-                tx_to_report = 0
+                self.metrics
+                    .inc_submitted_transactions(transactions_to_report);
+                transactions_to_report = 0;
             }
         }
     }

@@ -96,7 +96,7 @@ impl Replica {
                     block_sender,
                     self.authority,
                     params,
-                    self.public_config.clone(),
+                    self.public_config.parameters.max_block_size,
                     metrics.clone(),
                 );
                 None
