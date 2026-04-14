@@ -21,6 +21,12 @@ max_line_length = 150
 indent_size = 2
 max_line_length = 150
 
+[**/assets/banner.txt]
+indent_size = unset
+indent_style = unset
+trim_trailing_whitespace = false
+max_line_length = unset
+
 # Ignore paths
 [{.git/**/*,.claude/**/*,**/*.lock,LICENSE}]
 charset = unset

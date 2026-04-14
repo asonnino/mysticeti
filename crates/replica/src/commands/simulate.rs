@@ -21,7 +21,6 @@ pub async fn simulate(
         return Ok(());
     }
 
-    banner::print_banner("Simulator");
     match log_level {
         Some(level) => SimulatorTracing::setup_with_filter(&level.to_string()),
         None => SimulatorTracing::setup(),
@@ -38,11 +37,18 @@ pub async fn simulate(
             SimulationConfig::default()
         }
     };
-    tracing::info!(
-        "Running simulation with {} validators for {}s",
-        config.committee_size,
-        config.duration_secs
-    );
+
+    let nodes = config.committee_size.to_string();
+    let duration = format!("{}s", config.duration_secs);
+    banner::BannerPrinter::new(
+        "Mysticeti",
+        &[
+            ("Mode", "Simulator"),
+            ("Nodes", &nodes),
+            ("Duration", &duration),
+        ],
+    )
+    .print();
 
     // Run the simulation on a blocking thread (it uses simulated time, not tokio).
     let results = tokio::task::spawn_blocking(move || SimulationRunner::new(config).run())

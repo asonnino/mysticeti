@@ -47,7 +47,6 @@ pub async fn local_testbed(
         return Ok(());
     }
 
-    banner::print_banner("Local Testbed");
     match log_level {
         Some(level) => ReplicaTracing::new(level),
         None => ReplicaTracing::new(LevelFilter::DEBUG),
@@ -66,6 +65,20 @@ pub async fn local_testbed(
     };
 
     let committee_size = config.committee_size;
+    let nodes = committee_size.to_string();
+    let tx_size = config.client_parameters.transaction_size.to_string();
+    let load = config.client_parameters.load.to_string();
+    banner::BannerPrinter::new(
+        "Mysticeti",
+        &[
+            ("Mode", "Local Testbed"),
+            ("Nodes", &nodes),
+            ("Tx size", &tx_size),
+            ("Load", &load),
+        ],
+    )
+    .print();
+
     let ips = vec![IpAddr::V4(Ipv4Addr::LOCALHOST); committee_size];
     let committee = Committee::new_for_benchmarks(committee_size);
     let public_config = NodePublicConfig::new_for_benchmarks(ips, Some(config.node_parameters));

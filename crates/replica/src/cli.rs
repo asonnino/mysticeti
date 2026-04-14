@@ -78,4 +78,7 @@ pub enum Operation {
         #[arg(long, conflicts_with = "config_path")]
         dump_config: bool,
     },
+
+    /// Print the startup banner and exit.
+    PrintBanner,
 }

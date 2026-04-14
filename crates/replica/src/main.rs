@@ -49,6 +49,9 @@ async fn main() -> Result<()> {
             config_path,
             dump_config,
         } => commands::testbed::local_testbed(config_path, dump_config, args.log_level).await?,
+        Operation::PrintBanner => {
+            replica::banner::BannerPrinter::new("Mysticeti", &[("Mode", "Preview")]).print();
+        }
     }
 
     Ok(())
