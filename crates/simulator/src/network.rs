@@ -17,10 +17,6 @@ pub struct SimulatedNetwork {
 }
 
 impl SimulatedNetwork {
-    pub fn default_latency_range() -> Range<Duration> {
-        Duration::from_millis(50)..Duration::from_millis(100)
-    }
-
     pub fn new(
         committee: &Committee,
         latency_range: Range<Duration>,

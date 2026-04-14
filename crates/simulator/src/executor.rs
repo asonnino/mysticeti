@@ -21,7 +21,7 @@ use super::context::{SimulatorContext, Task};
 use super::event_simulator::{Scheduler, Simulator, SimulatorState};
 
 #[derive(Default)]
-pub struct SimulatedExecutorState {
+pub struct SimulatorExecutor {
     tasks: HashMap<usize, Task>,
     next_id: usize,
 }
@@ -31,18 +31,18 @@ pub struct JoinHandle<R> {
     abort: Arc<Notify>,
 }
 
-impl SimulatedExecutorState {
+impl SimulatorExecutor {
     pub fn run<R: Send + 'static, F: Future<Output = R> + Send + 'static>(rng: StdRng, f: F) -> R {
         let mut simulator = Self::new_simulator(rng);
         Self::block_on(&mut simulator, f)
     }
 
-    fn new_simulator(rng: StdRng) -> Simulator<SimulatedExecutorState> {
+    fn new_simulator(rng: StdRng) -> Simulator<SimulatorExecutor> {
         Simulator::new(vec![Self::default()], rng)
     }
 
     fn spawn_at<R: Send + 'static, F: Future<Output = R> + Send + 'static>(
-        simulator: &mut Simulator<SimulatedExecutorState>,
+        simulator: &mut Simulator<SimulatorExecutor>,
         f: F,
     ) -> JoinHandle<R> {
         let state = &mut simulator.states_mut()[0];
@@ -61,7 +61,7 @@ impl SimulatedExecutorState {
     }
 
     fn block_on<R: Send + 'static, F: Future<Output = R> + Send + 'static>(
-        simulator: &mut Simulator<SimulatedExecutorState>,
+        simulator: &mut Simulator<SimulatorExecutor>,
         f: F,
     ) -> R {
         let jh = Self::spawn_at(simulator, f);
@@ -69,7 +69,7 @@ impl SimulatedExecutorState {
     }
 
     fn run_until_complete<R: Send + 'static>(
-        simulator: &mut Simulator<SimulatedExecutorState>,
+        simulator: &mut Simulator<SimulatorExecutor>,
         mut jh: JoinHandle<R>,
     ) -> R {
         loop {
@@ -164,7 +164,7 @@ pub enum ExecutorStateEvent {
     Wake(usize),
 }
 
-impl SimulatorState for SimulatedExecutorState {
+impl SimulatorState for SimulatorExecutor {
     type Event = ExecutorStateEvent;
 
     fn handle_event(&mut self, event: Self::Event) {

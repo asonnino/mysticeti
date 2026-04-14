@@ -1,31 +1,52 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{path::Path, time::Duration};
+use std::path::Path;
 
-use consensus::test_util::committee_and_cores;
+use consensus::universal_committer::UniversalCommitter;
 use dag::{
+    committee::Committee,
     config::{ConfigError, ImportExport, NodePublicConfig},
     context::Ctx,
-    core::block_handler::CommitHandler,
-    metrics::{Metrics, MetricsSnapshot},
+    metrics::MetricsSnapshot,
     sync::net_sync::NetworkSyncer,
-    types::BlockReference,
+    types::{AuthorityIndex, BlockReference},
 };
 use rand::{SeedableRng, rngs::StdRng};
 
 use crate::{
     config::{NetworkTopology, SimulationConfig},
-    context::{NodeScope, SimulatorContext},
-    executor::SimulatedExecutorState,
+    context::SimulatorContext,
+    executor::SimulatorExecutor,
     network::SimulatedNetwork,
+    replica::SimulatedReplica,
     tracing::SimulatorTracing,
 };
+
+type Syncer = NetworkSyncer<SimulatorContext, UniversalCommitter>;
 
 pub struct SimulationResults {
     pub committed_leaders: Vec<Vec<BlockReference>>,
     pub metrics: Vec<MetricsSnapshot>,
     pub commits_consistent: bool,
+}
+
+impl SimulationResults {
+    fn check_consistency(committed: &[Vec<BlockReference>]) -> bool {
+        let empty: &[BlockReference] = &[];
+        let mut max_commit: &[BlockReference] = empty;
+        for commit in committed {
+            if commit.len() >= max_commit.len() {
+                if !commit.starts_with(max_commit) {
+                    return false;
+                }
+                max_commit = commit;
+            } else if !max_commit.starts_with(commit) {
+                return false;
+            }
+        }
+        true
+    }
 }
 
 pub struct SimulationRunner {
@@ -46,111 +67,118 @@ impl SimulationRunner {
         &self.config
     }
 
-    pub fn run(&self) -> SimulationResults {
+    /// Run the simulation to completion and return results.
+    ///
+    /// Executes inside a deterministic discrete-event simulator:
+    /// all time is simulated, no real wall-clock time elapses.
+    pub fn run(self) -> SimulationResults {
         SimulatorTracing::setup();
-        let config = self.config.clone();
-        let rng = StdRng::seed_from_u64(config.rng_seed);
-        SimulatedExecutorState::run(rng, run_simulation(config))
+        let rng = StdRng::seed_from_u64(self.config.rng_seed);
+        SimulatorExecutor::run(rng, async {
+            // Set up the committee, network, and per-node consensus.
+            let duration = self.config.duration();
+            let state = SimulationState::setup(self.config);
+
+            // Wire up network connections according to the topology.
+            state.apply_topology().await;
+
+            // Let the simulation run for the configured duration.
+            SimulatorContext::sleep(duration).await;
+
+            // Shut down all nodes and collect committed blocks.
+            state.collect_results().await
+        })
     }
 }
 
-async fn run_simulation(config: SimulationConfig) -> SimulationResults {
-    let committee_size = config.committee_size;
-    let (committee, cores) = committee_and_cores::<SimulatorContext>(committee_size);
+struct SimulationState {
+    config: SimulationConfig,
+    network: SimulatedNetwork,
+    network_syncers: Vec<Syncer>,
+}
 
-    let (simulated_network, networks) = SimulatedNetwork::new(&committee, config.latency_range());
+impl SimulationState {
+    fn setup(config: SimulationConfig) -> Self {
+        let committee_size = config.committee_size;
+        let committee = Committee::new_test(vec![1; committee_size]);
 
-    let mut public_config = NodePublicConfig::new_for_tests(committee_size);
-    public_config.parameters = config.node_parameters.clone();
+        let mut public_config = NodePublicConfig::new_for_tests(committee_size);
+        public_config.parameters = config.node_parameters.clone();
 
-    let mut network_syncers = vec![];
-    for (network, core) in networks.into_iter().zip(cores.into_iter()) {
-        let commit_handler = CommitHandler::new(
-            core.block_handler().transaction_time.clone(),
-            core.metrics.clone(),
-        );
-        let node_context = NodeScope::enter(Some(core.authority()));
-        let network_syncer = NetworkSyncer::start_for_test(
+        let (network, networks) = SimulatedNetwork::new(&committee, config.latency_range());
+
+        let network_syncers = networks
+            .into_iter()
+            .enumerate()
+            .map(|(i, node_network)| {
+                SimulatedReplica::new(
+                    i as AuthorityIndex,
+                    committee.clone(),
+                    public_config.clone(),
+                    node_network,
+                    config.commit_period,
+                )
+                .start()
+            })
+            .collect();
+
+        Self {
+            config,
             network,
-            core,
-            config.commit_period,
-            commit_handler,
-            Metrics::new_for_test(0),
-            &public_config,
-        );
-        drop(node_context);
-        network_syncers.push(network_syncer);
+            network_syncers,
+        }
     }
 
-    apply_topology(&simulated_network, &config.topology).await;
-
-    let duration = Duration::from_secs(config.duration_secs);
-    SimulatorContext::sleep(duration).await;
-
-    let mut syncers = vec![];
-    for network_syncer in network_syncers {
-        let syncer = network_syncer.shutdown().await;
-        syncers.push(syncer);
-    }
-
-    let committed_leaders: Vec<Vec<BlockReference>> = syncers
-        .iter()
-        .map(|syncer| syncer.commit_handler().committed_leaders().to_vec())
-        .collect();
-
-    let metrics: Vec<MetricsSnapshot> = syncers
-        .iter()
-        .map(|syncer| syncer.core().metrics.collect())
-        .collect();
-
-    let commits_consistent = check_commits_consistent(&committed_leaders);
-
-    SimulationResults {
-        committed_leaders,
-        metrics,
-        commits_consistent,
-    }
-}
-
-fn check_commits_consistent(committed: &[Vec<BlockReference>]) -> bool {
-    let empty: &[BlockReference] = &[];
-    let mut max_commit: &[BlockReference] = empty;
-    for commit in committed {
-        if commit.len() >= max_commit.len() {
-            if !commit.starts_with(max_commit) {
-                return false;
+    async fn apply_topology(&self) {
+        match &self.config.topology {
+            NetworkTopology::FullMesh => {
+                self.network.connect_all().await;
             }
-            max_commit = commit;
-        } else if !max_commit.starts_with(commit) {
-            return false;
+            NetworkTopology::OneDown(node) => {
+                let excluded = *node;
+                self.network.connect_some(|a, _b| a != excluded).await;
+            }
+            NetworkTopology::Partition(groups) => {
+                self.network
+                    .connect_some(|a, b| {
+                        groups
+                            .iter()
+                            .any(|group| group.contains(&a) && group.contains(&b))
+                    })
+                    .await;
+            }
+            NetworkTopology::Star(center) => {
+                let center = *center;
+                self.network
+                    .connect_some(|a, b| a == center || b == center)
+                    .await;
+            }
         }
     }
-    true
-}
 
-async fn apply_topology(network: &SimulatedNetwork, topology: &NetworkTopology) {
-    match topology {
-        NetworkTopology::FullMesh => {
-            network.connect_all().await;
+    async fn collect_results(self) -> SimulationResults {
+        let mut syncers = vec![];
+        for network_syncer in self.network_syncers {
+            let syncer = network_syncer.shutdown().await;
+            syncers.push(syncer);
         }
-        NetworkTopology::OneDown(node) => {
-            let excluded = *node;
-            network.connect_some(|a, _b| a != excluded).await;
-        }
-        NetworkTopology::Partition(groups) => {
-            network
-                .connect_some(|a, b| {
-                    groups
-                        .iter()
-                        .any(|group| group.contains(&a) && group.contains(&b))
-                })
-                .await;
-        }
-        NetworkTopology::Star(center) => {
-            let center = *center;
-            network
-                .connect_some(|a, b| a == center || b == center)
-                .await;
+
+        let committed_leaders: Vec<Vec<BlockReference>> = syncers
+            .iter()
+            .map(|syncer| syncer.commit_handler().committed_leaders().to_vec())
+            .collect();
+
+        let metrics: Vec<MetricsSnapshot> = syncers
+            .iter()
+            .map(|syncer| syncer.core().metrics.collect())
+            .collect();
+
+        let commits_consistent = SimulationResults::check_consistency(&committed_leaders);
+
+        SimulationResults {
+            committed_leaders,
+            metrics,
+            commits_consistent,
         }
     }
 }

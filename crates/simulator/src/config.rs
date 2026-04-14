@@ -53,9 +53,19 @@ impl Default for SimulationConfig {
 
 impl SimulationConfig {
     pub fn latency_range(&self) -> Range<Duration> {
+        assert!(
+            self.latency_min_ms <= self.latency_max_ms,
+            "latency_min_ms ({}) must not exceed latency_max_ms ({})",
+            self.latency_min_ms,
+            self.latency_max_ms
+        );
         let min = Duration::from_millis(self.latency_min_ms);
         let max = Duration::from_millis(self.latency_max_ms);
         min..max
+    }
+
+    pub fn duration(&self) -> Duration {
+        Duration::from_secs(self.duration_secs)
     }
 }
 

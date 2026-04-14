@@ -136,7 +136,14 @@ pub struct NodeScope {
 }
 
 impl NodeScope {
-    pub fn enter(new: Option<AuthorityIndex>) -> Self {
+    pub fn with<R>(node: Option<AuthorityIndex>, f: impl FnOnce() -> R) -> R {
+        let scope = Self::enter(node);
+        let result = f();
+        drop(scope);
+        result
+    }
+
+    fn enter(new: Option<AuthorityIndex>) -> Self {
         let previous_node = CONTEXT.with(|ctx| {
             let mut ctx = ctx.borrow_mut();
             let ctx = ctx.as_mut().expect("Not running in simulator context");
