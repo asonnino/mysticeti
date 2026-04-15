@@ -10,6 +10,7 @@ use tokio::sync::mpsc;
 use crate::{
     consensus::DagConsensus,
     context::Ctx,
+    core::core_thread::CoreDispatch,
     metrics::Metrics,
     sync::{
         net_sync::{self, NetworkSyncerInner},

@@ -135,4 +135,12 @@ impl<C: Ctx, D: DagConsensus> Syncer<C, D> {
     pub fn core(&self) -> &Core<C, D> {
         &self.core
     }
+
+    pub fn connect_authority(&mut self, authority: AuthorityIndex) {
+        self.connected_authorities.insert(authority);
+    }
+
+    pub fn disconnect_authority(&mut self, authority: AuthorityIndex) {
+        self.connected_authorities.remove(&authority);
+    }
 }

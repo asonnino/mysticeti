@@ -81,7 +81,7 @@ impl SimulatedReplica {
         // TODO: Replace NodeScope with proper tracing spans
         // on Core/Syncer, then remove NodeScope entirely.
         NodeScope::with(Some(self.authority), || {
-            NetworkSyncer::start_for_test(
+            NetworkSyncer::start(
                 self.network,
                 core,
                 self.commit_period,

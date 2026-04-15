@@ -3,6 +3,7 @@
 
 pub mod config;
 pub mod context;
+mod dispatcher;
 pub mod event_simulator;
 pub mod executor;
 pub mod network;

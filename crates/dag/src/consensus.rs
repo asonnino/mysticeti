@@ -12,7 +12,7 @@ use crate::{
 /// Trait that a consensus protocol must implement to work with the DAG layer.
 /// The DAG layer calls these methods to determine which leaders to commit or
 /// skip, and which leaders the syncer should wait for (liveness).
-pub trait DagConsensus {
+pub trait DagConsensus: Send + 'static {
     /// Decide leaders. Returns an ordered sequence of decided leaders.
     /// Idempotent for the same DAG state.
     fn try_commit(&self, last_decided: BlockReference) -> Vec<LeaderStatus>;

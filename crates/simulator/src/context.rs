@@ -8,9 +8,13 @@ use tokio::sync::{mpsc, oneshot};
 
 use super::event_simulator::{Scheduler, simulator_time};
 use super::executor::{ExecutorStateEvent, JoinError, JoinHandle, Sleep, simulator_spawn};
+use dag::consensus::DagConsensus;
 use dag::context::Ctx;
+use dag::core::syncer::Syncer;
 use dag::storage::WalSyncer;
 use dag::types::AuthorityIndex;
+
+use super::dispatcher::InlineDispatcher;
 
 #[derive(Clone)]
 pub struct SimulatorInstant(Duration);
@@ -124,6 +128,12 @@ impl Ctx for SimulatorContext {
 
     fn abort<T: Send + 'static>(handle: &Self::JoinHandle<T>) {
         handle.abort();
+    }
+
+    type Dispatcher<D: DagConsensus> = InlineDispatcher<D>;
+
+    fn create_dispatcher<D: DagConsensus>(syncer: Syncer<Self, D>) -> Self::Dispatcher<D> {
+        InlineDispatcher::new(syncer)
     }
 
     fn start_wal_syncer(_wal_syncer: WalSyncer, _stop: mpsc::Sender<()>) -> oneshot::Receiver<()> {

@@ -17,7 +17,7 @@ use crate::{
     core::{
         Core,
         block_handler::CommitHandler,
-        core_thread::CoreThreadDispatcher,
+        core_thread::CoreDispatch,
         syncer::{Syncer, SyncerSignals},
     },
     metrics::Metrics,
@@ -40,62 +40,22 @@ pub struct NetworkSyncer<C: Ctx, D: DagConsensus> {
 }
 
 pub struct NetworkSyncerInner<C: Ctx, D: DagConsensus> {
-    pub syncer: CoreThreadDispatcher<C, D>,
+    pub syncer: C::Dispatcher<D>,
     pub block_reader: BlockReader,
     pub notify: Arc<Notify>,
     committee: Arc<Committee>,
     stop: mpsc::Sender<()>,
 }
 
-impl<C: Ctx, D: DagConsensus + Send + 'static> NetworkSyncer<C, D> {
-    pub fn start(
-        network: Network,
-        core: Core<C, D>,
-        commit_period: u64,
-        commit_handler: CommitHandler<C>,
-        metrics: Arc<Metrics>,
-        public_config: &NodePublicConfig,
-    ) -> Self {
-        Self::start_inner(
-            network,
-            core,
-            commit_period,
-            commit_handler,
-            metrics,
-            public_config,
-            CoreThreadDispatcher::start,
-        )
-    }
-
-    #[cfg(any(test, feature = "simulator"))]
-    pub fn start_for_test(
-        network: Network,
-        core: Core<C, D>,
-        commit_period: u64,
-        commit_handler: CommitHandler<C>,
-        metrics: Arc<Metrics>,
-        public_config: &NodePublicConfig,
-    ) -> Self {
-        Self::start_inner(
-            network,
-            core,
-            commit_period,
-            commit_handler,
-            metrics,
-            public_config,
-            CoreThreadDispatcher::new_for_test,
-        )
-    }
-
+impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
     #[allow(clippy::too_many_arguments)]
-    fn start_inner(
+    pub fn start(
         network: Network,
         mut core: Core<C, D>,
         commit_period: u64,
         mut commit_handler: CommitHandler<C>,
         metrics: Arc<Metrics>,
         public_config: &NodePublicConfig,
-        make_dispatcher: fn(Syncer<C, D>) -> CoreThreadDispatcher<C, D>,
     ) -> Self {
         let authority_index = core.authority();
         let notify = Arc::new(Notify::new());
@@ -112,7 +72,7 @@ impl<C: Ctx, D: DagConsensus + Send + 'static> NetworkSyncer<C, D> {
             metrics.clone(),
         );
         syncer.force_new_block(0);
-        let syncer = make_dispatcher(syncer);
+        let syncer = C::create_dispatcher(syncer);
         let (stop_sender, stop_receiver) = mpsc::channel(1);
         // Occupy the only available permit, so that all
         // other calls to send() will block.
