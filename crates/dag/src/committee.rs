@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{borrow::Borrow, collections::HashSet, marker::PhantomData, ops::Range, sync::Arc};
+use std::{borrow::Borrow, collections::HashSet, ops::Range, sync::Arc};
 
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -15,8 +15,7 @@ use crate::{
 #[derive(Serialize, Deserialize)]
 pub struct Committee {
     authorities: Vec<Authority>,
-    validity_threshold: Stake, // The minimum stake required for validity
-    quorum_threshold: Stake,   // The minimum stake required for quorum
+    total_stake: Stake,
 }
 
 impl Committee {
@@ -43,27 +42,20 @@ impl Committee {
                 .checked_add(a.stake())
                 .expect("Total stake overflow");
         }
-        let validity_threshold = total_stake / 3;
-        let quorum_threshold = 2 * total_stake / 3;
         Arc::new(Committee {
             authorities,
-            validity_threshold,
-            quorum_threshold,
+            total_stake,
         })
+    }
+
+    pub fn total_stake(&self) -> Stake {
+        self.total_stake
     }
 
     pub fn get_stake(&self, authority: AuthorityIndex) -> Option<Stake> {
         self.authorities
             .get(authority as usize)
             .map(Authority::stake)
-    }
-
-    pub fn validity_threshold(&self) -> Stake {
-        self.validity_threshold + 1
-    }
-
-    pub fn quorum_threshold(&self) -> Stake {
-        self.quorum_threshold + 1
     }
 
     pub fn get_public_key(&self, authority: AuthorityIndex) -> Option<&PublicKey> {
@@ -80,25 +72,12 @@ impl Committee {
         0u64..(self.authorities.len() as AuthorityIndex)
     }
 
-    pub fn is_valid(&self, amount: Stake) -> bool {
-        amount > self.validity_threshold
-    }
-
-    pub fn is_quorum(&self, amount: Stake) -> bool {
-        amount > self.quorum_threshold
-    }
-
     pub fn get_total_stake<A: Borrow<AuthorityIndex>>(&self, authorities: &HashSet<A>) -> Stake {
         let mut total_stake = 0;
         for authority in authorities {
             total_stake += self.authorities[*authority.borrow() as usize].stake();
         }
         total_stake
-    }
-
-    // TODO: fix to select by stake
-    pub fn elect_leader(&self, r: u64) -> AuthorityIndex {
-        (r % self.authorities.len() as u64) as AuthorityIndex
     }
 
     pub fn random_authority(&self, rng: &mut impl Rng) -> AuthorityIndex {
@@ -151,40 +130,18 @@ impl Authority {
 
 impl ImportExport for Committee {}
 
-pub trait CommitteeThreshold: Clone {
-    fn is_threshold(committee: &Committee, amount: Stake) -> bool;
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct QuorumThreshold;
-#[derive(Serialize, Deserialize, Clone)]
-pub struct ValidityThreshold;
-
-impl CommitteeThreshold for QuorumThreshold {
-    fn is_threshold(committee: &Committee, amount: Stake) -> bool {
-        committee.is_quorum(amount)
-    }
-}
-
-impl CommitteeThreshold for ValidityThreshold {
-    fn is_threshold(committee: &Committee, amount: Stake) -> bool {
-        committee.is_valid(amount)
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct StakeAggregator<TH> {
+pub struct StakeAggregator {
     votes: AuthoritySet,
     stake: Stake,
-    _phantom: PhantomData<TH>,
+    threshold: Stake,
 }
 
-impl<TH: CommitteeThreshold> StakeAggregator<TH> {
-    pub fn new() -> Self {
+impl StakeAggregator {
+    pub fn new(threshold: Stake) -> Self {
         Self {
             votes: Default::default(),
             stake: 0,
-            _phantom: Default::default(),
+            threshold,
         }
     }
 
@@ -193,7 +150,7 @@ impl<TH: CommitteeThreshold> StakeAggregator<TH> {
         if self.votes.insert(vote) {
             self.stake += stake;
         }
-        TH::is_threshold(committee, self.stake)
+        self.stake >= self.threshold
     }
 
     pub fn clear(&mut self) {
@@ -203,11 +160,5 @@ impl<TH: CommitteeThreshold> StakeAggregator<TH> {
 
     pub fn voters(&self) -> impl Iterator<Item = AuthorityIndex> + '_ {
         self.votes.present()
-    }
-}
-
-impl<TH: CommitteeThreshold> Default for StakeAggregator<TH> {
-    fn default() -> Self {
-        Self::new()
     }
 }

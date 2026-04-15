@@ -1,7 +1,10 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{DEFAULT_WAVE_LENGTH, universal_committer::UniversalCommitterBuilder};
+use crate::{
+    DEFAULT_WAVE_LENGTH, leader_election::LeaderElector, thresholds::ProtocolThresholds,
+    universal_committer::UniversalCommitterBuilder,
+};
 use dag::{
     consensus::LeaderStatus,
     metrics::Metrics,
@@ -15,6 +18,7 @@ use dag::{
 #[tracing_test::traced_test]
 fn direct_commit() {
     let committee = committee(4);
+    let leader_elector = LeaderElector::new(committee.len());
     let wave_length = DEFAULT_WAVE_LENGTH;
     for number_of_leaders in 1..committee.len() {
         let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
@@ -38,7 +42,7 @@ fn direct_commit() {
             if let LeaderStatus::Commit(block) = leader {
                 let leader_round = wave_length;
                 let leader_offset = i as u64;
-                let expected = committee.elect_leader(leader_round + leader_offset);
+                let expected = leader_elector.elect_leader(leader_round + leader_offset);
                 assert_eq!(block.author(), expected);
             } else {
                 panic!("Expected a committed leader")
@@ -84,8 +88,10 @@ fn idempotence() {
 #[tracing_test::traced_test]
 fn multiple_direct_commit() {
     let committee = committee(4);
+    let leader_elector = LeaderElector::new(committee.len());
+    let thresholds = ProtocolThresholds::mysticeti(committee.total_stake());
     let wave_length = DEFAULT_WAVE_LENGTH;
-    let number_of_leaders = committee.quorum_threshold() as usize;
+    let number_of_leaders = thresholds.strong_quorum() as usize;
 
     let mut last_committed = BlockReference::new_test(0, 0);
     for n in 1..=10 {
@@ -110,7 +116,7 @@ fn multiple_direct_commit() {
         for (i, leader) in sequence.iter().enumerate() {
             if let LeaderStatus::Commit(block) = leader {
                 let leader_offset = i as u64;
-                let expected = committee.elect_leader(leader_round + leader_offset);
+                let expected = leader_elector.elect_leader(leader_round + leader_offset);
                 assert_eq!(block.author(), expected);
             } else {
                 panic!("Expected a committed leader")
@@ -127,11 +133,13 @@ fn multiple_direct_commit() {
 #[tracing_test::traced_test]
 fn direct_commit_partial_round() {
     let committee = committee(4);
+    let leader_elector = LeaderElector::new(committee.len());
+    let thresholds = ProtocolThresholds::mysticeti(committee.total_stake());
     let wave_length = DEFAULT_WAVE_LENGTH;
-    let number_of_leaders = committee.quorum_threshold() as usize;
+    let number_of_leaders = thresholds.strong_quorum() as usize;
 
     let first_leader_round = wave_length;
-    let first_leader = committee.elect_leader(first_leader_round);
+    let first_leader = leader_elector.elect_leader(first_leader_round);
     let last_committed = BlockReference::new_test(first_leader, first_leader_round);
 
     let enough_blocks = 2 * wave_length - 1;
@@ -154,7 +162,7 @@ fn direct_commit_partial_round() {
     for (i, leader) in sequence.iter().enumerate() {
         if let LeaderStatus::Commit(block) = leader {
             let leader_offset = (i + 1) % committee.len();
-            let expected = committee.elect_leader(first_leader_round + leader_offset as u64);
+            let expected = leader_elector.elect_leader(first_leader_round + leader_offset as u64);
             assert_eq!(block.author(), expected);
         } else {
             panic!("Expected a committed leader")
@@ -167,8 +175,10 @@ fn direct_commit_partial_round() {
 #[tracing_test::traced_test]
 fn direct_commit_late_call() {
     let committee = committee(4);
+    let leader_elector = LeaderElector::new(committee.len());
+    let thresholds = ProtocolThresholds::mysticeti(committee.total_stake());
     let wave_length = DEFAULT_WAVE_LENGTH;
-    let number_of_leaders = committee.quorum_threshold() as usize;
+    let number_of_leaders = thresholds.strong_quorum() as usize;
 
     let n = 10;
     let enough_blocks = wave_length * (n + 1) - 1;
@@ -194,7 +204,7 @@ fn direct_commit_late_call() {
         for (j, leader) in leaders.iter().enumerate() {
             if let LeaderStatus::Commit(block) = leader {
                 let leader_offset = j as u64;
-                let expected = committee.elect_leader(leader_round + leader_offset);
+                let expected = leader_elector.elect_leader(leader_round + leader_offset);
                 assert_eq!(block.author(), expected);
             } else {
                 panic!("Expected a committed leader")
@@ -208,8 +218,9 @@ fn direct_commit_late_call() {
 #[tracing_test::traced_test]
 fn no_genesis_commit() {
     let committee = committee(4);
+    let thresholds = ProtocolThresholds::mysticeti(committee.total_stake());
     let wave_length = DEFAULT_WAVE_LENGTH;
-    let number_of_leaders = committee.quorum_threshold() as usize;
+    let number_of_leaders = thresholds.strong_quorum() as usize;
 
     let first_commit_round = 2 * wave_length - 1;
     for r in 0..first_commit_round {
@@ -237,8 +248,10 @@ fn no_genesis_commit() {
 #[tracing_test::traced_test]
 fn no_leader() {
     let committee = committee(4);
+    let leader_elector = LeaderElector::new(committee.len());
+    let thresholds = ProtocolThresholds::mysticeti(committee.total_stake());
     let wave_length = DEFAULT_WAVE_LENGTH;
-    let number_of_leaders = committee.quorum_threshold() as usize;
+    let number_of_leaders = thresholds.strong_quorum() as usize;
 
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
 
@@ -248,7 +261,7 @@ fn no_leader() {
 
     // Add enough blocks to reach the decision round of wave 1 (but without its leader).
     let leader_round_1 = wave_length;
-    let leader_1 = committee.elect_leader(leader_round_1);
+    let leader_1 = leader_elector.elect_leader(leader_round_1);
 
     let connections = committee
         .authorities()
@@ -277,7 +290,7 @@ fn no_leader() {
     for (i, leader) in sequence.iter().enumerate() {
         let leader_round = wave_length;
         let leader_offset = i as u64;
-        let expected_leader = committee.elect_leader(leader_round + leader_offset);
+        let expected_leader = leader_elector.elect_leader(leader_round + leader_offset);
         if i == 0 {
             if let LeaderStatus::Skip(leader, round) = sequence[i] {
                 assert_eq!(leader, expected_leader);
@@ -298,8 +311,10 @@ fn no_leader() {
 #[tracing_test::traced_test]
 fn direct_skip() {
     let committee = committee(4);
+    let leader_elector = LeaderElector::new(committee.len());
+    let thresholds = ProtocolThresholds::mysticeti(committee.total_stake());
     let wave_length = DEFAULT_WAVE_LENGTH;
-    let number_of_leaders = committee.quorum_threshold() as usize;
+    let number_of_leaders = thresholds.strong_quorum() as usize;
 
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
 
@@ -310,7 +325,7 @@ fn direct_skip() {
     // Filter out that leader.
     let references_without_leader_1: Vec<_> = references_1
         .into_iter()
-        .filter(|x| x.authority != committee.elect_leader(leader_round_1))
+        .filter(|x| x.authority != leader_elector.elect_leader(leader_round_1))
         .collect();
 
     // Add enough blocks to reach the decision round of wave 1.
@@ -340,7 +355,7 @@ fn direct_skip() {
     for (i, leader) in sequence.iter().enumerate() {
         let leader_round = wave_length;
         let leader_offset = i as u64;
-        let expected_leader = committee.elect_leader(leader_round + leader_offset);
+        let expected_leader = leader_elector.elect_leader(leader_round + leader_offset);
         if i == 0 {
             if let LeaderStatus::Skip(leader, round) = sequence[i] {
                 assert_eq!(leader, expected_leader);
@@ -361,8 +376,10 @@ fn direct_skip() {
 #[tracing_test::traced_test]
 fn indirect_commit() {
     let committee = committee(4);
+    let leader_elector = LeaderElector::new(committee.len());
+    let thresholds = ProtocolThresholds::mysticeti(committee.total_stake());
     let wave_length = DEFAULT_WAVE_LENGTH;
-    let number_of_leaders = committee.quorum_threshold() as usize;
+    let number_of_leaders = thresholds.strong_quorum() as usize;
 
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
 
@@ -374,13 +391,13 @@ fn indirect_commit() {
     let references_without_leader_1: Vec<_> = references_1
         .iter()
         .cloned()
-        .filter(|x| x.authority != committee.elect_leader(leader_round_1))
+        .filter(|x| x.authority != leader_elector.elect_leader(leader_round_1))
         .collect();
 
     // Only 2f+1 validators vote for the that leader.
     let connections_with_leader_1 = committee
         .authorities()
-        .take(committee.quorum_threshold() as usize)
+        .take(thresholds.strong_quorum() as usize)
         .map(|authority| (authority, references_1.clone()))
         .collect();
     let references_with_votes_for_leader_1 =
@@ -388,7 +405,7 @@ fn indirect_commit() {
 
     let connections_without_leader_1 = committee
         .authorities()
-        .skip(committee.quorum_threshold() as usize)
+        .skip(thresholds.strong_quorum() as usize)
         .map(|authority| (authority, references_without_leader_1.clone()))
         .collect();
     let references_without_votes_for_leader_1 =
@@ -399,7 +416,7 @@ fn indirect_commit() {
 
     let connections_with_votes_for_leader_1 = committee
         .authorities()
-        .take(committee.validity_threshold() as usize)
+        .take(thresholds.weak_quorum() as usize)
         .map(|authority| (authority, references_with_votes_for_leader_1.clone()))
         .collect();
     references_3.extend(build_dag_layer(
@@ -410,11 +427,11 @@ fn indirect_commit() {
     let references: Vec<_> = references_without_votes_for_leader_1
         .into_iter()
         .chain(references_with_votes_for_leader_1)
-        .take(committee.quorum_threshold() as usize)
+        .take(thresholds.strong_quorum() as usize)
         .collect();
     let connections_without_votes_for_leader_1 = committee
         .authorities()
-        .skip(committee.validity_threshold() as usize)
+        .skip(thresholds.weak_quorum() as usize)
         .map(|authority| (authority, references.clone()))
         .collect();
     references_3.extend(build_dag_layer(
@@ -447,7 +464,7 @@ fn indirect_commit() {
     assert_eq!(sequence.len(), 2 * number_of_leaders);
 
     let leader_round = wave_length;
-    let leader = committee.elect_leader(leader_round);
+    let leader = leader_elector.elect_leader(leader_round);
     if let LeaderStatus::Commit(ref block) = sequence[0] {
         assert_eq!(block.author(), leader);
     } else {
@@ -460,8 +477,10 @@ fn indirect_commit() {
 #[tracing_test::traced_test]
 fn indirect_skip() {
     let committee = committee(4);
+    let leader_elector = LeaderElector::new(committee.len());
+    let thresholds = ProtocolThresholds::mysticeti(committee.total_stake());
     let wave_length = DEFAULT_WAVE_LENGTH;
-    let number_of_leaders = committee.quorum_threshold() as usize;
+    let number_of_leaders = thresholds.strong_quorum() as usize;
 
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
 
@@ -470,7 +489,7 @@ fn indirect_skip() {
     let references_2 = build_dag(&committee, &mut storage, None, leader_round_2);
 
     // Filter out the first leader of wave 2.
-    let leader_2 = committee.elect_leader(leader_round_2);
+    let leader_2 = leader_elector.elect_leader(leader_round_2);
     let references_without_leader_2: Vec<_> = references_2
         .iter()
         .cloned()
@@ -482,14 +501,14 @@ fn indirect_skip() {
 
     let connections_with_leader_2 = committee
         .authorities()
-        .take(committee.validity_threshold() as usize)
+        .take(thresholds.weak_quorum() as usize)
         .map(|authority| (authority, references_2.clone()))
         .collect();
     references.extend(build_dag_layer(connections_with_leader_2, &mut storage));
 
     let connections_without_leader_2 = committee
         .authorities()
-        .skip(committee.validity_threshold() as usize)
+        .skip(thresholds.weak_quorum() as usize)
         .map(|authority| (authority, references_without_leader_2.clone()))
         .collect();
     references.extend(build_dag_layer(connections_without_leader_2, &mut storage));
@@ -517,7 +536,7 @@ fn indirect_skip() {
     for (n, status) in sequence.iter().take(number_of_leaders).enumerate() {
         let leader_round_1 = wave_length;
         let leader_offset = n as u64;
-        let leader_1 = committee.elect_leader(leader_round_1 + leader_offset);
+        let leader_1 = leader_elector.elect_leader(leader_round_1 + leader_offset);
         if let LeaderStatus::Commit(block) = status {
             assert_eq!(block.author(), leader_1);
         } else {
@@ -545,7 +564,7 @@ fn indirect_skip() {
                 panic!("Expected a skipped leader")
             }
         } else {
-            let leader_2 = committee.elect_leader(leader_round_2 + leader_offset);
+            let leader_2 = leader_elector.elect_leader(leader_round_2 + leader_offset);
             if let LeaderStatus::Commit(ref block) = sequence[number_of_leaders + n] {
                 assert_eq!(block.author(), leader_2);
             } else {
@@ -558,7 +577,7 @@ fn indirect_skip() {
     for n in 0..number_of_leaders {
         let leader_round_3 = 3 * wave_length;
         let leader_offset = n as u64;
-        let leader_3 = committee.elect_leader(leader_round_3 + leader_offset);
+        let leader_3 = leader_elector.elect_leader(leader_round_3 + leader_offset);
         if let LeaderStatus::Commit(ref block) = sequence[2 * number_of_leaders + n] {
             assert_eq!(block.author(), leader_3);
         } else {
@@ -572,8 +591,10 @@ fn indirect_skip() {
 #[tracing_test::traced_test]
 fn undecided() {
     let committee = committee(4);
+    let leader_elector = LeaderElector::new(committee.len());
+    let thresholds = ProtocolThresholds::mysticeti(committee.total_stake());
     let wave_length = DEFAULT_WAVE_LENGTH;
-    let number_of_leaders = committee.quorum_threshold() as usize;
+    let number_of_leaders = thresholds.strong_quorum() as usize;
 
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
 
@@ -585,14 +606,14 @@ fn undecided() {
     let references_1_without_leader: Vec<_> = references_1
         .iter()
         .cloned()
-        .filter(|x| x.authority != committee.elect_leader(leader_round_1))
+        .filter(|x| x.authority != leader_elector.elect_leader(leader_round_1))
         .collect();
 
     // Create a dag layer where only one authority votes for that leader.
     let mut authorities = committee.authorities();
     let leader_connection = vec![(authorities.next().unwrap(), references_1)];
     let non_leader_connections: Vec<_> = authorities
-        .take((committee.quorum_threshold() - 1) as usize)
+        .take((thresholds.strong_quorum() - 1) as usize)
         .map(|authority| (authority, references_1_without_leader.clone()))
         .collect();
 

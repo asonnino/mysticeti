@@ -3,13 +3,15 @@
 
 use std::{fmt::Display, sync::Arc};
 
-use crate::{DEFAULT_WAVE_LENGTH, MINIMUM_WAVE_LENGTH};
+use crate::{DEFAULT_WAVE_LENGTH, MINIMUM_WAVE_LENGTH, leader_election::LeaderElector};
 use dag::{
-    committee::{Committee, QuorumThreshold, StakeAggregator},
+    committee::{Committee, StakeAggregator},
     consensus::LeaderStatus,
     data::Data,
     storage::BlockReader,
-    types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock, format_authority_round},
+    types::{
+        AuthorityIndex, BlockReference, RoundNumber, Stake, StatementBlock, format_authority_round,
+    },
 };
 
 /// The consensus protocol operates in 'waves'. Each wave is composed of a leader round, at least
@@ -41,19 +43,25 @@ impl Default for BaseCommitterOptions {
 /// `try_direct_decide` and `try_indirect_decide` can be called at any time and any number of times
 /// (it is idempotent) to determine whether a leader can be committed or skipped.
 pub struct BaseCommitter {
-    /// The committee information
     committee: Arc<Committee>,
-    /// Keep all block data
     block_reader: BlockReader,
-    /// The options used by this committer
+    leader_elector: LeaderElector,
+    strong_quorum: Stake,
     options: BaseCommitterOptions,
 }
 
 impl BaseCommitter {
-    pub fn new(committee: Arc<Committee>, block_reader: BlockReader) -> Self {
+    pub fn new(
+        committee: Arc<Committee>,
+        block_reader: BlockReader,
+        leader_elector: LeaderElector,
+        strong_quorum: Stake,
+    ) -> Self {
         Self {
             committee,
             block_reader,
+            leader_elector,
+            strong_quorum,
             options: BaseCommitterOptions::default(),
         }
     }
@@ -92,7 +100,7 @@ impl BaseCommitter {
         }
 
         let offset = self.options.leader_offset as RoundNumber;
-        Some(self.committee.elect_leader(round + offset))
+        Some(self.leader_elector.elect_leader(round + offset))
     }
 
     /// Find which block is supported at (author, round) by the given block.
@@ -145,7 +153,7 @@ impl BaseCommitter {
         potential_certificate: &Data<StatementBlock>,
         leader_block: &Data<StatementBlock>,
     ) -> bool {
-        let mut votes_stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
+        let mut votes_stake_aggregator = StakeAggregator::new(self.strong_quorum);
         for reference in potential_certificate.includes() {
             let potential_vote = self
                 .block_reader
@@ -216,7 +224,7 @@ impl BaseCommitter {
     fn enough_leader_blame(&self, voting_round: RoundNumber, leader: AuthorityIndex) -> bool {
         let voting_blocks = self.block_reader.get_blocks_by_round(voting_round);
 
-        let mut blame_stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
+        let mut blame_stake_aggregator = StakeAggregator::new(self.strong_quorum);
         for voting_block in &voting_blocks {
             let voter = voting_block.reference().authority;
             if voting_block
@@ -245,7 +253,7 @@ impl BaseCommitter {
     ) -> bool {
         let decision_blocks = self.block_reader.get_blocks_by_round(decision_round);
 
-        let mut certificate_stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
+        let mut certificate_stake_aggregator = StakeAggregator::new(self.strong_quorum);
         for decision_block in &decision_blocks {
             let authority = decision_block.reference().authority;
             if self.is_certificate(decision_block, leader_block) {

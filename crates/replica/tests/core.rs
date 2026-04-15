@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use consensus::test_util::{committee_and_cores, committee_and_cores_persisted};
+use consensus::thresholds::ProtocolThresholds;
 use dag::{
     context::TokioCtx,
     core::threshold_clock::threshold_clock_valid_non_genesis,
@@ -55,6 +56,8 @@ fn test_randomized_simple_exchange() {
     for seed in 0..100u8 {
         let mut rng = StdRng::from_seed([seed; 32]);
         let (committee, mut cores) = committee_and_cores::<TokioCtx>(4);
+        let quorum_threshold =
+            ProtocolThresholds::mysticeti(committee.total_stake()).strong_quorum();
 
         let mut pending: Vec<_> = committee.authorities().map(|_| vec![]).collect();
         for core in &mut cores {
@@ -64,7 +67,7 @@ fn test_randomized_simple_exchange() {
             assert_eq!(block.reference().round, 1);
             eprintln!("{}: {}", core.authority(), block);
             assert!(
-                threshold_clock_valid_non_genesis(&block, &committee),
+                threshold_clock_valid_non_genesis(&block, &committee, quorum_threshold),
                 "Invalid clock {}",
                 block
             );
@@ -92,7 +95,7 @@ fn test_randomized_simple_exchange() {
                 continue;
             };
             assert!(
-                threshold_clock_valid_non_genesis(&block, &committee),
+                threshold_clock_valid_non_genesis(&block, &committee, quorum_threshold),
                 "Invalid clock {}",
                 block
             );

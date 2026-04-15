@@ -6,19 +6,30 @@ use std::{collections::HashSet, fmt};
 use crate::{
     data::Data,
     storage::BlockReader,
-    types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock, format_authority_round},
+    types::{
+        AuthorityIndex, BlockReference, RoundNumber, Stake, StatementBlock, format_authority_round,
+    },
 };
 
-/// Trait that a consensus protocol must implement to work with the DAG layer.
-/// The DAG layer calls these methods to determine which leaders to commit or
-/// skip, and which leaders the syncer should wait for (liveness).
+/// Trait that a consensus protocol must implement to
+/// work with the DAG layer. The DAG layer calls these
+/// methods to determine which leaders to commit or skip,
+/// and which leaders the syncer should wait for
+/// (liveness).
 pub trait DagConsensus: Send + 'static {
-    /// Decide leaders. Returns an ordered sequence of decided leaders.
-    /// Idempotent for the same DAG state.
+    /// The quorum threshold for the DAG's threshold
+    /// clock. A block is valid only if it includes
+    /// blocks from authorities whose total stake meets
+    /// this threshold.
+    fn quorum_threshold(&self) -> Stake;
+
+    /// Decide leaders. Returns an ordered sequence of
+    /// decided leaders. Idempotent for the same DAG
+    /// state.
     fn try_commit(&self, last_decided: BlockReference) -> Vec<LeaderStatus>;
 
-    /// Return the leaders for a given round.
-    /// The syncer may give those leaders extra time for liveness.
+    /// Return the leaders for a given round. The syncer
+    /// may give those leaders extra time for liveness.
     fn get_leaders(&self, round: RoundNumber) -> Vec<AuthorityIndex>;
 }
 

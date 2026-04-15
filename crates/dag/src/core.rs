@@ -29,7 +29,7 @@ use crate::{
     state::RecoveredState,
     storage::BlockReader,
     storage::Storage,
-    types::{AuthorityIndex, BaseStatement, BlockReference, RoundNumber, StatementBlock},
+    types::{AuthorityIndex, BaseStatement, BlockReference, RoundNumber, Stake, StatementBlock},
     wal::{WalPosition, WalSyncer},
 };
 
@@ -81,7 +81,8 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
             last_committed_leader,
             committed_blocks,
         } = recovered;
-        let mut threshold_clock = ThresholdClockAggregator::new(0);
+        let quorum_threshold = committer.quorum_threshold();
+        let mut threshold_clock = ThresholdClockAggregator::new(0, quorum_threshold);
         let last_own_block = if let Some(own_block) = last_own_block {
             for (_, pending_block) in pending.iter() {
                 if let MetaStatement::Include(include) = pending_block {
@@ -144,6 +145,10 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
         }
 
         this
+    }
+
+    pub fn quorum_threshold(&self) -> Stake {
+        self.committer.quorum_threshold()
     }
 
     pub fn with_options(mut self, options: CoreOptions) -> Self {

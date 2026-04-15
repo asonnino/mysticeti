@@ -26,7 +26,7 @@ use crate::{
         network::{Connection, Network, NetworkMessage},
         synchronizer::{BlockDisseminator, BlockFetcher, SynchronizerParameters},
     },
-    types::{AuthorityIndex, format_authority_index},
+    types::{AuthorityIndex, Stake, format_authority_index},
 };
 
 /// The maximum number of blocks that can be requested in a single message.
@@ -44,6 +44,7 @@ pub struct NetworkSyncerInner<C: Ctx, D: DagConsensus> {
     pub block_reader: BlockReader,
     pub notify: Arc<Notify>,
     committee: Arc<Committee>,
+    quorum_threshold: Stake,
     stop: mpsc::Sender<()>,
 }
 
@@ -62,6 +63,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
         let committed = core.take_recovered_committed_blocks();
         commit_handler.recover_committed(committed);
         let committee = core.committee().clone();
+        let quorum_threshold = core.quorum_threshold();
         let wal_syncer = core.wal_syncer();
         let block_reader = core.block_reader().clone();
         let mut syncer = Syncer::new(
@@ -82,6 +84,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
             syncer,
             block_reader,
             committee,
+            quorum_threshold,
             stop: stop_sender.clone(),
         });
         let block_fetcher = Arc::new(BlockFetcher::start(
@@ -188,7 +191,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
                 }
                 NetworkMessage::Block(block) => {
                     tracing::debug!("Received {} from {}", block.reference(), peer);
-                    if let Err(e) = block.verify(&inner.committee) {
+                    if let Err(e) = block.verify(&inner.committee, inner.quorum_threshold) {
                         tracing::warn!(
                             "Rejected incorrect block {} from {}: {:?}",
                             block.reference(),

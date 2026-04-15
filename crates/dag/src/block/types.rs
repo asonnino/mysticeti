@@ -212,7 +212,7 @@ impl StatementBlock {
         Duration::new(secs as u64, nanos as u32)
     }
 
-    pub fn verify(&self, committee: &Committee) -> eyre::Result<()> {
+    pub fn verify(&self, committee: &Committee, quorum_threshold: Stake) -> eyre::Result<()> {
         let round = self.round();
         let digest = BlockDigest::new(
             self.author(),
@@ -253,7 +253,7 @@ impl StatementBlock {
             );
         }
         ensure!(
-            threshold_clock_valid_non_genesis(self, committee),
+            threshold_clock_valid_non_genesis(self, committee, quorum_threshold,),
             "Threshold clock is not valid"
         );
         Ok(())

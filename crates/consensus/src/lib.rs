@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub mod base_committer;
+pub mod leader_election;
+pub mod thresholds;
 pub mod universal_committer;
 
 #[cfg(any(test, feature = "test-utils"))]
