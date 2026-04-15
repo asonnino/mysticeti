@@ -49,7 +49,7 @@ impl SimulatorExecutor {
         let (task, join_handle) = make_task(f);
         let task = Task {
             f: task,
-            node: None,
+            span: tracing::Span::none(),
         };
         let task_id = state.create_task(task);
         simulator.schedule_event(
@@ -97,7 +97,7 @@ pub fn simulator_spawn<R: Send + 'static, F: Future<Output = R> + Send + 'static
     let (task, join_handle) = make_task(f);
     let task = Task {
         f: task,
-        node: context.current_node,
+        span: tracing::Span::current(),
     };
     context.spawned.push(task);
     context.enter();
@@ -177,8 +177,11 @@ impl SimulatorState for SimulatorExecutor {
                 let waker = waker.into();
                 let mut context = Context::from_waker(&waker);
                 let task = oc.get_mut();
-                SimulatorContext::new(task_id, task.node).enter();
-                if let Poll::Ready(()) = task.f.as_mut().poll(&mut context) {
+                let ready = task.span.clone().in_scope(|| {
+                    SimulatorContext::new(task_id).enter();
+                    task.f.as_mut().poll(&mut context).is_ready()
+                });
+                if ready {
                     oc.remove();
                 }
                 let context = SimulatorContext::exit();

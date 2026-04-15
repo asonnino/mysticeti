@@ -61,6 +61,7 @@ impl Replica {
         }
     }
 
+    #[tracing::instrument(skip_all, fields(authority = self.authority))]
     pub async fn run(self) -> Result<ReplicaHandle> {
         let metrics = Metrics::new(&self.registry, self.committee.len(), None);
 

@@ -18,7 +18,7 @@ use dag::{
 
 use dag::committee::Committee;
 
-use crate::context::{NodeScope, SimulatorContext};
+use crate::context::SimulatorContext;
 
 type Syncer = NetworkSyncer<SimulatorContext, UniversalCommitter>;
 
@@ -47,6 +47,7 @@ impl SimulatedReplica {
         }
     }
 
+    #[tracing::instrument(skip_all, fields(authority = self.authority))]
     pub fn start(self) -> Syncer {
         let metrics = Metrics::new_for_test(self.committee.len());
 
@@ -78,17 +79,13 @@ impl SimulatedReplica {
             committer,
         );
 
-        // TODO: Replace NodeScope with proper tracing spans
-        // on Core/Syncer, then remove NodeScope entirely.
-        NodeScope::with(Some(self.authority), || {
-            NetworkSyncer::start(
-                self.network,
-                core,
-                self.commit_period,
-                commit_handler,
-                metrics,
-                &self.public_config,
-            )
-        })
+        NetworkSyncer::start(
+            self.network,
+            core,
+            self.commit_period,
+            commit_handler,
+            metrics,
+            &self.public_config,
+        )
     }
 }

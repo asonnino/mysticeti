@@ -12,7 +12,7 @@ pub mod runner;
 pub mod tracing;
 
 pub use config::{NetworkTopology, SimulationConfig};
-pub use context::{NodeScope, SimulatorContext, SimulatorInstant};
+pub use context::{SimulatorContext, SimulatorInstant};
 pub use event_simulator::{Scheduler, Simulator, SimulatorState};
 pub use executor::{JoinError, JoinHandle, SimulatorExecutor, Sleep};
 pub use network::SimulatedNetwork;

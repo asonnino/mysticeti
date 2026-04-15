@@ -12,7 +12,6 @@ use dag::consensus::DagConsensus;
 use dag::context::Ctx;
 use dag::core::syncer::Syncer;
 use dag::storage::WalSyncer;
-use dag::types::AuthorityIndex;
 
 use super::dispatcher::InlineDispatcher;
 
@@ -21,7 +20,7 @@ pub struct SimulatorInstant(Duration);
 
 pub(crate) struct Task {
     pub f: Pin<Box<dyn Future<Output = ()> + Send>>,
-    pub node: Option<AuthorityIndex>,
+    pub span: tracing::Span,
 }
 
 thread_local! {
@@ -31,7 +30,6 @@ thread_local! {
 pub struct SimulatorContext {
     pub(crate) spawned: Vec<Task>,
     task_id: usize,
-    pub(crate) current_node: Option<AuthorityIndex>,
 }
 
 // SAFETY: SimulatorContext only lives in a thread-local and
@@ -39,11 +37,10 @@ pub struct SimulatorContext {
 unsafe impl Sync for SimulatorContext {}
 
 impl SimulatorContext {
-    pub fn new(task_id: usize, current_node: Option<AuthorityIndex>) -> Self {
+    pub fn new(task_id: usize) -> Self {
         Self {
             spawned: Default::default(),
             task_id,
-            current_node,
         }
     }
 
@@ -53,15 +50,6 @@ impl SimulatorContext {
                 .as_ref()
                 .expect("Not running in simulator context")
                 .task_id
-        })
-    }
-
-    pub fn current_node() -> Option<AuthorityIndex> {
-        CONTEXT.with(|ctx| {
-            ctx.borrow()
-                .as_ref()
-                .expect("Not running in simulator context")
-                .current_node
         })
     }
 
@@ -138,39 +126,5 @@ impl Ctx for SimulatorContext {
 
     fn start_wal_syncer(_wal_syncer: WalSyncer, _stop: mpsc::Sender<()>) -> oneshot::Receiver<()> {
         oneshot::channel().1
-    }
-}
-
-pub struct NodeScope {
-    previous_node: Option<AuthorityIndex>,
-}
-
-impl NodeScope {
-    pub fn with<R>(node: Option<AuthorityIndex>, f: impl FnOnce() -> R) -> R {
-        let scope = Self::enter(node);
-        let result = f();
-        drop(scope);
-        result
-    }
-
-    fn enter(new: Option<AuthorityIndex>) -> Self {
-        let previous_node = CONTEXT.with(|ctx| {
-            let mut ctx = ctx.borrow_mut();
-            let ctx = ctx.as_mut().expect("Not running in simulator context");
-            let previous_node = ctx.current_node;
-            ctx.current_node = new;
-            previous_node
-        });
-        Self { previous_node }
-    }
-}
-
-impl Drop for NodeScope {
-    fn drop(&mut self) {
-        CONTEXT.with(|ctx| {
-            let mut ctx = ctx.borrow_mut();
-            let ctx = ctx.as_mut().expect("Not running in simulator context");
-            ctx.current_node = self.previous_node;
-        });
     }
 }
