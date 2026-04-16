@@ -3,9 +3,14 @@
 
 use std::{collections::VecDeque, sync::Arc};
 
-use crate::base::BaseCommitter;
+use crate::{
+    base::{BaseCommitter, BaseCommitterOptions},
+    leader::LeaderElector,
+    protocol::Protocol,
+};
 use dag::{
-    consensus::LeaderStatus,
+    committee::Committee,
+    consensus::{DagConsensus, LeaderStatus},
     metrics::Metrics,
     storage::BlockReader,
     types::{AuthorityIndex, BlockReference, RoundNumber, Stake, format_authority_round},
@@ -16,22 +21,47 @@ use dag::{
 /// multi-leaders, backup leaders, and pipelines.
 pub struct Committer {
     block_reader: BlockReader,
-    committers: Vec<BaseCommitter>,
+    base_committers: Vec<BaseCommitter>,
     strong_quorum: Stake,
     metrics: Arc<Metrics>,
 }
 
 impl Committer {
-    pub(crate) fn new(
+    pub fn new(
+        committee: Arc<Committee>,
         block_reader: BlockReader,
-        committers: Vec<BaseCommitter>,
-        strong_quorum: Stake,
+        protocol: Protocol,
         metrics: Arc<Metrics>,
     ) -> Self {
+        let mut base_committers = Vec::new();
+        let pipeline_stages = if protocol.pipeline {
+            protocol.wave_length
+        } else {
+            1
+        };
+
+        for round_offset in 0..pipeline_stages {
+            for leader_offset in 0..protocol.number_of_leaders {
+                let options = BaseCommitterOptions {
+                    strong_quorum: protocol.strong_quorum,
+                    wave_length: protocol.wave_length,
+                    round_offset,
+                    leader_offset: leader_offset as RoundNumber,
+                };
+                let committer = BaseCommitter::new(
+                    committee.clone(),
+                    block_reader.clone(),
+                    LeaderElector::new(committee.len()),
+                    options,
+                );
+                base_committers.push(committer);
+            }
+        }
+
         Self {
             block_reader,
-            committers,
-            strong_quorum,
+            base_committers,
+            strong_quorum: protocol.strong_quorum,
             metrics,
         }
     }
@@ -51,7 +81,7 @@ impl Committer {
         // Try to decide as many leaders as possible, starting with the highest round.
         let mut leaders = VecDeque::new();
         for round in (last_decided_round..=highest_known_round).rev() {
-            for committer in self.committers.iter().rev() {
+            for committer in self.base_committers.iter().rev() {
                 // Skip committers that don't have a leader for this round.
                 let Some(leader) = committer.elect_leader(round) else {
                     continue;
@@ -96,7 +126,7 @@ impl Committer {
     /// To preserve (theoretical) liveness, we should wait `Delta` time for at least the
     /// first leader. Can return empty vec if round does not have a designated leader.
     pub fn get_leaders(&self, round: RoundNumber) -> Vec<AuthorityIndex> {
-        self.committers
+        self.base_committers
             .iter()
             .filter_map(|committer| committer.elect_leader(round))
             .collect()
@@ -112,5 +142,19 @@ impl Committer {
             LeaderStatus::Undecided(..) => return,
         };
         self.metrics.inc_committed_leaders(&authority, &status);
+    }
+}
+
+impl DagConsensus for Committer {
+    fn quorum_threshold(&self) -> Stake {
+        self.strong_quorum
+    }
+
+    fn try_commit(&self, last_decided: BlockReference) -> Vec<LeaderStatus> {
+        self.try_commit(last_decided)
+    }
+
+    fn get_leaders(&self, round: RoundNumber) -> Vec<AuthorityIndex> {
+        self.get_leaders(round)
     }
 }

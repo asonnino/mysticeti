@@ -10,7 +10,7 @@ use ::prometheus::Registry;
 use color_eyre::eyre::{Result, eyre};
 use tokio::{sync::mpsc, task::JoinHandle};
 
-use consensus::protocols::mysticeti::Mysticeti;
+use consensus::{committer::Committer, protocol::Protocol};
 use dag::{
     block::types::Transaction,
     committee::Committee,
@@ -108,11 +108,14 @@ impl Replica {
         // Build the committer and core.
         let commit_handler =
             CommitHandler::new(block_handler.transaction_time.clone(), metrics.clone());
-        let committer = Mysticeti::new(
+        let committer = Committer::new(
             self.committee.clone(),
             storage.block_reader().clone(),
+            Protocol::mysticeti(
+                self.committee.total_stake(),
+                self.public_config.parameters.number_of_leaders,
+            ),
             metrics.clone(),
-            self.public_config.parameters.number_of_leaders,
         );
         let core = Core::open(
             block_handler,
@@ -154,7 +157,7 @@ impl Replica {
 
 pub struct ReplicaHandle {
     authority: AuthorityIndex,
-    network_synchronizer: NetworkSyncer<TokioCtx, Mysticeti>,
+    network_synchronizer: NetworkSyncer<TokioCtx, Committer>,
     metrics_handle: Option<JoinHandle<()>>,
     tx_sender: Option<mpsc::Sender<Vec<Transaction>>>,
 }

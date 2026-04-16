@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use consensus::protocols::mysticeti::Mysticeti;
+use consensus::{committer::Committer, protocol::Protocol};
 use dag::{
     config::{NodePrivateConfig, NodePublicConfig},
     core::{
@@ -20,7 +20,7 @@ use dag::committee::Committee;
 
 use crate::context::SimulatorContext;
 
-type Syncer = NetworkSyncer<SimulatorContext, Mysticeti>;
+type Syncer = NetworkSyncer<SimulatorContext, Committer>;
 
 pub(crate) struct SimulatedReplica {
     authority: AuthorityIndex,
@@ -54,11 +54,14 @@ impl SimulatedReplica {
         let (storage, recovered) =
             Storage::new_for_tests(self.authority, metrics.clone(), &self.committee);
 
-        let committer = Mysticeti::new(
+        let committer = Committer::new(
             self.committee.clone(),
             storage.block_reader().clone(),
+            Protocol::mysticeti(
+                self.committee.total_stake(),
+                self.public_config.parameters.number_of_leaders,
+            ),
             metrics.clone(),
-            self.public_config.parameters.number_of_leaders,
         );
 
         let (block_handler, _) = RealBlockHandler::new(metrics.clone());

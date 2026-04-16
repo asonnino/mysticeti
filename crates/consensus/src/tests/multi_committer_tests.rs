@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{builder::CommitterBuilder, leader::LeaderElector, protocols::mysticeti::Mysticeti};
+use crate::{committer::Committer, leader::LeaderElector, protocol::Protocol};
 use dag::{
     consensus::LeaderStatus,
     metrics::Metrics,
@@ -16,19 +16,22 @@ use dag::{
 fn direct_commit() {
     let committee = committee(4);
     let leader_elector = LeaderElector::new(committee.len());
-    let wave_length = Mysticeti::WAVE_LENGTH;
+    let wave_length = 3;
     for number_of_leaders in 1..committee.len() {
         let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
         build_dag(&committee, &mut storage, None, 5);
 
-        let committer = CommitterBuilder::new(
+        let committer = Committer::new(
             committee.clone(),
             storage.block_reader().clone(),
+            Protocol {
+                strong_quorum: 2 * committee.total_stake() / 3 + 1,
+                wave_length: 3,
+                number_of_leaders,
+                pipeline: false,
+            },
             Metrics::new_for_test(0),
-        )
-        .with_wave_length(Mysticeti::WAVE_LENGTH)
-        .with_number_of_leaders(number_of_leaders)
-        .build();
+        );
 
         let last_committed = BlockReference::new_test(0, 0);
         let sequence = committer.try_commit(last_committed);
@@ -57,14 +60,17 @@ fn idempotence() {
         let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
         build_dag(&committee, &mut storage, None, 5);
 
-        let committer = CommitterBuilder::new(
+        let committer = Committer::new(
             committee.clone(),
             storage.block_reader().clone(),
+            Protocol {
+                strong_quorum: 2 * committee.total_stake() / 3 + 1,
+                wave_length: 3,
+                number_of_leaders,
+                pipeline: false,
+            },
             Metrics::new_for_test(0),
-        )
-        .with_wave_length(Mysticeti::WAVE_LENGTH)
-        .with_number_of_leaders(number_of_leaders)
-        .build();
+        );
 
         // Commit one block.
         let last_committed = BlockReference::new_test(0, 0);
@@ -87,7 +93,7 @@ fn multiple_direct_commit() {
     let leader_elector = LeaderElector::new(committee.len());
     let total = committee.total_stake();
     let strong_quorum = 2 * total / 3 + 1;
-    let wave_length = Mysticeti::WAVE_LENGTH;
+    let wave_length = 3;
     let number_of_leaders = strong_quorum as usize;
 
     let mut last_committed = BlockReference::new_test(0, 0);
@@ -96,14 +102,17 @@ fn multiple_direct_commit() {
         let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
         build_dag(&committee, &mut storage, None, enough_blocks);
 
-        let committer = CommitterBuilder::new(
+        let committer = Committer::new(
             committee.clone(),
             storage.block_reader().clone(),
+            Protocol {
+                strong_quorum: 2 * committee.total_stake() / 3 + 1,
+                wave_length: 3,
+                number_of_leaders,
+                pipeline: false,
+            },
             Metrics::new_for_test(0),
-        )
-        .with_wave_length(Mysticeti::WAVE_LENGTH)
-        .with_number_of_leaders(number_of_leaders)
-        .build();
+        );
 
         let sequence = committer.try_commit(last_committed);
         tracing::info!("Commit sequence: {sequence:?}");
@@ -133,7 +142,7 @@ fn direct_commit_partial_round() {
     let leader_elector = LeaderElector::new(committee.len());
     let total = committee.total_stake();
     let strong_quorum = 2 * total / 3 + 1;
-    let wave_length = Mysticeti::WAVE_LENGTH;
+    let wave_length = 3;
     let number_of_leaders = strong_quorum as usize;
 
     let first_leader_round = wave_length;
@@ -144,14 +153,17 @@ fn direct_commit_partial_round() {
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
     build_dag(&committee, &mut storage, None, enough_blocks);
 
-    let committer = CommitterBuilder::new(
+    let committer = Committer::new(
         committee.clone(),
         storage.block_reader().clone(),
+        Protocol {
+            strong_quorum: 2 * committee.total_stake() / 3 + 1,
+            wave_length: 3,
+            number_of_leaders,
+            pipeline: false,
+        },
         Metrics::new_for_test(0),
-    )
-    .with_wave_length(Mysticeti::WAVE_LENGTH)
-    .with_number_of_leaders(number_of_leaders)
-    .build();
+    );
 
     let sequence = committer.try_commit(last_committed);
     tracing::info!("Commit sequence: {sequence:?}");
@@ -176,7 +188,7 @@ fn direct_commit_late_call() {
     let leader_elector = LeaderElector::new(committee.len());
     let total = committee.total_stake();
     let strong_quorum = 2 * total / 3 + 1;
-    let wave_length = Mysticeti::WAVE_LENGTH;
+    let wave_length = 3;
     let number_of_leaders = strong_quorum as usize;
 
     let n = 10;
@@ -184,14 +196,17 @@ fn direct_commit_late_call() {
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
     build_dag(&committee, &mut storage, None, enough_blocks);
 
-    let committer = CommitterBuilder::new(
+    let committer = Committer::new(
         committee.clone(),
         storage.block_reader().clone(),
+        Protocol {
+            strong_quorum: 2 * committee.total_stake() / 3 + 1,
+            wave_length: 3,
+            number_of_leaders,
+            pipeline: false,
+        },
         Metrics::new_for_test(0),
-    )
-    .with_wave_length(Mysticeti::WAVE_LENGTH)
-    .with_number_of_leaders(number_of_leaders)
-    .build();
+    );
 
     let last_committed = BlockReference::new_test(0, 0);
     let sequence = committer.try_commit(last_committed);
@@ -219,7 +234,7 @@ fn no_genesis_commit() {
     let committee = committee(4);
     let total = committee.total_stake();
     let strong_quorum = 2 * total / 3 + 1;
-    let wave_length = Mysticeti::WAVE_LENGTH;
+    let wave_length = 3;
     let number_of_leaders = strong_quorum as usize;
 
     let first_commit_round = 2 * wave_length - 1;
@@ -227,14 +242,17 @@ fn no_genesis_commit() {
         let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
         build_dag(&committee, &mut storage, None, r);
 
-        let committer = CommitterBuilder::new(
+        let committer = Committer::new(
             committee.clone(),
             storage.block_reader().clone(),
+            Protocol {
+                strong_quorum: 2 * committee.total_stake() / 3 + 1,
+                wave_length: 3,
+                number_of_leaders,
+                pipeline: false,
+            },
             Metrics::new_for_test(0),
-        )
-        .with_wave_length(Mysticeti::WAVE_LENGTH)
-        .with_number_of_leaders(number_of_leaders)
-        .build();
+        );
 
         let last_committed = BlockReference::new_test(0, 0);
         let sequence = committer.try_commit(last_committed);
@@ -251,7 +269,7 @@ fn no_leader() {
     let leader_elector = LeaderElector::new(committee.len());
     let total = committee.total_stake();
     let strong_quorum = 2 * total / 3 + 1;
-    let wave_length = Mysticeti::WAVE_LENGTH;
+    let wave_length = 3;
     let number_of_leaders = strong_quorum as usize;
 
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
@@ -274,14 +292,17 @@ fn no_leader() {
     build_dag(&committee, &mut storage, Some(references), decision_round_1);
 
     // Ensure the omitted leader is skipped and the others are committed.
-    let committer = CommitterBuilder::new(
+    let committer = Committer::new(
         committee.clone(),
         storage.block_reader().clone(),
+        Protocol {
+            strong_quorum: 2 * committee.total_stake() / 3 + 1,
+            wave_length: 3,
+            number_of_leaders,
+            pipeline: false,
+        },
         Metrics::new_for_test(0),
-    )
-    .with_wave_length(Mysticeti::WAVE_LENGTH)
-    .with_number_of_leaders(number_of_leaders)
-    .build();
+    );
 
     let last_committed = BlockReference::new_test(0, 0);
     let sequence = committer.try_commit(last_committed);
@@ -315,7 +336,7 @@ fn direct_skip() {
     let leader_elector = LeaderElector::new(committee.len());
     let total = committee.total_stake();
     let strong_quorum = 2 * total / 3 + 1;
-    let wave_length = Mysticeti::WAVE_LENGTH;
+    let wave_length = 3;
     let number_of_leaders = strong_quorum as usize;
 
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
@@ -340,14 +361,17 @@ fn direct_skip() {
     );
 
     // Ensure that the first leader of wave 1 is skipped.
-    let committer = CommitterBuilder::new(
+    let committer = Committer::new(
         committee.clone(),
         storage.block_reader().clone(),
+        Protocol {
+            strong_quorum: 2 * committee.total_stake() / 3 + 1,
+            wave_length: 3,
+            number_of_leaders,
+            pipeline: false,
+        },
         Metrics::new_for_test(0),
-    )
-    .with_wave_length(Mysticeti::WAVE_LENGTH)
-    .with_number_of_leaders(number_of_leaders)
-    .build();
+    );
 
     let last_committed = BlockReference::new_test(0, 0);
     let sequence = committer.try_commit(last_committed);
@@ -382,7 +406,7 @@ fn indirect_commit() {
     let total = committee.total_stake();
     let strong_quorum = 2 * total / 3 + 1;
     let one_fault = total / 3 + 1;
-    let wave_length = Mysticeti::WAVE_LENGTH;
+    let wave_length = 3;
     let number_of_leaders = strong_quorum as usize;
 
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
@@ -453,14 +477,17 @@ fn indirect_commit() {
     );
 
     // Ensure we commit the 1st leader.
-    let committer = CommitterBuilder::new(
+    let committer = Committer::new(
         committee.clone(),
         storage.block_reader().clone(),
+        Protocol {
+            strong_quorum: 2 * committee.total_stake() / 3 + 1,
+            wave_length: 3,
+            number_of_leaders,
+            pipeline: false,
+        },
         Metrics::new_for_test(0),
-    )
-    .with_wave_length(Mysticeti::WAVE_LENGTH)
-    .with_number_of_leaders(number_of_leaders)
-    .build();
+    );
 
     let last_committed = BlockReference::new_test(0, 0);
     let sequence = committer.try_commit(last_committed);
@@ -485,7 +512,7 @@ fn indirect_skip() {
     let total = committee.total_stake();
     let strong_quorum = 2 * total / 3 + 1;
     let one_fault = total / 3 + 1;
-    let wave_length = Mysticeti::WAVE_LENGTH;
+    let wave_length = 3;
     let number_of_leaders = strong_quorum as usize;
 
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
@@ -524,14 +551,17 @@ fn indirect_skip() {
     build_dag(&committee, &mut storage, Some(references), decision_round_3);
 
     // Ensure we commit the leaders of wave 1 and 3
-    let committer = CommitterBuilder::new(
+    let committer = Committer::new(
         committee.clone(),
         storage.block_reader().clone(),
+        Protocol {
+            strong_quorum: 2 * committee.total_stake() / 3 + 1,
+            wave_length: 3,
+            number_of_leaders,
+            pipeline: false,
+        },
         Metrics::new_for_test(0),
-    )
-    .with_wave_length(Mysticeti::WAVE_LENGTH)
-    .with_number_of_leaders(number_of_leaders)
-    .build();
+    );
 
     let last_committed = BlockReference::new_test(0, 0);
     let sequence = committer.try_commit(last_committed);
@@ -600,7 +630,7 @@ fn undecided() {
     let leader_elector = LeaderElector::new(committee.len());
     let total = committee.total_stake();
     let strong_quorum = 2 * total / 3 + 1;
-    let wave_length = Mysticeti::WAVE_LENGTH;
+    let wave_length = 3;
     let number_of_leaders = strong_quorum as usize;
 
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
@@ -632,14 +662,17 @@ fn undecided() {
     build_dag(&committee, &mut storage, Some(references), decision_round_1);
 
     // Ensure no blocks are committed.
-    let committer = CommitterBuilder::new(
+    let committer = Committer::new(
         committee.clone(),
         storage.block_reader().clone(),
+        Protocol {
+            strong_quorum: 2 * committee.total_stake() / 3 + 1,
+            wave_length: 3,
+            number_of_leaders,
+            pipeline: false,
+        },
         Metrics::new_for_test(0),
-    )
-    .with_wave_length(Mysticeti::WAVE_LENGTH)
-    .with_number_of_leaders(number_of_leaders)
-    .build();
+    );
 
     let last_committed = BlockReference::new_test(0, 0);
     let sequence = committer.try_commit(last_committed);

@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub mod base;
-pub mod builder;
 pub mod committer;
 pub mod leader;
-pub mod protocols;
+pub mod protocol;
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_util;
