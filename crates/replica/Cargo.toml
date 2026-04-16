@@ -9,14 +9,14 @@ axum = "0.7"
 clap = { workspace = true }
 color-eyre = { workspace = true }
 eyre = { workspace = true }
-dag = { path = "../dag" }
-consensus = { path = "../consensus" }
-minibytes = { path = "../minibytes", default-features = false }
+dag.workspace = true
+consensus.workspace = true
+minibytes = { workspace = true, default-features = false }
 prometheus = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
-simulator = { path = "../simulator" }
+simulator.workspace = true
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
@@ -24,8 +24,8 @@ unicode-width = "0.2.2"
 terminal_size = "0.4.4"
 
 [dev-dependencies]
-dag = { path = "../dag", features = ["test-utils"] }
-consensus = { path = "../consensus", features = ["test-utils"] }
+dag = { workspace = true, features = ["test-utils"] }
+consensus = { workspace = true, features = ["test-utils"] }
 reqwest = { workspace = true }
-tempdir = "0.3.7"
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }

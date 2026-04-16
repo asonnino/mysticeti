@@ -16,8 +16,8 @@ crossterm = "0.27.0"
 eyre = { workspace = true }
 futures = { workspace = true }
 glob = "0.3.1"
-dag = { path = "../dag" }
-replica = { path = "../replica" }
+dag.workspace = true
+replica.workspace = true
 plotters = "0.3.4"
 prettytable-rs = "0.10"
 prometheus-parse = { git = "https://github.com/asonnino/prometheus-parser.git", rev = "75334db" }
@@ -28,7 +28,7 @@ serde_json = "1.0.88"
 serde_with = "3.8.1"
 serde_yaml = { workspace = true }
 ssh2 = "0.9.4"                                                                                    # TODO: remove this dependency
-thiserror = "1.0.38"
+thiserror = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]

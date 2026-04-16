@@ -5,8 +5,8 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
-dag = { path = "../dag", features = ["test-utils"] }
-consensus = { path = "../consensus", features = ["test-utils"] }
+dag = { workspace = true, features = ["test-utils"] }
+consensus = { workspace = true, features = ["test-utils"] }
 futures = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true }
@@ -14,7 +14,7 @@ serde_yaml = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-parking_lot = "0.12.5"
+parking_lot = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

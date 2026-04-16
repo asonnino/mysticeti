@@ -116,7 +116,7 @@ fn test_randomized_simple_exchange() {
 
 #[test]
 fn test_core_recovery() {
-    let tmp = tempdir::TempDir::new("test_core_recovery").unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
     let (_committee, mut cores) = committee_and_cores_persisted::<TokioCtx>(4, Some(tmp.path()));
 
     let mut blocks = vec![];

@@ -366,7 +366,7 @@ mod tests {
 
     #[test]
     fn test_wal() {
-        let temp = tempdir::TempDir::new("test_wal").unwrap();
+        let temp = tempfile::TempDir::new().unwrap();
         let file = temp.path().join("wal");
         let (mut writer, reader) = wal(&file).unwrap();
         let one = [1u8; 1024];
@@ -450,7 +450,7 @@ mod tests {
     #[test]
     fn test_wal_read_after_write() {
         // Verify that mapping can read entries that are written to it after it is created
-        let temp = tempdir::TempDir::new("test_wal").unwrap();
+        let temp = tempfile::TempDir::new().unwrap();
         let file = temp.path().join("wal");
         let (mut writer, reader) = wal(&file).unwrap();
         let one = [1u8; 15];

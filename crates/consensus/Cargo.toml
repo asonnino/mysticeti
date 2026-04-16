@@ -5,12 +5,12 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
-dag = { path = "../dag" }
-tracing = { workspace = true }
+dag.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
-dag = { path = "../dag", features = ["test-utils"] }
-tracing-test = "0.2.4"
+dag = { workspace = true, features = ["test-utils"] }
+tracing-test.workspace = true
 
 [features]
 test-utils = ["dag/test-utils"]

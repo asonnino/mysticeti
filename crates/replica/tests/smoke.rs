@@ -3,7 +3,7 @@
 
 use std::{collections::VecDeque, fs, net::SocketAddr, sync::Arc, time::Duration};
 
-use tempdir::TempDir;
+use tempfile::TempDir;
 use tokio::time;
 
 use dag::{
@@ -61,7 +61,7 @@ async fn replica_commit() {
     let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(0);
     let client_parameters = ClientParameters::default();
 
-    let dir = TempDir::new("replica_commit").unwrap();
+    let dir = TempDir::new().unwrap();
     let private_configs = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size);
     private_configs.iter().for_each(|private_config| {
         fs::create_dir_all(&private_config.storage_path).unwrap();
@@ -104,7 +104,7 @@ async fn replica_sync() {
     let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(100);
     let client_parameters = ClientParameters::default();
 
-    let dir = TempDir::new("replica_sync").unwrap();
+    let dir = TempDir::new().unwrap();
     let private_configs = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size);
     private_configs.iter().for_each(|private_config| {
         fs::create_dir_all(&private_config.storage_path).unwrap();
@@ -179,7 +179,7 @@ async fn replica_crash_faults() {
     let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(200);
     let client_parameters = ClientParameters::default();
 
-    let dir = TempDir::new("replica_crash_faults").unwrap();
+    let dir = TempDir::new().unwrap();
     let private_configs = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size);
     private_configs.iter().for_each(|private_config| {
         fs::create_dir_all(&private_config.storage_path).unwrap();
