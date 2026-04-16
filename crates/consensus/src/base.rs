@@ -67,6 +67,13 @@ impl BaseCommitter {
         wave * self.wave_length + self.round_offset
     }
 
+    /// Return the voting round of the specified wave.
+    fn voting_round(&self, wave: WaveNumber) -> RoundNumber {
+        let leader_round = self.leader_round(wave);
+        let decision_round = self.decision_round(wave);
+        (leader_round + 1).max(decision_round - 1)
+    }
+
     /// Return the decision round of the specified wave. The decision round is always the last
     /// round of the wave.
     fn decision_round(&self, wave: WaveNumber) -> RoundNumber {
@@ -206,20 +213,24 @@ impl BaseCommitter {
 
     /// Check whether the specified leader has enough blames (that is, 2f+1 non-votes) to be
     /// directly skipped.
-    fn enough_leader_blame(&self, voting_round: RoundNumber, leader: AuthorityIndex) -> bool {
+    fn enough_leader_blame(
+        &self,
+        voting_round: RoundNumber,
+        leader: AuthorityIndex,
+        leader_round: RoundNumber,
+    ) -> bool {
         let voting_blocks = self.block_reader.get_blocks_by_round(voting_round);
 
         let mut blame_stake_aggregator = StakeAggregator::new(self.strong_quorum);
         for voting_block in &voting_blocks {
             let voter = voting_block.reference().authority;
-            if voting_block
-                .includes()
-                .iter()
-                .all(|include| include.authority != leader)
+            if self
+                .find_support((leader, leader_round), voting_block)
+                .is_none()
             {
                 tracing::trace!(
                     "[{self}] {voting_block:?} is a blame for leader {}",
-                    format_authority_round(leader, voting_round - 1)
+                    format_authority_round(leader, leader_round)
                 );
                 if blame_stake_aggregator.add(voter, &self.committee) {
                     return true;
@@ -291,18 +302,19 @@ impl BaseCommitter {
         leader: AuthorityIndex,
         leader_round: RoundNumber,
     ) -> LeaderStatus {
+        let wave = self.wave_number(leader_round);
+        let voting_round = self.voting_round(wave);
+        let decision_round = self.decision_round(wave);
+
         // Check whether the leader has enough blame. That is, whether there are 2f+1 non-votes
         // for that leader (which ensure there will never be a certificate for that leader).
-        let voting_round = leader_round + 1;
-        if self.enough_leader_blame(voting_round, leader) {
+        if self.enough_leader_blame(voting_round, leader, leader_round) {
             return LeaderStatus::Skip(leader, leader_round);
         }
 
         // Check whether the leader(s) has enough support. That is, whether there are 2f+1
         // certificates over the leader. Note that there could be more than one leader block
         // (created by Byzantine leaders).
-        let wave = self.wave_number(leader_round);
-        let decision_round = self.decision_round(wave);
         let leader_blocks = self
             .block_reader
             .get_blocks_at_authority_round(leader, leader_round);

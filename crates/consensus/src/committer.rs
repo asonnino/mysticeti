@@ -16,9 +16,11 @@ use dag::{
 /// It can be configured to use a combination of different commit strategies, including
 /// multi-leaders, backup leaders, and pipelines.
 pub struct Committer {
+    committee: Arc<Committee>,
     block_reader: BlockReader,
     base_committers: Vec<BaseCommitter>,
     strong_quorum: Stake,
+    leader_wait: bool,
     metrics: Arc<Metrics>,
 }
 
@@ -51,15 +53,13 @@ impl Committer {
         }
 
         Self {
+            committee,
             block_reader,
             base_committers,
             strong_quorum: protocol.strong_quorum,
+            leader_wait: protocol.leader_wait,
             metrics,
         }
-    }
-
-    pub fn strong_quorum(&self) -> Stake {
-        self.strong_quorum
     }
 
     /// Try to commit part of the dag. This function is idempotent and returns a list of
@@ -117,13 +117,6 @@ impl Committer {
     /// Return list of leaders for the round. Syncer may give those leaders some extra time.
     /// To preserve (theoretical) liveness, we should wait `Delta` time for at least the
     /// first leader. Can return empty vec if round does not have a designated leader.
-    pub fn get_leaders(&self, round: RoundNumber) -> Vec<AuthorityIndex> {
-        self.base_committers
-            .iter()
-            .filter_map(|committer| committer.elect_leader(round))
-            .collect()
-    }
-
     /// Update metrics.
     fn update_metrics(&self, leader: &LeaderStatus, direct_decide: bool) {
         let authority = leader.authority().to_string();
@@ -147,6 +140,13 @@ impl DagConsensus for Committer {
     }
 
     fn get_leaders(&self, round: RoundNumber) -> Vec<AuthorityIndex> {
-        self.get_leaders(round)
+        if self.leader_wait {
+            self.base_committers
+                .iter()
+                .filter_map(|c| c.elect_leader(round))
+                .collect()
+        } else {
+            self.committee.authorities().collect()
+        }
     }
 }

@@ -29,6 +29,7 @@ fn direct_commit() {
             wave_length: 3,
             leader_count: 1,
             pipeline: false,
+            leader_wait: false,
         },
         Metrics::new_for_test(0),
     );
@@ -63,6 +64,7 @@ fn idempotence() {
             wave_length: 3,
             leader_count: 1,
             pipeline: false,
+            leader_wait: false,
         },
         Metrics::new_for_test(0),
     );
@@ -102,6 +104,7 @@ fn multiple_direct_commit() {
                 wave_length: 3,
                 leader_count: 1,
                 pipeline: false,
+                leader_wait: false,
             },
             Metrics::new_for_test(0),
         );
@@ -144,6 +147,7 @@ fn direct_commit_late_call() {
             wave_length: 3,
             leader_count: 1,
             pipeline: false,
+            leader_wait: false,
         },
         Metrics::new_for_test(0),
     );
@@ -184,6 +188,7 @@ fn no_genesis_commit() {
                 wave_length: 3,
                 leader_count: 1,
                 pipeline: false,
+                leader_wait: false,
             },
             Metrics::new_for_test(0),
         );
@@ -232,6 +237,7 @@ fn no_leader() {
             wave_length: 3,
             leader_count: 1,
             pipeline: false,
+            leader_wait: false,
         },
         Metrics::new_for_test(0),
     );
@@ -288,6 +294,7 @@ fn direct_skip() {
             wave_length: 3,
             leader_count: 1,
             pipeline: false,
+            leader_wait: false,
         },
         Metrics::new_for_test(0),
     );
@@ -393,6 +400,7 @@ fn indirect_commit() {
             wave_length: 3,
             leader_count: 1,
             pipeline: false,
+            leader_wait: false,
         },
         Metrics::new_for_test(0),
     );
@@ -466,6 +474,7 @@ fn indirect_skip() {
             wave_length: 3,
             leader_count: 1,
             pipeline: false,
+            leader_wait: false,
         },
         Metrics::new_for_test(0),
     );
@@ -551,6 +560,7 @@ fn undecided() {
             wave_length: 3,
             leader_count: 1,
             pipeline: false,
+            leader_wait: false,
         },
         Metrics::new_for_test(0),
     );
