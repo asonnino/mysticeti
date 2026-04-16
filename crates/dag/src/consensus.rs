@@ -26,11 +26,13 @@ pub trait DagConsensus: Send + 'static {
     /// Decide leaders. Returns an ordered sequence of
     /// decided leaders. Idempotent for the same DAG
     /// state.
-    fn try_commit(&self, last_decided: BlockReference) -> Vec<LeaderStatus>;
+    fn try_commit(&mut self, last_decided: BlockReference) -> impl Iterator<Item = LeaderStatus>;
 
     /// Return the leaders for a given round. The syncer
     /// may give those leaders extra time for liveness.
-    fn get_leaders(&self, round: RoundNumber) -> Vec<AuthorityIndex>;
+    /// Returns `None` for asynchronous protocols where
+    /// the DAG should wait for all authorities equally.
+    fn get_leaders(&self, round: RoundNumber) -> Option<impl Iterator<Item = AuthorityIndex>>;
 }
 
 /// The status of every leader output by the committers. While the core only

@@ -301,7 +301,6 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
         let sequence: Vec<_> = self
             .committer
             .try_commit(self.last_commit_leader)
-            .into_iter()
             .filter_map(|leader| leader.into_decided_block())
             .collect();
 
@@ -339,11 +338,20 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
         // Leader round we check if we have a leader block
         if quorum_round > self.last_commit_leader.round().max(period - 1) {
             let leader_round = quorum_round - 1;
-            let mut leaders = self.committer.get_leaders(leader_round);
-            leaders.retain(|leader| connected_authorities.contains(leader));
-            self.storage
-                .block_reader()
-                .all_blocks_exists_at_authority_round(&leaders, leader_round)
+            let filter = |a: &AuthorityIndex| connected_authorities.contains(a);
+            match self.committer.get_leaders(leader_round) {
+                Some(leaders) => self
+                    .storage
+                    .block_reader()
+                    .all_blocks_exists_at_authority_round(leaders.filter(filter), leader_round),
+                None => self
+                    .storage
+                    .block_reader()
+                    .all_blocks_exists_at_authority_round(
+                        self.committee.authorities().filter(filter),
+                        leader_round,
+                    ),
+            }
         } else {
             false
         }

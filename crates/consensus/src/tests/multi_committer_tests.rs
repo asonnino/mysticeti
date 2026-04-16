@@ -1,6 +1,8 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::num::NonZeroUsize;
+
 use crate::{committer::Committer, leader::LeaderElector, protocol::Protocol};
 use dag::{
     consensus::LeaderStatus,
@@ -21,14 +23,14 @@ fn direct_commit() {
         let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
         build_dag(&committee, &mut storage, None, 5);
 
-        let committer = Committer::new(
+        let mut committer = Committer::new(
             committee.clone(),
             storage.block_reader().clone(),
             Protocol {
                 strong_quorum: 2 * committee.total_stake() / 3 + 1,
                 weak_quorum: 2 * committee.total_stake() / 3 + 1,
                 wave_length: 3,
-                leader_count,
+                leader_count: NonZeroUsize::new(leader_count).unwrap(),
                 pipeline: false,
                 leader_wait: false,
             },
@@ -36,7 +38,7 @@ fn direct_commit() {
         );
 
         let last_committed = BlockReference::new_test(0, 0);
-        let sequence = committer.try_commit(last_committed);
+        let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
         tracing::info!("Commit sequence: {sequence:?}");
 
         assert_eq!(sequence.len(), leader_count);
@@ -62,14 +64,14 @@ fn idempotence() {
         let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
         build_dag(&committee, &mut storage, None, 5);
 
-        let committer = Committer::new(
+        let mut committer = Committer::new(
             committee.clone(),
             storage.block_reader().clone(),
             Protocol {
                 strong_quorum: 2 * committee.total_stake() / 3 + 1,
                 weak_quorum: 2 * committee.total_stake() / 3 + 1,
                 wave_length: 3,
-                leader_count,
+                leader_count: NonZeroUsize::new(leader_count).unwrap(),
                 pipeline: false,
                 leader_wait: false,
             },
@@ -78,12 +80,12 @@ fn idempotence() {
 
         // Commit one block.
         let last_committed = BlockReference::new_test(0, 0);
-        let committed = committer.try_commit(last_committed);
+        let committed = committer.try_commit(last_committed).collect::<Vec<_>>();
 
         // Ensure we don't commit it again.
         let last = committed.into_iter().last().unwrap();
         let last_committed = BlockReference::new_test(last.authority(), last.round());
-        let sequence = committer.try_commit(last_committed);
+        let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
         tracing::info!("Commit sequence: {sequence:?}");
         assert!(sequence.is_empty());
     }
@@ -106,21 +108,21 @@ fn multiple_direct_commit() {
         let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
         build_dag(&committee, &mut storage, None, enough_blocks);
 
-        let committer = Committer::new(
+        let mut committer = Committer::new(
             committee.clone(),
             storage.block_reader().clone(),
             Protocol {
                 strong_quorum: 2 * committee.total_stake() / 3 + 1,
                 weak_quorum: 2 * committee.total_stake() / 3 + 1,
                 wave_length: 3,
-                leader_count,
+                leader_count: NonZeroUsize::new(leader_count).unwrap(),
                 pipeline: false,
                 leader_wait: false,
             },
             Metrics::new_for_test(0),
         );
 
-        let sequence = committer.try_commit(last_committed);
+        let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
         tracing::info!("Commit sequence: {sequence:?}");
         assert_eq!(sequence.len(), leader_count);
 
@@ -159,21 +161,21 @@ fn direct_commit_partial_round() {
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
     build_dag(&committee, &mut storage, None, enough_blocks);
 
-    let committer = Committer::new(
+    let mut committer = Committer::new(
         committee.clone(),
         storage.block_reader().clone(),
         Protocol {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
             weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
-            leader_count,
+            leader_count: NonZeroUsize::new(leader_count).unwrap(),
             pipeline: false,
             leader_wait: false,
         },
         Metrics::new_for_test(0),
     );
 
-    let sequence = committer.try_commit(last_committed);
+    let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
     assert_eq!(sequence.len(), leader_count - 1);
 
@@ -204,14 +206,14 @@ fn direct_commit_late_call() {
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
     build_dag(&committee, &mut storage, None, enough_blocks);
 
-    let committer = Committer::new(
+    let mut committer = Committer::new(
         committee.clone(),
         storage.block_reader().clone(),
         Protocol {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
             weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
-            leader_count,
+            leader_count: NonZeroUsize::new(leader_count).unwrap(),
             pipeline: false,
             leader_wait: false,
         },
@@ -219,7 +221,7 @@ fn direct_commit_late_call() {
     );
 
     let last_committed = BlockReference::new_test(0, 0);
-    let sequence = committer.try_commit(last_committed);
+    let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
 
     assert_eq!(sequence.len(), leader_count * n as usize);
@@ -252,14 +254,14 @@ fn no_genesis_commit() {
         let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
         build_dag(&committee, &mut storage, None, r);
 
-        let committer = Committer::new(
+        let mut committer = Committer::new(
             committee.clone(),
             storage.block_reader().clone(),
             Protocol {
                 strong_quorum: 2 * committee.total_stake() / 3 + 1,
                 weak_quorum: 2 * committee.total_stake() / 3 + 1,
                 wave_length: 3,
-                leader_count,
+                leader_count: NonZeroUsize::new(leader_count).unwrap(),
                 pipeline: false,
                 leader_wait: false,
             },
@@ -267,7 +269,7 @@ fn no_genesis_commit() {
         );
 
         let last_committed = BlockReference::new_test(0, 0);
-        let sequence = committer.try_commit(last_committed);
+        let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
         tracing::info!("Commit sequence: {sequence:?}");
         assert!(sequence.is_empty());
     }
@@ -304,14 +306,14 @@ fn no_leader() {
     build_dag(&committee, &mut storage, Some(references), decision_round_1);
 
     // Ensure the omitted leader is skipped and the others are committed.
-    let committer = Committer::new(
+    let mut committer = Committer::new(
         committee.clone(),
         storage.block_reader().clone(),
         Protocol {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
             weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
-            leader_count,
+            leader_count: NonZeroUsize::new(leader_count).unwrap(),
             pipeline: false,
             leader_wait: false,
         },
@@ -319,7 +321,7 @@ fn no_leader() {
     );
 
     let last_committed = BlockReference::new_test(0, 0);
-    let sequence = committer.try_commit(last_committed);
+    let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
 
     assert_eq!(sequence.len(), leader_count);
@@ -375,14 +377,14 @@ fn direct_skip() {
     );
 
     // Ensure that the first leader of wave 1 is skipped.
-    let committer = Committer::new(
+    let mut committer = Committer::new(
         committee.clone(),
         storage.block_reader().clone(),
         Protocol {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
             weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
-            leader_count,
+            leader_count: NonZeroUsize::new(leader_count).unwrap(),
             pipeline: false,
             leader_wait: false,
         },
@@ -390,7 +392,7 @@ fn direct_skip() {
     );
 
     let last_committed = BlockReference::new_test(0, 0);
-    let sequence = committer.try_commit(last_committed);
+    let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
 
     assert_eq!(sequence.len(), leader_count);
@@ -493,14 +495,14 @@ fn indirect_commit() {
     );
 
     // Ensure we commit the 1st leader.
-    let committer = Committer::new(
+    let mut committer = Committer::new(
         committee.clone(),
         storage.block_reader().clone(),
         Protocol {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
             weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
-            leader_count,
+            leader_count: NonZeroUsize::new(leader_count).unwrap(),
             pipeline: false,
             leader_wait: false,
         },
@@ -508,7 +510,7 @@ fn indirect_commit() {
     );
 
     let last_committed = BlockReference::new_test(0, 0);
-    let sequence = committer.try_commit(last_committed);
+    let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
     assert_eq!(sequence.len(), 2 * leader_count);
 
@@ -569,14 +571,14 @@ fn indirect_skip() {
     build_dag(&committee, &mut storage, Some(references), decision_round_3);
 
     // Ensure we commit the leaders of wave 1 and 3
-    let committer = Committer::new(
+    let mut committer = Committer::new(
         committee.clone(),
         storage.block_reader().clone(),
         Protocol {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
             weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
-            leader_count,
+            leader_count: NonZeroUsize::new(leader_count).unwrap(),
             pipeline: false,
             leader_wait: false,
         },
@@ -584,7 +586,7 @@ fn indirect_skip() {
     );
 
     let last_committed = BlockReference::new_test(0, 0);
-    let sequence = committer.try_commit(last_committed);
+    let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
     assert_eq!(sequence.len(), 3 * leader_count);
 
@@ -682,14 +684,14 @@ fn undecided() {
     build_dag(&committee, &mut storage, Some(references), decision_round_1);
 
     // Ensure no blocks are committed.
-    let committer = Committer::new(
+    let mut committer = Committer::new(
         committee.clone(),
         storage.block_reader().clone(),
         Protocol {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
             weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
-            leader_count,
+            leader_count: NonZeroUsize::new(leader_count).unwrap(),
             pipeline: false,
             leader_wait: false,
         },
@@ -697,7 +699,7 @@ fn undecided() {
     );
 
     let last_committed = BlockReference::new_test(0, 0);
-    let sequence = committer.try_commit(last_committed);
+    let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
     assert!(sequence.is_empty());
 }

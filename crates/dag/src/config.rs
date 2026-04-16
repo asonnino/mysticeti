@@ -4,6 +4,7 @@
 use std::{
     fs, io,
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    num::NonZeroUsize,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -65,7 +66,7 @@ pub struct NodeParameters {
     #[serde(default = "node_defaults::default_max_block_size")]
     pub max_block_size: usize,
     #[serde(default = "node_defaults::default_leader_count")]
-    pub leader_count: usize,
+    pub leader_count: NonZeroUsize,
     #[serde(default = "node_defaults::default_enable_pipelining")]
     pub enable_pipelining: bool,
     #[serde(default = "node_defaults::default_enable_synchronizer")]
@@ -85,8 +86,8 @@ pub mod node_defaults {
         4 * 1024 * 1024
     }
 
-    pub fn default_leader_count() -> usize {
-        2
+    pub fn default_leader_count() -> super::NonZeroUsize {
+        super::NonZeroUsize::new(2).unwrap()
     }
 
     pub fn default_enable_pipelining() -> bool {

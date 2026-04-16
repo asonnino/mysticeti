@@ -1,9 +1,9 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-pub mod base;
+pub(crate) mod base;
 pub mod committer;
-pub mod leader;
+pub(crate) mod leader;
 pub mod protocol;
 
 #[cfg(any(test, feature = "test-utils"))]

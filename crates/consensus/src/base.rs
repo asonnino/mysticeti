@@ -1,7 +1,10 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{fmt::Display, sync::Arc};
+use std::{
+    fmt::{self, Display},
+    sync::Arc,
+};
 
 use crate::{leader::LeaderElector, protocol::Protocol};
 use dag::{
@@ -24,7 +27,7 @@ type WaveNumber = u64;
 /// called at any time and any number of times
 /// (idempotent) to determine whether a leader can be
 /// committed or skipped.
-pub struct BaseCommitter {
+pub(crate) struct BaseCommitter {
     committee: Arc<Committee>,
     block_reader: BlockReader,
     leader_elector: LeaderElector,
@@ -36,7 +39,7 @@ pub struct BaseCommitter {
 }
 
 impl BaseCommitter {
-    pub fn new(
+    pub(crate) fn new(
         committee: Arc<Committee>,
         block_reader: BlockReader,
         leader_elector: LeaderElector,
@@ -57,25 +60,27 @@ impl BaseCommitter {
     }
 
     /// Return the wave in which the specified round belongs.
+    #[inline]
     fn wave_number(&self, round: RoundNumber) -> WaveNumber {
         round.saturating_sub(self.round_offset) / self.wave_length
     }
 
-    /// Return the leader round of the specified wave number. The leader round is always the first
-    /// round of the wave.
+    /// Return the leader round of the specified wave number.
+    #[inline]
     fn leader_round(&self, wave: WaveNumber) -> RoundNumber {
         wave * self.wave_length + self.round_offset
     }
 
     /// Return the voting round of the specified wave.
+    #[inline]
     fn voting_round(&self, wave: WaveNumber) -> RoundNumber {
         let leader_round = self.leader_round(wave);
         let decision_round = self.decision_round(wave);
         (leader_round + 1).max(decision_round - 1)
     }
 
-    /// Return the decision round of the specified wave. The decision round is always the last
-    /// round of the wave.
+    /// Return the decision round of the specified wave.
+    #[inline]
     fn decision_round(&self, wave: WaveNumber) -> RoundNumber {
         let wave_length = self.wave_length;
         wave * wave_length + wave_length - 1 + self.round_offset
@@ -84,7 +89,7 @@ impl BaseCommitter {
     /// The leader-elect protocol is offset by `leader_offset` to ensure that different
     /// committers with different leader offsets elect different leaders for the same round number.
     /// This function returns `None` if there are no leaders for the specified round.
-    pub fn elect_leader(&self, round: RoundNumber) -> Option<AuthorityIndex> {
+    pub(crate) fn elect_leader(&self, round: RoundNumber) -> Option<AuthorityIndex> {
         let wave = self.wave_number(round);
         if self.leader_round(wave) != round {
             return None;
@@ -181,32 +186,23 @@ impl BaseCommitter {
         let wave = self.wave_number(leader_round);
         let decision_round = self.decision_round(wave);
         let decision_blocks = self.block_reader.get_blocks_by_round(decision_round);
-        let potential_certificates: Vec<_> = decision_blocks
-            .iter()
-            .filter(|block| self.block_reader.linked(anchor, block))
-            .collect();
 
-        // Use those potential certificates to determine which (if any) of the target leader
-        // blocks can be committed.
-        let mut certified_leader_blocks: Vec<_> = leader_blocks
-            .into_iter()
-            .filter(|leader_block| {
-                potential_certificates.iter().any(|potential_certificate| {
+        // Find the certified leader block (at most one).
+        let mut certified = leader_blocks.into_iter().filter(|leader_block| {
+            decision_blocks
+                .iter()
+                .filter(|block| self.block_reader.linked(anchor, block))
+                .any(|potential_certificate| {
                     self.is_certificate(potential_certificate, leader_block, self.weak_quorum)
                 })
-            })
-            .collect();
-
-        // There can be at most one certified leader, otherwise it means the BFT assumption
-        // is broken.
-        if certified_leader_blocks.len() > 1 {
+        });
+        let first = certified.next();
+        if certified.next().is_some() {
             panic!("More than one certified block at wave {wave} from leader {leader}")
         }
 
-        // We commit the target leader if it has a certificate that is an ancestor of the anchor.
-        // Otherwise skip it.
-        match certified_leader_blocks.pop() {
-            Some(certified_leader_block) => LeaderStatus::Commit(certified_leader_block.clone()),
+        match first {
+            Some(block) => LeaderStatus::Commit(block.clone()),
             None => LeaderStatus::Skip(leader, leader_round),
         }
     }
@@ -267,7 +263,7 @@ impl BaseCommitter {
     /// Apply the indirect decision rule to the specified leader to see whether we can
     /// indirect-commit or indirect-skip it.
     #[tracing::instrument(skip_all, fields(leader = %format_authority_round(leader, leader_round)))]
-    pub fn try_indirect_decide<'a>(
+    pub(crate) fn try_indirect_decide<'a>(
         &self,
         leader: AuthorityIndex,
         leader_round: RoundNumber,
@@ -297,7 +293,7 @@ impl BaseCommitter {
     /// Apply the direct decision rule to the specified leader to see whether we can direct-commit
     /// or direct-skip it.
     #[tracing::instrument(skip_all, fields(leader = %format_authority_round(leader, leader_round)))]
-    pub fn try_direct_decide(
+    pub(crate) fn try_direct_decide(
         &self,
         leader: AuthorityIndex,
         leader_round: RoundNumber,
@@ -318,29 +314,25 @@ impl BaseCommitter {
         let leader_blocks = self
             .block_reader
             .get_blocks_at_authority_round(leader, leader_round);
-        let mut leaders_with_enough_support: Vec<_> = leader_blocks
+        let mut supported = leader_blocks
             .into_iter()
-            .filter(|l| self.enough_leader_support(decision_round, l))
-            .map(LeaderStatus::Commit)
-            .collect();
-
-        // There can be at most one leader with enough support for each round, otherwise it means
-        // the BFT assumption is broken.
-        if leaders_with_enough_support.len() > 1 {
+            .filter(|l| self.enough_leader_support(decision_round, l));
+        let first = supported.next();
+        if supported.next().is_some() {
             panic!(
                 "[{self}] More than one certified block for {}",
                 format_authority_round(leader, leader_round)
             )
         }
 
-        leaders_with_enough_support
-            .pop()
+        first
+            .map(LeaderStatus::Commit)
             .unwrap_or_else(|| LeaderStatus::Undecided(leader, leader_round))
     }
 }
 
 impl Display for BaseCommitter {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "Committer-L{}-R{}",

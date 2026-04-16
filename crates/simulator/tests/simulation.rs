@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::path::PathBuf;
+use std::{num::NonZeroUsize, path::PathBuf};
 
 use dag::config::{ImportExport, NodeParameters};
 use simulator::{NetworkTopology, SimulationConfig, SimulationRunner};
@@ -100,7 +100,7 @@ fn small_committee() {
 fn custom_node_parameters() {
     let config = SimulationConfig {
         node_parameters: NodeParameters {
-            leader_count: 1,
+            leader_count: NonZeroUsize::new(1).unwrap(),
             wave_length: 4,
             ..Default::default()
         },

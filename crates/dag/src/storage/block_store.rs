@@ -58,16 +58,16 @@ impl BlockStore {
 
     pub(super) fn all_blocks_exists_at_authority_round(
         &self,
-        authorities: &[AuthorityIndex],
+        mut authorities: impl Iterator<Item = AuthorityIndex>,
         round: RoundNumber,
     ) -> bool {
         let Some(blocks) = self.index.get(&round) else {
             return false;
         };
-        authorities.iter().all(|authority| {
+        authorities.all(|authority| {
             blocks
                 .keys()
-                .any(|(block_authority, _)| block_authority == authority)
+                .any(|(block_authority, _)| *block_authority == authority)
         })
     }
 

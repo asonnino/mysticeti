@@ -143,7 +143,7 @@ impl BlockReader {
 
     pub fn all_blocks_exists_at_authority_round(
         &self,
-        authorities: &[AuthorityIndex],
+        authorities: impl Iterator<Item = AuthorityIndex>,
         round: RoundNumber,
     ) -> bool {
         self.inner
