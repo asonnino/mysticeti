@@ -113,7 +113,7 @@ impl Replica {
             storage.block_reader().clone(),
             Protocol::mysticeti(
                 self.committee.total_stake(),
-                self.public_config.parameters.number_of_leaders,
+                self.public_config.parameters.leader_count,
             ),
             metrics.clone(),
         );

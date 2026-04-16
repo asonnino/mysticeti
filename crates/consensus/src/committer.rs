@@ -3,11 +3,7 @@
 
 use std::{collections::VecDeque, sync::Arc};
 
-use crate::{
-    base::{BaseCommitter, BaseCommitterOptions},
-    leader::LeaderElector,
-    protocol::Protocol,
-};
+use crate::{base::BaseCommitter, leader::LeaderElector, protocol::Protocol};
 use dag::{
     committee::Committee,
     consensus::{DagConsensus, LeaderStatus},
@@ -41,19 +37,14 @@ impl Committer {
         };
 
         for round_offset in 0..pipeline_stages {
-            for leader_offset in 0..protocol.number_of_leaders {
-                let options = BaseCommitterOptions {
-                    strong_quorum: protocol.strong_quorum,
-                    weak_quorum: protocol.weak_quorum,
-                    wave_length: protocol.wave_length,
-                    round_offset,
-                    leader_offset: leader_offset as RoundNumber,
-                };
+            for leader_offset in 0..protocol.leader_count {
                 let committer = BaseCommitter::new(
                     committee.clone(),
                     block_reader.clone(),
                     LeaderElector::new(committee.len()),
-                    options,
+                    &protocol,
+                    leader_offset as RoundNumber,
+                    round_offset,
                 );
                 base_committers.push(committer);
             }

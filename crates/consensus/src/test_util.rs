@@ -35,7 +35,7 @@ fn open_core<C: Ctx>(
         storage.block_reader().clone(),
         Protocol::mysticeti(
             committee.total_stake(),
-            public_config.parameters.number_of_leaders,
+            public_config.parameters.leader_count,
         ),
         metrics.clone(),
     );

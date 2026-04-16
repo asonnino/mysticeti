@@ -3,7 +3,7 @@
 
 use std::{fmt::Display, sync::Arc};
 
-use crate::leader::LeaderElector;
+use crate::{leader::LeaderElector, protocol::Protocol};
 use dag::{
     committee::{Committee, StakeAggregator},
     consensus::LeaderStatus,
@@ -18,29 +18,21 @@ use dag::{
 ///  one voting round, and one decision round.
 type WaveNumber = u64;
 
-pub struct BaseCommitterOptions {
-    /// The quorum threshold for direct commit decisions.
-    pub strong_quorum: Stake,
-    /// The quorum threshold for indirect commit decisions.
-    pub weak_quorum: Stake,
-    /// The length of a wave (minimum 2).
-    pub wave_length: u64,
-    /// The offset used in the leader-election protocol. This is used by the multi-committer to
-    ///  ensure that each [`BaseCommitter`] instance elects a different leader.
-    pub leader_offset: u64,
-    /// The offset of the first wave. This is used by the pipelined committer to ensure that each
-    /// [`BaseCommitter`] instances operates on a different view of the dag.
-    pub round_offset: u64,
-}
-
-/// The [`BaseCommitter`] contains the bare bone commit logic. Once instantiated, the method
-/// `try_direct_decide` and `try_indirect_decide` can be called at any time and any number of times
-/// (it is idempotent) to determine whether a leader can be committed or skipped.
+/// The [`BaseCommitter`] contains the bare bone commit
+/// logic. Once instantiated, the methods
+/// `try_direct_decide` and `try_indirect_decide` can be
+/// called at any time and any number of times
+/// (idempotent) to determine whether a leader can be
+/// committed or skipped.
 pub struct BaseCommitter {
     committee: Arc<Committee>,
     block_reader: BlockReader,
     leader_elector: LeaderElector,
-    options: BaseCommitterOptions,
+    strong_quorum: Stake,
+    weak_quorum: Stake,
+    wave_length: RoundNumber,
+    leader_offset: RoundNumber,
+    round_offset: RoundNumber,
 }
 
 impl BaseCommitter {
@@ -48,32 +40,38 @@ impl BaseCommitter {
         committee: Arc<Committee>,
         block_reader: BlockReader,
         leader_elector: LeaderElector,
-        options: BaseCommitterOptions,
+        protocol: &Protocol,
+        leader_offset: RoundNumber,
+        round_offset: RoundNumber,
     ) -> Self {
         Self {
             committee,
             block_reader,
             leader_elector,
-            options,
+            strong_quorum: protocol.strong_quorum,
+            weak_quorum: protocol.weak_quorum,
+            wave_length: protocol.wave_length,
+            leader_offset,
+            round_offset,
         }
     }
 
     /// Return the wave in which the specified round belongs.
     fn wave_number(&self, round: RoundNumber) -> WaveNumber {
-        round.saturating_sub(self.options.round_offset) / self.options.wave_length
+        round.saturating_sub(self.round_offset) / self.wave_length
     }
 
     /// Return the leader round of the specified wave number. The leader round is always the first
     /// round of the wave.
     fn leader_round(&self, wave: WaveNumber) -> RoundNumber {
-        wave * self.options.wave_length + self.options.round_offset
+        wave * self.wave_length + self.round_offset
     }
 
     /// Return the decision round of the specified wave. The decision round is always the last
     /// round of the wave.
     fn decision_round(&self, wave: WaveNumber) -> RoundNumber {
-        let wave_length = self.options.wave_length;
-        wave * wave_length + wave_length - 1 + self.options.round_offset
+        let wave_length = self.wave_length;
+        wave * wave_length + wave_length - 1 + self.round_offset
     }
 
     /// The leader-elect protocol is offset by `leader_offset` to ensure that different
@@ -85,7 +83,7 @@ impl BaseCommitter {
             return None;
         }
 
-        let offset = self.options.leader_offset as RoundNumber;
+        let offset = self.leader_offset as RoundNumber;
         Some(self.leader_elector.elect_leader(round + offset))
     }
 
@@ -187,11 +185,7 @@ impl BaseCommitter {
             .into_iter()
             .filter(|leader_block| {
                 potential_certificates.iter().any(|potential_certificate| {
-                    self.is_certificate(
-                        potential_certificate,
-                        leader_block,
-                        self.options.weak_quorum,
-                    )
+                    self.is_certificate(potential_certificate, leader_block, self.weak_quorum)
                 })
             })
             .collect();
@@ -215,7 +209,7 @@ impl BaseCommitter {
     fn enough_leader_blame(&self, voting_round: RoundNumber, leader: AuthorityIndex) -> bool {
         let voting_blocks = self.block_reader.get_blocks_by_round(voting_round);
 
-        let mut blame_stake_aggregator = StakeAggregator::new(self.options.strong_quorum);
+        let mut blame_stake_aggregator = StakeAggregator::new(self.strong_quorum);
         for voting_block in &voting_blocks {
             let voter = voting_block.reference().authority;
             if voting_block
@@ -244,10 +238,10 @@ impl BaseCommitter {
     ) -> bool {
         let decision_blocks = self.block_reader.get_blocks_by_round(decision_round);
 
-        let mut certificate_stake_aggregator = StakeAggregator::new(self.options.strong_quorum);
+        let mut certificate_stake_aggregator = StakeAggregator::new(self.strong_quorum);
         for decision_block in &decision_blocks {
             let authority = decision_block.reference().authority;
-            if self.is_certificate(decision_block, leader_block, self.options.strong_quorum) {
+            if self.is_certificate(decision_block, leader_block, self.strong_quorum) {
                 tracing::trace!(
                     "[{self}] {decision_block:?} is a certificate for leader {leader_block:?}"
                 );
@@ -270,7 +264,7 @@ impl BaseCommitter {
     ) -> LeaderStatus {
         // The anchor is the first committed leader with round higher than the decision round of the
         // target leader. We must stop the iteration upon encountering an undecided leader.
-        let anchors = leaders.filter(|x| leader_round + self.options.wave_length <= x.round());
+        let anchors = leaders.filter(|x| leader_round + self.wave_length <= x.round());
 
         for anchor in anchors {
             tracing::trace!(
@@ -338,7 +332,7 @@ impl Display for BaseCommitter {
         write!(
             f,
             "Committer-L{}-R{}",
-            self.options.leader_offset, self.options.round_offset
+            self.leader_offset, self.round_offset
         )
     }
 }

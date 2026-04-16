@@ -100,7 +100,7 @@ fn small_committee() {
 fn custom_node_parameters() {
     let config = SimulationConfig {
         node_parameters: NodeParameters {
-            number_of_leaders: 1,
+            leader_count: 1,
             wave_length: 4,
             ..Default::default()
         },

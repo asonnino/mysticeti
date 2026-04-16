@@ -64,8 +64,8 @@ pub struct NodeParameters {
     pub leader_timeout: Duration,
     #[serde(default = "node_defaults::default_max_block_size")]
     pub max_block_size: usize,
-    #[serde(default = "node_defaults::default_number_of_leaders")]
-    pub number_of_leaders: usize,
+    #[serde(default = "node_defaults::default_leader_count")]
+    pub leader_count: usize,
     #[serde(default = "node_defaults::default_enable_pipelining")]
     pub enable_pipelining: bool,
     #[serde(default = "node_defaults::default_enable_synchronizer")]
@@ -85,7 +85,7 @@ pub mod node_defaults {
         4 * 1024 * 1024
     }
 
-    pub fn default_number_of_leaders() -> usize {
+    pub fn default_leader_count() -> usize {
         2
     }
 
@@ -104,7 +104,7 @@ impl Default for NodeParameters {
             wave_length: node_defaults::default_wave_length(),
             leader_timeout: node_defaults::default_leader_timeout(),
             max_block_size: node_defaults::default_max_block_size(),
-            number_of_leaders: node_defaults::default_number_of_leaders(),
+            leader_count: node_defaults::default_leader_count(),
             enable_pipelining: node_defaults::default_enable_pipelining(),
             enable_synchronizer: node_defaults::default_enable_synchronizer(),
         }

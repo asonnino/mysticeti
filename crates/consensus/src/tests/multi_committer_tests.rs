@@ -17,7 +17,7 @@ fn direct_commit() {
     let committee = committee(4);
     let leader_elector = LeaderElector::new(committee.len());
     let wave_length = 3;
-    for number_of_leaders in 1..committee.len() {
+    for leader_count in 1..committee.len() {
         let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
         build_dag(&committee, &mut storage, None, 5);
 
@@ -28,7 +28,7 @@ fn direct_commit() {
                 strong_quorum: 2 * committee.total_stake() / 3 + 1,
                 weak_quorum: 2 * committee.total_stake() / 3 + 1,
                 wave_length: 3,
-                number_of_leaders,
+                leader_count,
                 pipeline: false,
             },
             Metrics::new_for_test(0),
@@ -38,7 +38,7 @@ fn direct_commit() {
         let sequence = committer.try_commit(last_committed);
         tracing::info!("Commit sequence: {sequence:?}");
 
-        assert_eq!(sequence.len(), number_of_leaders);
+        assert_eq!(sequence.len(), leader_count);
         for (i, leader) in sequence.iter().enumerate() {
             if let LeaderStatus::Commit(block) = leader {
                 let leader_round = wave_length;
@@ -57,7 +57,7 @@ fn direct_commit() {
 #[tracing_test::traced_test]
 fn idempotence() {
     let committee = committee(4);
-    for number_of_leaders in 1..committee.len() {
+    for leader_count in 1..committee.len() {
         let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
         build_dag(&committee, &mut storage, None, 5);
 
@@ -68,7 +68,7 @@ fn idempotence() {
                 strong_quorum: 2 * committee.total_stake() / 3 + 1,
                 weak_quorum: 2 * committee.total_stake() / 3 + 1,
                 wave_length: 3,
-                number_of_leaders,
+                leader_count,
                 pipeline: false,
             },
             Metrics::new_for_test(0),
@@ -96,7 +96,7 @@ fn multiple_direct_commit() {
     let total = committee.total_stake();
     let strong_quorum = 2 * total / 3 + 1;
     let wave_length = 3;
-    let number_of_leaders = strong_quorum as usize;
+    let leader_count = strong_quorum as usize;
 
     let mut last_committed = BlockReference::new_test(0, 0);
     for n in 1..=10 {
@@ -111,7 +111,7 @@ fn multiple_direct_commit() {
                 strong_quorum: 2 * committee.total_stake() / 3 + 1,
                 weak_quorum: 2 * committee.total_stake() / 3 + 1,
                 wave_length: 3,
-                number_of_leaders,
+                leader_count,
                 pipeline: false,
             },
             Metrics::new_for_test(0),
@@ -119,7 +119,7 @@ fn multiple_direct_commit() {
 
         let sequence = committer.try_commit(last_committed);
         tracing::info!("Commit sequence: {sequence:?}");
-        assert_eq!(sequence.len(), number_of_leaders);
+        assert_eq!(sequence.len(), leader_count);
 
         let leader_round = n * wave_length;
         for (i, leader) in sequence.iter().enumerate() {
@@ -146,7 +146,7 @@ fn direct_commit_partial_round() {
     let total = committee.total_stake();
     let strong_quorum = 2 * total / 3 + 1;
     let wave_length = 3;
-    let number_of_leaders = strong_quorum as usize;
+    let leader_count = strong_quorum as usize;
 
     let first_leader_round = wave_length;
     let first_leader = leader_elector.elect_leader(first_leader_round);
@@ -163,7 +163,7 @@ fn direct_commit_partial_round() {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
             weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
-            number_of_leaders,
+            leader_count,
             pipeline: false,
         },
         Metrics::new_for_test(0),
@@ -171,7 +171,7 @@ fn direct_commit_partial_round() {
 
     let sequence = committer.try_commit(last_committed);
     tracing::info!("Commit sequence: {sequence:?}");
-    assert_eq!(sequence.len(), number_of_leaders - 1);
+    assert_eq!(sequence.len(), leader_count - 1);
 
     for (i, leader) in sequence.iter().enumerate() {
         if let LeaderStatus::Commit(block) = leader {
@@ -193,7 +193,7 @@ fn direct_commit_late_call() {
     let total = committee.total_stake();
     let strong_quorum = 2 * total / 3 + 1;
     let wave_length = 3;
-    let number_of_leaders = strong_quorum as usize;
+    let leader_count = strong_quorum as usize;
 
     let n = 10;
     let enough_blocks = wave_length * (n + 1) - 1;
@@ -207,7 +207,7 @@ fn direct_commit_late_call() {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
             weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
-            number_of_leaders,
+            leader_count,
             pipeline: false,
         },
         Metrics::new_for_test(0),
@@ -217,8 +217,8 @@ fn direct_commit_late_call() {
     let sequence = committer.try_commit(last_committed);
     tracing::info!("Commit sequence: {sequence:?}");
 
-    assert_eq!(sequence.len(), number_of_leaders * n as usize);
-    for (i, leaders) in sequence.chunks(number_of_leaders).enumerate() {
+    assert_eq!(sequence.len(), leader_count * n as usize);
+    for (i, leaders) in sequence.chunks(leader_count).enumerate() {
         let leader_round = (i as u64 + 1) * wave_length;
         for (j, leader) in leaders.iter().enumerate() {
             if let LeaderStatus::Commit(block) = leader {
@@ -240,7 +240,7 @@ fn no_genesis_commit() {
     let total = committee.total_stake();
     let strong_quorum = 2 * total / 3 + 1;
     let wave_length = 3;
-    let number_of_leaders = strong_quorum as usize;
+    let leader_count = strong_quorum as usize;
 
     let first_commit_round = 2 * wave_length - 1;
     for r in 0..first_commit_round {
@@ -254,7 +254,7 @@ fn no_genesis_commit() {
                 strong_quorum: 2 * committee.total_stake() / 3 + 1,
                 weak_quorum: 2 * committee.total_stake() / 3 + 1,
                 wave_length: 3,
-                number_of_leaders,
+                leader_count,
                 pipeline: false,
             },
             Metrics::new_for_test(0),
@@ -276,7 +276,7 @@ fn no_leader() {
     let total = committee.total_stake();
     let strong_quorum = 2 * total / 3 + 1;
     let wave_length = 3;
-    let number_of_leaders = strong_quorum as usize;
+    let leader_count = strong_quorum as usize;
 
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
 
@@ -305,7 +305,7 @@ fn no_leader() {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
             weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
-            number_of_leaders,
+            leader_count,
             pipeline: false,
         },
         Metrics::new_for_test(0),
@@ -315,7 +315,7 @@ fn no_leader() {
     let sequence = committer.try_commit(last_committed);
     tracing::info!("Commit sequence: {sequence:?}");
 
-    assert_eq!(sequence.len(), number_of_leaders);
+    assert_eq!(sequence.len(), leader_count);
     for (i, leader) in sequence.iter().enumerate() {
         let leader_round = wave_length;
         let leader_offset = i as u64;
@@ -344,7 +344,7 @@ fn direct_skip() {
     let total = committee.total_stake();
     let strong_quorum = 2 * total / 3 + 1;
     let wave_length = 3;
-    let number_of_leaders = strong_quorum as usize;
+    let leader_count = strong_quorum as usize;
 
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
 
@@ -375,7 +375,7 @@ fn direct_skip() {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
             weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
-            number_of_leaders,
+            leader_count,
             pipeline: false,
         },
         Metrics::new_for_test(0),
@@ -385,7 +385,7 @@ fn direct_skip() {
     let sequence = committer.try_commit(last_committed);
     tracing::info!("Commit sequence: {sequence:?}");
 
-    assert_eq!(sequence.len(), number_of_leaders);
+    assert_eq!(sequence.len(), leader_count);
     for (i, leader) in sequence.iter().enumerate() {
         let leader_round = wave_length;
         let leader_offset = i as u64;
@@ -415,7 +415,7 @@ fn indirect_commit() {
     let strong_quorum = 2 * total / 3 + 1;
     let one_fault = total / 3 + 1;
     let wave_length = 3;
-    let number_of_leaders = strong_quorum as usize;
+    let leader_count = strong_quorum as usize;
 
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
 
@@ -492,7 +492,7 @@ fn indirect_commit() {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
             weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
-            number_of_leaders,
+            leader_count,
             pipeline: false,
         },
         Metrics::new_for_test(0),
@@ -501,7 +501,7 @@ fn indirect_commit() {
     let last_committed = BlockReference::new_test(0, 0);
     let sequence = committer.try_commit(last_committed);
     tracing::info!("Commit sequence: {sequence:?}");
-    assert_eq!(sequence.len(), 2 * number_of_leaders);
+    assert_eq!(sequence.len(), 2 * leader_count);
 
     let leader_round = wave_length;
     let leader = leader_elector.elect_leader(leader_round);
@@ -522,7 +522,7 @@ fn indirect_skip() {
     let strong_quorum = 2 * total / 3 + 1;
     let one_fault = total / 3 + 1;
     let wave_length = 3;
-    let number_of_leaders = strong_quorum as usize;
+    let leader_count = strong_quorum as usize;
 
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
 
@@ -567,7 +567,7 @@ fn indirect_skip() {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
             weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
-            number_of_leaders,
+            leader_count,
             pipeline: false,
         },
         Metrics::new_for_test(0),
@@ -576,10 +576,10 @@ fn indirect_skip() {
     let last_committed = BlockReference::new_test(0, 0);
     let sequence = committer.try_commit(last_committed);
     tracing::info!("Commit sequence: {sequence:?}");
-    assert_eq!(sequence.len(), 3 * number_of_leaders);
+    assert_eq!(sequence.len(), 3 * leader_count);
 
     // Ensure we commit the leaders of wave 1.
-    for (n, status) in sequence.iter().take(number_of_leaders).enumerate() {
+    for (n, status) in sequence.iter().take(leader_count).enumerate() {
         let leader_round_1 = wave_length;
         let leader_offset = n as u64;
         let leader_1 = leader_elector.elect_leader(leader_round_1 + leader_offset);
@@ -592,18 +592,18 @@ fn indirect_skip() {
 
     // Ensure we skip the first leader of wave 2 but commit the other leaders of wave 2.
     let leader_round_2 = 2 * wave_length;
-    if let LeaderStatus::Skip(leader, round) = sequence[number_of_leaders] {
+    if let LeaderStatus::Skip(leader, round) = sequence[leader_count] {
         assert_eq!(leader, leader_2);
         assert_eq!(round, leader_round_2);
     } else {
         panic!("Expected a skipped leader")
     }
 
-    for n in 0..number_of_leaders {
+    for n in 0..leader_count {
         let leader_round_2 = 2 * wave_length;
         let leader_offset = n as u64;
         if n == 0 {
-            if let LeaderStatus::Skip(leader, round) = sequence[number_of_leaders + n] {
+            if let LeaderStatus::Skip(leader, round) = sequence[leader_count + n] {
                 assert_eq!(leader, leader_2);
                 assert_eq!(round, leader_round_2);
             } else {
@@ -611,7 +611,7 @@ fn indirect_skip() {
             }
         } else {
             let leader_2 = leader_elector.elect_leader(leader_round_2 + leader_offset);
-            if let LeaderStatus::Commit(ref block) = sequence[number_of_leaders + n] {
+            if let LeaderStatus::Commit(ref block) = sequence[leader_count + n] {
                 assert_eq!(block.author(), leader_2);
             } else {
                 panic!("Expected a committed leader")
@@ -620,11 +620,11 @@ fn indirect_skip() {
     }
 
     // Ensure we commit the leaders of wave 3.
-    for n in 0..number_of_leaders {
+    for n in 0..leader_count {
         let leader_round_3 = 3 * wave_length;
         let leader_offset = n as u64;
         let leader_3 = leader_elector.elect_leader(leader_round_3 + leader_offset);
-        if let LeaderStatus::Commit(ref block) = sequence[2 * number_of_leaders + n] {
+        if let LeaderStatus::Commit(ref block) = sequence[2 * leader_count + n] {
             assert_eq!(block.author(), leader_3);
         } else {
             panic!("Expected a committed leader")
@@ -641,7 +641,7 @@ fn undecided() {
     let total = committee.total_stake();
     let strong_quorum = 2 * total / 3 + 1;
     let wave_length = 3;
-    let number_of_leaders = strong_quorum as usize;
+    let leader_count = strong_quorum as usize;
 
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
 
@@ -679,7 +679,7 @@ fn undecided() {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
             weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
-            number_of_leaders,
+            leader_count,
             pipeline: false,
         },
         Metrics::new_for_test(0),

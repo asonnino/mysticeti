@@ -27,6 +27,6 @@ node_parameters:
     secs: 2
     nanos: 0
   max_block_size: 4194304
-  number_of_leaders: 2
+  leader_count: 2
   enable_pipelining: true
   enable_synchronizer: false
