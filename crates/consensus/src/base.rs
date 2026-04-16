@@ -19,8 +19,10 @@ use dag::{
 type WaveNumber = u64;
 
 pub struct BaseCommitterOptions {
-    /// The quorum threshold for commit decisions.
+    /// The quorum threshold for direct commit decisions.
     pub strong_quorum: Stake,
+    /// The quorum threshold for indirect commit decisions.
+    pub weak_quorum: Stake,
     /// The length of a wave (minimum 2).
     pub wave_length: u64,
     /// The offset used in the leader-election protocol. This is used by the multi-committer to
@@ -136,8 +138,9 @@ impl BaseCommitter {
         &self,
         potential_certificate: &Data<StatementBlock>,
         leader_block: &Data<StatementBlock>,
+        quorum: Stake,
     ) -> bool {
-        let mut votes_stake_aggregator = StakeAggregator::new(self.options.strong_quorum);
+        let mut votes_stake_aggregator = StakeAggregator::new(quorum);
         for reference in potential_certificate.includes() {
             let potential_vote = self
                 .block_reader
@@ -184,7 +187,11 @@ impl BaseCommitter {
             .into_iter()
             .filter(|leader_block| {
                 potential_certificates.iter().any(|potential_certificate| {
-                    self.is_certificate(potential_certificate, leader_block)
+                    self.is_certificate(
+                        potential_certificate,
+                        leader_block,
+                        self.options.weak_quorum,
+                    )
                 })
             })
             .collect();
@@ -240,7 +247,7 @@ impl BaseCommitter {
         let mut certificate_stake_aggregator = StakeAggregator::new(self.options.strong_quorum);
         for decision_block in &decision_blocks {
             let authority = decision_block.reference().authority;
-            if self.is_certificate(decision_block, leader_block) {
+            if self.is_certificate(decision_block, leader_block, self.options.strong_quorum) {
                 tracing::trace!(
                     "[{self}] {decision_block:?} is a certificate for leader {leader_block:?}"
                 );

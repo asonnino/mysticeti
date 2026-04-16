@@ -44,6 +44,7 @@ impl Committer {
             for leader_offset in 0..protocol.number_of_leaders {
                 let options = BaseCommitterOptions {
                     strong_quorum: protocol.strong_quorum,
+                    weak_quorum: protocol.weak_quorum,
                     wave_length: protocol.wave_length,
                     round_offset,
                     leader_offset: leader_offset as RoundNumber,

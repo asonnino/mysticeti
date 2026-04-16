@@ -25,6 +25,7 @@ fn direct_commit() {
         storage.block_reader().clone(),
         Protocol {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
+            weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
             number_of_leaders: 1,
             pipeline: false,
@@ -58,6 +59,7 @@ fn idempotence() {
         storage.block_reader().clone(),
         Protocol {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
+            weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
             number_of_leaders: 1,
             pipeline: false,
@@ -96,6 +98,7 @@ fn multiple_direct_commit() {
             storage.block_reader().clone(),
             Protocol {
                 strong_quorum: 2 * committee.total_stake() / 3 + 1,
+                weak_quorum: 2 * committee.total_stake() / 3 + 1,
                 wave_length: 3,
                 number_of_leaders: 1,
                 pipeline: false,
@@ -137,6 +140,7 @@ fn direct_commit_late_call() {
         storage.block_reader().clone(),
         Protocol {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
+            weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
             number_of_leaders: 1,
             pipeline: false,
@@ -176,6 +180,7 @@ fn no_genesis_commit() {
             storage.block_reader().clone(),
             Protocol {
                 strong_quorum: 2 * committee.total_stake() / 3 + 1,
+                weak_quorum: 2 * committee.total_stake() / 3 + 1,
                 wave_length: 3,
                 number_of_leaders: 1,
                 pipeline: false,
@@ -223,6 +228,7 @@ fn no_leader() {
         storage.block_reader().clone(),
         Protocol {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
+            weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
             number_of_leaders: 1,
             pipeline: false,
@@ -278,6 +284,7 @@ fn direct_skip() {
         storage.block_reader().clone(),
         Protocol {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
+            weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
             number_of_leaders: 1,
             pipeline: false,
@@ -382,6 +389,7 @@ fn indirect_commit() {
         storage.block_reader().clone(),
         Protocol {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
+            weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
             number_of_leaders: 1,
             pipeline: false,
@@ -454,6 +462,7 @@ fn indirect_skip() {
         storage.block_reader().clone(),
         Protocol {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
+            weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
             number_of_leaders: 1,
             pipeline: false,
@@ -538,6 +547,7 @@ fn undecided() {
         storage.block_reader().clone(),
         Protocol {
             strong_quorum: 2 * committee.total_stake() / 3 + 1,
+            weak_quorum: 2 * committee.total_stake() / 3 + 1,
             wave_length: 3,
             number_of_leaders: 1,
             pipeline: false,
