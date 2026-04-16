@@ -14,14 +14,14 @@ use dag::{
     types::AuthorityIndex,
 };
 
-use crate::universal_committer::{UniversalCommitter, UniversalCommitterBuilder};
+use crate::protocols::mysticeti::Mysticeti;
 
 fn open_core<C: Ctx>(
     authority: AuthorityIndex,
     committee: &Arc<Committee>,
     public_config: &NodePublicConfig,
     path: Option<&Path>,
-) -> Core<C, UniversalCommitter> {
+) -> Core<C, Mysticeti> {
     let metrics = Metrics::new_for_test(committee.len());
     let (storage, recovered) = if let Some(path) = path {
         let wal_path = path.join(format!("{:03}.wal", authority));
@@ -30,14 +30,12 @@ fn open_core<C: Ctx>(
     } else {
         Storage::new_for_tests(authority, metrics.clone(), committee)
     };
-    let committer = UniversalCommitterBuilder::new(
+    let committer = Mysticeti::new(
         committee.clone(),
         storage.block_reader().clone(),
         metrics.clone(),
-    )
-    .with_number_of_leaders(public_config.parameters.number_of_leaders)
-    .with_pipeline(public_config.parameters.enable_pipelining)
-    .build();
+        public_config.parameters.number_of_leaders,
+    );
     let (block_handler, _tx_sender) = RealBlockHandler::new(metrics.clone());
     let private_config = NodePrivateConfig::new_for_tests(authority);
     Core::open(
@@ -53,14 +51,14 @@ fn open_core<C: Ctx>(
     )
 }
 
-pub fn committee_and_cores<C: Ctx>(n: usize) -> (Arc<Committee>, Vec<Core<C, UniversalCommitter>>) {
+pub fn committee_and_cores<C: Ctx>(n: usize) -> (Arc<Committee>, Vec<Core<C, Mysticeti>>) {
     committee_and_cores_persisted(n, None)
 }
 
 pub fn committee_and_cores_persisted<C: Ctx>(
     n: usize,
     path: Option<&Path>,
-) -> (Arc<Committee>, Vec<Core<C, UniversalCommitter>>) {
+) -> (Arc<Committee>, Vec<Core<C, Mysticeti>>) {
     let public_config = NodePublicConfig::new_for_tests(n);
     committee_and_cores_with_config(n, path, &public_config)
 }
@@ -69,7 +67,7 @@ fn committee_and_cores_with_config<C: Ctx>(
     n: usize,
     path: Option<&Path>,
     public_config: &NodePublicConfig,
-) -> (Arc<Committee>, Vec<Core<C, UniversalCommitter>>) {
+) -> (Arc<Committee>, Vec<Core<C, Mysticeti>>) {
     let committee = committee(n);
     let cores = committee
         .authorities()

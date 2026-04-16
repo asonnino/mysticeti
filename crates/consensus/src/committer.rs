@@ -3,15 +3,9 @@
 
 use std::{collections::VecDeque, sync::Arc};
 
-use crate::{
-    DEFAULT_WAVE_LENGTH,
-    base_committer::{BaseCommitter, BaseCommitterOptions},
-    leader_election::LeaderElector,
-    thresholds::ProtocolThresholds,
-};
+use crate::base::BaseCommitter;
 use dag::{
-    committee::Committee,
-    consensus::{DagConsensus, LeaderStatus},
+    consensus::LeaderStatus,
     metrics::Metrics,
     storage::BlockReader,
     types::{AuthorityIndex, BlockReference, RoundNumber, Stake, format_authority_round},
@@ -20,14 +14,32 @@ use dag::{
 /// A universal committer uses a collection of committers to commit a sequence of leaders.
 /// It can be configured to use a combination of different commit strategies, including
 /// multi-leaders, backup leaders, and pipelines.
-pub struct UniversalCommitter {
+pub struct Committer {
     block_reader: BlockReader,
     committers: Vec<BaseCommitter>,
-    thresholds: ProtocolThresholds,
+    strong_quorum: Stake,
     metrics: Arc<Metrics>,
 }
 
-impl UniversalCommitter {
+impl Committer {
+    pub(crate) fn new(
+        block_reader: BlockReader,
+        committers: Vec<BaseCommitter>,
+        strong_quorum: Stake,
+        metrics: Arc<Metrics>,
+    ) -> Self {
+        Self {
+            block_reader,
+            committers,
+            strong_quorum,
+            metrics,
+        }
+    }
+
+    pub fn strong_quorum(&self) -> Stake {
+        self.strong_quorum
+    }
+
     /// Try to commit part of the dag. This function is idempotent and returns a list of
     /// ordered decided leaders.
     #[tracing::instrument(skip_all, fields(last_decided = %last_decided))]
@@ -100,91 +112,5 @@ impl UniversalCommitter {
             LeaderStatus::Undecided(..) => return,
         };
         self.metrics.inc_committed_leaders(&authority, &status);
-    }
-}
-
-/// A builder for a universal committer. By default, the builder creates a single base committer,
-/// that is, a single leader and no pipeline.
-pub struct UniversalCommitterBuilder {
-    committee: Arc<Committee>,
-    block_reader: BlockReader,
-    metrics: Arc<Metrics>,
-    wave_length: RoundNumber,
-    number_of_leaders: usize,
-    pipeline: bool,
-}
-
-impl UniversalCommitterBuilder {
-    pub fn new(
-        committee: Arc<Committee>,
-        block_reader: BlockReader,
-        metrics: Arc<Metrics>,
-    ) -> Self {
-        Self {
-            committee,
-            block_reader,
-            metrics,
-            wave_length: DEFAULT_WAVE_LENGTH,
-            number_of_leaders: 1,
-            pipeline: false,
-        }
-    }
-
-    pub fn with_wave_length(mut self, wave_length: RoundNumber) -> Self {
-        self.wave_length = wave_length;
-        self
-    }
-
-    pub fn with_number_of_leaders(mut self, number_of_leaders: usize) -> Self {
-        self.number_of_leaders = number_of_leaders;
-        self
-    }
-
-    pub fn with_pipeline(mut self, pipeline: bool) -> Self {
-        self.pipeline = pipeline;
-        self
-    }
-
-    pub fn build(self) -> UniversalCommitter {
-        let thresholds = ProtocolThresholds::mysticeti(self.committee.total_stake());
-        let mut committers = Vec::new();
-        let pipeline_stages = if self.pipeline { self.wave_length } else { 1 };
-        for round_offset in 0..pipeline_stages {
-            for leader_offset in 0..self.number_of_leaders {
-                let options = BaseCommitterOptions {
-                    wave_length: self.wave_length,
-                    round_offset,
-                    leader_offset: leader_offset as RoundNumber,
-                };
-                let committer = BaseCommitter::new(
-                    self.committee.clone(),
-                    self.block_reader.clone(),
-                    LeaderElector::new(self.committee.len()),
-                    thresholds.strong_quorum(),
-                )
-                .with_options(options);
-                committers.push(committer);
-            }
-        }
-        UniversalCommitter {
-            block_reader: self.block_reader,
-            committers,
-            thresholds,
-            metrics: self.metrics,
-        }
-    }
-}
-
-impl DagConsensus for UniversalCommitter {
-    fn quorum_threshold(&self) -> Stake {
-        self.thresholds.strong_quorum()
-    }
-
-    fn try_commit(&self, last_decided: BlockReference) -> Vec<LeaderStatus> {
-        self.try_commit(last_decided)
-    }
-
-    fn get_leaders(&self, round: RoundNumber) -> Vec<AuthorityIndex> {
-        self.get_leaders(round)
     }
 }

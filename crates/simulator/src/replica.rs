@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use consensus::universal_committer::{UniversalCommitter, UniversalCommitterBuilder};
+use consensus::protocols::mysticeti::Mysticeti;
 use dag::{
     config::{NodePrivateConfig, NodePublicConfig},
     core::{
@@ -20,7 +20,7 @@ use dag::committee::Committee;
 
 use crate::context::SimulatorContext;
 
-type Syncer = NetworkSyncer<SimulatorContext, UniversalCommitter>;
+type Syncer = NetworkSyncer<SimulatorContext, Mysticeti>;
 
 pub(crate) struct SimulatedReplica {
     authority: AuthorityIndex,
@@ -54,14 +54,12 @@ impl SimulatedReplica {
         let (storage, recovered) =
             Storage::new_for_tests(self.authority, metrics.clone(), &self.committee);
 
-        let committer = UniversalCommitterBuilder::new(
+        let committer = Mysticeti::new(
             self.committee.clone(),
             storage.block_reader().clone(),
             metrics.clone(),
-        )
-        .with_number_of_leaders(self.public_config.parameters.number_of_leaders)
-        .with_pipeline(self.public_config.parameters.enable_pipelining)
-        .build();
+            self.public_config.parameters.number_of_leaders,
+        );
 
         let (block_handler, _) = RealBlockHandler::new(metrics.clone());
         let commit_handler =

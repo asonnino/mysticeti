@@ -1,10 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    DEFAULT_WAVE_LENGTH, leader_election::LeaderElector, thresholds::ProtocolThresholds,
-    universal_committer::UniversalCommitterBuilder,
-};
+use crate::{builder::CommitterBuilder, leader::LeaderElector, protocols::mysticeti::Mysticeti};
 use dag::{
     consensus::LeaderStatus,
     metrics::Metrics,
@@ -23,11 +20,12 @@ fn direct_commit() {
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
     build_dag(&committee, &mut storage, None, 5);
 
-    let committer = UniversalCommitterBuilder::new(
+    let committer = CommitterBuilder::new(
         committee.clone(),
         storage.block_reader().clone(),
         Metrics::new_for_test(0),
     )
+    .with_wave_length(Mysticeti::WAVE_LENGTH)
     .build();
 
     let last_committed = BlockReference::new_test(0, 0);
@@ -38,7 +36,7 @@ fn direct_commit() {
     if let LeaderStatus::Commit(ref block) = sequence[0] {
         assert_eq!(
             block.author(),
-            leader_elector.elect_leader(DEFAULT_WAVE_LENGTH)
+            leader_elector.elect_leader(Mysticeti::WAVE_LENGTH)
         )
     } else {
         panic!("Expected a committed leader")
@@ -54,11 +52,12 @@ fn idempotence() {
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
     build_dag(&committee, &mut storage, None, 5);
 
-    let committer = UniversalCommitterBuilder::new(
+    let committer = CommitterBuilder::new(
         committee.clone(),
         storage.block_reader().clone(),
         Metrics::new_for_test(0),
     )
+    .with_wave_length(Mysticeti::WAVE_LENGTH)
     .build();
 
     // Commit one block.
@@ -79,7 +78,7 @@ fn idempotence() {
 fn multiple_direct_commit() {
     let committee = committee(4);
     let leader_elector = LeaderElector::new(committee.len());
-    let wave_length = DEFAULT_WAVE_LENGTH;
+    let wave_length = Mysticeti::WAVE_LENGTH;
 
     let mut last_committed = BlockReference::new_test(0, 0);
     for n in 1..=10 {
@@ -87,12 +86,12 @@ fn multiple_direct_commit() {
         let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
         build_dag(&committee, &mut storage, None, enough_blocks);
 
-        let committer = UniversalCommitterBuilder::new(
+        let committer = CommitterBuilder::new(
             committee.clone(),
             storage.block_reader().clone(),
             Metrics::new_for_test(0),
         )
-        .with_wave_length(wave_length)
+        .with_wave_length(Mysticeti::WAVE_LENGTH)
         .build();
 
         let sequence = committer.try_commit(last_committed);
@@ -117,19 +116,19 @@ fn multiple_direct_commit() {
 fn direct_commit_late_call() {
     let committee = committee(4);
     let leader_elector = LeaderElector::new(committee.len());
-    let wave_length = DEFAULT_WAVE_LENGTH;
+    let wave_length = Mysticeti::WAVE_LENGTH;
 
     let n = 10;
     let enough_blocks = wave_length * (n + 1) - 1;
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
     build_dag(&committee, &mut storage, None, enough_blocks);
 
-    let committer = UniversalCommitterBuilder::new(
+    let committer = CommitterBuilder::new(
         committee.clone(),
         storage.block_reader().clone(),
         Metrics::new_for_test(0),
     )
-    .with_wave_length(wave_length)
+    .with_wave_length(Mysticeti::WAVE_LENGTH)
     .build();
 
     let last_committed = BlockReference::new_test(0, 0);
@@ -152,19 +151,19 @@ fn direct_commit_late_call() {
 #[tracing_test::traced_test]
 fn no_genesis_commit() {
     let committee = committee(4);
-    let wave_length = DEFAULT_WAVE_LENGTH;
+    let wave_length = Mysticeti::WAVE_LENGTH;
 
     let first_commit_round = 2 * wave_length - 1;
     for r in 0..first_commit_round {
         let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
         build_dag(&committee, &mut storage, None, r);
 
-        let committer = UniversalCommitterBuilder::new(
+        let committer = CommitterBuilder::new(
             committee.clone(),
             storage.block_reader().clone(),
             Metrics::new_for_test(0),
         )
-        .with_wave_length(wave_length)
+        .with_wave_length(Mysticeti::WAVE_LENGTH)
         .build();
 
         let last_committed = BlockReference::new_test(0, 0);
@@ -180,7 +179,7 @@ fn no_genesis_commit() {
 fn no_leader() {
     let committee = committee(4);
     let leader_elector = LeaderElector::new(committee.len());
-    let wave_length = DEFAULT_WAVE_LENGTH;
+    let wave_length = Mysticeti::WAVE_LENGTH;
 
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
 
@@ -202,12 +201,12 @@ fn no_leader() {
     build_dag(&committee, &mut storage, Some(references), decision_round_1);
 
     // Ensure no blocks are committed.
-    let committer = UniversalCommitterBuilder::new(
+    let committer = CommitterBuilder::new(
         committee.clone(),
         storage.block_reader().clone(),
         Metrics::new_for_test(0),
     )
-    .with_wave_length(wave_length)
+    .with_wave_length(Mysticeti::WAVE_LENGTH)
     .build();
 
     let last_committed = BlockReference::new_test(0, 0);
@@ -229,7 +228,7 @@ fn no_leader() {
 fn direct_skip() {
     let committee = committee(4);
     let leader_elector = LeaderElector::new(committee.len());
-    let wave_length = DEFAULT_WAVE_LENGTH;
+    let wave_length = Mysticeti::WAVE_LENGTH;
 
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
 
@@ -253,12 +252,12 @@ fn direct_skip() {
     );
 
     // Ensure the leader is skipped.
-    let committer = UniversalCommitterBuilder::new(
+    let committer = CommitterBuilder::new(
         committee.clone(),
         storage.block_reader().clone(),
         Metrics::new_for_test(0),
     )
-    .with_wave_length(wave_length)
+    .with_wave_length(Mysticeti::WAVE_LENGTH)
     .build();
 
     let last_committed = BlockReference::new_test(0, 0);
@@ -280,8 +279,10 @@ fn direct_skip() {
 fn indirect_commit() {
     let committee = committee(4);
     let leader_elector = LeaderElector::new(committee.len());
-    let thresholds = ProtocolThresholds::mysticeti(committee.total_stake());
-    let wave_length = DEFAULT_WAVE_LENGTH;
+    let total = committee.total_stake();
+    let strong_quorum = 2 * total / 3 + 1;
+    let one_fault = total / 3 + 1;
+    let wave_length = Mysticeti::WAVE_LENGTH;
 
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
 
@@ -299,7 +300,7 @@ fn indirect_commit() {
     // Only 2f+1 validators vote for the 1st leader.
     let connections_with_leader_1 = committee
         .authorities()
-        .take(thresholds.strong_quorum() as usize)
+        .take(strong_quorum as usize)
         .map(|authority| (authority, references_1.clone()))
         .collect();
     let references_with_votes_for_leader_1 =
@@ -307,7 +308,7 @@ fn indirect_commit() {
 
     let connections_without_leader_1 = committee
         .authorities()
-        .skip(thresholds.strong_quorum() as usize)
+        .skip(strong_quorum as usize)
         .map(|authority| (authority, references_without_leader_1.clone()))
         .collect();
     let references_without_votes_for_leader_1 =
@@ -318,7 +319,7 @@ fn indirect_commit() {
 
     let connections_with_votes_for_leader_1 = committee
         .authorities()
-        .take(thresholds.weak_quorum() as usize)
+        .take(one_fault as usize)
         .map(|authority| (authority, references_with_votes_for_leader_1.clone()))
         .collect();
     references_3.extend(build_dag_layer(
@@ -329,11 +330,11 @@ fn indirect_commit() {
     let references: Vec<_> = references_without_votes_for_leader_1
         .into_iter()
         .chain(references_with_votes_for_leader_1)
-        .take(thresholds.strong_quorum() as usize)
+        .take(strong_quorum as usize)
         .collect();
     let connections_without_votes_for_leader_1 = committee
         .authorities()
-        .skip(thresholds.weak_quorum() as usize)
+        .skip(one_fault as usize)
         .map(|authority| (authority, references.clone()))
         .collect();
     references_3.extend(build_dag_layer(
@@ -351,12 +352,12 @@ fn indirect_commit() {
     );
 
     // Ensure we commit the 1st leader.
-    let committer = UniversalCommitterBuilder::new(
+    let committer = CommitterBuilder::new(
         committee.clone(),
         storage.block_reader().clone(),
         Metrics::new_for_test(0),
     )
-    .with_wave_length(wave_length)
+    .with_wave_length(Mysticeti::WAVE_LENGTH)
     .build();
 
     let last_committed = BlockReference::new_test(0, 0);
@@ -379,8 +380,9 @@ fn indirect_commit() {
 fn indirect_skip() {
     let committee = committee(4);
     let leader_elector = LeaderElector::new(committee.len());
-    let thresholds = ProtocolThresholds::mysticeti(committee.total_stake());
-    let wave_length = DEFAULT_WAVE_LENGTH;
+    let total = committee.total_stake();
+    let one_fault = total / 3 + 1;
+    let wave_length = Mysticeti::WAVE_LENGTH;
 
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
 
@@ -401,14 +403,14 @@ fn indirect_skip() {
 
     let connections_with_leader_2 = committee
         .authorities()
-        .take(thresholds.weak_quorum() as usize)
+        .take(one_fault as usize)
         .map(|authority| (authority, references_2.clone()))
         .collect();
     references.extend(build_dag_layer(connections_with_leader_2, &mut storage));
 
     let connections_without_leader_2 = committee
         .authorities()
-        .skip(thresholds.weak_quorum() as usize)
+        .skip(one_fault as usize)
         .map(|authority| (authority, references_without_leader_2.clone()))
         .collect();
     references.extend(build_dag_layer(connections_without_leader_2, &mut storage));
@@ -418,12 +420,12 @@ fn indirect_skip() {
     build_dag(&committee, &mut storage, Some(references), decision_round_3);
 
     // Ensure we commit the leaders of wave 1 and 3
-    let committer = UniversalCommitterBuilder::new(
+    let committer = CommitterBuilder::new(
         committee.clone(),
         storage.block_reader().clone(),
         Metrics::new_for_test(0),
     )
-    .with_wave_length(wave_length)
+    .with_wave_length(Mysticeti::WAVE_LENGTH)
     .build();
 
     let last_committed = BlockReference::new_test(0, 0);
@@ -465,8 +467,9 @@ fn indirect_skip() {
 fn undecided() {
     let committee = committee(4);
     let leader_elector = LeaderElector::new(committee.len());
-    let thresholds = ProtocolThresholds::mysticeti(committee.total_stake());
-    let wave_length = DEFAULT_WAVE_LENGTH;
+    let total = committee.total_stake();
+    let strong_quorum = 2 * total / 3 + 1;
+    let wave_length = Mysticeti::WAVE_LENGTH;
 
     let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
 
@@ -485,7 +488,7 @@ fn undecided() {
     let mut authorities = committee.authorities();
     let leader_connection = vec![(authorities.next().unwrap(), references_1)];
     let non_leader_connections: Vec<_> = authorities
-        .take((thresholds.strong_quorum() - 1) as usize)
+        .take((strong_quorum - 1) as usize)
         .map(|authority| (authority, references_without_leader_1.clone()))
         .collect();
 
@@ -497,12 +500,12 @@ fn undecided() {
     build_dag(&committee, &mut storage, Some(references), decision_round_1);
 
     // Ensure no blocks are committed.
-    let committer = UniversalCommitterBuilder::new(
+    let committer = CommitterBuilder::new(
         committee.clone(),
         storage.block_reader().clone(),
         Metrics::new_for_test(0),
     )
-    .with_wave_length(wave_length)
+    .with_wave_length(Mysticeti::WAVE_LENGTH)
     .build();
 
     let last_committed = BlockReference::new_test(0, 0);

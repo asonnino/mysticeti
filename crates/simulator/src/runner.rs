@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use consensus::universal_committer::UniversalCommitter;
+use consensus::protocols::mysticeti::Mysticeti;
 use dag::{
     committee::Committee,
     config::{ConfigError, ImportExport, NodePublicConfig},
@@ -23,7 +23,7 @@ use crate::{
     tracing::SimulatorTracing,
 };
 
-type Syncer = NetworkSyncer<SimulatorContext, UniversalCommitter>;
+type Syncer = NetworkSyncer<SimulatorContext, Mysticeti>;
 
 pub struct SimulationResults {
     pub committed_leaders: Vec<Vec<BlockReference>>,

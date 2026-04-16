@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use consensus::test_util::{committee_and_cores, committee_and_cores_persisted};
-use consensus::thresholds::ProtocolThresholds;
 use dag::{
     context::TokioCtx,
     core::threshold_clock::threshold_clock_valid_non_genesis,
@@ -56,8 +55,7 @@ fn test_randomized_simple_exchange() {
     for seed in 0..100u8 {
         let mut rng = StdRng::from_seed([seed; 32]);
         let (committee, mut cores) = committee_and_cores::<TokioCtx>(4);
-        let quorum_threshold =
-            ProtocolThresholds::mysticeti(committee.total_stake()).strong_quorum();
+        let quorum_threshold = 2 * committee.total_stake() / 3 + 1;
 
         let mut pending: Vec<_> = committee.authorities().map(|_| vec![]).collect();
         for core in &mut cores {

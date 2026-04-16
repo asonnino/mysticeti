@@ -3,7 +3,7 @@
 
 use std::{fmt::Display, sync::Arc};
 
-use crate::{DEFAULT_WAVE_LENGTH, MINIMUM_WAVE_LENGTH, leader_election::LeaderElector};
+use crate::leader::LeaderElector;
 use dag::{
     committee::{Committee, StakeAggregator},
     consensus::LeaderStatus,
@@ -19,24 +19,16 @@ use dag::{
 type WaveNumber = u64;
 
 pub struct BaseCommitterOptions {
-    /// The length of a wave (minimum 3)
+    /// The quorum threshold for commit decisions.
+    pub strong_quorum: Stake,
+    /// The length of a wave (minimum 2).
     pub wave_length: u64,
-    /// The offset used in the leader-election protocol. THis is used by the multi-committer to
+    /// The offset used in the leader-election protocol. This is used by the multi-committer to
     ///  ensure that each [`BaseCommitter`] instance elects a different leader.
     pub leader_offset: u64,
     /// The offset of the first wave. This is used by the pipelined committer to ensure that each
     /// [`BaseCommitter`] instances operates on a different view of the dag.
     pub round_offset: u64,
-}
-
-impl Default for BaseCommitterOptions {
-    fn default() -> Self {
-        Self {
-            wave_length: DEFAULT_WAVE_LENGTH,
-            leader_offset: 0,
-            round_offset: 0,
-        }
-    }
 }
 
 /// The [`BaseCommitter`] contains the bare bone commit logic. Once instantiated, the method
@@ -46,7 +38,6 @@ pub struct BaseCommitter {
     committee: Arc<Committee>,
     block_reader: BlockReader,
     leader_elector: LeaderElector,
-    strong_quorum: Stake,
     options: BaseCommitterOptions,
 }
 
@@ -55,21 +46,14 @@ impl BaseCommitter {
         committee: Arc<Committee>,
         block_reader: BlockReader,
         leader_elector: LeaderElector,
-        strong_quorum: Stake,
+        options: BaseCommitterOptions,
     ) -> Self {
         Self {
             committee,
             block_reader,
             leader_elector,
-            strong_quorum,
-            options: BaseCommitterOptions::default(),
+            options,
         }
-    }
-
-    pub fn with_options(mut self, options: BaseCommitterOptions) -> Self {
-        assert!(options.wave_length >= MINIMUM_WAVE_LENGTH);
-        self.options = options;
-        self
     }
 
     /// Return the wave in which the specified round belongs.
@@ -153,7 +137,7 @@ impl BaseCommitter {
         potential_certificate: &Data<StatementBlock>,
         leader_block: &Data<StatementBlock>,
     ) -> bool {
-        let mut votes_stake_aggregator = StakeAggregator::new(self.strong_quorum);
+        let mut votes_stake_aggregator = StakeAggregator::new(self.options.strong_quorum);
         for reference in potential_certificate.includes() {
             let potential_vote = self
                 .block_reader
@@ -224,7 +208,7 @@ impl BaseCommitter {
     fn enough_leader_blame(&self, voting_round: RoundNumber, leader: AuthorityIndex) -> bool {
         let voting_blocks = self.block_reader.get_blocks_by_round(voting_round);
 
-        let mut blame_stake_aggregator = StakeAggregator::new(self.strong_quorum);
+        let mut blame_stake_aggregator = StakeAggregator::new(self.options.strong_quorum);
         for voting_block in &voting_blocks {
             let voter = voting_block.reference().authority;
             if voting_block
@@ -253,7 +237,7 @@ impl BaseCommitter {
     ) -> bool {
         let decision_blocks = self.block_reader.get_blocks_by_round(decision_round);
 
-        let mut certificate_stake_aggregator = StakeAggregator::new(self.strong_quorum);
+        let mut certificate_stake_aggregator = StakeAggregator::new(self.options.strong_quorum);
         for decision_block in &decision_blocks {
             let authority = decision_block.reference().authority;
             if self.is_certificate(decision_block, leader_block) {
