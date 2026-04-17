@@ -12,7 +12,7 @@ use dag::{
     consensus::LeaderStatus,
     data::Data,
     storage::BlockReader,
-    types::{Authority, BlockReference, RoundNumber, Stake, StatementBlock},
+    types::{Authority, Block, BlockReference, RoundNumber, Stake},
 };
 
 /// The consensus protocol operates in 'waves'. Each wave is composed of a leader round, at least
@@ -105,7 +105,7 @@ impl BaseCommitter {
     fn find_support(
         &self,
         (author, round): (Authority, RoundNumber),
-        from: &Data<StatementBlock>,
+        from: &Data<Block>,
     ) -> Option<BlockReference> {
         if from.round() < round {
             return None;
@@ -131,11 +131,7 @@ impl BaseCommitter {
 
     /// Check whether the specified block (`potential_certificate`) is a vote for
     /// the specified leader (`leader_block`).
-    fn is_vote(
-        &self,
-        potential_vote: &Data<StatementBlock>,
-        leader_block: &Data<StatementBlock>,
-    ) -> bool {
+    fn is_vote(&self, potential_vote: &Data<Block>, leader_block: &Data<Block>) -> bool {
         let (author, round) = leader_block.author_round();
         self.find_support((author, round), potential_vote) == Some(*leader_block.reference())
     }
@@ -144,8 +140,8 @@ impl BaseCommitter {
     /// the specified leader (`leader_block`).
     fn is_certificate(
         &self,
-        potential_certificate: &Data<StatementBlock>,
-        leader_block: &Data<StatementBlock>,
+        potential_certificate: &Data<Block>,
+        leader_block: &Data<Block>,
         quorum: Stake,
     ) -> bool {
         let mut votes_stake_aggregator = StakeAggregator::new(quorum);
@@ -169,7 +165,7 @@ impl BaseCommitter {
     /// if it has a certified link to the anchor. Otherwise, we skip the target leader.
     fn decide_leader_from_anchor(
         &self,
-        anchor: &Data<StatementBlock>,
+        anchor: &Data<Block>,
         leader: Authority,
         leader_round: RoundNumber,
     ) -> LeaderStatus {
@@ -239,7 +235,7 @@ impl BaseCommitter {
     fn enough_leader_support(
         &self,
         decision_round: RoundNumber,
-        leader_block: &Data<StatementBlock>,
+        leader_block: &Data<Block>,
     ) -> bool {
         let decision_blocks = self.block_reader.get_blocks_by_round(decision_round);
 

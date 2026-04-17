@@ -11,7 +11,7 @@ use crate::{
     data::Data,
     storage::BlockReader,
     storage::Storage,
-    types::{BlockReference, StatementBlock},
+    types::{Block, BlockReference},
     wal::WalPosition,
 };
 
@@ -19,7 +19,7 @@ use crate::{
 /// returning newly connected blocks
 pub struct BlockManager {
     /// Keeps all pending blocks.
-    blocks_pending: HashMap<BlockReference, Data<StatementBlock>>,
+    blocks_pending: HashMap<BlockReference, Data<Block>>,
     /// Keeps all the blocks (`HashSet<BlockReference>`) waiting
     /// for `BlockReference` to be processed.
     block_references_waiting: HashMap<BlockReference, HashSet<BlockReference>>,
@@ -41,11 +41,11 @@ impl BlockManager {
 
     pub fn add_blocks(
         &mut self,
-        blocks: Vec<Data<StatementBlock>>,
+        blocks: Vec<Data<Block>>,
         storage: &mut Storage,
-    ) -> Vec<(WalPosition, Data<StatementBlock>)> {
-        let mut blocks: VecDeque<Data<StatementBlock>> = blocks.into();
-        let mut newly_blocks_processed: Vec<(WalPosition, Data<StatementBlock>)> = vec![];
+    ) -> Vec<(WalPosition, Data<Block>)> {
+        let mut blocks: VecDeque<Data<Block>> = blocks.into();
+        let mut newly_blocks_processed: Vec<(WalPosition, Data<Block>)> = vec![];
         while let Some(block) = blocks.pop_front() {
             // Update the highest known round number.
 

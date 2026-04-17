@@ -6,7 +6,7 @@ use dag::{
     context::TokioCtx,
     core::threshold_clock::threshold_clock_valid_non_genesis,
     data::Data,
-    types::{Authority, StatementBlock},
+    types::{Authority, Block},
 };
 use rand::{Rng, SeedableRng, prelude::StdRng};
 
@@ -165,7 +165,7 @@ fn test_core_recovery() {
     }
 }
 
-fn push_all(p: &mut [Vec<Data<StatementBlock>>], except: Authority, block: &Data<StatementBlock>) {
+fn push_all(p: &mut [Vec<Data<Block>>], except: Authority, block: &Data<Block>) {
     for (i, q) in p.iter_mut().enumerate() {
         if Authority::from(i) != except {
             q.push(block.clone());

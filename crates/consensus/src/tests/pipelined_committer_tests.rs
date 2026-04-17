@@ -12,7 +12,7 @@ use dag::{
     metrics::Metrics,
     storage::Storage,
     test_util::{build_dag, build_dag_layer, committee},
-    types::{BlockReference, StatementBlock},
+    types::{Block, BlockReference},
 };
 
 /// Commit one leader.
@@ -193,7 +193,7 @@ fn no_leader() {
 
     let genesis: Vec<_> = committee
         .authorities()
-        .map(|authority| *StatementBlock::new_genesis(authority).reference())
+        .map(|authority| *Block::new_genesis(authority).reference())
         .collect();
     let connections = committee
         .authorities()

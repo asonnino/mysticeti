@@ -9,7 +9,7 @@ use dag::{
     consensus::DagConsensus,
     core::{core_thread::CoreDispatch, syncer::Syncer},
     data::Data,
-    types::{Authority, BlockReference, RoundNumber, StatementBlock},
+    types::{Authority, Block, BlockReference, RoundNumber},
 };
 
 use crate::context::SimulatorContext;
@@ -27,7 +27,7 @@ impl<D: DagConsensus> InlineDispatcher<D> {
 }
 
 impl<D: DagConsensus> CoreDispatch<SimulatorContext, D> for InlineDispatcher<D> {
-    async fn add_blocks(&self, blocks: Vec<Data<StatementBlock>>) {
+    async fn add_blocks(&self, blocks: Vec<Data<Block>>) {
         self.syncer.lock().add_blocks(blocks);
     }
 

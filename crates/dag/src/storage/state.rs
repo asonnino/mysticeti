@@ -9,14 +9,14 @@ use crate::{
     block_store::{CommitData, OwnBlockData},
     core::MetaStatement,
     data::Data,
-    types::{BlockReference, StatementBlock},
+    types::{Block, BlockReference},
     wal::WalPosition,
 };
 
 pub struct RecoveredState {
     pub last_own_block: Option<OwnBlockData>,
     pub pending: VecDeque<(WalPosition, MetaStatement)>,
-    pub unprocessed_blocks: Vec<Data<StatementBlock>>,
+    pub unprocessed_blocks: Vec<Data<Block>>,
 
     pub last_committed_leader: Option<BlockReference>,
     pub committed_blocks: HashSet<BlockReference>,
@@ -26,7 +26,7 @@ pub struct RecoveredState {
 pub(super) struct RecoveredStateBuilder {
     pending: BTreeMap<WalPosition, RawMetaStatement>,
     last_own_block: Option<OwnBlockData>,
-    unprocessed_blocks: Vec<Data<StatementBlock>>,
+    unprocessed_blocks: Vec<Data<Block>>,
 
     last_committed_leader: Option<BlockReference>,
     committed_blocks: HashSet<BlockReference>,
@@ -37,7 +37,7 @@ impl RecoveredStateBuilder {
         Self::default()
     }
 
-    pub(super) fn block(&mut self, pos: WalPosition, block: &Data<StatementBlock>) {
+    pub(super) fn block(&mut self, pos: WalPosition, block: &Data<Block>) {
         self.pending
             .insert(pos, RawMetaStatement::Include(*block.reference()));
         self.unprocessed_blocks.push(block.clone());

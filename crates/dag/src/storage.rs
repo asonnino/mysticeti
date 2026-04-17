@@ -12,7 +12,7 @@ use crate::{
     committee::Committee,
     data::Data,
     metrics::Metrics,
-    types::{Authority, StatementBlock},
+    types::{Authority, Block},
 };
 
 use self::{
@@ -83,7 +83,7 @@ impl Storage {
         &self.reader
     }
 
-    pub(crate) fn insert_block(&mut self, block: Data<StatementBlock>) -> WalPosition {
+    pub(crate) fn insert_block(&mut self, block: Data<Block>) -> WalPosition {
         let pos = self
             .wal_writer
             .write(WAL_ENTRY_BLOCK, block.serialized_bytes())

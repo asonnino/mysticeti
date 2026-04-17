@@ -11,9 +11,12 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use zeroize::Zeroize;
 
 use super::{
+    Block, BlockReference, TimestampNs,
     serde::{BytesVisitor, FromBytes},
-    types::{Authority, BlockReference, RoundNumber, StatementBlock, TimestampNs, Transaction},
+    transaction::Transaction,
+    types::RoundNumber,
 };
+use crate::authority::Authority;
 
 pub const SIGNATURE_SIZE: usize = 64;
 pub const BLOCK_DIGEST_SIZE: usize = 32;
@@ -146,7 +149,7 @@ impl<T: AsBytes> CryptoHash for T {
 
 impl PublicKey {
     #[cfg(not(test))]
-    pub fn verify_block(&self, block: &StatementBlock) -> Result<(), ed25519_consensus::Error> {
+    pub fn verify_block(&self, block: &Block) -> Result<(), ed25519_consensus::Error> {
         let signature = Signature::from(block.signature().0);
         let mut hasher = BlockHasher::default();
         BlockDigest::digest_without_signature(
@@ -162,7 +165,7 @@ impl PublicKey {
     }
 
     #[cfg(test)]
-    pub fn verify_block(&self, _block: &StatementBlock) -> Result<(), ed25519_consensus::Error> {
+    pub fn verify_block(&self, _block: &Block) -> Result<(), ed25519_consensus::Error> {
         Ok(())
     }
 }

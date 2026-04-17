@@ -16,7 +16,7 @@ use crate::{
     data::Data,
     metrics::Metrics,
     storage::BlockReader,
-    types::{BlockReference, StatementBlock, Transaction, TransactionLocator},
+    types::{Block, BlockReference, Transaction, TransactionLocator},
 };
 
 pub struct RealBlockHandler<C: Ctx> {
@@ -64,7 +64,7 @@ impl<C: Ctx> RealBlockHandler<C> {
         response
     }
 
-    pub fn handle_proposal(&mut self, block: &Data<StatementBlock>) {
+    pub fn handle_proposal(&mut self, block: &Data<Block>) {
         let mut transaction_time = self.transaction_time.lock();
         let mut count = 0usize;
         for (locator, _) in block.shared_transactions() {
@@ -138,7 +138,7 @@ impl<C: Ctx> CommitHandler<C> {
     pub fn handle_commit(
         &mut self,
         block_reader: &BlockReader,
-        committed_leaders: Vec<Data<StatementBlock>>,
+        committed_leaders: Vec<Data<Block>>,
     ) -> Vec<CommittedSubDag> {
         let current_timestamp = C::timestamp_utc();
 

@@ -78,3 +78,62 @@ impl fmt::Display for AuthorityRound {
         write!(f, "{}{}", self.0, self.1)
     }
 }
+
+#[derive(Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Default)]
+pub struct AuthoritySet(u128); // todo - support more then 128 authorities
+
+impl AuthoritySet {
+    #[inline]
+    pub fn insert(&mut self, v: Authority) -> bool {
+        let bit = 1u128 << v.as_u64();
+        if self.0 & bit == bit {
+            return false;
+        }
+        self.0 |= bit;
+        true
+    }
+
+    pub fn present(&self) -> impl Iterator<Item = Authority> + '_ {
+        (0..128u64)
+            .filter(|bit| (self.0 & 1 << bit) != 0)
+            .map(Authority::new)
+    }
+
+    #[inline]
+    pub fn clear(&mut self) {
+        self.0 = 0;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn authority_set_test() {
+        let mut a = AuthoritySet::default();
+        assert!(a.insert(Authority::new(0)));
+        assert!(!a.insert(Authority::new(0)));
+        assert!(a.insert(Authority::new(1)));
+        assert!(a.insert(Authority::new(2)));
+        assert!(!a.insert(Authority::new(1)));
+        assert!(a.insert(Authority::new(127)));
+        assert!(!a.insert(Authority::new(127)));
+        assert!(a.insert(Authority::new(3)));
+        assert!(!a.insert(Authority::new(3)));
+        assert!(!a.insert(Authority::new(2)));
+    }
+
+    #[test]
+    fn authority_present_test() {
+        let mut a = AuthoritySet::default();
+        let present: Vec<Authority> = vec![1, 2, 3, 4, 5, 64, 127]
+            .into_iter()
+            .map(Authority::new)
+            .collect();
+        for x in &present {
+            a.insert(*x);
+        }
+        assert_eq!(present, a.present().collect::<Vec<_>>());
+    }
+}

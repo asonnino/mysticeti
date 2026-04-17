@@ -12,7 +12,7 @@ use crate::{
     context::Ctx,
     data::Data,
     metrics::Metrics,
-    types::{Authority, RoundNumber, StatementBlock},
+    types::{Authority, Block, RoundNumber},
 };
 
 pub struct Syncer<C: Ctx, D: DagConsensus> {
@@ -77,7 +77,7 @@ impl<C: Ctx, D: DagConsensus> Syncer<C, D> {
         }
     }
 
-    pub fn add_blocks(&mut self, blocks: Vec<Data<StatementBlock>>) {
+    pub fn add_blocks(&mut self, blocks: Vec<Data<Block>>) {
         let _timer = self.metrics.utilization_timer("Syncer::add_blocks");
         self.core.add_blocks(blocks);
         self.try_new_block();

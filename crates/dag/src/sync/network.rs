@@ -25,7 +25,7 @@ use crate::{
     config::NodePublicConfig,
     data::Data,
     metrics::{Metrics, print_network_address_table},
-    types::{Authority, BlockReference, RoundNumber, StatementBlock},
+    types::{Authority, Block, BlockReference, RoundNumber},
 };
 
 const PING_INTERVAL: Duration = Duration::from_secs(30);
@@ -33,7 +33,7 @@ const PING_INTERVAL: Duration = Duration::from_secs(30);
 #[derive(Debug, Serialize, Deserialize)]
 pub enum NetworkMessage {
     SubscribeOwnFrom(RoundNumber), // subscribe from round number excluding
-    Block(Data<StatementBlock>),
+    Block(Data<Block>),
     /// Request a few specific block references (this is not indented for large requests).
     RequestBlocks(Vec<BlockReference>),
     /// Indicate that a requested block is not found.

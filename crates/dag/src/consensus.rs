@@ -6,7 +6,7 @@ use std::{collections::HashSet, fmt};
 use crate::{
     data::Data,
     storage::BlockReader,
-    types::{Authority, BlockReference, RoundNumber, Stake, StatementBlock},
+    types::{Authority, Block, BlockReference, RoundNumber, Stake},
 };
 
 /// Trait that a consensus protocol must implement to
@@ -38,7 +38,7 @@ pub trait DagConsensus: Send + 'static {
 /// debugging, testing, and composition with advanced commit strategies.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum LeaderStatus {
-    Commit(Data<StatementBlock>),
+    Commit(Data<Block>),
     Skip(Authority, RoundNumber),
     Undecided(Authority, RoundNumber),
 }
@@ -68,7 +68,7 @@ impl LeaderStatus {
         }
     }
 
-    pub fn into_decided_block(self) -> Option<Data<StatementBlock>> {
+    pub fn into_decided_block(self) -> Option<Data<Block>> {
         match self {
             Self::Commit(block) => Some(block),
             Self::Skip(..) => None,
@@ -110,12 +110,12 @@ pub struct CommittedSubDag {
     /// A reference to the anchor of the sub-dag
     pub anchor: BlockReference,
     /// All the committed blocks that are part of this sub-dag
-    pub blocks: Vec<Data<StatementBlock>>,
+    pub blocks: Vec<Data<Block>>,
 }
 
 impl CommittedSubDag {
     /// Create new (empty) sub-dag.
-    pub fn new(anchor: BlockReference, blocks: Vec<Data<StatementBlock>>) -> Self {
+    pub fn new(anchor: BlockReference, blocks: Vec<Data<Block>>) -> Self {
         Self { anchor, blocks }
     }
 
@@ -154,7 +154,7 @@ impl Linearizer {
     fn collect_sub_dag(
         &mut self,
         block_reader: &BlockReader,
-        leader_block: Data<StatementBlock>,
+        leader_block: Data<Block>,
     ) -> CommittedSubDag {
         let mut to_commit = Vec::new();
 
@@ -179,7 +179,7 @@ impl Linearizer {
     pub fn handle_commit(
         &mut self,
         block_reader: &BlockReader,
-        committed_leaders: Vec<Data<StatementBlock>>,
+        committed_leaders: Vec<Data<Block>>,
     ) -> Vec<CommittedSubDag> {
         let mut committed = vec![];
         for leader_block in committed_leaders {

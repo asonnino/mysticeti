@@ -18,7 +18,7 @@ use crate::{
     metrics::Metrics,
     storage::Storage,
     sync::network::Network,
-    types::{Authority, BlockReference, RoundNumber, StatementBlock},
+    types::{Authority, Block, BlockReference, RoundNumber},
 };
 
 pub fn committee(n: usize) -> Arc<Committee> {
@@ -95,7 +95,7 @@ pub fn build_dag(
         None => {
             let (references, genesis): (Vec<_>, Vec<_>) = committee
                 .authorities()
-                .map(StatementBlock::new_genesis)
+                .map(Block::new_genesis)
                 .map(|block| (*block.reference(), block))
                 .unzip();
             for block in genesis {
@@ -110,7 +110,7 @@ pub fn build_dag(
         let (references, blocks): (Vec<_>, Vec<_>) = committee
             .authorities()
             .map(|authority| {
-                let block = Data::new(StatementBlock::new(
+                let block = Data::new(Block::new(
                     authority,
                     round,
                     includes.clone(),
@@ -137,7 +137,7 @@ pub fn build_dag_layer(
     let mut references = Vec::new();
     for (authority, parents) in connections {
         let round = parents.first().unwrap().round + 1;
-        let block = Data::new(StatementBlock::new(
+        let block = Data::new(Block::new(
             authority,
             round,
             parents,

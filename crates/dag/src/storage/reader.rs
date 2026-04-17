@@ -9,9 +9,7 @@ use crate::{
     committee::Committee,
     data::Data,
     metrics::Metrics,
-    types::{
-        Authority, BlockReference, RoundNumber, StatementBlock, Transaction, TransactionLocator,
-    },
+    types::{Authority, Block, BlockReference, RoundNumber, Transaction, TransactionLocator},
 };
 
 use super::{
@@ -54,7 +52,7 @@ impl BlockReader {
             }
             let block = match tag {
                 WAL_ENTRY_BLOCK => {
-                    let block = Data::<StatementBlock>::from_bytes(data)
+                    let block = Data::<Block>::from_bytes(data)
                         .expect("Failed to deserialize data from wal");
                     builder.block(pos, &block);
                     block
@@ -108,12 +106,12 @@ impl BlockReader {
         self.metrics.inc_block_store_entries();
     }
 
-    pub fn get_block(&self, reference: BlockReference) -> Option<Data<StatementBlock>> {
+    pub fn get_block(&self, reference: BlockReference) -> Option<Data<Block>> {
         let entry = self.inner.read().get_block(reference);
         entry.map(|pos| self.read_index(pos))
     }
 
-    pub fn get_blocks_by_round(&self, round: RoundNumber) -> Vec<Data<StatementBlock>> {
+    pub fn get_blocks_by_round(&self, round: RoundNumber) -> Vec<Data<Block>> {
         let entries = self.inner.read().get_blocks_by_round(round);
         self.read_index_vec(entries)
     }
@@ -122,7 +120,7 @@ impl BlockReader {
         &self,
         authority: Authority,
         round: RoundNumber,
-    ) -> Vec<Data<StatementBlock>> {
+    ) -> Vec<Data<Block>> {
         let entries = self
             .inner
             .read()
@@ -180,11 +178,7 @@ impl BlockReader {
         self.metrics.set_wal_mappings(retained_maps as i64);
     }
 
-    pub fn get_own_blocks(
-        &self,
-        from_excluded: RoundNumber,
-        limit: usize,
-    ) -> Vec<Data<StatementBlock>> {
+    pub fn get_own_blocks(&self, from_excluded: RoundNumber, limit: usize) -> Vec<Data<Block>> {
         let entries = self.inner.read().get_own_blocks(from_excluded, limit);
         self.read_index_vec(entries)
     }
@@ -194,7 +188,7 @@ impl BlockReader {
         from_excluded: RoundNumber,
         authority: Authority,
         limit: usize,
-    ) -> Vec<Data<StatementBlock>> {
+    ) -> Vec<Data<Block>> {
         let entries = self
             .inner
             .read()
@@ -211,11 +205,7 @@ impl BlockReader {
     }
 
     /// Check whether `earlier_block` is an ancestor of `later_block`.
-    pub fn linked(
-        &self,
-        later_block: &Data<StatementBlock>,
-        earlier_block: &Data<StatementBlock>,
-    ) -> bool {
+    pub fn linked(&self, later_block: &Data<Block>, earlier_block: &Data<Block>) -> bool {
         let mut parents = vec![later_block.clone()];
         for r in (earlier_block.round()..later_block.round()).rev() {
             parents = self
@@ -231,7 +221,7 @@ impl BlockReader {
         parents.contains(earlier_block)
     }
 
-    fn read_index(&self, entry: IndexEntry) -> Data<StatementBlock> {
+    fn read_index(&self, entry: IndexEntry) -> Data<Block> {
         match entry {
             IndexEntry::WalPosition(position) => {
                 self.metrics.inc_block_store_loaded_blocks();
@@ -254,7 +244,7 @@ impl BlockReader {
         }
     }
 
-    fn read_index_vec(&self, entries: Vec<IndexEntry>) -> Vec<Data<StatementBlock>> {
+    fn read_index_vec(&self, entries: Vec<IndexEntry>) -> Vec<Data<Block>> {
         entries
             .into_iter()
             .map(|pos| self.read_index(pos))

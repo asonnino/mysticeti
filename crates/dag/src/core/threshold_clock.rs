@@ -5,7 +5,7 @@ use std::cmp::Ordering;
 
 use crate::{
     committee::{Committee, StakeAggregator},
-    types::{BlockReference, RoundNumber, Stake, StatementBlock},
+    types::{Block, BlockReference, RoundNumber, Stake},
 };
 
 /// A block is threshold clock valid if:
@@ -14,7 +14,7 @@ use crate::{
 /// - the set of authorities with blocks included has a
 ///   quorum in the current committee.
 pub fn threshold_clock_valid_non_genesis(
-    block: &StatementBlock,
+    block: &Block,
     committee: &Committee,
     quorum_threshold: Stake,
 ) -> bool {

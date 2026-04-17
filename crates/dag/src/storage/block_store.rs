@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     consensus::CommittedSubDag,
     data::Data,
-    types::{Authority, BlockDigest, BlockReference, RoundNumber, StatementBlock},
+    types::{Authority, Block, BlockDigest, BlockReference, RoundNumber},
     wal::{Tag, WalPosition, WalWriter},
 };
 
@@ -32,7 +32,7 @@ pub(super) struct BlockStore {
 #[derive(Clone)]
 pub(super) enum IndexEntry {
     WalPosition(WalPosition),
-    Loaded(WalPosition, Data<StatementBlock>),
+    Loaded(WalPosition, Data<Block>),
 }
 
 impl BlockStore {
@@ -135,7 +135,7 @@ impl BlockStore {
         self.update_last_seen_by_authority(reference);
     }
 
-    pub(super) fn add_loaded(&mut self, position: WalPosition, block: Data<StatementBlock>) {
+    pub(super) fn add_loaded(&mut self, position: WalPosition, block: Data<Block>) {
         self.highest_round = max(self.highest_round, block.round());
         self.add_own_index(block.reference());
         self.update_last_seen_by_authority(block.reference());
@@ -257,19 +257,17 @@ pub(super) const WAL_ENTRY_COMMIT: Tag = 5;
 // Bytes, see OwnBlockData::from_bytes/write_to_wal
 pub struct OwnBlockData {
     pub next_entry: WalPosition,
-    pub block: Data<StatementBlock>,
+    pub block: Data<Block>,
 }
 
 const OWN_BLOCK_HEADER_SIZE: usize = 8;
 
 impl OwnBlockData {
-    pub(super) fn from_bytes(
-        bytes: Bytes,
-    ) -> bincode::Result<(OwnBlockData, Data<StatementBlock>)> {
+    pub(super) fn from_bytes(bytes: Bytes) -> bincode::Result<(OwnBlockData, Data<Block>)> {
         let next_entry = &bytes[..OWN_BLOCK_HEADER_SIZE];
         let next_entry: WalPosition = bincode::deserialize(next_entry)?;
         let block = bytes.slice(OWN_BLOCK_HEADER_SIZE..);
-        let block = Data::<StatementBlock>::from_bytes(block)?;
+        let block = Data::<Block>::from_bytes(block)?;
         let own_block_data = OwnBlockData {
             next_entry,
             block: block.clone(),

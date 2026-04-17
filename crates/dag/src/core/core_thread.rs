@@ -11,12 +11,11 @@ use crate::{
     context::Ctx,
     data::Data,
     metrics::Metrics,
-    types::{Authority, BlockReference, RoundNumber, StatementBlock},
+    types::{Authority, Block, BlockReference, RoundNumber},
 };
 
 pub trait CoreDispatch<C: Ctx, D: DagConsensus>: Send + Sync {
-    fn add_blocks(&self, blocks: Vec<Data<StatementBlock>>)
-    -> impl Future<Output = ()> + Send + '_;
+    fn add_blocks(&self, blocks: Vec<Data<Block>>) -> impl Future<Output = ()> + Send + '_;
 
     fn force_new_block(&self, round: RoundNumber) -> impl Future<Output = ()> + Send + '_;
 
@@ -34,7 +33,7 @@ pub trait CoreDispatch<C: Ctx, D: DagConsensus>: Send + Sync {
 }
 
 enum CoreThreadCommand {
-    AddBlocks(Vec<Data<StatementBlock>>, oneshot::Sender<()>),
+    AddBlocks(Vec<Data<Block>>, oneshot::Sender<()>),
     ForceNewBlock(RoundNumber, oneshot::Sender<()>),
     Cleanup(oneshot::Sender<()>),
     GetMissing(oneshot::Sender<Vec<HashSet<BlockReference>>>),
@@ -73,7 +72,7 @@ impl<C: Ctx, D: DagConsensus> ThreadedDispatcher<C, D> {
 }
 
 impl<C: Ctx, D: DagConsensus> CoreDispatch<C, D> for ThreadedDispatcher<C, D> {
-    async fn add_blocks(&self, blocks: Vec<Data<StatementBlock>>) {
+    async fn add_blocks(&self, blocks: Vec<Data<Block>>) {
         let (tx, rx) = oneshot::channel();
         self.send(CoreThreadCommand::AddBlocks(blocks, tx)).await;
         rx.await.expect("core thread is not expected to stop");

@@ -29,7 +29,7 @@ use crate::{
     state::RecoveredState,
     storage::BlockReader,
     storage::Storage,
-    types::{Authority, BlockReference, RoundNumber, Stake, StatementBlock, Transaction},
+    types::{Authority, Block, BlockReference, RoundNumber, Stake, Transaction},
     wal::{WalPosition, WalSyncer},
 };
 
@@ -96,11 +96,11 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
             // Initialize empty block store
             // A lot of this code is shared with Self::add_blocks,
             // this is not great and some code reuse would be great
-            let own_genesis_block = StatementBlock::new_genesis(authority);
+            let own_genesis_block = Block::new_genesis(authority);
             let other_genesis_blocks: Vec<_> = committee
                 .authorities()
                 .filter(|&a| a != authority)
-                .map(StatementBlock::new_genesis)
+                .map(Block::new_genesis)
                 .collect();
             assert_eq!(own_genesis_block.author(), authority);
             for block in other_genesis_blocks {
@@ -158,7 +158,7 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
 
     // Note that generally when you update this function you
     // also want to change genesis initialization above
-    pub fn add_blocks(&mut self, blocks: Vec<Data<StatementBlock>>) -> Vec<Data<StatementBlock>> {
+    pub fn add_blocks(&mut self, blocks: Vec<Data<Block>>) -> Vec<Data<Block>> {
         let _timer = self.metrics.utilization_timer("Core::add_blocks");
         let processed = self.block_manager.add_blocks(blocks, &mut self.storage);
         let mut result = Vec::with_capacity(processed.len());
@@ -185,7 +185,7 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
             .push_back((position, MetaStatement::Payload(statements)));
     }
 
-    pub fn try_new_block(&mut self) -> Option<Data<StatementBlock>> {
+    pub fn try_new_block(&mut self) -> Option<Data<Block>> {
         let _timer = self.metrics.utilization_timer("Core::try_new_block");
         let clock_round = self.threshold_clock.get_round();
         if clock_round <= self.last_proposed() {
@@ -236,7 +236,7 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
 
         assert!(!includes.is_empty());
         let time_ns = C::timestamp_utc().as_nanos();
-        let block = StatementBlock::new_with_signer(
+        let block = Block::new_with_signer(
             self.authority,
             clock_round,
             includes,
@@ -288,7 +288,7 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
         self.storage.syncer()
     }
 
-    fn proposed_block_stats(&self, block: &Data<StatementBlock>) {
+    fn proposed_block_stats(&self, block: &Data<Block>) {
         self.metrics
             .observe_proposed_block_size_bytes(block.serialized_bytes().len());
         let transactions = block.transactions().len();
@@ -297,7 +297,7 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
         self.metrics.observe_proposed_block_vote_count(0);
     }
 
-    pub fn try_commit(&mut self) -> Vec<Data<StatementBlock>> {
+    pub fn try_commit(&mut self) -> Vec<Data<Block>> {
         let sequence: Vec<_> = self
             .committer
             .try_commit(self.last_commit_leader)
@@ -369,7 +369,7 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
         self.storage.block_reader()
     }
 
-    pub fn last_own_block(&self) -> &Data<StatementBlock> {
+    pub fn last_own_block(&self) -> &Data<Block> {
         &self.last_own_block.block
     }
 
