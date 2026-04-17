@@ -12,9 +12,7 @@ use dag::{
     consensus::LeaderStatus,
     data::Data,
     storage::BlockReader,
-    types::{
-        AuthorityIndex, BlockReference, RoundNumber, Stake, StatementBlock, format_authority_round,
-    },
+    types::{Authority, BlockReference, RoundNumber, Stake, StatementBlock},
 };
 
 /// The consensus protocol operates in 'waves'. Each wave is composed of a leader round, at least
@@ -89,7 +87,7 @@ impl BaseCommitter {
     /// The leader-elect protocol is offset by `leader_offset` to ensure that different
     /// committers with different leader offsets elect different leaders for the same round number.
     /// This function returns `None` if there are no leaders for the specified round.
-    pub(crate) fn elect_leader(&self, round: RoundNumber) -> Option<AuthorityIndex> {
+    pub(crate) fn elect_leader(&self, round: RoundNumber) -> Option<Authority> {
         let wave = self.wave_number(round);
         if self.leader_round(wave) != round {
             return None;
@@ -106,7 +104,7 @@ impl BaseCommitter {
     /// or indirectly includes. A will also support B at (author, round).
     fn find_support(
         &self,
-        (author, round): (AuthorityIndex, RoundNumber),
+        (author, round): (Authority, RoundNumber),
         from: &Data<StatementBlock>,
     ) -> Option<BlockReference> {
         if from.round() < round {
@@ -172,7 +170,7 @@ impl BaseCommitter {
     fn decide_leader_from_anchor(
         &self,
         anchor: &Data<StatementBlock>,
-        leader: AuthorityIndex,
+        leader: Authority,
         leader_round: RoundNumber,
     ) -> LeaderStatus {
         // Get the block(s) proposed by the leader. There could be more than one leader block
@@ -212,7 +210,7 @@ impl BaseCommitter {
     fn enough_leader_blame(
         &self,
         voting_round: RoundNumber,
-        leader: AuthorityIndex,
+        leader: Authority,
         leader_round: RoundNumber,
     ) -> bool {
         let voting_blocks = self.block_reader.get_blocks_by_round(voting_round);
@@ -226,7 +224,7 @@ impl BaseCommitter {
             {
                 tracing::trace!(
                     "[{self}] {voting_block:?} is a blame for leader {}",
-                    format_authority_round(leader, leader_round)
+                    leader.with_round(leader_round)
                 );
                 if blame_stake_aggregator.add(voter, &self.committee) {
                     return true;
@@ -262,10 +260,14 @@ impl BaseCommitter {
 
     /// Apply the indirect decision rule to the specified leader to see whether we can
     /// indirect-commit or indirect-skip it.
-    #[tracing::instrument(skip_all, fields(leader = %format_authority_round(leader, leader_round)))]
+    #[tracing::instrument(
+        level = "debug",
+        skip_all,
+        fields(leader = %leader.with_round(leader_round))
+    )]
     pub(crate) fn try_indirect_decide<'a>(
         &self,
-        leader: AuthorityIndex,
+        leader: Authority,
         leader_round: RoundNumber,
         leaders: impl Iterator<Item = &'a LeaderStatus>,
     ) -> LeaderStatus {
@@ -276,7 +278,7 @@ impl BaseCommitter {
         for anchor in anchors {
             tracing::trace!(
                 "[{self}] Trying to indirect-decide {} using anchor {anchor}",
-                format_authority_round(leader, leader_round),
+                leader.with_round(leader_round),
             );
             match anchor {
                 LeaderStatus::Commit(anchor) => {
@@ -292,10 +294,14 @@ impl BaseCommitter {
 
     /// Apply the direct decision rule to the specified leader to see whether we can direct-commit
     /// or direct-skip it.
-    #[tracing::instrument(skip_all, fields(leader = %format_authority_round(leader, leader_round)))]
+    #[tracing::instrument(
+        level = "debug",
+        skip_all,
+        fields(leader = %leader.with_round(leader_round))
+    )]
     pub(crate) fn try_direct_decide(
         &self,
-        leader: AuthorityIndex,
+        leader: Authority,
         leader_round: RoundNumber,
     ) -> LeaderStatus {
         let wave = self.wave_number(leader_round);
@@ -321,7 +327,7 @@ impl BaseCommitter {
         if supported.next().is_some() {
             panic!(
                 "[{self}] More than one certified block for {}",
-                format_authority_round(leader, leader_round)
+                leader.with_round(leader_round)
             )
         }
 

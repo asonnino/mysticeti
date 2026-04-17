@@ -6,7 +6,7 @@ use dag::{
     context::TokioCtx,
     core::threshold_clock::threshold_clock_valid_non_genesis,
     data::Data,
-    types::{AuthorityIndex, StatementBlock},
+    types::{Authority, StatementBlock},
 };
 use rand::{Rng, SeedableRng, prelude::StdRng};
 
@@ -74,8 +74,8 @@ fn test_randomized_simple_exchange() {
         let target_round = 10;
         for i in 0..1000 {
             let authority = committee.random_authority(&mut rng);
-            let core = &mut cores[authority as usize];
-            let this_pending = &mut pending[authority as usize];
+            let core = &mut cores[authority.index()];
+            let this_pending = &mut pending[authority.index()];
             let c = rng.gen_range(1..4usize);
             let mut blocks = vec![];
             for _ in 0..c {
@@ -165,13 +165,9 @@ fn test_core_recovery() {
     }
 }
 
-fn push_all(
-    p: &mut [Vec<Data<StatementBlock>>],
-    except: AuthorityIndex,
-    block: &Data<StatementBlock>,
-) {
+fn push_all(p: &mut [Vec<Data<StatementBlock>>], except: Authority, block: &Data<StatementBlock>) {
     for (i, q) in p.iter_mut().enumerate() {
-        if i as AuthorityIndex != except {
+        if Authority::from(i) != except {
             q.push(block.clone());
         }
     }

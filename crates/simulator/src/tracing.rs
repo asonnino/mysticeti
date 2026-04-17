@@ -15,7 +15,7 @@ use tracing_subscriber::{
     util::SubscriberInitExt,
 };
 
-use dag::types::{AuthorityIndex, format_authority_index};
+use dag::authority::Authority;
 
 use super::context::SimulatorContext;
 
@@ -49,7 +49,7 @@ impl SimulatorTracing {
 }
 
 /// Stored in span extensions by [`AuthorityLayer`].
-struct SpanAuthority(AuthorityIndex);
+struct SpanAuthority(Authority);
 
 /// Extracts `authority` from span fields and stores it
 /// in extensions for the formatter to read.
@@ -75,16 +75,19 @@ where
     }
 }
 
-struct AuthorityVisitor(Option<AuthorityIndex>);
+struct AuthorityVisitor(Option<Authority>);
 
 impl Visit for AuthorityVisitor {
-    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
         if field.name() == "authority" {
-            self.0 = Some(value);
+            let s = format!("{value:?}");
+            if let Some(ch) = s.chars().next()
+                && ch.is_ascii_uppercase()
+            {
+                self.0 = Some(Authority::new((ch as u64) - (b'A' as u64)));
+            }
         }
     }
-
-    fn record_debug(&mut self, _field: &tracing::field::Field, _value: &dyn std::fmt::Debug) {}
 }
 
 struct SimulatorFormat(Format<Compact, SimulatorTime>);
@@ -111,7 +114,7 @@ where
             }
         }
         if let Some(authority) = authority {
-            write!(writer, "[{}] ", format_authority_index(authority))?;
+            write!(writer, "[{}] ", authority)?;
         } else {
             write!(writer, "[?] ")?;
         }
@@ -132,6 +135,7 @@ mod test {
     use std::io;
     use std::sync::{Arc, Mutex};
 
+    use dag::types::Authority;
     use tracing::Subscriber;
     use tracing_subscriber::{fmt::format, layer::SubscriberExt};
 
@@ -159,8 +163,8 @@ mod test {
             .with(fmt_layer)
     }
 
-    #[tracing::instrument(skip_all, fields(authority = authority))]
-    fn instrumented_fn(authority: u64) {
+    #[tracing::instrument(skip_all, fields(authority = %authority))]
+    fn instrumented_fn(authority: Authority) {
         tracing::info!("from instrumented fn");
     }
 
@@ -170,7 +174,7 @@ mod test {
         let subscriber = make_subscriber(buf.clone());
         tracing::subscriber::with_default(subscriber, || {
             tracing::Span::none().in_scope(|| {
-                instrumented_fn(3);
+                instrumented_fn(Authority::new(3));
             });
         });
         let output = String::from_utf8(buf.lock().unwrap().clone()).unwrap();

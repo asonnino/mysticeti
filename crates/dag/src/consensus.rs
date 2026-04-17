@@ -6,9 +6,7 @@ use std::{collections::HashSet, fmt};
 use crate::{
     data::Data,
     storage::BlockReader,
-    types::{
-        AuthorityIndex, BlockReference, RoundNumber, Stake, StatementBlock, format_authority_round,
-    },
+    types::{Authority, BlockReference, RoundNumber, Stake, StatementBlock},
 };
 
 /// Trait that a consensus protocol must implement to
@@ -32,7 +30,7 @@ pub trait DagConsensus: Send + 'static {
     /// may give those leaders extra time for liveness.
     /// Returns `None` for asynchronous protocols where
     /// the DAG should wait for all authorities equally.
-    fn get_leaders(&self, round: RoundNumber) -> Option<impl Iterator<Item = AuthorityIndex>>;
+    fn get_leaders(&self, round: RoundNumber) -> Option<impl Iterator<Item = Authority>>;
 }
 
 /// The status of every leader output by the committers. While the core only
@@ -41,8 +39,8 @@ pub trait DagConsensus: Send + 'static {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum LeaderStatus {
     Commit(Data<StatementBlock>),
-    Skip(AuthorityIndex, RoundNumber),
-    Undecided(AuthorityIndex, RoundNumber),
+    Skip(Authority, RoundNumber),
+    Undecided(Authority, RoundNumber),
 }
 
 impl LeaderStatus {
@@ -54,7 +52,7 @@ impl LeaderStatus {
         }
     }
 
-    pub fn authority(&self) -> AuthorityIndex {
+    pub fn authority(&self) -> Authority {
         match self {
             Self::Commit(block) => block.author(),
             Self::Skip(authority, _) => *authority,
@@ -96,10 +94,10 @@ impl fmt::Display for LeaderStatus {
         match self {
             Self::Commit(block) => write!(f, "Commit({})", block.reference()),
             Self::Skip(a, r) => {
-                write!(f, "Skip({})", format_authority_round(*a, *r))
+                write!(f, "Skip({})", a.with_round(*r))
             }
             Self::Undecided(a, r) => {
-                write!(f, "Undecided({})", format_authority_round(*a, *r))
+                write!(f, "Undecided({})", a.with_round(*r))
             }
         }
     }

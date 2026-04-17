@@ -18,7 +18,7 @@ use crate::{
     metrics::Metrics,
     storage::Storage,
     sync::network::Network,
-    types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
+    types::{Authority, BlockReference, RoundNumber, StatementBlock},
 };
 
 pub fn committee(n: usize) -> Arc<Committee> {
@@ -70,9 +70,8 @@ pub fn check_commits<C: Ctx, D: DagConsensus>(syncers: &[Syncer<C, D>]) {
 }
 
 pub fn print_stats<C: Ctx, D: DagConsensus>(syncers: &[Syncer<C, D>]) {
-    use crate::types::format_authority_index;
     for s in syncers {
-        let authority = format_authority_index(s.core().authority());
+        let authority = s.core().authority();
         let snapshot = s.core().metrics.collect();
         tracing::info!("Validator {authority} metrics:\n{snapshot}");
     }
@@ -132,7 +131,7 @@ pub fn build_dag(
 }
 
 pub fn build_dag_layer(
-    connections: Vec<(AuthorityIndex, Vec<BlockReference>)>,
+    connections: Vec<(Authority, Vec<BlockReference>)>,
     storage: &mut Storage,
 ) -> Vec<BlockReference> {
     let mut references = Vec::new();

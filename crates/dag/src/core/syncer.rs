@@ -12,7 +12,7 @@ use crate::{
     context::Ctx,
     data::Data,
     metrics::Metrics,
-    types::{AuthorityIndex, RoundNumber, StatementBlock},
+    types::{Authority, RoundNumber, StatementBlock},
 };
 
 pub struct Syncer<C: Ctx, D: DagConsensus> {
@@ -21,7 +21,7 @@ pub struct Syncer<C: Ctx, D: DagConsensus> {
     commit_period: u64,
     signals: SyncerSignals,
     commit_handler: CommitHandler<C>,
-    pub(crate) connected_authorities: HashSet<AuthorityIndex>,
+    pub(crate) connected_authorities: HashSet<Authority>,
     metrics: Arc<Metrics>,
 }
 
@@ -136,11 +136,11 @@ impl<C: Ctx, D: DagConsensus> Syncer<C, D> {
         &self.core
     }
 
-    pub fn connect_authority(&mut self, authority: AuthorityIndex) {
+    pub fn connect_authority(&mut self, authority: Authority) {
         self.connected_authorities.insert(authority);
     }
 
-    pub fn disconnect_authority(&mut self, authority: AuthorityIndex) {
+    pub fn disconnect_authority(&mut self, authority: Authority) {
         self.connected_authorities.remove(&authority);
     }
 }

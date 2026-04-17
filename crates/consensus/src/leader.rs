@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use dag::types::{AuthorityIndex, RoundNumber};
+use dag::types::{Authority, RoundNumber};
 
 /// Determines the leader for each round. Different
 /// consensus protocols may use different election
@@ -16,7 +16,7 @@ impl LeaderElector {
     }
 
     /// Round-robin leader election.
-    pub(crate) fn elect_leader(&self, round: RoundNumber) -> AuthorityIndex {
-        (round % self.committee_len as u64) as AuthorityIndex
+    pub(crate) fn elect_leader(&self, round: RoundNumber) -> Authority {
+        Authority::new(round % self.committee_len as u64)
     }
 }

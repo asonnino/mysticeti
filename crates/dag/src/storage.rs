@@ -12,7 +12,7 @@ use crate::{
     committee::Committee,
     data::Data,
     metrics::Metrics,
-    types::{AuthorityIndex, StatementBlock},
+    types::{Authority, StatementBlock},
 };
 
 use self::{
@@ -31,7 +31,7 @@ pub struct Storage {
 
 impl Storage {
     pub fn open(
-        authority: AuthorityIndex,
+        authority: Authority,
         wal_path: impl AsRef<Path>,
         metrics: Arc<Metrics>,
         committee: &Committee,
@@ -45,7 +45,7 @@ impl Storage {
 
     #[cfg(any(test, feature = "test-utils"))]
     pub fn new_for_tests(
-        authority: AuthorityIndex,
+        authority: Authority,
         metrics: Arc<Metrics>,
         committee: &Committee,
     ) -> (Self, RecoveredState) {

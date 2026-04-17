@@ -12,9 +12,7 @@ use zeroize::Zeroize;
 
 use super::{
     serde::{ByteRepr, BytesVisitor},
-    types::{
-        AuthorityIndex, BaseStatement, BlockReference, RoundNumber, StatementBlock, TimestampNs,
-    },
+    types::{Authority, BaseStatement, BlockReference, RoundNumber, StatementBlock, TimestampNs},
 };
 
 pub const SIGNATURE_SIZE: usize = 64;
@@ -39,7 +37,7 @@ type BlockHasher = blake2::Blake2b<digest::consts::U32>;
 impl BlockDigest {
     #[cfg(not(test))]
     pub fn new(
-        authority: AuthorityIndex,
+        authority: Authority,
         round: RoundNumber,
         includes: &[BlockReference],
         statements: &[BaseStatement],
@@ -61,7 +59,7 @@ impl BlockDigest {
 
     #[cfg(test)]
     pub fn new(
-        _authority: AuthorityIndex,
+        _authority: Authority,
         _round: RoundNumber,
         _includes: &[BlockReference],
         _statements: &[BaseStatement],
@@ -83,13 +81,13 @@ impl BlockDigest {
     #[cfg(not(test))]
     fn digest_without_signature(
         hasher: &mut BlockHasher,
-        authority: AuthorityIndex,
+        authority: Authority,
         round: RoundNumber,
         includes: &[BlockReference],
         statements: &[BaseStatement],
         meta_creation_time_ns: TimestampNs,
     ) {
-        authority.crypto_hash(hasher);
+        authority.as_u64().crypto_hash(hasher);
         round.crypto_hash(hasher);
         for include in includes {
             include.crypto_hash(hasher);
@@ -184,7 +182,7 @@ impl Signer {
     #[cfg(not(test))]
     pub fn sign_block(
         &self,
-        authority: AuthorityIndex,
+        authority: Authority,
         round: RoundNumber,
         includes: &[BlockReference],
         statements: &[BaseStatement],
@@ -207,7 +205,7 @@ impl Signer {
     #[cfg(test)]
     pub fn sign_block(
         &self,
-        _authority: AuthorityIndex,
+        _authority: Authority,
         _round: RoundNumber,
         _includes: &[BlockReference],
         _statements: &[BaseStatement],

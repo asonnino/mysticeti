@@ -1,20 +1,21 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{borrow::Borrow, collections::HashSet, ops::Range, sync::Arc};
+use std::{borrow::Borrow, collections::HashSet, sync::Arc};
 
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    authority::Authority,
     config::ImportExport,
     crypto::{PublicKey, Signer, dummy_public_key},
-    types::{AuthorityIndex, AuthoritySet, Stake},
+    types::{AuthoritySet, Stake},
 };
 
 #[derive(Serialize, Deserialize)]
 pub struct Committee {
-    authorities: Vec<Authority>,
+    authorities: Vec<AuthorityInfo>,
     total_stake: Stake,
 }
 
@@ -22,11 +23,14 @@ impl Committee {
     pub const DEFAULT_FILENAME: &'static str = "committee.yaml";
 
     pub fn new_test(stake: Vec<Stake>) -> Arc<Self> {
-        let authorities = stake.into_iter().map(Authority::test_from_stake).collect();
+        let authorities = stake
+            .into_iter()
+            .map(AuthorityInfo::test_from_stake)
+            .collect();
         Self::new(authorities)
     }
 
-    pub fn new(authorities: Vec<Authority>) -> Arc<Self> {
+    pub fn new(authorities: Vec<AuthorityInfo>) -> Arc<Self> {
         // todo - check duplicate public keys
         // Ensure the list is not empty
         assert!(!authorities.is_empty());
@@ -52,36 +56,37 @@ impl Committee {
         self.total_stake
     }
 
-    pub fn get_stake(&self, authority: AuthorityIndex) -> Option<Stake> {
+    pub fn get_stake(&self, authority: Authority) -> Option<Stake> {
         self.authorities
-            .get(authority as usize)
-            .map(Authority::stake)
+            .get(authority.index())
+            .map(AuthorityInfo::stake)
     }
 
-    pub fn get_public_key(&self, authority: AuthorityIndex) -> Option<&PublicKey> {
+    pub fn get_public_key(&self, authority: Authority) -> Option<&PublicKey> {
         self.authorities
-            .get(authority as usize)
-            .map(Authority::public_key)
+            .get(authority.index())
+            .map(AuthorityInfo::public_key)
     }
 
-    pub fn known_authority(&self, authority: AuthorityIndex) -> bool {
-        authority < self.len() as AuthorityIndex
+    pub fn known_authority(&self, authority: Authority) -> bool {
+        authority.index() < self.len()
     }
 
-    pub fn authorities(&self) -> Range<AuthorityIndex> {
-        0u64..(self.authorities.len() as AuthorityIndex)
+    pub fn authorities(&self) -> impl Iterator<Item = Authority> + '_ {
+        (0..self.authorities.len()).map(|i| Authority::new(i as u64))
     }
 
-    pub fn get_total_stake<A: Borrow<AuthorityIndex>>(&self, authorities: &HashSet<A>) -> Stake {
+    pub fn get_total_stake<A: Borrow<Authority>>(&self, authorities: &HashSet<A>) -> Stake {
         let mut total_stake = 0;
         for authority in authorities {
-            total_stake += self.authorities[*authority.borrow() as usize].stake();
+            total_stake += self.authorities[authority.borrow().index()].stake();
         }
         total_stake
     }
 
-    pub fn random_authority(&self, rng: &mut impl Rng) -> AuthorityIndex {
-        rng.gen_range(self.authorities())
+    pub fn random_authority(&self, rng: &mut impl Rng) -> Authority {
+        let index = rng.gen_range(0..self.len());
+        Authority::new(index as u64)
     }
 
     pub fn len(&self) -> usize {
@@ -96,7 +101,7 @@ impl Committee {
         Self::new(
             Signer::new_for_test(committee_size)
                 .into_iter()
-                .map(|keypair| Authority {
+                .map(|keypair| AuthorityInfo {
                     stake: 1,
                     public_key: keypair.public_key(),
                 })
@@ -106,12 +111,12 @@ impl Committee {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Authority {
+pub struct AuthorityInfo {
     stake: Stake,
     public_key: PublicKey,
 }
 
-impl Authority {
+impl AuthorityInfo {
     pub fn test_from_stake(stake: Stake) -> Self {
         Self {
             stake,
@@ -145,7 +150,7 @@ impl StakeAggregator {
         }
     }
 
-    pub fn add(&mut self, vote: AuthorityIndex, committee: &Committee) -> bool {
+    pub fn add(&mut self, vote: Authority, committee: &Committee) -> bool {
         let stake = committee.get_stake(vote).expect("Authority not found");
         if self.votes.insert(vote) {
             self.stake += stake;
@@ -158,7 +163,7 @@ impl StakeAggregator {
         self.stake = 0;
     }
 
-    pub fn voters(&self) -> impl Iterator<Item = AuthorityIndex> + '_ {
+    pub fn voters(&self) -> impl Iterator<Item = Authority> + '_ {
         self.votes.present()
     }
 }

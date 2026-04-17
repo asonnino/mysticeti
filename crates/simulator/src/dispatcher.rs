@@ -9,7 +9,7 @@ use dag::{
     consensus::DagConsensus,
     core::{core_thread::CoreDispatch, syncer::Syncer},
     data::Data,
-    types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
+    types::{Authority, BlockReference, RoundNumber, StatementBlock},
 };
 
 use crate::context::SimulatorContext;
@@ -48,7 +48,7 @@ impl<D: DagConsensus> CoreDispatch<SimulatorContext, D> for InlineDispatcher<D> 
             .to_vec()
     }
 
-    async fn authority_connection(&self, authority: AuthorityIndex, connected: bool) {
+    async fn authority_connection(&self, authority: Authority, connected: bool) {
         let mut lock = self.syncer.lock();
         if connected {
             lock.connect_authority(authority);

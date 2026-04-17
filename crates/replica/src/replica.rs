@@ -23,7 +23,7 @@ use dag::{
     metrics::Metrics,
     storage::Storage,
     sync::{net_sync::NetworkSyncer, network::Network},
-    types::AuthorityIndex,
+    types::Authority,
 };
 
 use crate::generator::TransactionGenerator;
@@ -31,7 +31,7 @@ use crate::generator::TransactionGenerator;
 use crate::prometheus as metrics_server;
 
 pub struct Replica {
-    authority: AuthorityIndex,
+    authority: Authority,
     committee: Arc<Committee>,
     public_config: NodePublicConfig,
     private_config: NodePrivateConfig,
@@ -42,7 +42,7 @@ pub struct Replica {
 
 impl Replica {
     pub(crate) fn new(
-        authority: AuthorityIndex,
+        authority: Authority,
         committee: Arc<Committee>,
         public_config: NodePublicConfig,
         private_config: NodePrivateConfig,
@@ -61,7 +61,7 @@ impl Replica {
         }
     }
 
-    #[tracing::instrument(skip_all, fields(authority = self.authority))]
+    #[tracing::instrument(skip_all, fields(authority = %self.authority))]
     pub async fn run(self) -> Result<ReplicaHandle> {
         let metrics = Metrics::new(&self.registry, self.committee.len(), None);
 
@@ -156,7 +156,7 @@ impl Replica {
 }
 
 pub struct ReplicaHandle {
-    authority: AuthorityIndex,
+    authority: Authority,
     network_synchronizer: NetworkSyncer<TokioCtx, Committer>,
     metrics_handle: Option<JoinHandle<()>>,
     tx_sender: Option<mpsc::Sender<Vec<Transaction>>>,

@@ -16,7 +16,7 @@ use crate::{
         net_sync::{self, NetworkSyncerInner},
         network::NetworkMessage,
     },
-    types::{AuthorityIndex, BlockReference, RoundNumber},
+    types::{Authority, BlockReference, RoundNumber},
 };
 
 pub struct SynchronizerParameters {
@@ -80,7 +80,7 @@ impl<C: Ctx, D: DagConsensus + Send + 'static> BlockDisseminator<C, D> {
 
     pub async fn send_blocks(
         &mut self,
-        peer: AuthorityIndex,
+        peer: Authority,
         references: Vec<BlockReference>,
     ) -> Option<()> {
         let mut missing = Vec::new();
@@ -133,7 +133,7 @@ impl<C: Ctx, D: DagConsensus + Send + 'static> BlockDisseminator<C, D> {
     }
 
     #[allow(dead_code)]
-    pub fn disseminate_others_blocks(&mut self, round: RoundNumber, author: AuthorityIndex) {
+    pub fn disseminate_others_blocks(&mut self, round: RoundNumber, author: Authority) {
         if self.other_blocks.len() >= self.parameters.maximum_helpers_per_authority {
             return;
         }
@@ -153,7 +153,7 @@ impl<C: Ctx, D: DagConsensus + Send + 'static> BlockDisseminator<C, D> {
         to: mpsc::Sender<NetworkMessage>,
         inner: Arc<NetworkSyncerInner<C, D>>,
         mut round: RoundNumber,
-        author: AuthorityIndex,
+        author: Authority,
         batch_size: usize,
         stream_interval: Duration,
     ) -> Option<()> {
@@ -171,8 +171,8 @@ impl<C: Ctx, D: DagConsensus + Send + 'static> BlockDisseminator<C, D> {
 }
 
 enum BlockFetcherMessage {
-    RegisterAuthority(AuthorityIndex, mpsc::Sender<NetworkMessage>),
-    RemoveAuthority(AuthorityIndex),
+    RegisterAuthority(Authority, mpsc::Sender<NetworkMessage>),
+    RemoveAuthority(Authority),
 }
 
 pub struct BlockFetcher<C: Ctx> {
@@ -182,7 +182,7 @@ pub struct BlockFetcher<C: Ctx> {
 
 impl<C: Ctx> BlockFetcher<C> {
     pub fn start<D: DagConsensus + Send + 'static>(
-        id: AuthorityIndex,
+        id: Authority,
         inner: Arc<NetworkSyncerInner<C, D>>,
         metrics: Arc<Metrics>,
         enable: bool,
@@ -195,7 +195,7 @@ impl<C: Ctx> BlockFetcher<C> {
 
     pub async fn register_authority(
         &self,
-        authority: AuthorityIndex,
+        authority: Authority,
         sender: mpsc::Sender<NetworkMessage>,
     ) {
         self.sender
@@ -204,7 +204,7 @@ impl<C: Ctx> BlockFetcher<C> {
             .ok();
     }
 
-    pub async fn remove_authority(&self, authority: AuthorityIndex) {
+    pub async fn remove_authority(&self, authority: Authority) {
         self.sender
             .send(BlockFetcherMessage::RemoveAuthority(authority))
             .await
@@ -218,10 +218,10 @@ impl<C: Ctx> BlockFetcher<C> {
 }
 
 struct BlockFetcherWorker<C: Ctx, D: DagConsensus> {
-    id: AuthorityIndex,
+    id: Authority,
     inner: Arc<NetworkSyncerInner<C, D>>,
     receiver: mpsc::Receiver<BlockFetcherMessage>,
-    senders: HashMap<AuthorityIndex, mpsc::Sender<NetworkMessage>>,
+    senders: HashMap<Authority, mpsc::Sender<NetworkMessage>>,
     parameters: SynchronizerParameters,
     metrics: Arc<Metrics>,
     missing: HashMap<BlockReference, Duration>,
@@ -230,7 +230,7 @@ struct BlockFetcherWorker<C: Ctx, D: DagConsensus> {
 
 impl<C: Ctx, D: DagConsensus + Send + 'static> BlockFetcherWorker<C, D> {
     pub fn new(
-        id: AuthorityIndex,
+        id: Authority,
         inner: Arc<NetworkSyncerInner<C, D>>,
         receiver: mpsc::Receiver<BlockFetcherMessage>,
         metrics: Arc<Metrics>,
@@ -310,8 +310,8 @@ impl<C: Ctx, D: DagConsensus + Send + 'static> BlockFetcherWorker<C, D> {
 
     fn sample_peer(
         &self,
-        except: &[AuthorityIndex],
-    ) -> Option<(AuthorityIndex, mpsc::Permit<'_, NetworkMessage>)> {
+        except: &[Authority],
+    ) -> Option<(Authority, mpsc::Permit<'_, NetworkMessage>)> {
         let mut senders = self
             .senders
             .iter()

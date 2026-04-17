@@ -8,13 +8,13 @@ use ::prometheus::Registry;
 use dag::{
     committee::Committee,
     config::{ClientParameters, NodePrivateConfig, NodePublicConfig},
-    types::AuthorityIndex,
+    types::Authority,
 };
 
 use crate::replica::Replica;
 
 pub struct ReplicaBuilder {
-    authority: AuthorityIndex,
+    authority: Authority,
     committee: Arc<Committee>,
     public_config: NodePublicConfig,
     private_config: NodePrivateConfig,
@@ -25,7 +25,7 @@ pub struct ReplicaBuilder {
 
 impl ReplicaBuilder {
     pub fn new(
-        authority: AuthorityIndex,
+        authority: Authority,
         committee: Arc<Committee>,
         public_config: NodePublicConfig,
         private_config: NodePrivateConfig,

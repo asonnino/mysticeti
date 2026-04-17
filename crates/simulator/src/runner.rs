@@ -10,7 +10,7 @@ use dag::{
     context::Ctx,
     metrics::MetricsSnapshot,
     sync::net_sync::NetworkSyncer,
-    types::{AuthorityIndex, BlockReference},
+    types::{Authority, BlockReference},
 };
 use rand::{SeedableRng, rngs::StdRng};
 
@@ -112,7 +112,7 @@ impl SimulationState {
             .enumerate()
             .map(|(i, node_network)| {
                 SimulatedReplica::new(
-                    i as AuthorityIndex,
+                    Authority::from(i),
                     committee.clone(),
                     public_config.clone(),
                     node_network,

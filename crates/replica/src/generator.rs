@@ -12,7 +12,7 @@ use rand::{Rng, SeedableRng, rngs::StdRng};
 use tokio::{sync::mpsc, time};
 
 use dag::{
-    block::types::Transaction, config::ClientParameters, metrics::Metrics, types::AuthorityIndex,
+    block::types::Transaction, config::ClientParameters, metrics::Metrics, types::Authority,
 };
 
 pub struct TransactionGenerator {
@@ -27,7 +27,7 @@ impl TransactionGenerator {
 
     pub fn start(
         sender: mpsc::Sender<Vec<Transaction>>,
-        seed: AuthorityIndex,
+        seed: Authority,
         client_parameters: ClientParameters,
         max_block_size: usize,
         metrics: Arc<Metrics>,
@@ -42,7 +42,7 @@ impl TransactionGenerator {
             client_parameters.load,
             client_parameters.initial_delay
         );
-        let mut rng = StdRng::seed_from_u64(seed);
+        let mut rng = StdRng::seed_from_u64(seed.as_u64());
         let random = rng.r#gen();
         tokio::spawn(
             Self {

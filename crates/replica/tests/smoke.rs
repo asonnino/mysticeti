@@ -9,12 +9,12 @@ use tokio::time;
 use dag::{
     committee::Committee,
     config::{self, ClientParameters, NodePrivateConfig, NodePublicConfig},
-    types::AuthorityIndex,
+    types::Authority,
 };
 use replica::{builder::ReplicaBuilder, prometheus, replica::ReplicaHandle};
 
 async fn run_replica(
-    authority: AuthorityIndex,
+    authority: Authority,
     committee: &Arc<Committee>,
     public_config: &NodePublicConfig,
     private_config: NodePrivateConfig,
@@ -71,7 +71,7 @@ async fn replica_commit() {
     for (i, private_config) in private_configs.into_iter().enumerate() {
         handles.push(
             run_replica(
-                i as AuthorityIndex,
+                Authority::from(i),
                 &committee,
                 &public_config,
                 private_config,
@@ -117,7 +117,7 @@ async fn replica_sync() {
         }
         handles.push(
             run_replica(
-                i as AuthorityIndex,
+                Authority::from(i),
                 &committee,
                 &public_config,
                 private_config,
@@ -147,7 +147,7 @@ async fn replica_sync() {
         NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size).remove(authority);
     handles.push(
         run_replica(
-            authority as AuthorityIndex,
+            Authority::from(authority),
             &committee,
             &public_config,
             private_config,
@@ -192,7 +192,7 @@ async fn replica_crash_faults() {
         }
         handles.push(
             run_replica(
-                i as AuthorityIndex,
+                Authority::from(i),
                 &committee,
                 &public_config,
                 private_config,

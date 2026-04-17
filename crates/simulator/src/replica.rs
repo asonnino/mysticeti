@@ -13,7 +13,7 @@ use dag::{
     metrics::Metrics,
     storage::Storage,
     sync::{net_sync::NetworkSyncer, network::Network},
-    types::AuthorityIndex,
+    types::Authority,
 };
 
 use dag::committee::Committee;
@@ -23,7 +23,7 @@ use crate::context::SimulatorContext;
 type Syncer = NetworkSyncer<SimulatorContext, Committer>;
 
 pub(crate) struct SimulatedReplica {
-    authority: AuthorityIndex,
+    authority: Authority,
     committee: Arc<Committee>,
     public_config: NodePublicConfig,
     network: Network,
@@ -32,7 +32,7 @@ pub(crate) struct SimulatedReplica {
 
 impl SimulatedReplica {
     pub fn new(
-        authority: AuthorityIndex,
+        authority: Authority,
         committee: Arc<Committee>,
         public_config: NodePublicConfig,
         network: Network,
@@ -47,7 +47,7 @@ impl SimulatedReplica {
         }
     }
 
-    #[tracing::instrument(skip_all, fields(authority = self.authority))]
+    #[tracing::instrument(skip_all, fields(authority = %self.authority))]
     pub fn start(self) -> Syncer {
         let metrics = Metrics::new_for_test(self.committee.len());
 

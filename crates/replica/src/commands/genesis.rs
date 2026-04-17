@@ -6,7 +6,7 @@ use std::{fs, net::IpAddr, path::PathBuf};
 use dag::{
     committee::Committee,
     config::{ImportExport, NodeParameters, NodePrivateConfig, NodePublicConfig},
-    types::AuthorityIndex,
+    types::Authority,
 };
 use eyre::{Context, Result};
 use tracing_subscriber::filter::LevelFilter;
@@ -61,7 +61,7 @@ pub fn test_genesis(
     // Generate one private config per validator (keys, storage path).
     let private_configs = NodePrivateConfig::new_for_benchmarks(&working_directory, committee_size);
     for (i, private_config) in private_configs.into_iter().enumerate() {
-        let authority = i as AuthorityIndex;
+        let authority = Authority::from(i);
         fs::create_dir_all(&private_config.storage_path).wrap_err(format!(
             "Failed to create storage directory for validator {authority}"
         ))?;

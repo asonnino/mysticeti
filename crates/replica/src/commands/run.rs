@@ -9,7 +9,7 @@ use std::{
 use dag::{
     committee::Committee,
     config::{ClientParameters, ImportExport, NodePrivateConfig, NodePublicConfig},
-    types::AuthorityIndex,
+    types::Authority,
 };
 use eyre::{Result, eyre};
 use tracing_subscriber::filter::LevelFilter;
@@ -17,7 +17,7 @@ use tracing_subscriber::filter::LevelFilter;
 use crate::{builder::ReplicaBuilder, tracing::ReplicaTracing};
 
 pub async fn run(
-    authority: AuthorityIndex,
+    authority: u64,
     committee_path: String,
     public_config_path: String,
     private_config_path: String,
@@ -29,6 +29,7 @@ pub async fn run(
         None => ReplicaTracing::default(),
     }
     .setup();
+    let authority = Authority::new(authority);
     tracing::info!("Starting replica {authority}");
 
     // Load all configuration files.

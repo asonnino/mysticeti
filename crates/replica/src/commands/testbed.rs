@@ -10,7 +10,7 @@ use std::{
 use dag::{
     committee::Committee,
     config::{ClientParameters, ImportExport, NodeParameters, NodePrivateConfig, NodePublicConfig},
-    types::AuthorityIndex,
+    types::Authority,
 };
 use eyre::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -107,7 +107,7 @@ pub async fn local_testbed(
 
     let mut handles = Vec::with_capacity(committee_size);
     for (i, private_config) in private_configs.into_iter().enumerate() {
-        let authority = i as AuthorityIndex;
+        let authority = Authority::from(i);
         let mut builder = ReplicaBuilder::new(
             authority,
             committee.clone(),

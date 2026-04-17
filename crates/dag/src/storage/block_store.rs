@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     consensus::CommittedSubDag,
     data::Data,
-    types::{AuthorityIndex, BlockDigest, BlockReference, RoundNumber, StatementBlock},
+    types::{Authority, BlockDigest, BlockReference, RoundNumber, StatementBlock},
     wal::{Tag, WalPosition, WalWriter},
 };
 
@@ -21,10 +21,10 @@ pub use super::reader::BlockReader;
 
 #[derive(Default)]
 pub(super) struct BlockStore {
-    pub(super) index: BTreeMap<RoundNumber, HashMap<(AuthorityIndex, BlockDigest), IndexEntry>>,
+    pub(super) index: BTreeMap<RoundNumber, HashMap<(Authority, BlockDigest), IndexEntry>>,
     pub(super) own_blocks: BTreeMap<RoundNumber, BlockDigest>,
     pub(super) highest_round: RoundNumber,
-    pub(super) authority: AuthorityIndex,
+    pub(super) authority: Authority,
     pub(super) last_seen_by_authority: Vec<RoundNumber>,
     pub(super) last_own_block: Option<BlockReference>,
 }
@@ -45,7 +45,7 @@ impl BlockStore {
 
     pub(super) fn block_exists_at_authority_round(
         &self,
-        authority: AuthorityIndex,
+        authority: Authority,
         round: RoundNumber,
     ) -> bool {
         let Some(blocks) = self.index.get(&round) else {
@@ -58,7 +58,7 @@ impl BlockStore {
 
     pub(super) fn all_blocks_exists_at_authority_round(
         &self,
-        mut authorities: impl Iterator<Item = AuthorityIndex>,
+        mut authorities: impl Iterator<Item = Authority>,
         round: RoundNumber,
     ) -> bool {
         let Some(blocks) = self.index.get(&round) else {
@@ -73,7 +73,7 @@ impl BlockStore {
 
     pub(super) fn get_blocks_at_authority_round(
         &self,
-        authority: AuthorityIndex,
+        authority: Authority,
         round: RoundNumber,
     ) -> Vec<IndexEntry> {
         let Some(blocks) = self.index.get(&round) else {
@@ -146,17 +146,17 @@ impl BlockStore {
         );
     }
 
-    pub(super) fn last_seen_by_authority(&self, authority: AuthorityIndex) -> RoundNumber {
+    pub(super) fn last_seen_by_authority(&self, authority: Authority) -> RoundNumber {
         *self
             .last_seen_by_authority
-            .get(authority as usize)
+            .get(authority.index())
             .expect("last_seen_by_authority not found")
     }
 
     fn update_last_seen_by_authority(&mut self, reference: &BlockReference) {
         let last_seen = self
             .last_seen_by_authority
-            .get_mut(reference.authority as usize)
+            .get_mut(reference.authority.index())
             .expect("last_seen_by_authority not found");
         if reference.round() > *last_seen {
             *last_seen = reference.round();
@@ -192,7 +192,7 @@ impl BlockStore {
     pub(super) fn get_others_blocks(
         &self,
         from_excluded: RoundNumber,
-        authority: AuthorityIndex,
+        authority: Authority,
         limit: usize,
     ) -> Vec<IndexEntry> {
         self.index

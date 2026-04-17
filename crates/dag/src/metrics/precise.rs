@@ -6,7 +6,7 @@ use std::{sync::Mutex, time::Duration};
 use prometheus::Registry;
 
 use super::histogram::{self, HistogramObserver, HistogramReporter, VecHistogramReporter};
-use crate::types::{AuthorityIndex, format_authority_index};
+use crate::authority::Authority;
 
 const DEFAULT_REPORT_INTERVAL: Duration = Duration::from_secs(60);
 
@@ -54,8 +54,7 @@ impl PreciseMetrics {
         let (proposed_block_vote_count_observer, proposed_block_vote_count) =
             histogram::histogram(registry, "proposed_block_vote_count");
 
-        let peer_labels =
-            (0..committee_size).map(|p| format_authority_index(p as AuthorityIndex).to_string());
+        let peer_labels = (0..committee_size).map(|p| Authority::from(p).to_string());
         let (connection_latency_observers, connection_latency) =
             histogram::vec_histogram(registry, "peer", "connection_latency", peer_labels);
 

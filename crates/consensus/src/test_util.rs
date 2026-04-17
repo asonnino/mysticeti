@@ -11,13 +11,13 @@ use dag::{
     metrics::Metrics,
     storage::Storage,
     test_util::committee,
-    types::AuthorityIndex,
+    types::Authority,
 };
 
 use crate::{committer::Committer, protocol::Protocol};
 
 fn open_core<C: Ctx>(
-    authority: AuthorityIndex,
+    authority: Authority,
     committee: &Arc<Committee>,
     public_config: &NodePublicConfig,
     path: Option<&Path>,

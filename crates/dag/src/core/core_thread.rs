@@ -11,7 +11,7 @@ use crate::{
     context::Ctx,
     data::Data,
     metrics::Metrics,
-    types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
+    types::{Authority, BlockReference, RoundNumber, StatementBlock},
 };
 
 pub trait CoreDispatch<C: Ctx, D: DagConsensus>: Send + Sync {
@@ -26,7 +26,7 @@ pub trait CoreDispatch<C: Ctx, D: DagConsensus>: Send + Sync {
 
     fn authority_connection(
         &self,
-        authority: AuthorityIndex,
+        authority: Authority,
         connected: bool,
     ) -> impl Future<Output = ()> + Send + '_;
 
@@ -38,8 +38,8 @@ enum CoreThreadCommand {
     ForceNewBlock(RoundNumber, oneshot::Sender<()>),
     Cleanup(oneshot::Sender<()>),
     GetMissing(oneshot::Sender<Vec<HashSet<BlockReference>>>),
-    ConnectionEstablished(AuthorityIndex, oneshot::Sender<()>),
-    ConnectionDropped(AuthorityIndex, oneshot::Sender<()>),
+    ConnectionEstablished(Authority, oneshot::Sender<()>),
+    ConnectionDropped(Authority, oneshot::Sender<()>),
 }
 
 pub struct ThreadedDispatcher<C: Ctx, D: DagConsensus> {
@@ -97,7 +97,7 @@ impl<C: Ctx, D: DagConsensus> CoreDispatch<C, D> for ThreadedDispatcher<C, D> {
         rx.await.expect("core thread is not expected to stop")
     }
 
-    async fn authority_connection(&self, authority: AuthorityIndex, connected: bool) {
+    async fn authority_connection(&self, authority: Authority, connected: bool) {
         let (tx, rx) = oneshot::channel();
         let command = if connected {
             CoreThreadCommand::ConnectionEstablished(authority, tx)

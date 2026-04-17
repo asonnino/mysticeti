@@ -26,7 +26,7 @@ use crate::{
         network::{Connection, Network, NetworkMessage},
         synchronizer::{BlockDisseminator, BlockFetcher, SynchronizerParameters},
     },
-    types::{AuthorityIndex, Stake, format_authority_index},
+    types::{Authority, Stake},
 };
 
 /// The maximum number of blocks that can be requested in a single message.
@@ -135,7 +135,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
             }
 
             let sender = connection.sender.clone();
-            let authority = peer_id as AuthorityIndex;
+            let authority = Authority::from(peer_id);
             block_fetcher.register_authority(authority, sender).await;
 
             let task = C::spawn(Self::connection_task(
@@ -166,7 +166,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
     ) -> Option<()> {
         let last_seen = inner
             .block_reader
-            .last_seen_by_authority(connection.peer_id as AuthorityIndex);
+            .last_seen_by_authority(Authority::from(connection.peer_id));
         connection
             .sender
             .send(NetworkMessage::SubscribeOwnFrom(last_seen))
@@ -180,10 +180,10 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
             metrics.clone(),
         );
 
-        let id = connection.peer_id as AuthorityIndex;
+        let id = Authority::from(connection.peer_id);
         inner.syncer.authority_connection(id, true).await;
 
-        let peer = format_authority_index(id);
+        let peer = id;
         while let Some(message) = inner.recv_or_stopped(&mut connection.receiver).await {
             match message {
                 NetworkMessage::SubscribeOwnFrom(round) => {
@@ -208,7 +208,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
                         // Terminate connection on receiving invalid message.
                         break;
                     }
-                    let authority = connection.peer_id as AuthorityIndex;
+                    let authority = Authority::from(connection.peer_id);
                     if disseminator
                         .send_blocks(authority, references)
                         .await

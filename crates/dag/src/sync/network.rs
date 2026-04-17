@@ -25,7 +25,7 @@ use crate::{
     config::NodePublicConfig,
     data::Data,
     metrics::{Metrics, print_network_address_table},
-    types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
+    types::{Authority, BlockReference, RoundNumber, StatementBlock},
 };
 
 const PING_INTERVAL: Duration = Duration::from_secs(30);
@@ -60,13 +60,13 @@ impl Network {
 
     pub async fn load(
         parameters: &NodePublicConfig,
-        our_id: AuthorityIndex,
+        our_id: Authority,
         local_addr: SocketAddr,
         metrics: Arc<Metrics>,
     ) -> Self {
         let addresses = parameters.all_network_addresses().collect::<Vec<_>>();
         print_network_address_table(&addresses);
-        Self::from_socket_addresses(&addresses, our_id as usize, local_addr, metrics).await
+        Self::from_socket_addresses(&addresses, our_id.index(), local_addr, metrics).await
     }
 
     pub fn connection_receiver(&mut self) -> &mut mpsc::Receiver<Connection> {

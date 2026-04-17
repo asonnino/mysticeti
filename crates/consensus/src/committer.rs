@@ -9,7 +9,7 @@ use dag::{
     consensus::{DagConsensus, LeaderStatus},
     metrics::Metrics,
     storage::BlockReader,
-    types::{AuthorityIndex, BlockReference, RoundNumber, Stake, format_authority_round},
+    types::{Authority, BlockReference, RoundNumber, Stake},
 };
 
 /// A universal committer uses a collection of committers to commit a sequence of leaders.
@@ -65,7 +65,7 @@ impl Committer {
 
     /// Try to commit part of the dag. This function is idempotent and returns a list of
     /// ordered decided leaders.
-    #[tracing::instrument(skip_all, fields(last_decided = %last_decided))]
+    #[tracing::instrument(level = "debug", skip_all, fields(last_decided = %last_decided))]
     pub(crate) fn try_commit(
         &mut self,
         last_decided: BlockReference,
@@ -84,7 +84,7 @@ impl Committer {
                 };
                 tracing::debug!(
                     "Trying to decide {} with {committer}",
-                    format_authority_round(leader, round)
+                    leader.with_round(round)
                 );
 
                 // Try to directly decide the leader.
@@ -143,7 +143,7 @@ impl DagConsensus for Committer {
         self.try_commit(last_decided)
     }
 
-    fn get_leaders(&self, round: RoundNumber) -> Option<impl Iterator<Item = AuthorityIndex>> {
+    fn get_leaders(&self, round: RoundNumber) -> Option<impl Iterator<Item = Authority>> {
         if self.leader_wait {
             Some(
                 self.base_committers

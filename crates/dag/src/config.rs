@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
     crypto::{Signer, dummy_signer},
-    types::{AuthorityIndex, PublicKey, RoundNumber},
+    types::{Authority, PublicKey, RoundNumber},
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -191,15 +191,15 @@ impl NodePublicConfig {
         self.identifiers.iter().map(|id| id.metrics_address)
     }
 
-    pub fn network_address(&self, authority: AuthorityIndex) -> Option<SocketAddr> {
+    pub fn network_address(&self, authority: Authority) -> Option<SocketAddr> {
         self.identifiers
-            .get(authority as usize)
+            .get(authority.index())
             .map(|id| id.network_address)
     }
 
-    pub fn metrics_address(&self, authority: AuthorityIndex) -> Option<SocketAddr> {
+    pub fn metrics_address(&self, authority: Authority) -> Option<SocketAddr> {
         self.identifiers
-            .get(authority as usize)
+            .get(authority.index())
             .map(|id| id.metrics_address)
     }
 }
@@ -208,13 +208,13 @@ impl ImportExport for NodePublicConfig {}
 
 #[derive(Serialize, Deserialize)]
 pub struct NodePrivateConfig {
-    authority: AuthorityIndex,
+    authority: Authority,
     pub keypair: Signer,
     pub storage_path: PathBuf,
 }
 
 impl NodePrivateConfig {
-    pub fn new_for_tests(index: AuthorityIndex) -> Self {
+    pub fn new_for_tests(index: Authority) -> Self {
         Self {
             authority: index,
             keypair: dummy_signer(),
@@ -227,7 +227,7 @@ impl NodePrivateConfig {
             .into_iter()
             .enumerate()
             .map(|(i, keypair)| {
-                let authority = i as AuthorityIndex;
+                let authority = Authority::from(i);
                 let path = working_dir.join(NodePrivateConfig::default_storage_path(authority));
                 Self {
                     authority,
@@ -238,11 +238,11 @@ impl NodePrivateConfig {
             .collect()
     }
 
-    pub fn default_filename(authority: AuthorityIndex) -> PathBuf {
+    pub fn default_filename(authority: Authority) -> PathBuf {
         format!("private-config-{authority}.yaml").into()
     }
 
-    pub fn default_storage_path(authority: AuthorityIndex) -> PathBuf {
+    pub fn default_storage_path(authority: Authority) -> PathBuf {
         format!("storage-{authority}").into()
     }
 

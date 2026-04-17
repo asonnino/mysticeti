@@ -10,7 +10,7 @@ use std::{
 
 use dag::{
     config::{self, ClientParameters, NodeParameters},
-    types::AuthorityIndex,
+    types::Authority,
 };
 use serde::{Deserialize, Serialize};
 
@@ -140,7 +140,7 @@ impl ProtocolCommands for MysticetiProtocol {
             .into_iter()
             .enumerate()
             .map(|(i, instance)| {
-                let authority = i as AuthorityIndex;
+                let authority = Authority::from(i);
                 let committee_path = self.working_dir.join("committee.yaml");
                 let public_config_path = self.working_dir.join("public-config.yaml");
                 let private_config_path = self

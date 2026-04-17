@@ -10,7 +10,7 @@ use crate::{
     data::Data,
     metrics::Metrics,
     types::{
-        AuthorityIndex, BaseStatement, BlockReference, RoundNumber, StatementBlock, Transaction,
+        Authority, BaseStatement, BlockReference, RoundNumber, StatementBlock, Transaction,
         TransactionLocator,
     },
 };
@@ -33,7 +33,7 @@ pub struct BlockReader {
 
 impl BlockReader {
     pub(super) fn open(
-        authority: AuthorityIndex,
+        authority: Authority,
         wal_reader: WalReader,
         wal_writer: &WalWriter,
         metrics: Arc<Metrics>,
@@ -121,7 +121,7 @@ impl BlockReader {
 
     pub fn get_blocks_at_authority_round(
         &self,
-        authority: AuthorityIndex,
+        authority: Authority,
         round: RoundNumber,
     ) -> Vec<Data<StatementBlock>> {
         let entries = self
@@ -133,7 +133,7 @@ impl BlockReader {
 
     pub fn block_exists_at_authority_round(
         &self,
-        authority: AuthorityIndex,
+        authority: Authority,
         round: RoundNumber,
     ) -> bool {
         self.inner
@@ -143,7 +143,7 @@ impl BlockReader {
 
     pub fn all_blocks_exists_at_authority_round(
         &self,
-        authorities: impl Iterator<Item = AuthorityIndex>,
+        authorities: impl Iterator<Item = Authority>,
         round: RoundNumber,
     ) -> bool {
         self.inner
@@ -201,7 +201,7 @@ impl BlockReader {
     pub fn get_others_blocks(
         &self,
         from_excluded: RoundNumber,
-        authority: AuthorityIndex,
+        authority: Authority,
         limit: usize,
     ) -> Vec<Data<StatementBlock>> {
         let entries = self
@@ -211,7 +211,7 @@ impl BlockReader {
         self.read_index_vec(entries)
     }
 
-    pub fn last_seen_by_authority(&self, authority: AuthorityIndex) -> RoundNumber {
+    pub fn last_seen_by_authority(&self, authority: Authority) -> RoundNumber {
         self.inner.read().last_seen_by_authority(authority)
     }
 

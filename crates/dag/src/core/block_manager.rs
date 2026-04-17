@@ -68,12 +68,12 @@ impl BlockManager {
                         .or_default()
                         .insert(*block_reference);
                     if !self.blocks_pending.contains_key(included_reference) {
-                        self.missing[included_reference.authority as usize]
+                        self.missing[included_reference.authority.index()]
                             .insert(*included_reference);
                     }
                 }
             }
-            self.missing[block_reference.authority as usize].remove(block_reference);
+            self.missing[block_reference.authority.index()].remove(block_reference);
 
             if !processed {
                 self.blocks_pending.insert(*block_reference, block);
@@ -126,7 +126,7 @@ mod tests {
     use rand::{SeedableRng, prelude::StdRng};
 
     use super::*;
-    use crate::{metrics::Metrics, types::Dag};
+    use crate::{authority::Authority, metrics::Metrics, types::Dag};
 
     #[test]
     fn test_block_manager_add_block() {
@@ -134,8 +134,11 @@ mod tests {
             Dag::draw("A1:[A0, B0]; B1:[A0, B0]; B2:[A0, B1]; A2:[A1, B2]").add_genesis_blocks();
         assert_eq!(dag.len(), 6); // 4 blocks in dag + 2 genesis
         for seed in 0..100u8 {
-            let (mut storage, _recovered) =
-                Storage::new_for_tests(0, Metrics::new_for_test(0), &dag.committee());
+            let (mut storage, _recovered) = Storage::new_for_tests(
+                Authority::from(0u64),
+                Metrics::new_for_test(0),
+                &dag.committee(),
+            );
             println!("Seed {seed}");
             let iter = dag.random_iter(&mut rng(seed));
             let mut bm = BlockManager::new(storage.block_reader().clone(), &dag.committee());

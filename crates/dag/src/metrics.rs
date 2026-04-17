@@ -17,7 +17,7 @@ pub use self::aggregate::{BENCHMARK_DURATION, LATENCY_S, LATENCY_SQUARED_S};
 pub use self::snapshot::MetricsSnapshot;
 pub use self::timers::{OwnedUtilizationTimer, UtilizationTimer};
 use self::{aggregate::AggregateMetrics, precise::PreciseMetrics};
-use crate::types::{AuthorityIndex, format_authority_index};
+use crate::authority::Authority;
 
 pub struct Metrics {
     aggregate: AggregateMetrics,
@@ -221,7 +221,7 @@ pub fn print_network_address_table(addresses: &[SocketAddr]) {
         .iter()
         .enumerate()
         .map(|(peer, address)| NetworkAddressTable {
-            peer: format_authority_index(peer as AuthorityIndex),
+            peer: Authority::from(peer).to_string(),
             address: address.to_string(),
         })
         .collect();
@@ -230,7 +230,7 @@ pub fn print_network_address_table(addresses: &[SocketAddr]) {
 
 #[derive(Tabled)]
 struct NetworkAddressTable {
-    peer: char,
+    peer: String,
     address: String,
 }
 

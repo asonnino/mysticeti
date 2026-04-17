@@ -29,7 +29,7 @@ use crate::{
     state::RecoveredState,
     storage::BlockReader,
     storage::Storage,
-    types::{AuthorityIndex, BaseStatement, BlockReference, RoundNumber, Stake, StatementBlock},
+    types::{Authority, BaseStatement, BlockReference, RoundNumber, Stake, StatementBlock},
     wal::{WalPosition, WalSyncer},
 };
 
@@ -38,7 +38,7 @@ pub struct Core<C: Ctx, D: DagConsensus> {
     pending: VecDeque<(WalPosition, MetaStatement)>,
     last_own_block: OwnBlockData,
     block_handler: RealBlockHandler<C>,
-    authority: AuthorityIndex,
+    authority: Authority,
     threshold_clock: ThresholdClockAggregator,
     pub(crate) committee: Arc<Committee>,
     last_commit_leader: BlockReference,
@@ -65,7 +65,7 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
     #[allow(clippy::too_many_arguments)]
     pub fn open(
         block_handler: RealBlockHandler<C>,
-        authority: AuthorityIndex,
+        authority: Authority,
         committee: Arc<Committee>,
         private_config: NodePrivateConfig,
         metrics: Arc<Metrics>,
@@ -328,17 +328,13 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
     ///
     /// The algorithm to calling is roughly:
     /// if timeout || commit_ready_new_block then try_new_block(..)
-    pub fn ready_new_block(
-        &self,
-        period: u64,
-        connected_authorities: &HashSet<AuthorityIndex>,
-    ) -> bool {
+    pub fn ready_new_block(&self, period: u64, connected_authorities: &HashSet<Authority>) -> bool {
         let quorum_round = self.threshold_clock.get_round();
 
         // Leader round we check if we have a leader block
         if quorum_round > self.last_commit_leader.round().max(period - 1) {
             let leader_round = quorum_round - 1;
-            let filter = |a: &AuthorityIndex| connected_authorities.contains(a);
+            let filter = |a: &Authority| connected_authorities.contains(a);
             match self.committer.get_leaders(leader_round) {
                 Some(leaders) => self
                     .storage
@@ -381,7 +377,7 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
         self.last_own_block.block.round()
     }
 
-    pub fn authority(&self) -> AuthorityIndex {
+    pub fn authority(&self) -> Authority {
         self.authority
     }
 

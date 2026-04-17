@@ -4,7 +4,9 @@
 use std::{net::IpAddr, path::PathBuf};
 
 use clap::Parser;
-use dag::types::AuthorityIndex;
+// CLI uses raw u64 for clap parsing; conversion
+// to Authority happens in the command handlers.
+type AuthorityArg = u64;
 use tracing_subscriber::filter::LevelFilter;
 
 /// Mysticeti consensus replica.
@@ -41,7 +43,7 @@ pub enum Operation {
     Run {
         /// Authority index of this node.
         #[arg(long, value_name = "INT")]
-        authority: AuthorityIndex,
+        authority: AuthorityArg,
         /// Path to the committee file (YAML).
         #[arg(long, value_name = "FILE")]
         committee_path: String,

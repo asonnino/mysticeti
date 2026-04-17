@@ -5,6 +5,7 @@ use std::num::NonZeroUsize;
 
 use crate::{committer::Committer, leader::LeaderElector, protocol::Protocol};
 use dag::{
+    authority::Authority,
     consensus::LeaderStatus,
     metrics::Metrics,
     storage::Storage,
@@ -19,7 +20,8 @@ fn direct_commit() {
     let committee = committee(4);
     let leader_elector = LeaderElector::new(committee.len());
 
-    let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
+    let (mut storage, _) =
+        Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
     build_dag(&committee, &mut storage, None, 5);
 
     let mut committer = Committer::new(
@@ -54,7 +56,8 @@ fn direct_commit() {
 fn idempotence() {
     let committee = committee(4);
 
-    let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
+    let (mut storage, _) =
+        Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
     build_dag(&committee, &mut storage, None, 5);
 
     let mut committer = Committer::new(
@@ -77,7 +80,7 @@ fn idempotence() {
 
     // Ensure we don't commit it again.
     let max = committed.into_iter().max().unwrap();
-    let last_committed = BlockReference::new_test(max.authority(), max.round());
+    let last_committed = BlockReference::new_test(max.authority().as_u64(), max.round());
     let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
     assert!(sequence.is_empty());
@@ -94,7 +97,8 @@ fn multiple_direct_commit() {
     let mut last_committed = BlockReference::new_test(0, 0);
     for n in 1..=10 {
         let enough_blocks = wave_length * (n + 1) - 1;
-        let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
+        let (mut storage, _) =
+            Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
         build_dag(&committee, &mut storage, None, enough_blocks);
 
         let mut committer = Committer::new(
@@ -123,7 +127,7 @@ fn multiple_direct_commit() {
         }
 
         let max = sequence.iter().max().unwrap();
-        last_committed = BlockReference::new_test(max.authority(), max.round());
+        last_committed = BlockReference::new_test(max.authority().as_u64(), max.round());
     }
 }
 
@@ -137,7 +141,8 @@ fn direct_commit_late_call() {
 
     let n = 10;
     let enough_blocks = wave_length * (n + 1) - 1;
-    let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
+    let (mut storage, _) =
+        Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
     build_dag(&committee, &mut storage, None, enough_blocks);
 
     let mut committer = Committer::new(
@@ -178,7 +183,8 @@ fn no_genesis_commit() {
 
     let first_commit_round = 2 * wave_length - 1;
     for r in 0..first_commit_round {
-        let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
+        let (mut storage, _) =
+            Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
         build_dag(&committee, &mut storage, None, r);
 
         let mut committer = Committer::new(
@@ -210,7 +216,8 @@ fn no_leader() {
     let leader_elector = LeaderElector::new(committee.len());
     let wave_length = 3;
 
-    let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
+    let (mut storage, _) =
+        Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
 
     // Add enough blocks to finish wave 0.
     let decision_round_0 = wave_length - 1;
@@ -265,7 +272,8 @@ fn direct_skip() {
     let leader_elector = LeaderElector::new(committee.len());
     let wave_length = 3;
 
-    let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
+    let (mut storage, _) =
+        Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
 
     // Add enough blocks to reach the first leader.
     let leader_round_1 = wave_length;
@@ -325,7 +333,8 @@ fn indirect_commit() {
     let one_fault = total / 3 + 1;
     let wave_length = 3;
 
-    let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
+    let (mut storage, _) =
+        Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
 
     // Add enough blocks to reach the 1st leader.
     let leader_round_1 = wave_length;
@@ -431,7 +440,8 @@ fn indirect_skip() {
     let one_fault = total / 3 + 1;
     let wave_length = 3;
 
-    let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
+    let (mut storage, _) =
+        Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
 
     // Add enough blocks to reach the 2nd leader.
     let leader_round_2 = 2 * wave_length;
@@ -524,7 +534,8 @@ fn undecided() {
     let strong_quorum = 2 * total / 3 + 1;
     let wave_length = 3;
 
-    let (mut storage, _) = Storage::new_for_tests(0, Metrics::new_for_test(0), &committee);
+    let (mut storage, _) =
+        Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
 
     // Add enough blocks to reach the first leader.
     let leader_round_1 = wave_length;

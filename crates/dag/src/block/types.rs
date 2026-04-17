@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-pub type AuthorityIndex = u64;
+pub use crate::authority::Authority;
 
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
 pub struct Transaction {
@@ -35,7 +35,7 @@ use crate::{committee::Committee, core::threshold_clock::threshold_clock_valid_n
 
 #[derive(Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Default)]
 pub struct BlockReference {
-    pub authority: AuthorityIndex,
+    pub authority: Authority,
     pub round: RoundNumber,
     pub digest: BlockDigest,
 }
@@ -93,7 +93,7 @@ impl Ord for BlockReference {
 }
 
 impl StatementBlock {
-    pub fn new_genesis(authority: AuthorityIndex) -> Data<Self> {
+    pub fn new_genesis(authority: Authority) -> Data<Self> {
         Data::new(Self::new(
             authority,
             GENESIS_ROUND,
@@ -105,7 +105,7 @@ impl StatementBlock {
     }
 
     pub fn new_with_signer(
-        authority: AuthorityIndex,
+        authority: Authority,
         round: RoundNumber,
         includes: Vec<BlockReference>,
         statements: Vec<BaseStatement>,
@@ -130,7 +130,7 @@ impl StatementBlock {
     }
 
     pub fn new(
-        authority: AuthorityIndex,
+        authority: Authority,
         round: RoundNumber,
         includes: Vec<BlockReference>,
         statements: Vec<BaseStatement>,
@@ -181,7 +181,7 @@ impl StatementBlock {
             })
     }
 
-    pub fn author(&self) -> AuthorityIndex {
+    pub fn author(&self) -> Authority {
         self.reference.authority
     }
 
@@ -193,7 +193,7 @@ impl StatementBlock {
         self.reference.digest
     }
 
-    pub fn author_round(&self) -> (AuthorityIndex, RoundNumber) {
+    pub fn author_round(&self) -> (Authority, RoundNumber) {
         self.reference.author_round()
     }
 
@@ -286,7 +286,8 @@ impl TransactionLocator {
 
 impl BlockReference {
     #[cfg(any(test, feature = "test-utils"))]
-    pub fn new_test(authority: AuthorityIndex, round: RoundNumber) -> Self {
+    pub fn new_test(authority: u64, round: RoundNumber) -> Self {
+        let authority = Authority::new(authority);
         if round == 0 {
             StatementBlock::new_genesis(authority).reference
         } else {
@@ -302,11 +303,11 @@ impl BlockReference {
         self.round
     }
 
-    pub fn author_round(&self) -> (AuthorityIndex, RoundNumber) {
+    pub fn author_round(&self) -> (Authority, RoundNumber) {
         (self.authority, self.round)
     }
 
-    pub fn author_digest(&self) -> (AuthorityIndex, BlockDigest) {
+    pub fn author_digest(&self) -> (Authority, BlockDigest) {
         (self.authority, self.digest)
     }
 }
@@ -319,23 +320,14 @@ impl fmt::Debug for BlockReference {
 
 impl fmt::Display for BlockReference {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.authority < 26 {
-            write!(
-                f,
-                "{}{}",
-                format_authority_index(self.authority),
-                self.round
-            )
-        } else {
-            write!(f, "[{:02}]{}", self.authority, self.round)
-        }
+        write!(f, "{}", self.authority.with_round(self.round))
     }
 }
 
 impl AuthoritySet {
     #[inline]
-    pub fn insert(&mut self, v: AuthorityIndex) -> bool {
-        let bit = 1u128 << v;
+    pub fn insert(&mut self, v: Authority) -> bool {
+        let bit = 1u128 << v.as_u64();
         if self.0 & bit == bit {
             return false;
         }
@@ -343,22 +335,16 @@ impl AuthoritySet {
         true
     }
 
-    pub fn present(&self) -> impl Iterator<Item = AuthorityIndex> + '_ {
-        (0..128).filter(|bit| (self.0 & 1 << bit) != 0)
+    pub fn present(&self) -> impl Iterator<Item = Authority> + '_ {
+        (0..128u64)
+            .filter(|bit| (self.0 & 1 << bit) != 0)
+            .map(Authority::new)
     }
 
     #[inline]
     pub fn clear(&mut self) {
         self.0 = 0;
     }
-}
-
-pub fn format_authority_index(i: AuthorityIndex) -> char {
-    ('A' as u64 + i) as u8 as char
-}
-
-pub fn format_authority_round(i: AuthorityIndex, r: RoundNumber) -> String {
-    format!("{}{}", format_authority_index(i), r)
 }
 
 impl fmt::Debug for StatementBlock {
@@ -436,7 +422,7 @@ impl fmt::Debug for BaseStatement {
 
 impl CryptoHash for BlockReference {
     fn crypto_hash(&self, state: &mut impl Digest) {
-        self.authority.crypto_hash(state);
+        self.authority.as_u64().crypto_hash(state);
         self.round.crypto_hash(state);
         self.digest.crypto_hash(state);
     }
@@ -575,7 +561,7 @@ mod test {
             self.0.is_empty()
         }
 
-        fn authorities(&self) -> HashSet<AuthorityIndex> {
+        fn authorities(&self) -> HashSet<Authority> {
             let mut authorities = HashSet::new();
             for (k, v) in &self.0 {
                 authorities.insert(k.authority);
@@ -626,22 +612,25 @@ mod test {
     #[test]
     fn authority_set_test() {
         let mut a = AuthoritySet::default();
-        assert!(a.insert(0));
-        assert!(!a.insert(0));
-        assert!(a.insert(1));
-        assert!(a.insert(2));
-        assert!(!a.insert(1));
-        assert!(a.insert(127));
-        assert!(!a.insert(127));
-        assert!(a.insert(3));
-        assert!(!a.insert(3));
-        assert!(!a.insert(2));
+        assert!(a.insert(Authority::new(0)));
+        assert!(!a.insert(Authority::new(0)));
+        assert!(a.insert(Authority::new(1)));
+        assert!(a.insert(Authority::new(2)));
+        assert!(!a.insert(Authority::new(1)));
+        assert!(a.insert(Authority::new(127)));
+        assert!(!a.insert(Authority::new(127)));
+        assert!(a.insert(Authority::new(3)));
+        assert!(!a.insert(Authority::new(3)));
+        assert!(!a.insert(Authority::new(2)));
     }
 
     #[test]
     fn authority_present_test() {
         let mut a = AuthoritySet::default();
-        let present = vec![1, 2, 3, 4, 5, 64, 127];
+        let present: Vec<Authority> = vec![1, 2, 3, 4, 5, 64, 127]
+            .into_iter()
+            .map(Authority::new)
+            .collect();
         for x in &present {
             a.insert(*x);
         }
