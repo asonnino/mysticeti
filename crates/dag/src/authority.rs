@@ -3,9 +3,10 @@
 
 use std::fmt;
 
+use digest::Digest;
 use serde::{Deserialize, Serialize};
 
-use crate::block::RoundNumber;
+use crate::{block::RoundNumber, crypto::CryptoHash};
 
 /// Identifies an authority (participant) in the
 /// consensus committee. Wraps a zero-based index.
@@ -18,13 +19,11 @@ impl Authority {
     }
 
     /// Return the index as `usize` for vec/slice indexing.
-    #[inline]
     pub fn index(self) -> usize {
         self.0 as usize
     }
 
     /// Return the raw `u64` value.
-    #[inline]
     pub fn as_u64(self) -> u64 {
         self.0
     }
@@ -32,6 +31,12 @@ impl Authority {
     /// Pair with a round number for display (e.g. "A3").
     pub fn with_round(self, round: RoundNumber) -> AuthorityRound {
         AuthorityRound(self, round)
+    }
+}
+
+impl CryptoHash for Authority {
+    fn crypto_hash(&self, state: &mut impl Digest) {
+        self.0.crypto_hash(state);
     }
 }
 

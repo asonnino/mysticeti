@@ -1,78 +1,73 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Block digest computation.
+//!
+//! A [`BlockDigest`] is a 32-byte Blake2b hash that uniquely identifies a block in the DAG.
+//! The digest is computed in two phases: [`BlockDigest::new`] hashes the block fields into a
+//! content hash, then [`BlockDigest::with_signature`] combines it with the signature into the
+//! full digest `H(content_hash || signature)`. A valid digest transitively certifies the block's
+//! content, letting peers skip signature verification for ancestors of already-certified blocks.
+
 use std::fmt;
 
 use digest::Digest;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
-use crate::block::{
-    BlockReference, RoundNumber,
-    serde::{BytesVisitor, FromBytes},
-    transaction::Transaction,
+use crate::{
+    authority::Authority,
+    block::{
+        BlockReference, RoundNumber,
+        serde::{BytesVisitor, FromBytes},
+        transaction::Transaction,
+    },
 };
 
 use super::hash::{AsBytes, BlockHasher, CryptoHash};
 use super::sign::SignatureBytes;
-use crate::authority::Authority;
 
+/// Length of a block digest in bytes (Blake2b-256).
 pub const BLOCK_DIGEST_SIZE: usize = 32;
 
-#[derive(Clone, Copy, Eq, Ord, PartialOrd, PartialEq, Default, Hash)]
+/// A 32-byte Blake2b-256 hash that uniquely identifies a block.
+#[derive(Clone, Copy, Eq, Ord, PartialOrd, PartialEq, Hash)]
 pub struct BlockDigest([u8; BLOCK_DIGEST_SIZE]);
 
 impl BlockDigest {
-    pub(super) fn compute(
+    /// Returns an all-zeros digest, used as a placeholder when crypto is disabled.
+    pub fn dummy() -> Self {
+        Self([0u8; BLOCK_DIGEST_SIZE])
+    }
+
+    /// Hashes all the provided fields.
+    pub(super) fn new(
         authority: Authority,
         round: RoundNumber,
         includes: &[BlockReference],
         transactions: &[Transaction],
         creation_time: u64,
-        signature: &SignatureBytes,
     ) -> Self {
         let mut hasher = BlockHasher::default();
-        digest_without_signature(
-            &mut hasher,
-            authority,
-            round,
-            includes,
-            transactions,
-            creation_time,
-        );
+        authority.crypto_hash(&mut hasher);
+        round.crypto_hash(&mut hasher);
+        for include in includes {
+            include.crypto_hash(&mut hasher);
+        }
+        for tx in transactions {
+            tx.as_bytes().len().crypto_hash(&mut hasher);
+            tx.crypto_hash(&mut hasher);
+        }
+        creation_time.crypto_hash(&mut hasher);
+        Self(hasher.finalize().into())
+    }
+
+    /// Extends the content hash with the signature: `H(self || signature)`.
+    pub(super) fn with_signature(self, signature: &SignatureBytes) -> Self {
+        let mut hasher = BlockHasher::default();
+        hasher.update(self.0);
         hasher.update(signature);
         Self(hasher.finalize().into())
     }
-}
-
-/// There is a bit of a complexity around what is considered
-/// block digest and what is being signed.
-///
-/// * Block signature covers all the fields in the block,
-///   except for signature and reference.digest
-/// * Block digest(e.g. block.reference.digest) covers all the above
-///   **and** block signature
-///
-/// This is not very beautiful, but it allows to optimize block
-/// synchronization, by skipping signature verification for all the
-/// descendants of the certified block.
-pub(super) fn digest_without_signature(
-    hasher: &mut BlockHasher,
-    authority: Authority,
-    round: RoundNumber,
-    includes: &[BlockReference],
-    transactions: &[Transaction],
-    creation_time: u64,
-) {
-    authority.as_u64().crypto_hash(hasher);
-    round.crypto_hash(hasher);
-    for include in includes {
-        include.crypto_hash(hasher);
-    }
-    for tx in transactions {
-        [0].crypto_hash(hasher);
-        tx.crypto_hash(hasher);
-    }
-    creation_time.crypto_hash(hasher);
 }
 
 impl AsRef<[u8]> for BlockDigest {

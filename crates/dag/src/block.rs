@@ -3,18 +3,16 @@
 
 //! DAG block types and verification logic.
 //!
-//! A [`Block`] is the fundamental unit of the DAG. Each block is proposed by
-//! an authority, references blocks from the previous round (via [`BlockReference`]),
-//! and carries a batch of [`Transaction`]s. Blocks are signed and their integrity
-//! is verified on receipt via [`Block::verify`].
+//! A [`Block`] is the fundamental unit of the DAG. Each block is proposed by an authority,
+//! references blocks from the previous round (via [`BlockReference`]), and carries a batch of
+//! [`Transaction`]s. Blocks are signed and their integrity is verified on receipt via
+//! [`Block::verify`].
 //!
 //! # Submodules
 //!
-//! - [`crypto`] — block digests, signatures, and hash computation.
-//! - [`data`] — [`Data<T>`](data::Data), a reference-counted wrapper caching
-//!   serialized bytes.
-//! - [`reference`] — [`BlockReference`], the `(authority, round, digest)` triple
-//!   that uniquely identifies a block.
+//! - [`data`] — [`Data<T>`](data::Data), a reference-counted wrapper caching serialized bytes.
+//! - [`reference`] — [`BlockReference`], the `(authority, round, digest)` triple that uniquely
+//!   identifies a block.
 //! - [`transaction`] — [`Transaction`] and [`TransactionLocator`].
 
 pub mod data;
@@ -47,27 +45,29 @@ use crate::{
 /// Round number within the DAG (0 = genesis).
 pub type RoundNumber = u64;
 
+/// The round of genesis blocks, which are trusted by construction and never sent over the wire.
 const GENESIS_ROUND: RoundNumber = 0;
 
-/// A block in the DAG. Contains references to prior-round blocks, a batch of
-/// transactions, and a signature from the proposing authority.
+/// A block in the DAG. Contains references to prior-round blocks, a batch of transactions, and a
+/// signature from the proposing authority.
 ///
-/// **Invariant:** adding or removing fields requires updating
-/// [`CryptoEngine::digest`] and [`Block::verify`].
+/// **Invariant:** adding or removing fields requires updating [`CryptoEngine::sign`] and
+/// [`Block::verify`].
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Block {
+    /// The `(authority, round, digest)` triple that uniquely identifies this block. The digest
+    /// covers all other fields including the signature (see [`BlockDigest::with_signature`]).
     reference: BlockReference,
 
-    /// References to blocks from earlier rounds. Order matters: when two
-    /// blocks from the same `(authority, round)` are included, the first
-    /// reference is the one this block votes for.
+    /// References to blocks from earlier rounds. Order matters: when two blocks from the same
+    /// `(authority, round)` are included, the first reference is the one this block votes for.
     includes: Vec<BlockReference>,
 
     /// Transactions batched into this block.
     transactions: Vec<Transaction>,
 
-    /// Creation time (nanoseconds since epoch) as reported by the proposer.
-    /// Informational only — not enforced by the protocol.
+    /// Creation time (nanoseconds since epoch) as reported by the proposer. Informational only —
+    /// not enforced by the protocol.
     creation_time: u64,
 
     /// Signature over the block content by the proposing authority.
@@ -75,14 +75,14 @@ pub struct Block {
 }
 
 impl Block {
-    /// Create the genesis block for an authority (round 0, no includes,
-    /// no transactions, default digest and signature).
+    /// Create the genesis block for an authority (round 0, no includes, no transactions, dummy
+    /// digest and default signature).
     pub fn genesis(authority: Authority) -> Data<Self> {
         Data::new(Self {
             reference: BlockReference {
                 authority,
                 round: GENESIS_ROUND,
-                digest: BlockDigest::default(),
+                digest: BlockDigest::dummy(),
             },
             includes: vec![],
             transactions: vec![],
@@ -92,7 +92,7 @@ impl Block {
     }
 
     /// Create a new block, signing it with the provided crypto engine.
-    pub fn new_with_crypto(
+    pub fn new(
         authority: Authority,
         round: RoundNumber,
         includes: Vec<BlockReference>,
@@ -100,16 +100,8 @@ impl Block {
         creation_time: u64,
         crypto: &CryptoEngine,
     ) -> Self {
-        let signature =
-            crypto.sign_block(authority, round, &includes, &transactions, creation_time);
-        let digest = crypto.digest(
-            authority,
-            round,
-            &includes,
-            &transactions,
-            creation_time,
-            &signature,
-        );
+        let (signature, digest) =
+            crypto.sign(authority, round, &includes, &transactions, creation_time);
         let reference = BlockReference {
             authority,
             round,
@@ -138,7 +130,7 @@ impl Block {
             reference: BlockReference {
                 authority,
                 round,
-                digest: BlockDigest::default(),
+                digest: BlockDigest::dummy(),
             },
             includes,
             transactions,
@@ -147,10 +139,7 @@ impl Block {
         }
     }
 
-    /// Verify the integrity and validity of a block received
-    /// from the network. This is a security-critical path -- every
-    /// check here prevents a Byzantine peer from injecting invalid
-    /// blocks into the DAG.
+    /// Verify the integrity and validity of a block received from the network.
     pub fn verify(
         &self,
         committee: &Committee,
@@ -159,17 +148,16 @@ impl Block {
     ) -> eyre::Result<()> {
         let round = self.round();
 
-        // 1. Recompute the digest from the block's fields and
-        //    compare it to the claimed digest. This detects any
-        //    tampering with the block content.
-        let expected = crypto.digest(
-            self.author(),
-            round,
-            &self.includes,
-            &self.transactions,
-            self.creation_time,
-            &self.signature,
-        );
+        // 1. Reject genesis blocks — trusted by construction, must never arrive over the network.
+        ensure!(round != GENESIS_ROUND, "Genesis blocks cannot be verified");
+
+        // 2. Verify the author is a known committee member.
+        let Some(public_key) = committee.get_public_key(self.author()) else {
+            bail!("Unknown block author {}", self.author());
+        };
+
+        // 3. Verify the signature and recompute the digest.
+        let expected = crypto.verify(public_key, self)?;
         ensure!(
             expected == self.digest(),
             "Digest mismatch: computed {:?}, claimed {:?}",
@@ -177,20 +165,7 @@ impl Block {
             self.digest()
         );
 
-        // 2. Reject genesis blocks -- they are trusted by
-        //    construction and must never arrive over the network.
-        ensure!(round != GENESIS_ROUND, "Genesis blocks cannot be verified");
-
-        // 3. Verify the author is a known committee member.
-        let Some(public_key) = committee.get_public_key(self.author()) else {
-            bail!("Unknown block author {}", self.author());
-        };
-
-        // 4. Verify the block signature against the author's
-        //    public key.
-        crypto.verify_signature(public_key, self)?;
-
-        // 5. Validate each included block reference.
+        // 4. Validate each included block reference.
         for include in &self.includes {
             ensure!(
                 committee.known_authority(include.authority),
@@ -202,8 +177,7 @@ impl Block {
             );
         }
 
-        // 6. Verify the threshold clock: the block must include
-        //    a quorum of blocks from the previous round.
+        // 5. Verify the threshold clock: the block must include a quorum from the previous round.
         ensure!(
             threshold_clock_valid_non_genesis(self, committee, quorum_threshold),
             "Threshold clock is not valid"
@@ -251,8 +225,8 @@ impl Block {
         self.reference.digest
     }
 
-    /// Return `(authority, round)` for pattern matching and comparison.
-    /// For display, use `authority.with_round(round)` instead.
+    /// Return `(authority, round)` for pattern matching. For display, use
+    /// `authority.with_round(round)` instead.
     pub fn author_round(&self) -> (Authority, RoundNumber) {
         self.reference.author_round()
     }
@@ -395,8 +369,8 @@ pub(crate) mod test {
             BlockReference::new_test(authority as u64, round)
         }
 
-        /// Add genesis blocks (round 0) for every authority referenced
-        /// in the DAG, if not already present.
+        /// Add genesis blocks (round 0) for every authority referenced in the DAG, if not already
+        /// present.
         pub fn add_genesis_blocks(mut self) -> Self {
             for authority in self.authorities() {
                 let block = Block::genesis(authority);
@@ -406,8 +380,7 @@ pub(crate) mod test {
             self
         }
 
-        /// Iterate blocks in a random order (for testing reorder
-        /// tolerance).
+        /// Iterate blocks in a random order (for testing reorder tolerance).
         pub fn random_iter(&self, rng: &mut impl Rng) -> RandomDagIter<'_> {
             let mut v: Vec<_> = self.0.keys().cloned().collect();
             v.shuffle(rng);

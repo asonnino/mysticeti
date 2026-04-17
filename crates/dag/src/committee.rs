@@ -3,7 +3,7 @@
 
 use std::{borrow::Borrow, collections::HashSet, sync::Arc};
 
-use rand::Rng;
+use rand::{Rng, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -99,12 +99,12 @@ impl Committee {
     }
 
     pub fn new_for_benchmarks(committee_size: usize) -> Arc<Self> {
+        let mut rng = StdRng::seed_from_u64(0);
         Self::new(
-            Signer::new_for_test(committee_size)
-                .into_iter()
-                .map(|keypair| AuthorityInfo {
+            (0..committee_size)
+                .map(|_| AuthorityInfo {
                     stake: 1,
-                    public_key: keypair.public_key(),
+                    public_key: Signer::new(&mut rng).public_key(),
                 })
                 .collect(),
         )

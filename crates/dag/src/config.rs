@@ -9,6 +9,7 @@ use std::{
     time::Duration,
 };
 
+use rand::{SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
@@ -133,11 +134,12 @@ impl NodePublicConfig {
     pub const PORT_OFFSET_FOR_TESTS: u16 = 1500;
 
     pub fn new_for_tests(committee_size: usize) -> Self {
-        let keys = Signer::new_for_test(committee_size);
+        let mut rng = StdRng::seed_from_u64(0);
         let ips = vec![IpAddr::V4(Ipv4Addr::LOCALHOST); committee_size];
         let benchmark_port_offset = ips.len() as u16;
         let mut identifiers = Vec::new();
-        for (i, (ip, key)) in ips.into_iter().zip(keys.into_iter()).enumerate() {
+        for (i, ip) in ips.into_iter().enumerate() {
+            let key = Signer::new(&mut rng);
             let public_key = key.public_key();
             let network_port = Self::PORT_OFFSET_FOR_TESTS + i as u16;
             let metrics_port = benchmark_port_offset + network_port;
@@ -224,10 +226,10 @@ impl NodePrivateConfig {
     }
 
     pub fn new_for_benchmarks(working_dir: &Path, committee_size: usize) -> Vec<Self> {
-        Signer::new_for_test(committee_size)
-            .into_iter()
-            .enumerate()
-            .map(|(i, keypair)| {
+        let mut rng = StdRng::seed_from_u64(0);
+        (0..committee_size)
+            .map(|i| {
+                let keypair = Signer::new(&mut rng);
                 let authority = Authority::from(i);
                 let path = working_dir.join(NodePrivateConfig::default_storage_path(authority));
                 Self {

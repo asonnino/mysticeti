@@ -241,7 +241,7 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
 
         assert!(!includes.is_empty());
         let time_ns = C::timestamp_utc().as_nanos() as u64;
-        let block = Block::new_with_crypto(
+        let block = Block::new(
             self.authority,
             clock_round,
             includes,

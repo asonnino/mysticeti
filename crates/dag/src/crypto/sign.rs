@@ -1,9 +1,15 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Ed25519 signing primitives.
+//!
+//! This module provides the low-level key and signature types used by the higher-level
+//! [`CryptoEngine`](super::CryptoEngine) and [`CryptoVerifier`](super::CryptoVerifier).
+//! Application code should rarely need to call [`Signer::sign`] or [`PublicKey::verify`] directly.
+
 use std::fmt;
 
-use rand::{SeedableRng, rngs::StdRng};
+use rand::{CryptoRng, Rng, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use zeroize::Zeroize;
 
@@ -11,37 +17,44 @@ use crate::block::serde::{BytesVisitor, FromBytes};
 
 use super::hash::AsBytes;
 
+/// Length of an Ed25519 signature in bytes.
 pub const SIGNATURE_SIZE: usize = 64;
 
+/// A fixed-size Ed25519 signature stored inline.
+///
+/// This is a value type (Copy + Ord + Hash) suitable for use as a map key or inside serialized
+/// blocks. The default value is all zeros, used when crypto is disabled.
 #[derive(Clone, Copy, Eq, Ord, PartialOrd, PartialEq, Hash)]
 pub struct SignatureBytes([u8; SIGNATURE_SIZE]);
 
+/// An Ed25519 verification (public) key.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub struct PublicKey(pub(super) ed25519_consensus::VerificationKey);
 
-/// Private signing key.
+/// An Ed25519 signing (private) key.
 ///
-/// Box ensures the key is not copied in memory when [`Signer`] is
-/// moved, for better security.
+/// The inner key is boxed so that it stays at a stable heap address and is not inadvertently
+/// copied when the [`Signer`] is moved. The key material is zeroized on drop.
 #[derive(Serialize, Deserialize)]
 pub struct Signer(Box<ed25519_consensus::SigningKey>);
 
 impl Signer {
-    pub fn new_for_test(n: usize) -> Vec<Self> {
-        let mut rng = StdRng::seed_from_u64(0);
-        (0..n)
-            .map(|_| Self(Box::new(ed25519_consensus::SigningKey::new(&mut rng))))
-            .collect()
+    /// Generates a new random signing key from the given CSPRNG.
+    pub fn new<R: Rng + CryptoRng>(rng: &mut R) -> Self {
+        Self(Box::new(ed25519_consensus::SigningKey::new(rng)))
     }
 
+    /// Returns a deterministic key for tests where crypto is disabled and only the type is needed.
     pub(crate) fn dummy() -> Self {
-        Self(Box::new(ed25519_consensus::SigningKey::from([0u8; 32])))
+        Self::new(&mut StdRng::seed_from_u64(0))
     }
 
+    /// Derives the corresponding public key.
     pub fn public_key(&self) -> PublicKey {
         PublicKey(self.0.verification_key())
     }
 
+    /// Signs `digest` and returns the raw signature bytes.
     pub(super) fn sign(&self, digest: &[u8]) -> SignatureBytes {
         let signature = self.0.sign(digest);
         SignatureBytes(signature.to_bytes())
@@ -49,10 +62,12 @@ impl Signer {
 }
 
 impl PublicKey {
+    /// Returns a deterministic public key matching [`Signer::dummy`].
     pub(crate) fn dummy() -> Self {
         Signer::dummy().public_key()
     }
 
+    /// Verifies `signature` over `digest`, returning an error on mismatch.
     pub(super) fn verify(&self, signature: &SignatureBytes, digest: &[u8]) -> eyre::Result<()> {
         let sig = ed25519_consensus::Signature::from(signature.0);
         self.0

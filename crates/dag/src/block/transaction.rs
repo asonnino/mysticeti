@@ -63,7 +63,7 @@ impl fmt::Debug for Transaction {
 /// A locator pairs the [`BlockReference`] containing the transaction with its
 /// position in that block's transaction list, uniquely identifying the
 /// transaction across the system.
-#[derive(Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Default)]
+#[derive(Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct TransactionLocator {
     block: BlockReference,
     offset: u64,

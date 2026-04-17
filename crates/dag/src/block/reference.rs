@@ -25,11 +25,21 @@ use crate::authority::Authority;
 use crate::crypto::{BlockDigest, CryptoHash};
 
 /// A unique identifier for a block in the DAG.
-#[derive(Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub struct BlockReference {
     pub authority: Authority,
     pub round: RoundNumber,
     pub digest: BlockDigest,
+}
+
+impl Default for BlockReference {
+    fn default() -> Self {
+        Self {
+            authority: Authority::default(),
+            round: 0,
+            digest: BlockDigest::dummy(),
+        }
+    }
 }
 
 impl BlockReference {
@@ -44,7 +54,7 @@ impl BlockReference {
             Self {
                 authority,
                 round,
-                digest: Default::default(),
+                digest: BlockDigest::dummy(),
             }
         }
     }
