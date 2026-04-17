@@ -3,7 +3,7 @@
 
 pub mod authority;
 pub mod block;
-pub(crate) use block::crypto;
+pub mod crypto;
 pub use block::data;
 
 pub(crate) use storage::block_store;

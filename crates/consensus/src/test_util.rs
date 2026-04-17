@@ -5,11 +5,11 @@ use std::{path::Path, sync::Arc};
 
 use dag::{
     authority::Authority,
-    block::crypto::CryptoEngine,
     committee::Committee,
     config::NodePublicConfig,
     context::Ctx,
     core::{Core, CoreOptions, block_handler::RealBlockHandler},
+    crypto::CryptoEngine,
     metrics::Metrics,
     storage::Storage,
     test_util::committee,

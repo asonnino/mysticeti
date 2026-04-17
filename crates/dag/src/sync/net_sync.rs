@@ -11,7 +11,6 @@ use tokio::{
 
 use crate::{
     authority::Authority,
-    block::crypto::CryptoVerifier,
     committee::Committee,
     committee::Stake,
     config::NodePublicConfig,
@@ -23,6 +22,7 @@ use crate::{
         core_thread::CoreDispatch,
         syncer::{Syncer, SyncerSignals},
     },
+    crypto::CryptoVerifier,
     metrics::Metrics,
     storage::BlockReader,
     sync::{

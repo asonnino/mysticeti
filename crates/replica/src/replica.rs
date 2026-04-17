@@ -13,7 +13,6 @@ use tokio::{sync::mpsc, task::JoinHandle};
 use consensus::{committer::Committer, protocol::Protocol};
 use dag::{
     authority::Authority,
-    block::crypto::CryptoEngine,
     block::transaction::Transaction,
     committee::Committee,
     config::{ClientParameters, NodePrivateConfig, NodePublicConfig},
@@ -22,6 +21,7 @@ use dag::{
         Core, CoreOptions,
         block_handler::{CommitHandler, RealBlockHandler},
     },
+    crypto::CryptoEngine,
     metrics::Metrics,
     storage::Storage,
     sync::{net_sync::NetworkSyncer, network::Network},

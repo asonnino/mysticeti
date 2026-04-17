@@ -6,12 +6,12 @@ use std::sync::Arc;
 use consensus::{committer::Committer, protocol::Protocol};
 use dag::{
     authority::Authority,
-    block::crypto::CryptoEngine,
     config::NodePublicConfig,
     core::{
         Core, CoreOptions,
         block_handler::{CommitHandler, RealBlockHandler},
     },
+    crypto::CryptoEngine,
     metrics::Metrics,
     storage::Storage,
     sync::{net_sync::NetworkSyncer, network::Network},

@@ -17,7 +17,6 @@
 //!   that uniquely identifies a block.
 //! - [`transaction`] — [`Transaction`] and [`TransactionLocator`].
 
-pub mod crypto;
 pub mod data;
 pub mod reference;
 pub(crate) mod serde;
@@ -35,10 +34,10 @@ use ::serde::{Deserialize, Serialize};
 use eyre::{bail, ensure};
 
 use self::{
-    crypto::{BlockDigest, CryptoEngine, CryptoVerifier, SignatureBytes},
     data::Data,
     transaction::{Transaction, TransactionLocator},
 };
+use crate::crypto::{BlockDigest, CryptoEngine, CryptoVerifier, SignatureBytes};
 use crate::{
     authority::Authority,
     committee::{Committee, Stake},

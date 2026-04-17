@@ -9,10 +9,8 @@ use digest::Digest;
 use minibytes::Bytes;
 use serde::{Deserialize, Serialize};
 
-use super::{
-    BlockReference,
-    crypto::{AsBytes, CryptoHash},
-};
+use super::BlockReference;
+use crate::crypto::{AsBytes, CryptoHash};
 
 /// An opaque payload submitted by a client and included in a [`Block`](super::Block).
 ///

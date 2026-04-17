@@ -20,11 +20,9 @@ use std::{
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 
-use super::{
-    RoundNumber,
-    crypto::{BlockDigest, CryptoHash},
-};
+use super::RoundNumber;
 use crate::authority::Authority;
+use crate::crypto::{BlockDigest, CryptoHash};
 
 /// A unique identifier for a block in the DAG.
 #[derive(Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Default)]

@@ -12,8 +12,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     authority::Authority,
-    block::{Block, BlockReference, RoundNumber, crypto::BlockDigest},
+    block::{Block, BlockReference, RoundNumber},
     consensus::CommittedSubDag,
+    crypto::BlockDigest,
     data::Data,
     wal::{Tag, WalPosition, WalWriter},
 };
