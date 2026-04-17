@@ -23,10 +23,9 @@ use crate::{
     block_store::{CommitData, OwnBlockData},
     committee::Committee,
     committee::Stake,
-    config::NodePrivateConfig,
     consensus::{CommittedSubDag, DagConsensus},
     context::Ctx,
-    crypto::Signer,
+    crypto::{CryptoEngine, CryptoVerifier},
     data::Data,
     metrics::Metrics,
     state::RecoveredState,
@@ -47,7 +46,7 @@ pub struct Core<C: Ctx, D: DagConsensus> {
     storage: Storage,
     pub metrics: Arc<Metrics>,
     options: CoreOptions,
-    signer: Signer,
+    crypto: CryptoEngine,
     // todo - ugly, probably need to merge syncer and core
     recovered_committed_blocks: Option<HashSet<BlockReference>>,
     committer: D,
@@ -69,12 +68,12 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
         block_handler: RealBlockHandler<C>,
         authority: Authority,
         committee: Arc<Committee>,
-        private_config: NodePrivateConfig,
         metrics: Arc<Metrics>,
         mut storage: Storage,
         recovered: RecoveredState,
         options: CoreOptions,
         committer: D,
+        crypto: CryptoEngine,
     ) -> Self {
         let RecoveredState {
             last_own_block,
@@ -133,7 +132,7 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
             storage,
             metrics,
             options,
-            signer: private_config.keypair,
+            crypto,
             recovered_committed_blocks: Some(committed_blocks),
             committer,
         };
@@ -156,6 +155,10 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
     pub fn with_options(mut self, options: CoreOptions) -> Self {
         self.options = options;
         self
+    }
+
+    pub fn verifier(&self) -> CryptoVerifier {
+        self.crypto.verifier()
     }
 
     // Note that generally when you update this function you
@@ -238,13 +241,13 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
 
         assert!(!includes.is_empty());
         let time_ns = C::timestamp_utc().as_nanos() as u64;
-        let block = Block::new_with_signer(
+        let block = Block::new_with_crypto(
             self.authority,
             clock_round,
             includes,
             statements,
             time_ns,
-            &self.signer,
+            &self.crypto,
         );
         assert_eq!(
             block.includes().first().unwrap().authority,

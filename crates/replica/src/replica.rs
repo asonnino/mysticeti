@@ -13,6 +13,7 @@ use tokio::{sync::mpsc, task::JoinHandle};
 use consensus::{committer::Committer, protocol::Protocol};
 use dag::{
     authority::Authority,
+    block::crypto::CryptoEngine,
     block::transaction::Transaction,
     committee::Committee,
     config::{ClientParameters, NodePrivateConfig, NodePublicConfig},
@@ -108,25 +109,27 @@ impl Replica {
         // Build the committer and core.
         let commit_handler =
             CommitHandler::new(block_handler.transaction_time.clone(), metrics.clone());
+        let protocol = Protocol::mysticeti(
+            self.committee.total_stake(),
+            self.public_config.parameters.leader_count,
+        );
+        let crypto = CryptoEngine::new(self.private_config.keypair, protocol.require_crypto);
         let committer = Committer::new(
             self.committee.clone(),
             storage.block_reader().clone(),
-            Protocol::mysticeti(
-                self.committee.total_stake(),
-                self.public_config.parameters.leader_count,
-            ),
+            protocol,
             metrics.clone(),
         );
         let core = Core::open(
             block_handler,
             self.authority,
             self.committee.clone(),
-            self.private_config,
             metrics.clone(),
             storage,
             recovered,
             CoreOptions::default(),
             committer,
+            crypto,
         );
 
         // Bind the network and start the synchronizer.

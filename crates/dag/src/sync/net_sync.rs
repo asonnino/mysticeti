@@ -11,6 +11,7 @@ use tokio::{
 
 use crate::{
     authority::Authority,
+    block::crypto::CryptoVerifier,
     committee::Committee,
     committee::Stake,
     config::NodePublicConfig,
@@ -46,6 +47,7 @@ pub struct NetworkSyncerInner<C: Ctx, D: DagConsensus> {
     pub notify: Arc<Notify>,
     committee: Arc<Committee>,
     quorum_threshold: Stake,
+    crypto: CryptoVerifier,
     stop: mpsc::Sender<()>,
 }
 
@@ -65,6 +67,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
         commit_handler.recover_committed(committed);
         let committee = core.committee().clone();
         let quorum_threshold = core.quorum_threshold();
+        let crypto = core.verifier();
         let wal_syncer = core.wal_syncer();
         let block_reader = core.block_reader().clone();
         let mut syncer = Syncer::new(
@@ -86,6 +89,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
             block_reader,
             committee,
             quorum_threshold,
+            crypto,
             stop: stop_sender.clone(),
         });
         let block_fetcher = Arc::new(BlockFetcher::start(
@@ -196,7 +200,9 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
                 }
                 NetworkMessage::Block(block) => {
                     tracing::debug!("Received {} from {}", block.reference(), peer);
-                    if let Err(e) = block.verify(&inner.committee, inner.quorum_threshold) {
+                    if let Err(e) =
+                        block.verify(&inner.committee, inner.quorum_threshold, &inner.crypto)
+                    {
                         tracing::warn!(
                             "Rejected incorrect block {} from {}: {:?}",
                             block.reference(),

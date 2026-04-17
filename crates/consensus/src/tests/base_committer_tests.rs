@@ -34,6 +34,7 @@ fn direct_commit() {
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
             leader_wait: false,
+            require_crypto: false,
         },
         Metrics::new_for_test(0),
     );
@@ -70,6 +71,7 @@ fn idempotence() {
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
             leader_wait: false,
+            require_crypto: false,
         },
         Metrics::new_for_test(0),
     );
@@ -111,6 +113,7 @@ fn multiple_direct_commit() {
                 leader_count: NonZeroUsize::new(1).unwrap(),
                 pipeline: false,
                 leader_wait: false,
+                require_crypto: false,
             },
             Metrics::new_for_test(0),
         );
@@ -155,6 +158,7 @@ fn direct_commit_late_call() {
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
             leader_wait: false,
+            require_crypto: false,
         },
         Metrics::new_for_test(0),
     );
@@ -197,6 +201,7 @@ fn no_genesis_commit() {
                 leader_count: NonZeroUsize::new(1).unwrap(),
                 pipeline: false,
                 leader_wait: false,
+                require_crypto: false,
             },
             Metrics::new_for_test(0),
         );
@@ -247,6 +252,7 @@ fn no_leader() {
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
             leader_wait: false,
+            require_crypto: false,
         },
         Metrics::new_for_test(0),
     );
@@ -305,6 +311,7 @@ fn direct_skip() {
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
             leader_wait: false,
+            require_crypto: false,
         },
         Metrics::new_for_test(0),
     );
@@ -412,6 +419,7 @@ fn indirect_commit() {
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
             leader_wait: false,
+            require_crypto: false,
         },
         Metrics::new_for_test(0),
     );
@@ -487,6 +495,7 @@ fn indirect_skip() {
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
             leader_wait: false,
+            require_crypto: false,
         },
         Metrics::new_for_test(0),
     );
@@ -574,6 +583,7 @@ fn undecided() {
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
             leader_wait: false,
+            require_crypto: false,
         },
         Metrics::new_for_test(0),
     );

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     authority::{Authority, AuthoritySet},
     config::ImportExport,
-    crypto::{PublicKey, Signer, dummy_public_key},
+    crypto::{PublicKey, Signer},
 };
 
 pub type Stake = u64;
@@ -121,7 +121,7 @@ impl AuthorityInfo {
     pub fn test_from_stake(stake: Stake) -> Self {
         Self {
             stake,
-            public_key: dummy_public_key(),
+            public_key: PublicKey::dummy(),
         }
     }
 

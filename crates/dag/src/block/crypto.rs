@@ -4,7 +4,6 @@
 use std::fmt;
 
 use digest::Digest;
-#[cfg(not(test))]
 use ed25519_consensus::Signature;
 use rand::{SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
@@ -33,12 +32,137 @@ pub struct SignatureBytes([u8; SIGNATURE_SIZE]);
 #[derive(Serialize, Deserialize)]
 pub struct Signer(Box<ed25519_consensus::SigningKey>);
 
-#[cfg(not(test))]
 type BlockHasher = blake2::Blake2b<digest::consts::U32>;
 
+/// Signing-side crypto. Held by Core (not Clone -- owns private key).
+pub struct CryptoEngine {
+    signer: Signer,
+    enabled: bool,
+}
+
+/// Verification-side crypto. Clone + Send + Sync. Shared by network tasks.
+#[derive(Clone)]
+pub struct CryptoVerifier {
+    enabled: bool,
+}
+
+impl CryptoEngine {
+    pub fn new(signer: Signer, enabled: bool) -> Self {
+        Self { signer, enabled }
+    }
+
+    pub fn disabled() -> Self {
+        Self {
+            signer: Signer::dummy(),
+            enabled: false,
+        }
+    }
+
+    pub fn verifier(&self) -> CryptoVerifier {
+        CryptoVerifier {
+            enabled: self.enabled,
+        }
+    }
+
+    pub fn sign_block(
+        &self,
+        authority: Authority,
+        round: RoundNumber,
+        includes: &[BlockReference],
+        transactions: &[Transaction],
+        creation_time: u64,
+    ) -> SignatureBytes {
+        if !self.enabled {
+            return SignatureBytes::default();
+        }
+        let mut hasher = BlockHasher::default();
+        digest_without_signature(
+            &mut hasher,
+            authority,
+            round,
+            includes,
+            transactions,
+            creation_time,
+        );
+        let digest: [u8; BLOCK_DIGEST_SIZE] = hasher.finalize().into();
+        let signature = self.signer.0.sign(digest.as_ref());
+        SignatureBytes(signature.to_bytes())
+    }
+
+    pub fn digest(
+        &self,
+        authority: Authority,
+        round: RoundNumber,
+        includes: &[BlockReference],
+        transactions: &[Transaction],
+        creation_time: u64,
+        signature: &SignatureBytes,
+    ) -> BlockDigest {
+        if !self.enabled {
+            return BlockDigest::default();
+        }
+        BlockDigest::compute(
+            authority,
+            round,
+            includes,
+            transactions,
+            creation_time,
+            signature,
+        )
+    }
+
+    pub fn public_key(&self) -> PublicKey {
+        self.signer.public_key()
+    }
+}
+
+impl CryptoVerifier {
+    pub fn verify_signature(&self, public_key: &PublicKey, block: &Block) -> eyre::Result<()> {
+        if !self.enabled {
+            return Ok(());
+        }
+        let signature = Signature::from(block.signature().0);
+        let mut hasher = BlockHasher::default();
+        digest_without_signature(
+            &mut hasher,
+            block.author(),
+            block.round(),
+            block.includes(),
+            block.transactions(),
+            block.creation_time_ns(),
+        );
+        let digest: [u8; BLOCK_DIGEST_SIZE] = hasher.finalize().into();
+        public_key
+            .0
+            .verify(&signature, digest.as_ref())
+            .map_err(|e| eyre::eyre!("Signature verification failed: {e:?}"))
+    }
+
+    pub fn digest(
+        &self,
+        authority: Authority,
+        round: RoundNumber,
+        includes: &[BlockReference],
+        transactions: &[Transaction],
+        creation_time: u64,
+        signature: &SignatureBytes,
+    ) -> BlockDigest {
+        if !self.enabled {
+            return BlockDigest::default();
+        }
+        BlockDigest::compute(
+            authority,
+            round,
+            includes,
+            transactions,
+            creation_time,
+            signature,
+        )
+    }
+}
+
 impl BlockDigest {
-    #[cfg(not(test))]
-    pub fn new(
+    fn compute(
         authority: Authority,
         round: RoundNumber,
         includes: &[BlockReference],
@@ -47,7 +171,7 @@ impl BlockDigest {
         signature: &SignatureBytes,
     ) -> Self {
         let mut hasher = BlockHasher::default();
-        Self::digest_without_signature(
+        digest_without_signature(
             &mut hasher,
             authority,
             round,
@@ -58,51 +182,37 @@ impl BlockDigest {
         hasher.update(signature);
         Self(hasher.finalize().into())
     }
-
-    #[cfg(test)]
-    pub fn new(
-        _authority: Authority,
-        _round: RoundNumber,
-        _includes: &[BlockReference],
-        _transactions: &[Transaction],
-        _creation_time: u64,
-        _signature: &SignatureBytes,
-    ) -> Self {
-        Default::default()
-    }
-
-    /// There is a bit of a complexity around what is considered
-    /// block digest and what is being signed.
-    ///
-    /// * Block signature covers all the fields in the block,
-    ///   except for signature and reference.digest
-    /// * Block digest(e.g. block.reference.digest) covers all the above **and** block signature
-    ///
-    /// This is not very beautiful, but it allows to optimize block synchronization,
-    /// by skipping signature verification for all the descendants of the certified block.
-    #[cfg(not(test))]
-    fn digest_without_signature(
-        hasher: &mut BlockHasher,
-        authority: Authority,
-        round: RoundNumber,
-        includes: &[BlockReference],
-        transactions: &[Transaction],
-        creation_time: u64,
-    ) {
-        authority.as_u64().crypto_hash(hasher);
-        round.crypto_hash(hasher);
-        for include in includes {
-            include.crypto_hash(hasher);
-        }
-        for tx in transactions {
-            [0].crypto_hash(hasher);
-            tx.crypto_hash(hasher);
-        }
-        creation_time.crypto_hash(hasher);
-    }
 }
 
-#[cfg_attr(test, allow(dead_code))]
+/// There is a bit of a complexity around what is considered
+/// block digest and what is being signed.
+///
+/// * Block signature covers all the fields in the block,
+///   except for signature and reference.digest
+/// * Block digest(e.g. block.reference.digest) covers all the above **and** block signature
+///
+/// This is not very beautiful, but it allows to optimize block synchronization,
+/// by skipping signature verification for all the descendants of the certified block.
+fn digest_without_signature(
+    hasher: &mut BlockHasher,
+    authority: Authority,
+    round: RoundNumber,
+    includes: &[BlockReference],
+    transactions: &[Transaction],
+    creation_time: u64,
+) {
+    authority.as_u64().crypto_hash(hasher);
+    round.crypto_hash(hasher);
+    for include in includes {
+        include.crypto_hash(hasher);
+    }
+    for tx in transactions {
+        [0].crypto_hash(hasher);
+        tx.crypto_hash(hasher);
+    }
+    creation_time.crypto_hash(hasher);
+}
+
 pub trait AsBytes {
     // This is pretty much same as AsRef<[u8]>
     //
@@ -122,8 +232,6 @@ impl<const N: usize> AsBytes for [u8; N] {
     }
 }
 
-// Used in non-test builds by digest_without_signature.
-#[cfg_attr(test, allow(dead_code))]
 pub(crate) trait CryptoHash {
     fn crypto_hash(&self, state: &mut impl Digest);
 }
@@ -146,70 +254,12 @@ impl<T: AsBytes> CryptoHash for T {
     }
 }
 
-impl PublicKey {
-    #[cfg(not(test))]
-    pub fn verify_block(&self, block: &Block) -> Result<(), ed25519_consensus::Error> {
-        let signature = Signature::from(block.signature().0);
-        let mut hasher = BlockHasher::default();
-        BlockDigest::digest_without_signature(
-            &mut hasher,
-            block.author(),
-            block.round(),
-            block.includes(),
-            block.transactions(),
-            block.creation_time_ns(),
-        );
-        let digest: [u8; BLOCK_DIGEST_SIZE] = hasher.finalize().into();
-        self.0.verify(&signature, digest.as_ref())
-    }
-
-    #[cfg(test)]
-    pub fn verify_block(&self, _block: &Block) -> Result<(), ed25519_consensus::Error> {
-        Ok(())
-    }
-}
-
 impl Signer {
     pub fn new_for_test(n: usize) -> Vec<Self> {
         let mut rng = StdRng::seed_from_u64(0);
         (0..n)
             .map(|_| Self(Box::new(ed25519_consensus::SigningKey::new(&mut rng))))
             .collect()
-    }
-
-    #[cfg(not(test))]
-    pub fn sign_block(
-        &self,
-        authority: Authority,
-        round: RoundNumber,
-        includes: &[BlockReference],
-        transactions: &[Transaction],
-        creation_time: u64,
-    ) -> SignatureBytes {
-        let mut hasher = BlockHasher::default();
-        BlockDigest::digest_without_signature(
-            &mut hasher,
-            authority,
-            round,
-            includes,
-            transactions,
-            creation_time,
-        );
-        let digest: [u8; BLOCK_DIGEST_SIZE] = hasher.finalize().into();
-        let signature = self.0.sign(digest.as_ref());
-        SignatureBytes(signature.to_bytes())
-    }
-
-    #[cfg(test)]
-    pub fn sign_block(
-        &self,
-        _authority: Authority,
-        _round: RoundNumber,
-        _includes: &[BlockReference],
-        _transactions: &[Transaction],
-        _creation_time: u64,
-    ) -> SignatureBytes {
-        Default::default()
     }
 
     pub fn public_key(&self) -> PublicKey {
@@ -328,10 +378,14 @@ impl Drop for Signer {
     }
 }
 
-pub fn dummy_signer() -> Signer {
-    Signer(Box::new(ed25519_consensus::SigningKey::from([0u8; 32])))
+impl Signer {
+    pub(crate) fn dummy() -> Self {
+        Self(Box::new(ed25519_consensus::SigningKey::from([0u8; 32])))
+    }
 }
 
-pub fn dummy_public_key() -> PublicKey {
-    dummy_signer().public_key()
+impl PublicKey {
+    pub(crate) fn dummy() -> Self {
+        Signer::dummy().public_key()
+    }
 }

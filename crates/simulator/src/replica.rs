@@ -6,7 +6,8 @@ use std::sync::Arc;
 use consensus::{committer::Committer, protocol::Protocol};
 use dag::{
     authority::Authority,
-    config::{NodePrivateConfig, NodePublicConfig},
+    block::crypto::CryptoEngine,
+    config::NodePublicConfig,
     core::{
         Core, CoreOptions,
         block_handler::{CommitHandler, RealBlockHandler},
@@ -67,17 +68,17 @@ impl SimulatedReplica {
         let (block_handler, _) = RealBlockHandler::new(metrics.clone());
         let commit_handler =
             CommitHandler::new(block_handler.transaction_time.clone(), metrics.clone());
-        let private_config = NodePrivateConfig::new_for_tests(self.authority);
+        let crypto = CryptoEngine::disabled();
         let core = Core::open(
             block_handler,
             self.authority,
             self.committee,
-            private_config,
             metrics.clone(),
             storage,
             recovered,
             CoreOptions::test(),
             committer,
+            crypto,
         );
 
         NetworkSyncer::start(

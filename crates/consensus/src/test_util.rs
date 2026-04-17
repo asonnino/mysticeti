@@ -5,8 +5,9 @@ use std::{path::Path, sync::Arc};
 
 use dag::{
     authority::Authority,
+    block::crypto::CryptoEngine,
     committee::Committee,
-    config::{NodePrivateConfig, NodePublicConfig},
+    config::NodePublicConfig,
     context::Ctx,
     core::{Core, CoreOptions, block_handler::RealBlockHandler},
     metrics::Metrics,
@@ -40,17 +41,17 @@ fn open_core<C: Ctx>(
         metrics.clone(),
     );
     let (block_handler, _tx_sender) = RealBlockHandler::new(metrics.clone());
-    let private_config = NodePrivateConfig::new_for_tests(authority);
+    let crypto = CryptoEngine::disabled();
     Core::open(
         block_handler,
         authority,
         committee.clone(),
-        private_config,
         metrics,
         storage,
         recovered,
         CoreOptions::test(),
         committer,
+        crypto,
     )
 }
 

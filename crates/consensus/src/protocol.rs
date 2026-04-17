@@ -19,6 +19,8 @@ pub struct Protocol {
     pub pipeline: bool,
     /// Whether the protocol should wait for leader blocks before proposing.
     pub leader_wait: bool,
+    /// Whether to perform real cryptographic operations.
+    pub require_crypto: bool,
 }
 
 impl Protocol {
@@ -35,6 +37,7 @@ impl Protocol {
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
             leader_wait: true,
+            require_crypto: true,
         }
     }
 
@@ -51,6 +54,7 @@ impl Protocol {
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
             leader_wait: false,
+            require_crypto: true,
         }
     }
 
@@ -67,6 +71,7 @@ impl Protocol {
             leader_count,
             pipeline: true,
             leader_wait: true,
+            require_crypto: true,
         }
     }
 
@@ -82,6 +87,7 @@ impl Protocol {
             leader_count,
             pipeline: true,
             leader_wait: true,
+            require_crypto: true,
         }
     }
 
@@ -106,6 +112,7 @@ impl Protocol {
             leader_count,
             pipeline: true,
             leader_wait: false,
+            require_crypto: true,
         }
     }
 }

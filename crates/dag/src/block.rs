@@ -17,7 +17,7 @@
 //!   that uniquely identifies a block.
 //! - [`transaction`] — [`Transaction`] and [`TransactionLocator`].
 
-pub(crate) mod crypto;
+pub mod crypto;
 pub mod data;
 pub mod reference;
 pub(crate) mod serde;
@@ -35,7 +35,7 @@ use ::serde::{Deserialize, Serialize};
 use eyre::{bail, ensure};
 
 use self::{
-    crypto::{BlockDigest, SignatureBytes, Signer},
+    crypto::{BlockDigest, CryptoEngine, CryptoVerifier, SignatureBytes},
     data::Data,
     transaction::{Transaction, TransactionLocator},
 };
@@ -54,7 +54,7 @@ const GENESIS_ROUND: RoundNumber = 0;
 /// transactions, and a signature from the proposing authority.
 ///
 /// **Invariant:** adding or removing fields requires updating
-/// [`BlockDigest::new`] and [`Block::verify`].
+/// [`CryptoEngine::digest`] and [`Block::verify`].
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Block {
     reference: BlockReference,
@@ -76,51 +76,34 @@ pub struct Block {
 }
 
 impl Block {
-    /// Create the genesis block for an authority (round 0, no includes, no
-    /// transactions, no signature).
+    /// Create the genesis block for an authority (round 0, no includes,
+    /// no transactions, default digest and signature).
     pub fn genesis(authority: Authority) -> Data<Self> {
-        Data::new(Self::new(
-            authority,
-            GENESIS_ROUND,
-            vec![],
-            vec![],
-            0,
-            SignatureBytes::default(),
-        ))
+        Data::new(Self {
+            reference: BlockReference {
+                authority,
+                round: GENESIS_ROUND,
+                digest: BlockDigest::default(),
+            },
+            includes: vec![],
+            transactions: vec![],
+            creation_time: 0,
+            signature: SignatureBytes::default(),
+        })
     }
 
-    /// Create a new block, signing it with the provided signer.
-    pub fn new_with_signer(
+    /// Create a new block, signing it with the provided crypto engine.
+    pub fn new_with_crypto(
         authority: Authority,
         round: RoundNumber,
         includes: Vec<BlockReference>,
         transactions: Vec<Transaction>,
         creation_time: u64,
-        signer: &Signer,
+        crypto: &CryptoEngine,
     ) -> Self {
         let signature =
-            signer.sign_block(authority, round, &includes, &transactions, creation_time);
-
-        Self::new(
-            authority,
-            round,
-            includes,
-            transactions,
-            creation_time,
-            signature,
-        )
-    }
-
-    /// Create a new block with a pre-computed signature.
-    pub fn new(
-        authority: Authority,
-        round: RoundNumber,
-        includes: Vec<BlockReference>,
-        transactions: Vec<Transaction>,
-        creation_time: u64,
-        signature: SignatureBytes,
-    ) -> Self {
-        let digest = BlockDigest::new(
+            crypto.sign_block(authority, round, &includes, &transactions, creation_time);
+        let digest = crypto.digest(
             authority,
             round,
             &includes,
@@ -142,16 +125,45 @@ impl Block {
         }
     }
 
-    /// Verify the integrity and validity of a block received from the network.
-    /// This is a security-critical path — every check here prevents a Byzantine
-    /// peer from injecting invalid blocks into the DAG.
-    pub fn verify(&self, committee: &Committee, quorum_threshold: Stake) -> eyre::Result<()> {
+    /// Test-only constructor with a default (zero) digest.
+    #[cfg(any(test, feature = "test-utils"))]
+    pub fn new_for_test(
+        authority: Authority,
+        round: RoundNumber,
+        includes: Vec<BlockReference>,
+        transactions: Vec<Transaction>,
+        creation_time: u64,
+        signature: SignatureBytes,
+    ) -> Self {
+        Self {
+            reference: BlockReference {
+                authority,
+                round,
+                digest: BlockDigest::default(),
+            },
+            includes,
+            transactions,
+            creation_time,
+            signature,
+        }
+    }
+
+    /// Verify the integrity and validity of a block received
+    /// from the network. This is a security-critical path -- every
+    /// check here prevents a Byzantine peer from injecting invalid
+    /// blocks into the DAG.
+    pub fn verify(
+        &self,
+        committee: &Committee,
+        quorum_threshold: Stake,
+        crypto: &CryptoVerifier,
+    ) -> eyre::Result<()> {
         let round = self.round();
 
-        // 1. Recompute the digest from the block's fields and compare it to
-        //    the claimed digest. This detects any tampering with the block
-        //    content.
-        let expected = BlockDigest::new(
+        // 1. Recompute the digest from the block's fields and
+        //    compare it to the claimed digest. This detects any
+        //    tampering with the block content.
+        let expected = crypto.digest(
             self.author(),
             round,
             &self.includes,
@@ -166,8 +178,8 @@ impl Block {
             self.digest()
         );
 
-        // 2. Reject genesis blocks — they are trusted by construction and
-        //    must never arrive over the network.
+        // 2. Reject genesis blocks -- they are trusted by
+        //    construction and must never arrive over the network.
         ensure!(round != GENESIS_ROUND, "Genesis blocks cannot be verified");
 
         // 3. Verify the author is a known committee member.
@@ -175,10 +187,9 @@ impl Block {
             bail!("Unknown block author {}", self.author());
         };
 
-        // 4. Verify the block signature against the author's public key.
-        public_key
-            .verify_block(self)
-            .map_err(|e| eyre::eyre!("Signature verification failed: {e:?}"))?;
+        // 4. Verify the block signature against the author's
+        //    public key.
+        crypto.verify_signature(public_key, self)?;
 
         // 5. Validate each included block reference.
         for include in &self.includes {
@@ -192,8 +203,8 @@ impl Block {
             );
         }
 
-        // 6. Verify the threshold clock — the block must include a quorum
-        //    of blocks from the previous round.
+        // 6. Verify the threshold clock: the block must include
+        //    a quorum of blocks from the previous round.
         ensure!(
             threshold_clock_valid_non_genesis(self, committee, quorum_threshold),
             "Threshold clock is not valid"
@@ -396,7 +407,8 @@ pub(crate) mod test {
             self
         }
 
-        /// Iterate blocks in a random order (for testing reorder tolerance).
+        /// Iterate blocks in a random order (for testing reorder
+        /// tolerance).
         pub fn random_iter(&self, rng: &mut impl Rng) -> RandomDagIter<'_> {
             let mut v: Vec<_> = self.0.keys().cloned().collect();
             v.shuffle(rng);

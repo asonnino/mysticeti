@@ -14,8 +14,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use crate::{
     authority::Authority,
     block::RoundNumber,
-    crypto::PublicKey,
-    crypto::{Signer, dummy_signer},
+    crypto::{PublicKey, Signer},
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -219,7 +218,7 @@ impl NodePrivateConfig {
     pub fn new_for_tests(index: Authority) -> Self {
         Self {
             authority: index,
-            keypair: dummy_signer(),
+            keypair: Signer::dummy(),
             storage_path: PathBuf::from("storage"),
         }
     }
