@@ -5,7 +5,10 @@ use std::{fmt, marker::PhantomData};
 
 use serde::de;
 
-pub trait ByteRepr: Sized {
+/// Trait for fixed-size types that can be constructed from a byte slice. Implementors
+/// provide `try_copy_from_slice` which validates length and copies the bytes.
+/// Used by [`BytesVisitor`] to deserialize cryptographic types (signatures, digests).
+pub trait FromBytes: Sized {
     fn try_copy_from_slice<E: de::Error>(v: &[u8]) -> Result<Self, E>;
 
     fn try_from_vec<E: de::Error>(v: Vec<u8>) -> Result<Self, E> {
@@ -13,6 +16,9 @@ pub trait ByteRepr: Sized {
     }
 }
 
+/// Generic serde visitor that deserializes byte input into any `T: FromBytes`. Handles
+/// all forms a deserializer might provide (borrowed bytes, owned `Vec<u8>`, or string)
+/// and normalizes them into a [`FromBytes::try_copy_from_slice`] call.
 pub struct BytesVisitor<T>(PhantomData<T>);
 
 impl<T> BytesVisitor<T> {
@@ -21,7 +27,7 @@ impl<T> BytesVisitor<T> {
     }
 }
 
-impl<'de, T: ByteRepr> de::Visitor<'de> for BytesVisitor<T> {
+impl<'de, T: FromBytes> de::Visitor<'de> for BytesVisitor<T> {
     type Value = T;
 
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {

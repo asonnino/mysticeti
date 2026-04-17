@@ -5,79 +5,52 @@ use std::{
     fmt,
     hash::{Hash, Hasher},
     ops::Deref,
-    sync::{Arc, OnceLock},
+    sync::Arc,
 };
 
 use minibytes::Bytes;
-use prometheus::IntGauge;
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
     de::{DeserializeOwned, Error},
 };
 
-/// Data<T> carries both the value and it's serialized bytes.
-/// When Data is created, it's value is serialized into a cache variable.
-/// When Data is serialized, instead of serializing a value we use a cached serialized bytes.
-/// When Data is deserialized, cache is initialized with the bytes that used to deserialized value.
+/// Reference-counted wrapper that pairs a value with its bincode-serialized bytes.
+/// Serialization is performed once at creation; subsequent serializations emit the
+/// cached bytes directly.
 ///
-/// Note that cache always stores data serialized in a single format (bincode).
-/// When data is serialized, instead of serializing the value,
-/// the byte array is written into target serializer.
-/// This means that serialize(T) != serialize(Data<T>), e.g. Data<T> is not a transparent wrapper.
+/// **Important:** `serialize(T) != serialize(Data<T>)`. `Data<T>` is not a transparent
+/// serde wrapper — it always writes raw bytes, regardless of the outer format.
 #[derive(Clone)]
 pub struct Data<T>(Arc<DataInner<T>>);
 
 struct DataInner<T> {
     t: T,
-    serialized: Bytes, // this is serialized as bincode regardless of underlining serialization
-}
-
-static IN_MEMORY_BLOCKS: OnceLock<IntGauge> = OnceLock::new();
-static IN_MEMORY_BLOCKS_BYTES: OnceLock<IntGauge> = OnceLock::new();
-
-pub(crate) fn init_memory_gauges(blocks: IntGauge, bytes: IntGauge) {
-    IN_MEMORY_BLOCKS.set(blocks).ok();
-    IN_MEMORY_BLOCKS_BYTES.set(bytes).ok();
-}
-
-fn track_alloc(size: usize) {
-    if let Some(g) = IN_MEMORY_BLOCKS.get() {
-        g.inc();
-    }
-    if let Some(g) = IN_MEMORY_BLOCKS_BYTES.get() {
-        g.add(size as i64);
-    }
-}
-
-fn track_dealloc(size: usize) {
-    if let Some(g) = IN_MEMORY_BLOCKS.get() {
-        g.dec();
-    }
-    if let Some(g) = IN_MEMORY_BLOCKS_BYTES.get() {
-        g.sub(size as i64);
-    }
+    /// Bincode-serialized form of `t`, cached at creation.
+    serialized: Bytes,
 }
 
 impl<T: Serialize + DeserializeOwned> Data<T> {
+    /// Create a new `Data<T>` by serializing `t` into a cached byte buffer.
     pub fn new(t: T) -> Self {
         let serialized = bincode::serialize(&t).expect("Serialization should not fail");
         let serialized: Bytes = serialized.into();
-        track_alloc(serialized.len());
+        memory_tracking::track_alloc(serialized.len());
         Self(Arc::new(DataInner { t, serialized }))
     }
 
-    // Important - use Data::from_bytes,
-    // rather then Data::deserialize to avoid mem copy of serialized representation
+    /// Deserialize from pre-existing bytes (e.g. memory-mapped WAL). Prefer this
+    /// over serde `Deserialize` — it reuses the `Bytes` buffer directly instead of
+    /// allocating a copy.
     pub fn from_bytes(bytes: Bytes) -> bincode::Result<Self> {
-        track_alloc(bytes.len());
-        let t = bincode::deserialize(&bytes)?;
+        memory_tracking::track_alloc(bytes.len());
         let inner = DataInner {
-            t,
+            t: bincode::deserialize(&bytes)?,
             serialized: bytes,
         };
         Ok(Self(Arc::new(inner)))
     }
 
+    /// Return the cached bincode-serialized bytes.
     pub fn serialized_bytes(&self) -> &Bytes {
         &self.0.serialized
     }
@@ -102,7 +75,7 @@ impl<T: Serialize> Serialize for Data<T> {
 
 impl<T> Drop for DataInner<T> {
     fn drop(&mut self) {
-        track_dealloc(self.serialized.len());
+        memory_tracking::track_dealloc(self.serialized.len());
     }
 }
 
@@ -113,9 +86,9 @@ impl<'de, T: DeserializeOwned> Deserialize<'de> for Data<T> {
     {
         let serialized = Vec::<u8>::deserialize(deserializer)?;
         let Ok(t) = bincode::deserialize(&serialized) else {
-            return Err(D::Error::custom("Failed to deserialized inner bytes"));
+            return Err(D::Error::custom("Failed to deserialize inner bytes"));
         };
-        track_alloc(serialized.len());
+        memory_tracking::track_alloc(serialized.len());
         let serialized = serialized.into();
         Ok(Self(Arc::new(DataInner { t, serialized })))
     }
@@ -144,5 +117,40 @@ impl<T: Eq> Eq for Data<T> {}
 impl<T: Hash> Hash for Data<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.t.hash(state)
+    }
+}
+
+pub(crate) mod memory_tracking {
+    use std::sync::OnceLock;
+
+    use prometheus::IntGauge;
+
+    static BLOCK_COUNT: OnceLock<IntGauge> = OnceLock::new();
+    static BLOCK_BYTES: OnceLock<IntGauge> = OnceLock::new();
+
+    /// Register prometheus gauges for tracking in-memory block count and byte usage.
+    /// Only the first call takes effect; subsequent calls are silently ignored (this
+    /// is expected in the simulator where multiple authorities share a process).
+    pub(crate) fn init(blocks: IntGauge, bytes: IntGauge) {
+        BLOCK_COUNT.set(blocks).ok();
+        BLOCK_BYTES.set(bytes).ok();
+    }
+
+    pub(super) fn track_alloc(size: usize) {
+        if let Some(g) = BLOCK_COUNT.get() {
+            g.inc();
+        }
+        if let Some(g) = BLOCK_BYTES.get() {
+            g.add(size as i64);
+        }
+    }
+
+    pub(super) fn track_dealloc(size: usize) {
+        if let Some(g) = BLOCK_COUNT.get() {
+            g.dec();
+        }
+        if let Some(g) = BLOCK_BYTES.get() {
+            g.sub(size as i64);
+        }
     }
 }

@@ -11,7 +11,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use zeroize::Zeroize;
 
 use super::{
-    serde::{ByteRepr, BytesVisitor},
+    serde::{BytesVisitor, FromBytes},
     types::{Authority, BaseStatement, BlockReference, RoundNumber, StatementBlock, TimestampNs},
 };
 
@@ -273,7 +273,7 @@ impl Default for SignatureBytes {
     }
 }
 
-impl ByteRepr for SignatureBytes {
+impl FromBytes for SignatureBytes {
     fn try_copy_from_slice<E: de::Error>(v: &[u8]) -> Result<Self, E> {
         if v.len() != SIGNATURE_SIZE {
             return Err(E::custom(format!("Invalid signature length: {}", v.len())));
@@ -297,7 +297,7 @@ impl<'de> Deserialize<'de> for SignatureBytes {
     }
 }
 
-impl ByteRepr for BlockDigest {
+impl FromBytes for BlockDigest {
     fn try_copy_from_slice<E: de::Error>(v: &[u8]) -> Result<Self, E> {
         if v.len() != BLOCK_DIGEST_SIZE {
             return Err(E::custom(format!(

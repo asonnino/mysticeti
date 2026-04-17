@@ -181,7 +181,7 @@ impl AggregateMetrics {
             .unwrap(),
         };
 
-        crate::data::init_memory_gauges(
+        crate::data::memory_tracking::init(
             register_int_gauge_with_registry!(
                 "global_in_memory_blocks",
                 "Number of blocks loaded in memory",
