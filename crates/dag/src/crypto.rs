@@ -74,13 +74,12 @@ impl CryptoEngine {
         round: RoundNumber,
         includes: &[BlockReference],
         transactions: &[Transaction],
-        creation_time: u64,
+        timestamp_ns: u64,
     ) -> (SignatureBytes, BlockDigest) {
         if !self.enabled {
-            return (SignatureBytes::default(), BlockDigest::dummy());
+            return (SignatureBytes::dummy(), BlockDigest::dummy());
         }
-        let content_hash =
-            BlockDigest::new(authority, round, includes, transactions, creation_time);
+        let content_hash = BlockDigest::new(authority, round, includes, transactions, timestamp_ns);
         let signature = self.signer.sign(content_hash.as_ref());
         let digest = content_hash.with_signature(&signature);
         (signature, digest)
@@ -104,7 +103,7 @@ impl CryptoVerifier {
             block.round(),
             block.includes(),
             block.transactions(),
-            block.creation_time_ns(),
+            block.timestamp_ns(),
         );
         public_key.verify(block.signature(), digest.as_ref())?;
         Ok(digest.with_signature(block.signature()))

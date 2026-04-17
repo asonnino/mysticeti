@@ -114,9 +114,7 @@ impl<C: Ctx, D: DagConsensus> Syncer<C, D> {
                 let committed_refs: Vec<_> = newly_committed
                     .iter()
                     .map(|block| {
-                        let age = utc_now
-                            .checked_sub(block.creation_time())
-                            .unwrap_or_default();
+                        let age = utc_now.checked_sub(block.timestamp()).unwrap_or_default();
                         format!("{}({}ms)", block.reference(), age.as_millis())
                     })
                     .collect();

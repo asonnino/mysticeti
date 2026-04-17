@@ -33,12 +33,6 @@ pub(crate) trait CryptoHash {
     fn crypto_hash(&self, state: &mut impl Digest);
 }
 
-impl CryptoHash for usize {
-    fn crypto_hash(&self, state: &mut impl Digest) {
-        state.update(self.to_be_bytes());
-    }
-}
-
 impl CryptoHash for u64 {
     fn crypto_hash(&self, state: &mut impl Digest) {
         state.update(self.to_be_bytes());

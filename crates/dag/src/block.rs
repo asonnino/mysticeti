@@ -66,9 +66,9 @@ pub struct Block {
     /// Transactions batched into this block.
     transactions: Vec<Transaction>,
 
-    /// Creation time (nanoseconds since epoch) as reported by the proposer. Informational only —
-    /// not enforced by the protocol.
-    creation_time: u64,
+    /// Timestamp (nanoseconds since epoch) as reported by the proposer. Informational only, not
+    /// enforced by the protocol.
+    timestamp_ns: u64,
 
     /// Signature over the block content by the proposing authority.
     signature: SignatureBytes,
@@ -86,8 +86,8 @@ impl Block {
             },
             includes: vec![],
             transactions: vec![],
-            creation_time: 0,
-            signature: SignatureBytes::default(),
+            timestamp_ns: 0,
+            signature: SignatureBytes::dummy(),
         })
     }
 
@@ -97,11 +97,11 @@ impl Block {
         round: RoundNumber,
         includes: Vec<BlockReference>,
         transactions: Vec<Transaction>,
-        creation_time: u64,
+        timestamp_ns: u64,
         crypto: &CryptoEngine,
     ) -> Self {
         let (signature, digest) =
-            crypto.sign(authority, round, &includes, &transactions, creation_time);
+            crypto.sign(authority, round, &includes, &transactions, timestamp_ns);
         let reference = BlockReference {
             authority,
             round,
@@ -111,20 +111,17 @@ impl Block {
             reference,
             includes,
             transactions,
-            creation_time,
+            timestamp_ns,
             signature,
         }
     }
 
-    /// Test-only constructor with a default (zero) digest.
+    /// Test-only constructor with dummy digest, no transactions, and no signature.
     #[cfg(any(test, feature = "test-utils"))]
     pub fn new_for_test(
         authority: Authority,
         round: RoundNumber,
         includes: Vec<BlockReference>,
-        transactions: Vec<Transaction>,
-        creation_time: u64,
-        signature: SignatureBytes,
     ) -> Self {
         Self {
             reference: BlockReference {
@@ -133,9 +130,9 @@ impl Block {
                 digest: BlockDigest::dummy(),
             },
             includes,
-            transactions,
-            creation_time,
-            signature,
+            transactions: vec![],
+            timestamp_ns: 0,
+            signature: SignatureBytes::dummy(),
         }
     }
 
@@ -236,14 +233,14 @@ impl Block {
         &self.signature
     }
 
-    /// Raw creation time in nanoseconds since epoch.
-    pub fn creation_time_ns(&self) -> u64 {
-        self.creation_time
+    /// Raw timestamp in nanoseconds since epoch.
+    pub fn timestamp_ns(&self) -> u64 {
+        self.timestamp_ns
     }
 
-    /// Creation time as a [`Duration`] since epoch.
-    pub fn creation_time(&self) -> Duration {
-        Duration::from_nanos(self.creation_time)
+    /// Timestamp as a [`Duration`] since epoch.
+    pub fn timestamp(&self) -> Duration {
+        Duration::from_nanos(self.timestamp_ns)
     }
 }
 
@@ -348,13 +345,7 @@ pub(crate) mod test {
                 let includes = includes.split(',');
                 includes.map(Self::parse_name).collect()
             };
-            Block {
-                reference,
-                includes,
-                transactions: vec![],
-                creation_time: 0,
-                signature: Default::default(),
-            }
+            Block::new_for_test(reference.authority, reference.round, includes)
         }
 
         fn parse_name(s: &str) -> BlockReference {

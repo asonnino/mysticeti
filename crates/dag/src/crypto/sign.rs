@@ -27,9 +27,69 @@ pub const SIGNATURE_SIZE: usize = 64;
 #[derive(Clone, Copy, Eq, Ord, PartialOrd, PartialEq, Hash)]
 pub struct SignatureBytes([u8; SIGNATURE_SIZE]);
 
+impl SignatureBytes {
+    /// Returns an all-zeros signature, used as a placeholder when crypto is disabled.
+    pub fn dummy() -> Self {
+        Self([0u8; SIGNATURE_SIZE])
+    }
+}
+
+impl AsRef<[u8]> for SignatureBytes {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl AsBytes for SignatureBytes {
+    #[inline]
+    fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl FromBytes for SignatureBytes {
+    fn try_copy_from_slice<E: de::Error>(v: &[u8]) -> Result<Self, E> {
+        if v.len() != SIGNATURE_SIZE {
+            return Err(E::custom(format!("Invalid signature length: {}", v.len())));
+        }
+        let mut inner = [0u8; SIGNATURE_SIZE];
+        inner.copy_from_slice(v);
+        Ok(Self(inner))
+    }
+}
+
+impl Serialize for SignatureBytes {
+    #[inline]
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_bytes(&self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for SignatureBytes {
+    #[inline]
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_bytes(BytesVisitor::new())
+    }
+}
+
 /// An Ed25519 verification (public) key.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub struct PublicKey(pub(super) ed25519_consensus::VerificationKey);
+
+impl PublicKey {
+    /// Returns a deterministic public key matching [`Signer::dummy`].
+    pub(crate) fn dummy() -> Self {
+        Signer::dummy().public_key()
+    }
+
+    /// Verifies `signature` over `digest`, returning an error on mismatch.
+    pub(super) fn verify(&self, signature: &SignatureBytes, digest: &[u8]) -> eyre::Result<()> {
+        let sig = ed25519_consensus::Signature::from(signature.0);
+        self.0
+            .verify(&sig, digest)
+            .map_err(|e| eyre::eyre!("Signature verification failed: {e:?}"))
+    }
+}
 
 /// An Ed25519 signing (private) key.
 ///
@@ -58,66 +118,6 @@ impl Signer {
     pub(super) fn sign(&self, digest: &[u8]) -> SignatureBytes {
         let signature = self.0.sign(digest);
         SignatureBytes(signature.to_bytes())
-    }
-}
-
-impl PublicKey {
-    /// Returns a deterministic public key matching [`Signer::dummy`].
-    pub(crate) fn dummy() -> Self {
-        Signer::dummy().public_key()
-    }
-
-    /// Verifies `signature` over `digest`, returning an error on mismatch.
-    pub(super) fn verify(&self, signature: &SignatureBytes, digest: &[u8]) -> eyre::Result<()> {
-        let sig = ed25519_consensus::Signature::from(signature.0);
-        self.0
-            .verify(&sig, digest)
-            .map_err(|e| eyre::eyre!("Signature verification failed: {e:?}"))
-    }
-}
-
-impl AsRef<[u8]> for SignatureBytes {
-    #[inline]
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl AsBytes for SignatureBytes {
-    #[inline]
-    fn as_bytes(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl Default for SignatureBytes {
-    #[inline]
-    fn default() -> Self {
-        Self([0u8; 64])
-    }
-}
-
-impl FromBytes for SignatureBytes {
-    fn try_copy_from_slice<E: de::Error>(v: &[u8]) -> Result<Self, E> {
-        if v.len() != SIGNATURE_SIZE {
-            return Err(E::custom(format!("Invalid signature length: {}", v.len())));
-        }
-        let mut inner = [0u8; SIGNATURE_SIZE];
-        inner.copy_from_slice(v);
-        Ok(Self(inner))
-    }
-}
-
-impl Serialize for SignatureBytes {
-    #[inline]
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_bytes(&self.0)
-    }
-}
-
-impl<'de> Deserialize<'de> for SignatureBytes {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        deserializer.deserialize_bytes(BytesVisitor::new())
     }
 }
 

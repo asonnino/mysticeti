@@ -34,18 +34,13 @@ pub const BLOCK_DIGEST_SIZE: usize = 32;
 pub struct BlockDigest([u8; BLOCK_DIGEST_SIZE]);
 
 impl BlockDigest {
-    /// Returns an all-zeros digest, used as a placeholder when crypto is disabled.
-    pub fn dummy() -> Self {
-        Self([0u8; BLOCK_DIGEST_SIZE])
-    }
-
     /// Hashes all the provided fields.
     pub(super) fn new(
         authority: Authority,
         round: RoundNumber,
         includes: &[BlockReference],
         transactions: &[Transaction],
-        creation_time: u64,
+        timestamp_ns: u64,
     ) -> Self {
         let mut hasher = BlockHasher::default();
         authority.crypto_hash(&mut hasher);
@@ -54,10 +49,11 @@ impl BlockDigest {
             include.crypto_hash(&mut hasher);
         }
         for tx in transactions {
-            tx.as_bytes().len().crypto_hash(&mut hasher);
+            // Cast to u64 so the length prefix is platform-independent.
+            (tx.as_bytes().len() as u64).crypto_hash(&mut hasher);
             tx.crypto_hash(&mut hasher);
         }
-        creation_time.crypto_hash(&mut hasher);
+        timestamp_ns.crypto_hash(&mut hasher);
         Self(hasher.finalize().into())
     }
 
@@ -67,6 +63,11 @@ impl BlockDigest {
         hasher.update(self.0);
         hasher.update(signature);
         Self(hasher.finalize().into())
+    }
+
+    /// Returns an all-zeros digest, used as a placeholder when crypto is disabled.
+    pub fn dummy() -> Self {
+        Self([0u8; BLOCK_DIGEST_SIZE])
     }
 }
 

@@ -111,14 +111,7 @@ pub fn build_dag(
         let (references, blocks): (Vec<_>, Vec<_>) = committee
             .authorities()
             .map(|authority| {
-                let block = Data::new(Block::new_for_test(
-                    authority,
-                    round,
-                    includes.clone(),
-                    vec![],
-                    0,
-                    Default::default(),
-                ));
+                let block = Data::new(Block::new_for_test(authority, round, includes.clone()));
                 (*block.reference(), block)
             })
             .unzip();
@@ -138,14 +131,7 @@ pub fn build_dag_layer(
     let mut references = Vec::new();
     for (authority, parents) in connections {
         let round = parents.first().unwrap().round + 1;
-        let block = Data::new(Block::new_for_test(
-            authority,
-            round,
-            parents,
-            vec![],
-            0,
-            Default::default(),
-        ));
+        let block = Data::new(Block::new_for_test(authority, round, parents));
 
         references.push(*block.reference());
         storage.insert_block(block);
