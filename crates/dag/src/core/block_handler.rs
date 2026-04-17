@@ -70,7 +70,7 @@ impl<C: Ctx> RealBlockHandler<C> {
     pub fn handle_proposal(&mut self, block: &Data<Block>) {
         let mut transaction_time = self.transaction_time.lock();
         let mut count = 0usize;
-        for (locator, _) in block.shared_transactions() {
+        for (locator, _) in block.located_transactions() {
             transaction_time.insert(locator, C::now());
             count += 1;
         }
@@ -129,7 +129,10 @@ impl<C: Ctx> CommitHandler<C> {
             self.metrics.inc_benchmark_duration_by(delta);
         }
 
-        let tx_submission_timestamp = transaction.extract_timestamp();
+        let Some(tx_submission_timestamp) = transaction.extract_timestamp() else {
+            tracing::warn!("Failed to extract timestamp from transaction");
+            return;
+        };
         let latency = current_timestamp.saturating_sub(tx_submission_timestamp);
         let square_latency = latency.as_secs_f64().powf(2.0);
         self.metrics
@@ -152,7 +155,7 @@ impl<C: Ctx> CommitHandler<C> {
         for commit in &committed {
             self.committed_leaders.push(commit.anchor);
             for block in &commit.blocks {
-                for (locator, transaction) in block.shared_transactions() {
+                for (locator, transaction) in block.located_transactions() {
                     self.update_metrics(
                         transaction_time.get(&locator),
                         current_timestamp,

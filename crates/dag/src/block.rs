@@ -1,6 +1,22 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+//! DAG block types and verification logic.
+//!
+//! A [`Block`] is the fundamental unit of the DAG. Each block is proposed by
+//! an authority, references blocks from the previous round (via [`BlockReference`]),
+//! and carries a batch of [`Transaction`]s. Blocks are signed and their integrity
+//! is verified on receipt via [`Block::verify`].
+//!
+//! # Submodules
+//!
+//! - [`crypto`] — block digests, signatures, and hash computation.
+//! - [`data`] — [`Data<T>`](data::Data), a reference-counted wrapper caching
+//!   serialized bytes.
+//! - [`reference`] — [`BlockReference`], the `(authority, round, digest)` triple
+//!   that uniquely identifies a block.
+//! - [`transaction`] — [`Transaction`] and [`TransactionLocator`].
+
 pub(crate) mod crypto;
 pub mod data;
 pub mod reference;
@@ -8,7 +24,12 @@ pub(crate) mod serde;
 pub mod transaction;
 
 pub use reference::BlockReference;
-use std::{fmt, time::Duration};
+
+use std::{
+    fmt,
+    hash::{Hash, Hasher},
+    time::Duration,
+};
 
 use ::serde::{Deserialize, Serialize};
 use eyre::{bail, ensure};
@@ -24,37 +45,40 @@ use crate::{
     core::threshold_clock::threshold_clock_valid_non_genesis,
 };
 
+/// Round number within the DAG (0 = genesis).
 pub type RoundNumber = u64;
-pub type TimestampNs = u128;
-const NANOS_IN_SEC: u128 = Duration::from_secs(1).as_nanos();
+
 const GENESIS_ROUND: RoundNumber = 0;
 
+/// A block in the DAG. Contains references to prior-round blocks, a batch of
+/// transactions, and a signature from the proposing authority.
+///
+/// **Invariant:** adding or removing fields requires updating
+/// [`BlockDigest::new`] and [`Block::verify`].
 #[derive(Clone, Serialize, Deserialize)]
-// Important. Adding fields here requires updating
-// BlockDigest::new, and Block::verify
 pub struct Block {
     reference: BlockReference,
 
-    //  A list of block references to other blocks that this
-    //  block includes. Note that the order matters: if a
-    //  reference to two blocks from the same round and same
-    //  authority are included, then the first reference is
-    //  the one that this block votes for.
+    /// References to blocks from earlier rounds. Order matters: when two
+    /// blocks from the same `(authority, round)` are included, the first
+    /// reference is the one this block votes for.
     includes: Vec<BlockReference>,
 
-    // A list of transactions in order.
+    /// Transactions batched into this block.
     transactions: Vec<Transaction>,
 
-    // Creation time of the block as reported by creator,
-    // currently not enforced.
-    meta_creation_time_ns: TimestampNs,
+    /// Creation time (nanoseconds since epoch) as reported by the proposer.
+    /// Informational only — not enforced by the protocol.
+    creation_time: u64,
 
-    // Signature by the block author
+    /// Signature over the block content by the proposing authority.
     signature: SignatureBytes,
 }
 
 impl Block {
-    pub fn new_genesis(authority: Authority) -> Data<Self> {
+    /// Create the genesis block for an authority (round 0, no includes, no
+    /// transactions, no signature).
+    pub fn genesis(authority: Authority) -> Data<Self> {
         Data::new(Self::new(
             authority,
             GENESIS_ROUND,
@@ -65,72 +89,136 @@ impl Block {
         ))
     }
 
+    /// Create a new block, signing it with the provided signer.
     pub fn new_with_signer(
         authority: Authority,
         round: RoundNumber,
         includes: Vec<BlockReference>,
         transactions: Vec<Transaction>,
-        meta_creation_time_ns: TimestampNs,
+        creation_time: u64,
         signer: &Signer,
     ) -> Self {
-        let signature = signer.sign_block(
-            authority,
-            round,
-            &includes,
-            &transactions,
-            meta_creation_time_ns,
-        );
+        let signature =
+            signer.sign_block(authority, round, &includes, &transactions, creation_time);
+
         Self::new(
             authority,
             round,
             includes,
             transactions,
-            meta_creation_time_ns,
+            creation_time,
             signature,
         )
     }
 
+    /// Create a new block with a pre-computed signature.
     pub fn new(
         authority: Authority,
         round: RoundNumber,
         includes: Vec<BlockReference>,
         transactions: Vec<Transaction>,
-        meta_creation_time_ns: TimestampNs,
+        creation_time: u64,
         signature: SignatureBytes,
     ) -> Self {
+        let digest = BlockDigest::new(
+            authority,
+            round,
+            &includes,
+            &transactions,
+            creation_time,
+            &signature,
+        );
+        let reference = BlockReference {
+            authority,
+            round,
+            digest,
+        };
         Self {
-            reference: BlockReference {
-                authority,
-                round,
-                digest: BlockDigest::new(
-                    authority,
-                    round,
-                    &includes,
-                    &transactions,
-                    meta_creation_time_ns,
-                    &signature,
-                ),
-            },
+            reference,
             includes,
             transactions,
-            meta_creation_time_ns,
+            creation_time,
             signature,
         }
     }
 
+    /// Verify the integrity and validity of a block received from the network.
+    /// This is a security-critical path — every check here prevents a Byzantine
+    /// peer from injecting invalid blocks into the DAG.
+    pub fn verify(&self, committee: &Committee, quorum_threshold: Stake) -> eyre::Result<()> {
+        let round = self.round();
+
+        // 1. Recompute the digest from the block's fields and compare it to
+        //    the claimed digest. This detects any tampering with the block
+        //    content.
+        let expected = BlockDigest::new(
+            self.author(),
+            round,
+            &self.includes,
+            &self.transactions,
+            self.creation_time,
+            &self.signature,
+        );
+        ensure!(
+            expected == self.digest(),
+            "Digest mismatch: computed {:?}, claimed {:?}",
+            expected,
+            self.digest()
+        );
+
+        // 2. Reject genesis blocks — they are trusted by construction and
+        //    must never arrive over the network.
+        ensure!(round != GENESIS_ROUND, "Genesis blocks cannot be verified");
+
+        // 3. Verify the author is a known committee member.
+        let Some(public_key) = committee.get_public_key(self.author()) else {
+            bail!("Unknown block author {}", self.author());
+        };
+
+        // 4. Verify the block signature against the author's public key.
+        public_key
+            .verify_block(self)
+            .map_err(|e| eyre::eyre!("Signature verification failed: {e:?}"))?;
+
+        // 5. Validate each included block reference.
+        for include in &self.includes {
+            ensure!(
+                committee.known_authority(include.authority),
+                "Include {include:?} references unknown authority",
+            );
+            ensure!(
+                include.round < round,
+                "Include {include:?} round is >= own round {round}",
+            );
+        }
+
+        // 6. Verify the threshold clock — the block must include a quorum
+        //    of blocks from the previous round.
+        ensure!(
+            threshold_clock_valid_non_genesis(self, committee, quorum_threshold),
+            "Threshold clock is not valid"
+        );
+
+        Ok(())
+    }
+
+    /// The block's unique reference `(authority, round, digest)`.
     pub fn reference(&self) -> &BlockReference {
         &self.reference
     }
 
+    /// Blocks from earlier rounds that this block references.
     pub fn includes(&self) -> &Vec<BlockReference> {
         &self.includes
     }
 
+    /// The transactions batched into this block.
     pub fn transactions(&self) -> &[Transaction] {
         &self.transactions
     }
 
-    pub fn shared_transactions(&self) -> impl Iterator<Item = (TransactionLocator, &Transaction)> {
+    /// Iterate transactions paired with their [`TransactionLocator`].
+    pub fn located_transactions(&self) -> impl Iterator<Item = (TransactionLocator, &Transaction)> {
         let reference = *self.reference();
         self.transactions.iter().enumerate().map(move |(pos, tx)| {
             let locator = TransactionLocator::new(reference, pos as u64);
@@ -138,128 +226,77 @@ impl Block {
         })
     }
 
+    /// The authority that proposed this block.
     pub fn author(&self) -> Authority {
         self.reference.authority
     }
 
+    /// The DAG round this block belongs to.
     pub fn round(&self) -> RoundNumber {
         self.reference.round
     }
 
+    /// The block's content digest.
     pub fn digest(&self) -> BlockDigest {
         self.reference.digest
     }
 
+    /// Return `(authority, round)` for pattern matching and comparison.
+    /// For display, use `authority.with_round(round)` instead.
     pub fn author_round(&self) -> (Authority, RoundNumber) {
         self.reference.author_round()
     }
 
+    /// The block's cryptographic signature.
     pub fn signature(&self) -> &SignatureBytes {
         &self.signature
     }
 
-    pub fn meta_creation_time_ns(&self) -> TimestampNs {
-        self.meta_creation_time_ns
+    /// Raw creation time in nanoseconds since epoch.
+    pub fn creation_time_ns(&self) -> u64 {
+        self.creation_time
     }
 
-    pub fn meta_creation_time(&self) -> Duration {
-        // Some context:
-        // https://github.com/rust-lang/rust/issues/51107
-        let secs = self.meta_creation_time_ns / NANOS_IN_SEC;
-        let nanos = self.meta_creation_time_ns % NANOS_IN_SEC;
-        Duration::new(secs as u64, nanos as u32)
-    }
-
-    pub fn verify(&self, committee: &Committee, quorum_threshold: Stake) -> eyre::Result<()> {
-        let round = self.round();
-        let digest = BlockDigest::new(
-            self.author(),
-            round,
-            &self.includes,
-            &self.transactions,
-            self.meta_creation_time_ns,
-            &self.signature,
-        );
-        ensure!(
-            digest == self.digest(),
-            "Digest does not match, calculated {:?}, provided {:?}",
-            digest,
-            self.digest()
-        );
-        let pub_key = committee.get_public_key(self.author());
-        let Some(pub_key) = pub_key else {
-            bail!("Unknown block author {}", self.author())
-        };
-        if round == GENESIS_ROUND {
-            bail!("Genesis block should not go through verification");
-        }
-        if let Err(e) = pub_key.verify_block(self) {
-            bail!("Block signature verification has failed: {:?}", e);
-        }
-        for include in &self.includes {
-            // Also check duplicate includes?
-            ensure!(
-                committee.known_authority(include.authority),
-                "Include {:?} references unknown authority",
-                include
-            );
-            ensure!(
-                include.round < round,
-                "Include {:?} round is >= own round {}",
-                include,
-                round
-            );
-        }
-        ensure!(
-            threshold_clock_valid_non_genesis(self, committee, quorum_threshold,),
-            "Threshold clock is not valid"
-        );
-        Ok(())
-    }
-
-    pub fn detailed(&self) -> Detailed<'_> {
-        Detailed(self)
+    /// Creation time as a [`Duration`] since epoch.
+    pub fn creation_time(&self) -> Duration {
+        Duration::from_nanos(self.creation_time)
     }
 }
 
+/// Compact format with `{:?}`, verbose with `{:#?}`.
 impl fmt::Debug for Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
-    }
-}
-
-pub struct Detailed<'a>(&'a Block);
-
-impl<'a> fmt::Debug for Detailed<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Block {:?} {{", self.0.reference())?;
-        write!(
-            f,
-            "includes({})={:?},",
-            self.0.includes().len(),
-            self.0.includes()
-        )?;
-        write!(
-            f,
-            "transactions({})={:?}",
-            self.0.transactions.len(),
-            self.0.transactions()
-        )?;
-        writeln!(f, "}}")
+        if f.alternate() {
+            write!(f, "Block {:?} {{", self.reference())?;
+            write!(
+                f,
+                "includes({})={:?},",
+                self.includes().len(),
+                self.includes()
+            )?;
+            write!(
+                f,
+                "transactions({})={:?}",
+                self.transactions.len(),
+                self.transactions()
+            )?;
+            writeln!(f, "}}")
+        } else {
+            write!(f, "{}", self)
+        }
     }
 }
 
 impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:[", self.reference)?;
-        for include in self.includes() {
-            write!(f, "{},", include)?;
+        for (i, include) in self.includes().iter().enumerate() {
+            if i > 0 {
+                write!(f, ",")?;
+            }
+            write!(f, "{}", include)?;
         }
-        write!(f, "](")?;
-        for tx in self.transactions() {
-            write!(f, "{},", tx)?;
-        }
-        write!(f, ")")
+        write!(f, "]({} txs)", self.transactions.len())
     }
 }
 
@@ -271,8 +308,8 @@ impl PartialEq for Block {
 
 impl Eq for Block {}
 
-impl std::hash::Hash for Block {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl Hash for Block {
+    fn hash<H: Hasher>(&self, state: &mut H) {
         self.reference.hash(state);
     }
 }
@@ -288,18 +325,20 @@ pub(crate) mod test {
 
     use super::*;
 
+    /// Test utility for building DAGs from a compact string notation.
+    ///
+    /// # Format
+    ///
+    /// ```text
+    /// "A1:[A0,B0]; B1:[A0,B0]"
+    /// ```
+    ///
+    /// Each block is `<authority><round>:[<includes>]`, separated by `;`.
+    /// Authorities are single uppercase letters (A=0, B=1, ...).
     pub struct Dag(HashMap<BlockReference, Data<Block>>);
 
-    #[cfg(test)]
     impl Dag {
-        /// Takes a string in form
-        /// "Block:[Dependencies, ...]; ..."
-        /// Where Block is one letter denoting a node and a
-        /// number denoting a round. For example B3 is a block
-        /// for round 3 made by validator index 2.
-        /// Note that blocks are separated with semicolon(;)
-        /// and dependencies within a block are separated with
-        /// comma(,).
+        /// Parse a DAG from the compact string notation.
         pub fn draw(s: &str) -> Self {
             let mut blocks = HashMap::new();
             for block in s.split(";") {
@@ -309,6 +348,7 @@ pub(crate) mod test {
             Self(blocks)
         }
 
+        /// Parse a single block from the compact notation.
         pub fn draw_block(block: &str) -> Block {
             let block = block.trim();
             assert!(block.ends_with(']'), "Invalid block definition: {}", block);
@@ -328,7 +368,7 @@ pub(crate) mod test {
                 reference,
                 includes,
                 transactions: vec![],
-                meta_creation_time_ns: 0,
+                creation_time: 0,
                 signature: Default::default(),
             }
         }
@@ -345,17 +385,18 @@ pub(crate) mod test {
             BlockReference::new_test(authority as u64, round)
         }
 
-        /// For each authority add a 0 round block if not
-        /// present.
+        /// Add genesis blocks (round 0) for every authority referenced
+        /// in the DAG, if not already present.
         pub fn add_genesis_blocks(mut self) -> Self {
             for authority in self.authorities() {
-                let block = Block::new_genesis(authority);
+                let block = Block::genesis(authority);
                 let entry = self.0.entry(*block.reference());
                 entry.or_insert_with(move || block);
             }
             self
         }
 
+        /// Iterate blocks in a random order (for testing reorder tolerance).
         pub fn random_iter(&self, rng: &mut impl Rng) -> RandomDagIter<'_> {
             let mut v: Vec<_> = self.0.keys().cloned().collect();
             v.shuffle(rng);

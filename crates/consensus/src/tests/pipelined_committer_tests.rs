@@ -193,7 +193,7 @@ fn no_leader() {
 
     let genesis: Vec<_> = committee
         .authorities()
-        .map(|authority| *Block::new_genesis(authority).reference())
+        .map(|authority| *Block::genesis(authority).reference())
         .collect();
     let connections = committee
         .authorities()

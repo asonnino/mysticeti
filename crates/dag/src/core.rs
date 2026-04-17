@@ -98,11 +98,11 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
             // Initialize empty block store
             // A lot of this code is shared with Self::add_blocks,
             // this is not great and some code reuse would be great
-            let own_genesis_block = Block::new_genesis(authority);
+            let own_genesis_block = Block::genesis(authority);
             let other_genesis_blocks: Vec<_> = committee
                 .authorities()
                 .filter(|&a| a != authority)
-                .map(Block::new_genesis)
+                .map(Block::genesis)
                 .collect();
             assert_eq!(own_genesis_block.author(), authority);
             for block in other_genesis_blocks {
@@ -237,7 +237,7 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
         }
 
         assert!(!includes.is_empty());
-        let time_ns = C::timestamp_utc().as_nanos();
+        let time_ns = C::timestamp_utc().as_nanos() as u64;
         let block = Block::new_with_signer(
             self.authority,
             clock_round,
@@ -257,10 +257,10 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
         if block.serialized_bytes().len() > crate::storage::wal::MAX_ENTRY_SIZE / 2 {
             panic!(
                 "Created an oversized block \
-                (check all limits set properly: {} > {}): {:?}",
+                (check all limits set properly: {} > {}): {:#?}",
                 block.serialized_bytes().len(),
                 crate::storage::wal::MAX_ENTRY_SIZE / 2,
-                block.detailed()
+                block
             );
         }
         self.threshold_clock

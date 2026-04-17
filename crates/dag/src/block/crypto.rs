@@ -11,7 +11,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use zeroize::Zeroize;
 
 use super::{
-    Block, BlockReference, RoundNumber, TimestampNs,
+    Block, BlockReference, RoundNumber,
     serde::{BytesVisitor, FromBytes},
     transaction::Transaction,
 };
@@ -43,7 +43,7 @@ impl BlockDigest {
         round: RoundNumber,
         includes: &[BlockReference],
         transactions: &[Transaction],
-        meta_creation_time_ns: TimestampNs,
+        creation_time: u64,
         signature: &SignatureBytes,
     ) -> Self {
         let mut hasher = BlockHasher::default();
@@ -53,7 +53,7 @@ impl BlockDigest {
             round,
             includes,
             transactions,
-            meta_creation_time_ns,
+            creation_time,
         );
         hasher.update(signature);
         Self(hasher.finalize().into())
@@ -65,7 +65,7 @@ impl BlockDigest {
         _round: RoundNumber,
         _includes: &[BlockReference],
         _transactions: &[Transaction],
-        _meta_creation_time_ns: TimestampNs,
+        _creation_time: u64,
         _signature: &SignatureBytes,
     ) -> Self {
         Default::default()
@@ -87,7 +87,7 @@ impl BlockDigest {
         round: RoundNumber,
         includes: &[BlockReference],
         transactions: &[Transaction],
-        meta_creation_time_ns: TimestampNs,
+        creation_time: u64,
     ) {
         authority.as_u64().crypto_hash(hasher);
         round.crypto_hash(hasher);
@@ -98,7 +98,7 @@ impl BlockDigest {
             [0].crypto_hash(hasher);
             tx.crypto_hash(hasher);
         }
-        meta_creation_time_ns.crypto_hash(hasher);
+        creation_time.crypto_hash(hasher);
     }
 }
 
@@ -157,7 +157,7 @@ impl PublicKey {
             block.round(),
             block.includes(),
             block.transactions(),
-            block.meta_creation_time_ns(),
+            block.creation_time_ns(),
         );
         let digest: [u8; BLOCK_DIGEST_SIZE] = hasher.finalize().into();
         self.0.verify(&signature, digest.as_ref())
@@ -184,7 +184,7 @@ impl Signer {
         round: RoundNumber,
         includes: &[BlockReference],
         transactions: &[Transaction],
-        meta_creation_time_ns: TimestampNs,
+        creation_time: u64,
     ) -> SignatureBytes {
         let mut hasher = BlockHasher::default();
         BlockDigest::digest_without_signature(
@@ -193,7 +193,7 @@ impl Signer {
             round,
             includes,
             transactions,
-            meta_creation_time_ns,
+            creation_time,
         );
         let digest: [u8; BLOCK_DIGEST_SIZE] = hasher.finalize().into();
         let signature = self.0.sign(digest.as_ref());
@@ -207,7 +207,7 @@ impl Signer {
         _round: RoundNumber,
         _includes: &[BlockReference],
         _transactions: &[Transaction],
-        _meta_creation_time_ns: TimestampNs,
+        _creation_time: u64,
     ) -> SignatureBytes {
         Default::default()
     }

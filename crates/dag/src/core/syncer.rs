@@ -115,7 +115,7 @@ impl<C: Ctx, D: DagConsensus> Syncer<C, D> {
                     .iter()
                     .map(|block| {
                         let age = utc_now
-                            .checked_sub(block.meta_creation_time())
+                            .checked_sub(block.creation_time())
                             .unwrap_or_default();
                         format!("{}({}ms)", block.reference(), age.as_millis())
                     })

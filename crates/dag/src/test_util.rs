@@ -96,7 +96,7 @@ pub fn build_dag(
         None => {
             let (references, genesis): (Vec<_>, Vec<_>) = committee
                 .authorities()
-                .map(Block::new_genesis)
+                .map(Block::genesis)
                 .map(|block| (*block.reference(), block))
                 .unzip();
             for block in genesis {
