@@ -7,11 +7,12 @@ use tokio::sync::{mpsc, oneshot};
 
 use super::syncer::Syncer;
 use crate::{
+    authority::Authority,
+    block::{Block, BlockReference, RoundNumber},
     consensus::DagConsensus,
     context::Ctx,
     data::Data,
     metrics::Metrics,
-    types::{Authority, Block, BlockReference, RoundNumber},
 };
 
 pub trait CoreDispatch<C: Ctx, D: DagConsensus>: Send + Sync {

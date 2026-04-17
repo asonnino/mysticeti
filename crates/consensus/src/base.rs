@@ -8,11 +8,13 @@ use std::{
 
 use crate::{leader::LeaderElector, protocol::Protocol};
 use dag::{
+    authority::Authority,
+    block::{Block, BlockReference, RoundNumber},
+    committee::Stake,
     committee::{Committee, StakeAggregator},
     consensus::LeaderStatus,
     data::Data,
     storage::BlockReader,
-    types::{Authority, Block, BlockReference, RoundNumber, Stake},
 };
 
 /// The consensus protocol operates in 'waves'. Each wave is composed of a leader round, at least

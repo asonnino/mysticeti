@@ -11,9 +11,10 @@ use minibytes::Bytes;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    authority::Authority,
+    block::{Block, BlockReference, RoundNumber, crypto::BlockDigest},
     consensus::CommittedSubDag,
     data::Data,
-    types::{Authority, Block, BlockDigest, BlockReference, RoundNumber},
     wal::{Tag, WalPosition, WalWriter},
 };
 

@@ -9,10 +9,11 @@ use tokio::sync::Notify;
 use super::{Core, block_handler::CommitHandler};
 use crate::consensus::DagConsensus;
 use crate::{
+    authority::Authority,
+    block::{Block, RoundNumber},
     context::Ctx,
     data::Data,
     metrics::Metrics,
-    types::{Authority, Block, RoundNumber},
 };
 
 pub struct Syncer<C: Ctx, D: DagConsensus> {

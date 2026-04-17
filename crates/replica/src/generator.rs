@@ -12,7 +12,8 @@ use rand::{Rng, SeedableRng, rngs::StdRng};
 use tokio::{sync::mpsc, time};
 
 use dag::{
-    block::types::Transaction, config::ClientParameters, metrics::Metrics, types::Authority,
+    authority::Authority, block::transaction::Transaction, config::ClientParameters,
+    metrics::Metrics,
 };
 
 pub struct TransactionGenerator {

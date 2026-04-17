@@ -5,7 +5,6 @@ pub mod authority;
 pub mod block;
 pub(crate) use block::crypto;
 pub use block::data;
-pub use block::types;
 
 pub(crate) use storage::block_store;
 pub mod committee;

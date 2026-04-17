@@ -3,10 +3,8 @@
 
 use consensus::test_util::{committee_and_cores, committee_and_cores_persisted};
 use dag::{
-    context::TokioCtx,
-    core::threshold_clock::threshold_clock_valid_non_genesis,
-    data::Data,
-    types::{Authority, Block},
+    authority::Authority, block::Block, context::TokioCtx,
+    core::threshold_clock::threshold_clock_valid_non_genesis, data::Data,
 };
 use rand::{Rng, SeedableRng, prelude::StdRng};
 

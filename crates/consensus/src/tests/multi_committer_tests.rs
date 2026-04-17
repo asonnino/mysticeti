@@ -6,11 +6,11 @@ use std::num::NonZeroUsize;
 use crate::{committer::Committer, leader::LeaderElector, protocol::Protocol};
 use dag::{
     authority::Authority,
+    block::BlockReference,
     consensus::LeaderStatus,
     metrics::Metrics,
     storage::Storage,
     test_util::{build_dag, build_dag_layer, committee},
-    types::BlockReference,
 };
 
 /// Commit the leaders of the first wave.

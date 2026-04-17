@@ -5,11 +5,13 @@ use std::{collections::VecDeque, sync::Arc};
 
 use crate::{base::BaseCommitter, leader::LeaderElector, protocol::Protocol};
 use dag::{
+    authority::Authority,
+    block::{BlockReference, RoundNumber},
     committee::Committee,
+    committee::Stake,
     consensus::{DagConsensus, LeaderStatus},
     metrics::Metrics,
     storage::BlockReader,
-    types::{Authority, BlockReference, RoundNumber, Stake},
 };
 
 /// A universal committer uses a collection of committers to commit a sequence of leaders.

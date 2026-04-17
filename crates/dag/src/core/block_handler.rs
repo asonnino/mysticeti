@@ -11,12 +11,15 @@ use parking_lot::Mutex;
 use tokio::sync::mpsc;
 
 use crate::{
+    block::{
+        Block, BlockReference,
+        transaction::{Transaction, TransactionLocator},
+    },
     consensus::{CommittedSubDag, Linearizer},
     context::Ctx,
     data::Data,
     metrics::Metrics,
     storage::BlockReader,
-    types::{Block, BlockReference, Transaction, TransactionLocator},
 };
 
 pub struct RealBlockHandler<C: Ctx> {

@@ -135,7 +135,7 @@ mod test {
     use std::io;
     use std::sync::{Arc, Mutex};
 
-    use dag::types::Authority;
+    use dag::authority::Authority;
     use tracing::Subscriber;
     use tracing_subscriber::{fmt::format, layer::SubscriberExt};
 

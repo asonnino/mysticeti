@@ -7,9 +7,9 @@ use std::{
 };
 
 use dag::{
+    authority::Authority,
     committee::Committee,
     config::{ClientParameters, ImportExport, NodePrivateConfig, NodePublicConfig},
-    types::Authority,
 };
 use eyre::{Result, eyre};
 use tracing_subscriber::filter::LevelFilter;

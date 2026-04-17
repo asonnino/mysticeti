@@ -10,6 +10,8 @@ use futures::future::join_all;
 use rand::{SeedableRng, rngs::StdRng};
 
 use crate::{
+    authority::Authority,
+    block::{Block, BlockReference, RoundNumber},
     committee::Committee,
     consensus::DagConsensus,
     context::Ctx,
@@ -18,7 +20,6 @@ use crate::{
     metrics::Metrics,
     storage::Storage,
     sync::network::Network,
-    types::{Authority, Block, BlockReference, RoundNumber},
 };
 
 pub fn committee(n: usize) -> Arc<Committee> {

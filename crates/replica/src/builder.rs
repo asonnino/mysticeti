@@ -6,9 +6,9 @@ use std::{net::SocketAddr, sync::Arc};
 use ::prometheus::Registry;
 
 use dag::{
+    authority::Authority,
     committee::Committee,
     config::{ClientParameters, NodePrivateConfig, NodePublicConfig},
-    types::Authority,
 };
 
 use crate::replica::Replica;

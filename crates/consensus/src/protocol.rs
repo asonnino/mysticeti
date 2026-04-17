@@ -3,7 +3,7 @@
 
 use std::num::NonZeroUsize;
 
-use dag::types::{RoundNumber, Stake};
+use dag::{block::RoundNumber, committee::Stake};
 
 /// Protocol-specific parameters for the consensus committer.
 pub struct Protocol {

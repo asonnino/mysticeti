@@ -11,10 +11,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use zeroize::Zeroize;
 
 use super::{
-    Block, BlockReference, TimestampNs,
+    Block, BlockReference, RoundNumber, TimestampNs,
     serde::{BytesVisitor, FromBytes},
     transaction::Transaction,
-    types::RoundNumber,
 };
 use crate::authority::Authority;
 

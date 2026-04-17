@@ -6,10 +6,11 @@ use std::collections::HashSet;
 use parking_lot::Mutex;
 
 use dag::{
+    authority::Authority,
+    block::{Block, BlockReference, RoundNumber},
     consensus::DagConsensus,
     core::{core_thread::CoreDispatch, syncer::Syncer},
     data::Data,
-    types::{Authority, Block, BlockReference, RoundNumber},
 };
 
 use crate::context::SimulatorContext;

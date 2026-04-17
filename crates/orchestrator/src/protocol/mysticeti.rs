@@ -9,8 +9,8 @@ use std::{
 };
 
 use dag::{
+    authority::Authority,
     config::{self, ClientParameters, NodeParameters},
-    types::Authority,
 };
 use serde::{Deserialize, Serialize};
 

@@ -3,107 +3,31 @@
 
 pub(crate) mod crypto;
 pub mod data;
+pub mod reference;
 pub(crate) mod serde;
 pub mod transaction;
-pub mod types;
 
-use std::{
-    fmt,
-    hash::{Hash, Hasher},
-    time::Duration,
-};
+pub use reference::BlockReference;
+use std::{fmt, time::Duration};
 
 use ::serde::{Deserialize, Serialize};
-use digest::Digest;
 use eyre::{bail, ensure};
 
 use self::{
-    crypto::{CryptoHash, SignatureBytes, Signer},
+    crypto::{BlockDigest, SignatureBytes, Signer},
     data::Data,
     transaction::{Transaction, TransactionLocator},
-    types::{BlockDigest, RoundNumber, Stake},
 };
 use crate::{
-    authority::Authority, committee::Committee,
+    authority::Authority,
+    committee::{Committee, Stake},
     core::threshold_clock::threshold_clock_valid_non_genesis,
 };
 
+pub type RoundNumber = u64;
 pub type TimestampNs = u128;
 const NANOS_IN_SEC: u128 = Duration::from_secs(1).as_nanos();
 const GENESIS_ROUND: RoundNumber = 0;
-
-#[derive(Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Default)]
-pub struct BlockReference {
-    pub authority: Authority,
-    pub round: RoundNumber,
-    pub digest: BlockDigest,
-}
-
-impl Hash for BlockReference {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write(&self.digest.as_ref()[..8]);
-    }
-}
-
-impl PartialOrd for BlockReference {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for BlockReference {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        (self.round, self.authority, self.digest).cmp(&(other.round, other.authority, self.digest))
-    }
-}
-
-impl BlockReference {
-    #[cfg(any(test, feature = "test-utils"))]
-    pub fn new_test(authority: u64, round: RoundNumber) -> Self {
-        let authority = Authority::new(authority);
-        if round == 0 {
-            Block::new_genesis(authority).reference
-        } else {
-            Self {
-                authority,
-                round,
-                digest: Default::default(),
-            }
-        }
-    }
-
-    pub fn round(&self) -> RoundNumber {
-        self.round
-    }
-
-    pub fn author_round(&self) -> (Authority, RoundNumber) {
-        (self.authority, self.round)
-    }
-
-    pub fn author_digest(&self) -> (Authority, BlockDigest) {
-        (self.authority, self.digest)
-    }
-}
-
-impl fmt::Debug for BlockReference {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
-    }
-}
-
-impl fmt::Display for BlockReference {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.authority.with_round(self.round))
-    }
-}
-
-impl CryptoHash for BlockReference {
-    fn crypto_hash(&self, state: &mut impl Digest) {
-        self.authority.as_u64().crypto_hash(state);
-        self.round.crypto_hash(state);
-        self.digest.crypto_hash(state);
-    }
-}
 
 #[derive(Clone, Serialize, Deserialize)]
 // Important. Adding fields here requires updating
@@ -354,7 +278,7 @@ impl std::hash::Hash for Block {
 }
 
 #[cfg(test)]
-mod test {
+pub(crate) mod test {
     use std::{
         collections::{HashMap, HashSet},
         sync::Arc,
@@ -442,6 +366,7 @@ mod test {
             self.0.len()
         }
 
+        #[allow(dead_code)]
         pub fn is_empty(&self) -> bool {
             self.0.is_empty()
         }

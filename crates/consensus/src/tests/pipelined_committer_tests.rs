@@ -8,11 +8,11 @@ use crate::{committer::Committer, leader::LeaderElector, protocol::Protocol};
 const WAVE_LENGTH: u64 = 3;
 use dag::{
     authority::Authority,
+    block::{Block, BlockReference},
     consensus::LeaderStatus,
     metrics::Metrics,
     storage::Storage,
     test_util::{build_dag, build_dag_layer, committee},
-    types::{Block, BlockReference},
 };
 
 /// Commit one leader.

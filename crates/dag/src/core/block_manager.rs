@@ -7,11 +7,11 @@ use std::{
 };
 
 use crate::{
+    block::{Block, BlockReference},
     committee::Committee,
     data::Data,
     storage::BlockReader,
     storage::Storage,
-    types::{Block, BlockReference},
     wal::WalPosition,
 };
 
@@ -126,7 +126,7 @@ mod tests {
     use rand::{SeedableRng, prelude::StdRng};
 
     use super::*;
-    use crate::{authority::Authority, metrics::Metrics, types::Dag};
+    use crate::{authority::Authority, block::test::Dag, metrics::Metrics};
 
     #[test]
     fn test_block_manager_add_block() {

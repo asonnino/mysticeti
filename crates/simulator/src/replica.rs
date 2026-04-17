@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use consensus::{committer::Committer, protocol::Protocol};
 use dag::{
+    authority::Authority,
     config::{NodePrivateConfig, NodePublicConfig},
     core::{
         Core, CoreOptions,
@@ -13,7 +14,6 @@ use dag::{
     metrics::Metrics,
     storage::Storage,
     sync::{net_sync::NetworkSyncer, network::Network},
-    types::Authority,
 };
 
 use dag::committee::Committee;

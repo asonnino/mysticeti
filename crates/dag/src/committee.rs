@@ -7,11 +7,12 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    authority::Authority,
+    authority::{Authority, AuthoritySet},
     config::ImportExport,
     crypto::{PublicKey, Signer, dummy_public_key},
-    types::{AuthoritySet, Stake},
 };
+
+pub type Stake = u64;
 
 #[derive(Serialize, Deserialize)]
 pub struct Committee {

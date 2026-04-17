@@ -9,10 +9,7 @@ pub(crate) mod wal;
 use std::{io, path::Path, sync::Arc};
 
 use crate::{
-    committee::Committee,
-    data::Data,
-    metrics::Metrics,
-    types::{Authority, Block},
+    authority::Authority, block::Block, committee::Committee, data::Data, metrics::Metrics,
 };
 
 use self::{

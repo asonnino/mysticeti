@@ -12,8 +12,10 @@ use std::{
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
+    authority::Authority,
+    block::RoundNumber,
+    crypto::PublicKey,
     crypto::{Signer, dummy_signer},
-    types::{Authority, PublicKey, RoundNumber},
 };
 
 #[derive(Debug, thiserror::Error)]

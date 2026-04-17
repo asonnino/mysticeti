@@ -4,9 +4,9 @@
 use std::{fs, net::IpAddr, path::PathBuf};
 
 use dag::{
+    authority::Authority,
     committee::Committee,
     config::{ImportExport, NodeParameters, NodePrivateConfig, NodePublicConfig},
-    types::Authority,
 };
 use eyre::{Context, Result};
 use tracing_subscriber::filter::LevelFilter;

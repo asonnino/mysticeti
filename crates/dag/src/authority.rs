@@ -5,7 +5,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::RoundNumber;
+use crate::block::RoundNumber;
 
 /// Identifies an authority (participant) in the
 /// consensus committee. Wraps a zero-based index.

@@ -8,6 +8,8 @@ use rand::{seq::SliceRandom, thread_rng};
 use tokio::sync::mpsc;
 
 use crate::{
+    authority::Authority,
+    block::{BlockReference, RoundNumber},
     consensus::DagConsensus,
     context::Ctx,
     core::core_thread::CoreDispatch,
@@ -16,7 +18,6 @@ use crate::{
         net_sync::{self, NetworkSyncerInner},
         network::NetworkMessage,
     },
-    types::{Authority, BlockReference, RoundNumber},
 };
 
 pub struct SynchronizerParameters {

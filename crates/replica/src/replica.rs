@@ -12,7 +12,8 @@ use tokio::{sync::mpsc, task::JoinHandle};
 
 use consensus::{committer::Committer, protocol::Protocol};
 use dag::{
-    block::types::Transaction,
+    authority::Authority,
+    block::transaction::Transaction,
     committee::Committee,
     config::{ClientParameters, NodePrivateConfig, NodePublicConfig},
     context::TokioCtx,
@@ -23,7 +24,6 @@ use dag::{
     metrics::Metrics,
     storage::Storage,
     sync::{net_sync::NetworkSyncer, network::Network},
-    types::Authority,
 };
 
 use crate::generator::TransactionGenerator;

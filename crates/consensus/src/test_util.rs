@@ -4,6 +4,7 @@
 use std::{path::Path, sync::Arc};
 
 use dag::{
+    authority::Authority,
     committee::Committee,
     config::{NodePrivateConfig, NodePublicConfig},
     context::Ctx,
@@ -11,7 +12,6 @@ use dag::{
     metrics::Metrics,
     storage::Storage,
     test_util::committee,
-    types::Authority,
 };
 
 use crate::{committer::Committer, protocol::Protocol};

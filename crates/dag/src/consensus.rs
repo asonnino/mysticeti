@@ -4,9 +4,11 @@
 use std::{collections::HashSet, fmt};
 
 use crate::{
+    authority::Authority,
+    block::{Block, BlockReference, RoundNumber},
+    committee::Stake,
     data::Data,
     storage::BlockReader,
-    types::{Authority, Block, BlockReference, RoundNumber, Stake},
 };
 
 /// Trait that a consensus protocol must implement to

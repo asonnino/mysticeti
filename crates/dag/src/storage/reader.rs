@@ -6,10 +6,14 @@ use std::{sync::Arc, time::Instant};
 use parking_lot::{RwLock, RwLockWriteGuard};
 
 use crate::{
+    authority::Authority,
+    block::{
+        Block, BlockReference, RoundNumber,
+        transaction::{Transaction, TransactionLocator},
+    },
     committee::Committee,
     data::Data,
     metrics::Metrics,
-    types::{Authority, Block, BlockReference, RoundNumber, Transaction, TransactionLocator},
 };
 
 use super::{

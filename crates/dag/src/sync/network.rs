@@ -22,10 +22,11 @@ use tokio::{
 };
 
 use crate::{
+    authority::Authority,
+    block::{Block, BlockReference, RoundNumber},
     config::NodePublicConfig,
     data::Data,
     metrics::{Metrics, print_network_address_table},
-    types::{Authority, Block, BlockReference, RoundNumber},
 };
 
 const PING_INTERVAL: Duration = Duration::from_secs(30);

@@ -7,9 +7,9 @@ use tempfile::TempDir;
 use tokio::time;
 
 use dag::{
+    authority::Authority,
     committee::Committee,
     config::{self, ClientParameters, NodePrivateConfig, NodePublicConfig},
-    types::Authority,
 };
 use replica::{builder::ReplicaBuilder, prometheus, replica::ReplicaHandle};
 

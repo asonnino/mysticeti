@@ -10,7 +10,9 @@ use tokio::{
 };
 
 use crate::{
+    authority::Authority,
     committee::Committee,
+    committee::Stake,
     config::NodePublicConfig,
     consensus::DagConsensus,
     context::Ctx,
@@ -26,7 +28,6 @@ use crate::{
         network::{Connection, Network, NetworkMessage},
         synchronizer::{BlockDisseminator, BlockFetcher, SynchronizerParameters},
     },
-    types::{Authority, Stake},
 };
 
 /// The maximum number of blocks that can be requested in a single message.

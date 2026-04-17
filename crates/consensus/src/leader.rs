@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use dag::types::{Authority, RoundNumber};
+use dag::{authority::Authority, block::RoundNumber};
 
 /// Determines the leader for each round. Different
 /// consensus protocols may use different election

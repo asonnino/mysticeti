@@ -18,8 +18,11 @@ use self::{
     threshold_clock::ThresholdClockAggregator,
 };
 use crate::{
+    authority::Authority,
+    block::{Block, BlockReference, RoundNumber, transaction::Transaction},
     block_store::{CommitData, OwnBlockData},
     committee::Committee,
+    committee::Stake,
     config::NodePrivateConfig,
     consensus::{CommittedSubDag, DagConsensus},
     context::Ctx,
@@ -29,7 +32,6 @@ use crate::{
     state::RecoveredState,
     storage::BlockReader,
     storage::Storage,
-    types::{Authority, Block, BlockReference, RoundNumber, Stake, Transaction},
     wal::{WalPosition, WalSyncer},
 };
 

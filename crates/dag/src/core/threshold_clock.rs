@@ -4,8 +4,9 @@
 use std::cmp::Ordering;
 
 use crate::{
+    block::{Block, BlockReference, RoundNumber},
+    committee::Stake,
     committee::{Committee, StakeAggregator},
-    types::{Block, BlockReference, RoundNumber, Stake},
 };
 
 /// A block is threshold clock valid if:
@@ -81,7 +82,7 @@ impl ThresholdClockAggregator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::Dag;
+    use crate::block::test::Dag;
 
     #[test]
     fn test_threshold_clock_valid() {

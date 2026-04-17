@@ -5,12 +5,13 @@ use std::path::Path;
 
 use consensus::committer::Committer;
 use dag::{
+    authority::Authority,
+    block::BlockReference,
     committee::Committee,
     config::{ConfigError, ImportExport, NodePublicConfig},
     context::Ctx,
     metrics::MetricsSnapshot,
     sync::net_sync::NetworkSyncer,
-    types::{Authority, BlockReference},
 };
 use rand::{SeedableRng, rngs::StdRng};
 

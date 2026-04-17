@@ -6,10 +6,10 @@ use std::collections::{BTreeMap, HashSet, VecDeque};
 use minibytes::Bytes;
 
 use crate::{
+    block::{Block, BlockReference},
     block_store::{CommitData, OwnBlockData},
     core::MetaStatement,
     data::Data,
-    types::{Block, BlockReference},
     wal::WalPosition,
 };
 

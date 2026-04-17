@@ -8,9 +8,9 @@ use std::{
 };
 
 use dag::{
+    authority::Authority,
     committee::Committee,
     config::{ClientParameters, ImportExport, NodeParameters, NodePrivateConfig, NodePublicConfig},
-    types::Authority,
 };
 use eyre::{Context, Result};
 use serde::{Deserialize, Serialize};
