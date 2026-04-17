@@ -10,8 +10,7 @@ use crate::{
     data::Data,
     metrics::Metrics,
     types::{
-        Authority, BaseStatement, BlockReference, RoundNumber, StatementBlock, Transaction,
-        TransactionLocator,
+        Authority, BlockReference, RoundNumber, StatementBlock, Transaction, TransactionLocator,
     },
 };
 
@@ -156,16 +155,8 @@ impl BlockReader {
     }
 
     pub fn get_transaction(&self, locator: &TransactionLocator) -> Option<Transaction> {
-        self.get_block(*locator.block()).and_then(|block| {
-            block
-                .statements()
-                .get(locator.offset() as usize)
-                .cloned()
-                .map(|statement| {
-                    let BaseStatement::Share(transaction) = statement;
-                    transaction
-                })
-        })
+        self.get_block(*locator.block())
+            .and_then(|block| block.transactions().get(locator.offset() as usize).cloned())
     }
 
     #[cfg(test)]

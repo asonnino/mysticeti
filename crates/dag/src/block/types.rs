@@ -40,11 +40,6 @@ pub struct BlockReference {
     pub digest: BlockDigest,
 }
 
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
-pub enum BaseStatement {
-    Share(Transaction),
-}
-
 impl Hash for BlockReference {
     fn hash<H: Hasher>(&self, state: &mut H) {
         state.write(&self.digest.as_ref()[..8]);
@@ -62,8 +57,8 @@ pub struct StatementBlock {
     //  the first reference is the one that this block votes for.
     includes: Vec<BlockReference>,
 
-    // A list of base statements in order.
-    statements: Vec<BaseStatement>,
+    // A list of transactions in order.
+    transactions: Vec<Transaction>,
 
     // Creation time of the block as reported by creator, currently not enforced
     meta_creation_time_ns: TimestampNs,
@@ -108,7 +103,7 @@ impl StatementBlock {
         authority: Authority,
         round: RoundNumber,
         includes: Vec<BlockReference>,
-        statements: Vec<BaseStatement>,
+        transactions: Vec<Transaction>,
         meta_creation_time_ns: TimestampNs,
         signer: &Signer,
     ) -> Self {
@@ -116,14 +111,14 @@ impl StatementBlock {
             authority,
             round,
             &includes,
-            &statements,
+            &transactions,
             meta_creation_time_ns,
         );
         Self::new(
             authority,
             round,
             includes,
-            statements,
+            transactions,
             meta_creation_time_ns,
             signature,
         )
@@ -133,7 +128,7 @@ impl StatementBlock {
         authority: Authority,
         round: RoundNumber,
         includes: Vec<BlockReference>,
-        statements: Vec<BaseStatement>,
+        transactions: Vec<Transaction>,
         meta_creation_time_ns: TimestampNs,
         signature: SignatureBytes,
     ) -> Self {
@@ -145,13 +140,13 @@ impl StatementBlock {
                     authority,
                     round,
                     &includes,
-                    &statements,
+                    &transactions,
                     meta_creation_time_ns,
                     &signature,
                 ),
             },
             includes,
-            statements,
+            transactions,
             meta_creation_time_ns,
             signature,
         }
@@ -165,20 +160,16 @@ impl StatementBlock {
         &self.includes
     }
 
-    pub fn statements(&self) -> &Vec<BaseStatement> {
-        &self.statements
+    pub fn transactions(&self) -> &[Transaction] {
+        &self.transactions
     }
 
     pub fn shared_transactions(&self) -> impl Iterator<Item = (TransactionLocator, &Transaction)> {
         let reference = *self.reference();
-        self.statements
-            .iter()
-            .enumerate()
-            .map(move |(pos, statement)| {
-                let BaseStatement::Share(tx) = statement;
-                let locator = TransactionLocator::new(reference, pos as u64);
-                (locator, tx)
-            })
+        self.transactions.iter().enumerate().map(move |(pos, tx)| {
+            let locator = TransactionLocator::new(reference, pos as u64);
+            (locator, tx)
+        })
     }
 
     pub fn author(&self) -> Authority {
@@ -218,7 +209,7 @@ impl StatementBlock {
             self.author(),
             round,
             &self.includes,
-            &self.statements,
+            &self.transactions,
             self.meta_creation_time_ns,
             &self.signature,
         );
@@ -366,9 +357,9 @@ impl<'a> fmt::Debug for Detailed<'a> {
         )?;
         write!(
             f,
-            "statements({})={:?}",
-            self.0.statements.len(),
-            self.0.statements()
+            "transactions({})={:?}",
+            self.0.transactions.len(),
+            self.0.transactions()
         )?;
         writeln!(f, "}}")
     }
@@ -381,8 +372,8 @@ impl fmt::Display for StatementBlock {
             write!(f, "{},", include)?;
         }
         write!(f, "](")?;
-        for statement in self.statements() {
-            write!(f, "{},", statement)?;
+        for tx in self.transactions() {
+            write!(f, "{},", tx)?;
         }
         write!(f, ")")
     }
@@ -414,12 +405,6 @@ impl std::hash::Hash for StatementBlock {
     }
 }
 
-impl fmt::Debug for BaseStatement {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
-    }
-}
-
 impl CryptoHash for BlockReference {
     fn crypto_hash(&self, state: &mut impl Digest) {
         self.authority.as_u64().crypto_hash(state);
@@ -435,11 +420,15 @@ impl CryptoHash for TransactionLocator {
     }
 }
 
-impl fmt::Display for BaseStatement {
+impl fmt::Display for Transaction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            BaseStatement::Share(_tx) => write!(f, "tx"),
-        }
+        write!(f, "tx")
+    }
+}
+
+impl fmt::Debug for Transaction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "tx({}B)", self.data.len())
     }
 }
 
@@ -519,7 +508,7 @@ mod test {
             StatementBlock {
                 reference,
                 includes,
-                statements: vec![],
+                transactions: vec![],
                 meta_creation_time_ns: 0,
                 signature: Default::default(),
             }

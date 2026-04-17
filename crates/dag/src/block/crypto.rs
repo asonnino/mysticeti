@@ -12,7 +12,7 @@ use zeroize::Zeroize;
 
 use super::{
     serde::{BytesVisitor, FromBytes},
-    types::{Authority, BaseStatement, BlockReference, RoundNumber, StatementBlock, TimestampNs},
+    types::{Authority, BlockReference, RoundNumber, StatementBlock, TimestampNs, Transaction},
 };
 
 pub const SIGNATURE_SIZE: usize = 64;
@@ -40,7 +40,7 @@ impl BlockDigest {
         authority: Authority,
         round: RoundNumber,
         includes: &[BlockReference],
-        statements: &[BaseStatement],
+        transactions: &[Transaction],
         meta_creation_time_ns: TimestampNs,
         signature: &SignatureBytes,
     ) -> Self {
@@ -50,7 +50,7 @@ impl BlockDigest {
             authority,
             round,
             includes,
-            statements,
+            transactions,
             meta_creation_time_ns,
         );
         hasher.update(signature);
@@ -62,7 +62,7 @@ impl BlockDigest {
         _authority: Authority,
         _round: RoundNumber,
         _includes: &[BlockReference],
-        _statements: &[BaseStatement],
+        _transactions: &[Transaction],
         _meta_creation_time_ns: TimestampNs,
         _signature: &SignatureBytes,
     ) -> Self {
@@ -84,7 +84,7 @@ impl BlockDigest {
         authority: Authority,
         round: RoundNumber,
         includes: &[BlockReference],
-        statements: &[BaseStatement],
+        transactions: &[Transaction],
         meta_creation_time_ns: TimestampNs,
     ) {
         authority.as_u64().crypto_hash(hasher);
@@ -92,13 +92,9 @@ impl BlockDigest {
         for include in includes {
             include.crypto_hash(hasher);
         }
-        for statement in statements {
-            match statement {
-                BaseStatement::Share(tx) => {
-                    [0].crypto_hash(hasher);
-                    tx.crypto_hash(hasher);
-                }
-            }
+        for tx in transactions {
+            [0].crypto_hash(hasher);
+            tx.crypto_hash(hasher);
         }
         meta_creation_time_ns.crypto_hash(hasher);
     }
@@ -158,7 +154,7 @@ impl PublicKey {
             block.author(),
             block.round(),
             block.includes(),
-            block.statements(),
+            block.transactions(),
             block.meta_creation_time_ns(),
         );
         let digest: [u8; BLOCK_DIGEST_SIZE] = hasher.finalize().into();
@@ -185,7 +181,7 @@ impl Signer {
         authority: Authority,
         round: RoundNumber,
         includes: &[BlockReference],
-        statements: &[BaseStatement],
+        transactions: &[Transaction],
         meta_creation_time_ns: TimestampNs,
     ) -> SignatureBytes {
         let mut hasher = BlockHasher::default();
@@ -194,7 +190,7 @@ impl Signer {
             authority,
             round,
             includes,
-            statements,
+            transactions,
             meta_creation_time_ns,
         );
         let digest: [u8; BLOCK_DIGEST_SIZE] = hasher.finalize().into();
@@ -208,7 +204,7 @@ impl Signer {
         _authority: Authority,
         _round: RoundNumber,
         _includes: &[BlockReference],
-        _statements: &[BaseStatement],
+        _transactions: &[Transaction],
         _meta_creation_time_ns: TimestampNs,
     ) -> SignatureBytes {
         Default::default()

@@ -29,7 +29,7 @@ use crate::{
     state::RecoveredState,
     storage::BlockReader,
     storage::Storage,
-    types::{Authority, BaseStatement, BlockReference, RoundNumber, Stake, StatementBlock},
+    types::{Authority, BlockReference, RoundNumber, Stake, StatementBlock, Transaction},
     wal::{WalPosition, WalSyncer},
 };
 
@@ -58,7 +58,7 @@ pub struct CoreOptions {
 #[derive(Debug)]
 pub enum MetaStatement {
     Include(BlockReference),
-    Payload(Vec<BaseStatement>),
+    Payload(Vec<Transaction>),
 }
 
 impl<C: Ctx, D: DagConsensus> Core<C, D> {
@@ -291,7 +291,7 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
     fn proposed_block_stats(&self, block: &Data<StatementBlock>) {
         self.metrics
             .observe_proposed_block_size_bytes(block.serialized_bytes().len());
-        let transactions = block.statements().len();
+        let transactions = block.transactions().len();
         self.metrics
             .observe_proposed_block_transaction_count(transactions);
         self.metrics.observe_proposed_block_vote_count(0);

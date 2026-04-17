@@ -16,7 +16,7 @@ use crate::{
     data::Data,
     metrics::Metrics,
     storage::BlockReader,
-    types::{BaseStatement, BlockReference, StatementBlock, Transaction, TransactionLocator},
+    types::{BlockReference, StatementBlock, Transaction, TransactionLocator},
 };
 
 pub struct RealBlockHandler<C: Ctx> {
@@ -51,16 +51,14 @@ impl<C: Ctx> RealBlockHandler<C> {
         Some(received)
     }
 
-    pub fn handle_blocks(&mut self, require_response: bool) -> Vec<BaseStatement> {
+    pub fn handle_blocks(&mut self, require_response: bool) -> Vec<Transaction> {
         let _timer = self
             .metrics
             .utilization_timer("BlockHandler::handle_blocks");
         let mut response = vec![];
         if require_response {
             while let Some(data) = self.receive_with_limit() {
-                for tx in data {
-                    response.push(BaseStatement::Share(tx));
-                }
+                response.extend(data);
             }
         }
         response
