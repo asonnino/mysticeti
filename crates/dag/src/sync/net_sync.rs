@@ -158,6 +158,10 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
             .await;
     }
 
+    #[tracing::instrument(
+        skip_all,
+        fields(peer = %Authority::from(connection.peer_id))
+    )]
     async fn connection_task(
         mut connection: Connection,
         inner: Arc<NetworkSyncerInner<C, D>>,
@@ -228,6 +232,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
         None
     }
 
+    #[tracing::instrument(level = "debug", skip_all)]
     async fn leader_timeout_task(inner: Arc<NetworkSyncerInner<C, D>>) -> Option<()> {
         let leader_timeout = Duration::from_secs(1);
         loop {

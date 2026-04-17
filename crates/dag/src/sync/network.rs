@@ -192,6 +192,11 @@ impl Worker {
     const PASSIVE_HANDSHAKE: u64 = 0x0000AEAE;
     const MAX_SIZE: u32 = 16 * 1024 * 1024;
 
+    #[tracing::instrument(
+        level = "debug",
+        skip_all,
+        fields(peer = %Authority::from(self.peer_id))
+    )]
     async fn run(self, mut receiver: mpsc::UnboundedReceiver<TcpStream>) -> Option<()> {
         let initial_delay = if self.active_immediately {
             Duration::ZERO
@@ -218,6 +223,11 @@ impl Worker {
         }
     }
 
+    #[tracing::instrument(
+        level = "debug",
+        skip_all,
+        fields(peer = %Authority::from(self.peer_id))
+    )]
     async fn connect_and_handle(&self, delay: Duration, peer: SocketAddr) -> io::Result<()> {
         // this is critical to avoid race between active and passive connections
         tokio::time::sleep(delay).await;
@@ -250,6 +260,11 @@ impl Worker {
         Self::handle_stream(stream, connection).await
     }
 
+    #[tracing::instrument(
+        level = "debug",
+        skip_all,
+        fields(peer = %Authority::from(self.peer_id))
+    )]
     async fn handle_passive_stream(&self, mut stream: TcpStream) -> io::Result<()> {
         stream.set_nodelay(true)?;
         stream.write_u64(Self::PASSIVE_HANDSHAKE).await?;
@@ -265,6 +280,11 @@ impl Worker {
         Self::handle_stream(stream, connection).await
     }
 
+    #[tracing::instrument(
+        level = "debug",
+        skip_all,
+        fields(peer = %Authority::from(connection.peer_id))
+    )]
     async fn handle_stream(stream: TcpStream, connection: WorkerConnection) -> io::Result<()> {
         let WorkerConnection {
             sender,
