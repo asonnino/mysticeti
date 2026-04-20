@@ -7,16 +7,16 @@ use std::{
     path::PathBuf,
 };
 
-use dag::{authority::Authority, config::ImportExport};
+use dag::{authority::Authority, config::ImportExport, context::TokioCtx};
 use eyre::{Context, Result};
-use tracing_subscriber::filter::LevelFilter;
-
-use crate::{
-    banner,
+use replica::{
     builder::ReplicaBuilder,
     config::{LoadGeneratorConfig, PrivateReplicaConfig, PublicReplicaConfig, ReplicaParameters},
-    tracing::ReplicaTracing,
+    prometheus::{MetricsRegistry, PrometheusServer},
 };
+use tracing_subscriber::filter::LevelFilter;
+
+use crate::{banner, tracing::ReplicaTracing};
 
 pub async fn local_testbed(
     committee_size: usize,
@@ -30,6 +30,7 @@ pub async fn local_testbed(
     }
     .setup();
 
+    // Load optional parameter overrides; fall back to defaults.
     let replica_parameters = match replica_parameters_path {
         Some(path) => {
             tracing::info!("Loading replica parameters from {}", path.display());
@@ -45,6 +46,7 @@ pub async fn local_testbed(
         None => LoadGeneratorConfig::default(),
     };
 
+    // Print the startup banner.
     let nodes = committee_size.to_string();
     let tx_size = load_generator_config.transaction_size.to_string();
     let load_str = load_generator_config.load.to_string();
@@ -59,10 +61,12 @@ pub async fn local_testbed(
     )
     .print();
 
+    // Generate a localhost public config with the chosen parameters.
     let ips = vec![IpAddr::V4(Ipv4Addr::LOCALHOST); committee_size];
     let public_config =
         PublicReplicaConfig::new_for_benchmarks(ips).with_parameters(replica_parameters);
 
+    // Prepare a clean working directory for the validators' WAL files.
     let working_dir = PathBuf::from("local-testbed");
     match fs::remove_dir_all(&working_dir) {
         Ok(_) => {}
@@ -74,7 +78,6 @@ pub async fn local_testbed(
             ));
         }
     }
-
     let private_configs = PrivateReplicaConfig::new_for_benchmarks(&working_dir, committee_size);
     for private_config in &private_configs {
         fs::create_dir_all(&private_config.storage_path).wrap_err(format!(
@@ -85,23 +88,41 @@ pub async fn local_testbed(
 
     tracing::info!("Starting local testbed with {committee_size} validators");
 
+    // Spin up each validator: run the replica, start its load generator, expose its metrics.
+    // Each validator gets its own registry and metrics server on a distinct port.
     let mut handles = Vec::with_capacity(committee_size);
+    let mut metrics_servers = Vec::with_capacity(committee_size);
     for (i, private_config) in private_configs.into_iter().enumerate() {
         let authority = Authority::from(i);
-        let builder = ReplicaBuilder::new(authority, public_config.clone(), private_config)
-            .with_metrics_server()
-            .with_load_generator(load_generator_config.clone());
-        handles.push(builder.build().run().await?);
+        let metrics_address = public_config
+            .metrics_address(authority)
+            .expect("metrics address must exist");
+        let registry = MetricsRegistry::new();
+        let mut handle = ReplicaBuilder::new(authority, public_config.clone(), private_config)
+            .with_registry(registry.clone())
+            .build()
+            .run::<TokioCtx>()
+            .await?;
+        handle.start_load_generator(load_generator_config.clone());
+        metrics_servers.push(
+            PrometheusServer::new(metrics_address, &registry)
+                .bind_all_interfaces()
+                .start()
+                .await?,
+        );
+        handles.push(handle);
     }
 
     tracing::info!("All {committee_size} validators running. Press Ctrl-C to stop.");
 
+    // Block until the user interrupts, then tear everything down.
     tokio::signal::ctrl_c()
         .await
         .wrap_err("Failed to listen for Ctrl-C")?;
 
     tracing::info!("Shutting down...");
     drop(handles);
+    drop(metrics_servers);
 
     Ok(())
 }

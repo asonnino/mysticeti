@@ -5,7 +5,8 @@ use std::{num::NonZeroUsize, path::PathBuf};
 
 use consensus::protocol::ConsensusProtocol;
 use dag::config::ImportExport;
-use simulator::{NetworkTopology, ReplicaParameters, SimulationConfig, SimulationRunner};
+use replica::config::ReplicaParameters;
+use simulator::{NetworkTopology, SimulationConfig, SimulationRunner};
 
 #[test]
 fn full_mesh() {

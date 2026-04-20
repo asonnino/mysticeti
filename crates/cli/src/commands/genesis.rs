@@ -7,10 +7,9 @@ use dag::{authority::Authority, config::ImportExport};
 use eyre::{Context, Result};
 use tracing_subscriber::filter::LevelFilter;
 
-use crate::{
-    config::{PrivateReplicaConfig, PublicReplicaConfig, ReplicaParameters},
-    tracing::ReplicaTracing,
-};
+use replica::config::{PrivateReplicaConfig, PublicReplicaConfig, ReplicaParameters};
+
+use crate::tracing::ReplicaTracing;
 
 pub fn test_genesis(
     ips: Vec<IpAddr>,

@@ -44,13 +44,17 @@ pub struct CryptoVerifier {
 }
 
 impl CryptoEngine {
-    /// Creates an engine backed by `signer`. When `enabled` is false, all signing and digest
-    /// operations return default (zero) values.
-    pub fn new(signer: Signer, enabled: bool) -> Self {
-        Self { signer, enabled }
+    /// Creates an engine that signs outgoing blocks with the given key and verifies incoming
+    /// signatures.
+    pub fn enabled(signer: Signer) -> Self {
+        Self {
+            signer,
+            enabled: true,
+        }
     }
 
-    /// Creates an engine with crypto disabled and a dummy key.
+    /// Creates an engine that skips signing and verification. Signing returns default-valued
+    /// signatures and digests; verification always succeeds.
     pub fn disabled() -> Self {
         Self {
             signer: Signer::dummy(),

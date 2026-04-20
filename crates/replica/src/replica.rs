@@ -1,127 +1,118 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::net::{IpAddr, Ipv4Addr};
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    sync::Arc,
+};
 
 use ::prometheus::Registry;
-use color_eyre::eyre::{Result, eyre};
-use tokio::{sync::mpsc, task::JoinHandle};
-
 use consensus::committer::Committer;
 use dag::{
     authority::Authority,
     block::transaction::Transaction,
-    context::TokioCtx,
+    context::{Ctx, TokioCtx},
     core::{
         Core,
         block_handler::{CommitHandler, RealBlockHandler},
+        syncer::Syncer,
     },
     crypto::CryptoEngine,
     metrics::Metrics,
     storage::Storage,
     sync::{net_sync::NetworkSyncer, network::Network},
 };
+use eyre::{Context, Result, eyre};
+use tokio::sync::mpsc;
 
-use crate::config::{LoadGeneratorConfig, PrivateReplicaConfig, PublicReplicaConfig};
-use crate::generator::TransactionGenerator;
+use crate::{
+    builder::StorageKind,
+    config::{LoadGeneratorConfig, PrivateReplicaConfig, PublicReplicaConfig},
+    generator::TransactionGenerator,
+};
 
-use crate::prometheus as metrics_server;
-
+/// A replica whose configuration is finalized and ready to run. No tokio work has happened yet;
+/// all materialization (storage, metrics, network) is deferred to [`Replica::run`].
+///
+/// Fields are crate-private; construct via [`crate::builder::ReplicaBuilder`].
 pub struct Replica {
-    authority: Authority,
-    public_config: PublicReplicaConfig,
-    private_config: PrivateReplicaConfig,
-    registry: Registry,
-    metrics_server_enabled: bool,
-    load_generator_config: Option<LoadGeneratorConfig>,
+    pub(crate) authority: Authority,
+    pub(crate) public_config: PublicReplicaConfig,
+    pub(crate) private_config: PrivateReplicaConfig,
+    pub(crate) storage: StorageKind,
+    pub(crate) crypto_disabled: bool,
+    pub(crate) metrics: Option<Arc<Metrics>>,
+    pub(crate) network: Option<Network>,
+    pub(crate) registry: Registry,
 }
 
 impl Replica {
-    pub(crate) fn new(
-        authority: Authority,
-        public_config: PublicReplicaConfig,
-        private_config: PrivateReplicaConfig,
-        registry: Registry,
-        metrics_server_enabled: bool,
-        load_generator_config: Option<LoadGeneratorConfig>,
-    ) -> Self {
-        Self {
+    /// Start the replica under the given execution context. Opens storage, materializes metrics
+    /// and network defaults (tokio-only unless pre-injected via the builder), builds the block
+    /// handler, committer, core, and network syncer.
+    #[tracing::instrument(skip_all, fields(authority = %self.authority))]
+    pub async fn run<C: Ctx>(self) -> Result<ReplicaHandle<C>> {
+        let Self {
             authority,
             public_config,
             private_config,
+            storage: storage_kind,
+            crypto_disabled,
+            metrics: metrics_override,
+            network: network_override,
             registry,
-            metrics_server_enabled,
-            load_generator_config,
-        }
-    }
+        } = self;
 
-    #[tracing::instrument(skip_all, fields(authority = %self.authority))]
-    pub async fn run(self) -> Result<ReplicaHandle> {
-        let committee = self.public_config.committee();
-        let metrics = Metrics::new(&self.registry, committee.len(), None);
+        let committee = public_config.committee();
+        let parameters = &public_config.parameters;
 
-        // Start the metrics HTTP server on the authority's metrics
-        // address, rebound to 0.0.0.0 so it's reachable from outside.
-        let metrics_handle = if self.metrics_server_enabled {
-            let mut address = self
-                .public_config
-                .metrics_address(self.authority)
-                .ok_or(eyre!("No metrics address for authority {}", self.authority))?;
-            address.set_ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
-            Some(metrics_server::start_prometheus_server(
-                address,
-                &self.registry,
-            ))
-        } else {
-            None
-        };
+        // Metrics: injected or freshly built against our registry.
+        let metrics =
+            metrics_override.unwrap_or_else(|| Metrics::new(&registry, committee.len(), None));
 
-        // Resolve the network binding address (rebound to 0.0.0.0).
-        let mut network_binding_address = self
-            .public_config
-            .network_address(self.authority)
-            .ok_or(eyre!("No network address for authority {}", self.authority))?;
-        network_binding_address.set_ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
-
-        // Open storage and recover state.
-        let (storage, recovered) = Storage::open(
-            self.authority,
-            self.private_config.wal(),
-            metrics.clone(),
-            &committee,
-        )?;
-
-        // Set up block handling.
-        let (block_handler, block_sender) = RealBlockHandler::<TokioCtx>::new(metrics.clone());
-
-        let parameters = &self.public_config.parameters;
-
-        // Start the load generator or expose the tx channel.
-        let tx_sender = match self.load_generator_config {
-            Some(config) => {
-                TransactionGenerator::start(
-                    block_sender,
-                    self.authority,
-                    config,
-                    parameters.dag.max_block_size,
-                    metrics.clone(),
-                );
-                None
+        // Storage.
+        let (storage, recovered) = match storage_kind {
+            StorageKind::Wal(path) => Storage::open(authority, &path, metrics.clone(), &committee)
+                .wrap_err("Failed to open replica storage")?,
+            StorageKind::Ephemeral => {
+                Storage::new_for_tests(authority, metrics.clone(), &committee)
             }
-            None => Some(block_sender),
         };
 
-        // Build the committer and core.
+        // Crypto: disabled if the caller asked for it (simulator mode) or if the chosen protocol
+        // is authentication-free (e.g. a CFT variant). Otherwise use the keypair from the private
+        // config.
+        let protocol = parameters.consensus.to_protocol(committee.total_stake());
+        let crypto = if crypto_disabled || !protocol.require_crypto {
+            CryptoEngine::disabled()
+        } else {
+            CryptoEngine::enabled(private_config.keypair)
+        };
+
+        // Network: user-provided, or bind TCP.
+        let network = match network_override {
+            Some(network) => network,
+            None => {
+                let mut binding_address = public_config
+                    .network_address(authority)
+                    .ok_or_else(|| eyre!("No network address for authority {authority}"))?;
+                binding_address.set_ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+                let addresses: Vec<SocketAddr> = public_config.all_network_addresses().collect();
+                Network::load(&addresses, authority, binding_address, metrics.clone()).await
+            }
+        };
+
+        // DAG and consensus machinery.
+        let (block_handler, transaction_sender) = RealBlockHandler::<C>::new(metrics.clone());
         let commit_handler =
             CommitHandler::new(block_handler.transaction_time.clone(), metrics.clone());
-        let protocol = parameters.consensus.to_protocol(committee.total_stake());
+
         let round_timeout = parameters
             .dag
             .round_timeout
             .unwrap_or_else(|| protocol.default_round_timeout());
         let enable_synchronizer = parameters.dag.enable_synchronizer;
         let fsync = parameters.dag.fsync;
-        let crypto = CryptoEngine::new(self.private_config.keypair, protocol.require_crypto);
         let committer = Committer::new(
             committee.clone(),
             storage.block_reader().clone(),
@@ -130,8 +121,8 @@ impl Replica {
         );
         let core = Core::open(
             block_handler,
-            self.authority,
-            committee.clone(),
+            authority,
+            committee,
             metrics.clone(),
             storage,
             recovered,
@@ -139,79 +130,75 @@ impl Replica {
             committer,
             crypto,
         );
-
-        // Bind the network and start the synchronizer.
-        let addresses: Vec<_> = self.public_config.all_network_addresses().collect();
-        let network = Network::load(
-            &addresses,
-            self.authority,
-            network_binding_address,
-            metrics.clone(),
-        )
-        .await;
         let network_synchronizer = NetworkSyncer::start(
             network,
             core,
             round_timeout,
             enable_synchronizer,
             commit_handler,
-            metrics,
+            metrics.clone(),
         );
 
         Ok(ReplicaHandle {
-            authority: self.authority,
+            authority,
+            public_config,
             network_synchronizer,
-            metrics_handle,
-            tx_sender,
+            metrics,
+            transaction_sender,
         })
     }
 }
 
-pub struct ReplicaHandle {
+/// A running replica. Generic over the execution context.
+pub struct ReplicaHandle<C: Ctx> {
     authority: Authority,
-    network_synchronizer: NetworkSyncer<TokioCtx, Committer>,
-    metrics_handle: Option<JoinHandle<()>>,
-    tx_sender: Option<mpsc::Sender<Vec<Transaction>>>,
+    public_config: PublicReplicaConfig,
+    network_synchronizer: NetworkSyncer<C, Committer>,
+    metrics: Arc<Metrics>,
+    /// Channel for submitting transactions to the block handler. Cloned into the built-in load
+    /// generator when one is started (see [`ReplicaHandle::start_load_generator`]) and reachable
+    /// externally via [`ReplicaHandle::submit`] on `TokioCtx`.
+    transaction_sender: mpsc::Sender<Vec<Transaction>>,
 }
 
-impl ReplicaHandle {
-    pub fn stop(&self) {
-        // TODO: propagate stop signal into Core/Syncer for
-        // graceful drain of in-flight blocks.
+impl<C: Ctx> ReplicaHandle<C> {
+    pub fn authority(&self) -> Authority {
+        self.authority
     }
 
-    pub async fn join(self) -> Result<()> {
-        let metrics_future = async {
-            match self.metrics_handle {
-                Some(handle) => handle.await,
-                None => std::future::pending().await,
-            }
-        };
-
-        tokio::select! {
-            result = self.network_synchronizer
-                .await_completion() => {
-                result.map_err(|error| eyre!(
-                    "Replica {} crashed: {error}", self.authority
-                ))
-            }
-            result = metrics_future => {
-                result.map_err(|error| eyre!(
-                    "Metrics server for replica {} crashed: {error}",
-                    self.authority
-                ))
-            }
-        }
+    /// Shut down the replica and return the inner `Syncer` for inspection (commit history,
+    /// metrics, etc.).
+    pub async fn shutdown(self) -> Syncer<C, Committer> {
+        self.network_synchronizer.shutdown().await
     }
+}
 
+impl ReplicaHandle<TokioCtx> {
+    /// Submit transactions externally.
     pub async fn submit(&self, transactions: Vec<Transaction>) -> Result<()> {
-        let sender = self
-            .tx_sender
-            .as_ref()
-            .ok_or(eyre!("Cannot submit: load generator is active"))?;
-        sender
+        self.transaction_sender
             .send(transactions)
             .await
             .map_err(|_| eyre!("Transaction channel closed"))
+    }
+
+    /// Start the built-in tokio-based load generator. Transactions from the generator and from
+    /// [`ReplicaHandle::submit`] share the same channel and are interleaved in arrival order.
+    pub fn start_load_generator(&mut self, config: LoadGeneratorConfig) {
+        TransactionGenerator::start(
+            self.transaction_sender.clone(),
+            self.authority,
+            config,
+            self.public_config.parameters.dag.max_block_size,
+            self.metrics.clone(),
+        );
+    }
+
+    /// Wait for the replica to finish.
+    pub async fn await_completion(self) -> Result<()> {
+        self.network_synchronizer
+            .await_completion()
+            .await
+            .map_err(|error| eyre!("Replica {} crashed: {error}", self.authority))
     }
 }

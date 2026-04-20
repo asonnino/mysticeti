@@ -6,8 +6,7 @@ use std::{ops::Range, time::Duration};
 use serde::{Deserialize, Serialize};
 
 use dag::config::ImportExport;
-
-use crate::params::ReplicaParameters;
+use replica::config::ReplicaParameters;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]

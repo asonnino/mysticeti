@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use consensus::committer::Committer;
 use dag::{
@@ -10,21 +10,23 @@ use dag::{
     committee::Committee,
     config::{ConfigError, ImportExport},
     context::Ctx,
-    metrics::MetricsSnapshot,
-    sync::net_sync::NetworkSyncer,
+    core::syncer::Syncer,
+    metrics::{Metrics, MetricsSnapshot},
 };
 use rand::{SeedableRng, rngs::StdRng};
+use replica::{
+    builder::{ReplicaBuilder, StorageKind},
+    config::{PrivateReplicaConfig, PublicReplicaConfig},
+    replica::ReplicaHandle,
+};
 
 use crate::{
     config::{NetworkTopology, SimulationConfig},
     context::SimulatorContext,
     executor::SimulatorExecutor,
     network::SimulatedNetwork,
-    replica::SimulatedReplica,
     tracing::SimulatorTracing,
 };
-
-type Syncer = NetworkSyncer<SimulatorContext, Committer>;
 
 pub struct SimulationResults {
     pub committed_leaders: Vec<Vec<BlockReference>>,
@@ -76,17 +78,10 @@ impl SimulationRunner {
         SimulatorTracing::setup();
         let rng = StdRng::seed_from_u64(self.config.rng_seed);
         SimulatorExecutor::run(rng, async {
-            // Set up the committee, network, and per-node consensus.
             let duration = self.config.duration();
-            let state = SimulationState::setup(self.config);
-
-            // Wire up network connections according to the topology.
+            let state = SimulationState::setup(self.config).await;
             state.apply_topology().await;
-
-            // Let the simulation run for the configured duration.
             SimulatorContext::sleep(duration).await;
-
-            // Shut down all nodes and collect committed blocks.
             state.collect_results().await
         })
     }
@@ -95,34 +90,46 @@ impl SimulationRunner {
 struct SimulationState {
     config: SimulationConfig,
     network: SimulatedNetwork,
-    network_syncers: Vec<Syncer>,
+    replicas: Vec<ReplicaHandle<SimulatorContext>>,
 }
 
 impl SimulationState {
-    fn setup(config: SimulationConfig) -> Self {
+    async fn setup(config: SimulationConfig) -> Self {
         let committee_size = config.committee_size;
         let committee = Committee::new_test(vec![1; committee_size]);
 
+        let public_config = PublicReplicaConfig::new_for_tests(committee_size)
+            .with_parameters(config.replica_parameters.clone());
+
         let (network, networks) = SimulatedNetwork::new(&committee, config.latency_range());
 
-        let network_syncers = networks
-            .into_iter()
-            .enumerate()
-            .map(|(i, node_network)| {
-                SimulatedReplica::new(
-                    Authority::from(i),
-                    committee.clone(),
-                    config.replica_parameters.clone(),
-                    node_network,
-                )
-                .start()
-            })
-            .collect();
+        // The simulator doesn't touch disk; the WAL path in the private
+        // configs is unused once we override storage with `InMemory`.
+        let private_configs =
+            PrivateReplicaConfig::new_for_benchmarks(&PathBuf::from("simulator"), committee_size);
+
+        let mut replicas = Vec::with_capacity(committee_size);
+        for (i, (node_network, private_config)) in
+            networks.into_iter().zip(private_configs).enumerate()
+        {
+            let authority = Authority::from(i);
+            let metrics = Metrics::new_for_test(committee_size);
+            let handle = ReplicaBuilder::new(authority, public_config.clone(), private_config)
+                .with_storage(StorageKind::Ephemeral)
+                .with_crypto_disabled()
+                .with_metrics(metrics)
+                .with_network(node_network)
+                .build()
+                .run::<SimulatorContext>()
+                .await
+                .expect("simulator replica build must not fail");
+            replicas.push(handle);
+        }
 
         Self {
             config,
             network,
-            network_syncers,
+            replicas,
         }
     }
 
@@ -154,10 +161,9 @@ impl SimulationState {
     }
 
     async fn collect_results(self) -> SimulationResults {
-        let mut syncers = vec![];
-        for network_syncer in self.network_syncers {
-            let syncer = network_syncer.shutdown().await;
-            syncers.push(syncer);
+        let mut syncers: Vec<Syncer<SimulatorContext, Committer>> = Vec::new();
+        for replica in self.replicas {
+            syncers.push(replica.shutdown().await);
         }
 
         let committed_leaders: Vec<Vec<BlockReference>> = syncers

@@ -6,27 +6,38 @@ use std::{collections::VecDeque, fs, net::SocketAddr, time::Duration};
 use tempfile::TempDir;
 use tokio::time;
 
-use dag::authority::Authority;
+use dag::{authority::Authority, context::TokioCtx};
 use replica::{
     builder::ReplicaBuilder,
     config::{LoadGeneratorConfig, PrivateReplicaConfig, PublicReplicaConfig},
-    prometheus,
+    prometheus::{self, MetricsRegistry, PrometheusServer},
     replica::ReplicaHandle,
 };
+use tokio::task::JoinHandle;
 
 async fn run_replica(
     authority: Authority,
     public_config: &PublicReplicaConfig,
     private_config: PrivateReplicaConfig,
     load_generator_config: &LoadGeneratorConfig,
-) -> ReplicaHandle {
-    ReplicaBuilder::new(authority, public_config.clone(), private_config)
-        .with_metrics_server()
-        .with_load_generator(load_generator_config.clone())
+) -> (ReplicaHandle<TokioCtx>, JoinHandle<()>) {
+    let metrics_address = public_config
+        .metrics_address(authority)
+        .expect("metrics address must exist");
+    let registry = MetricsRegistry::new();
+    let mut handle = ReplicaBuilder::new(authority, public_config.clone(), private_config)
+        .with_registry(registry.clone())
         .build()
-        .run()
+        .run::<TokioCtx>()
         .await
-        .unwrap()
+        .unwrap();
+    handle.start_load_generator(load_generator_config.clone());
+    let metrics_server = PrometheusServer::new(metrics_address, &registry)
+        .bind_all_interfaces()
+        .start()
+        .await
+        .expect("metrics server bind failed");
+    (handle, metrics_server)
 }
 
 async fn check_commit(address: &SocketAddr) -> Result<bool, reqwest::Error> {

@@ -17,11 +17,11 @@ pub struct Args {
     pub log_level: Option<LevelFilter>,
 
     #[command(subcommand)]
-    pub operation: Operation,
+    pub command: Command,
 }
 
 #[derive(Parser)]
-pub enum Operation {
+pub enum Command {
     /// Generate test genesis files: one public replica config (identities, stakes, and parameters)
     /// plus a private config per validator (keys and storage paths). Keys are written in plaintext.
     TestGenesis {

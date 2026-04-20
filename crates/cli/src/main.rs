@@ -2,19 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use clap::Parser;
-use eyre::Result;
-use replica::{
-    cli::{Args, Operation},
-    commands,
+use cli::{
+    args::{Args, Command},
+    banner, commands,
 };
+use eyre::Result;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     color_eyre::install()?;
     let args = Args::parse();
 
-    match args.operation {
-        Operation::TestGenesis {
+    match args.command {
+        Command::TestGenesis {
             ips,
             working_directory,
             replica_parameters_path,
@@ -24,7 +24,7 @@ async fn main() -> Result<()> {
             replica_parameters_path,
             args.log_level,
         )?,
-        Operation::Run {
+        Command::Run {
             authority,
             public_config_path,
             private_config_path,
@@ -39,11 +39,11 @@ async fn main() -> Result<()> {
             )
             .await?
         }
-        Operation::Simulate {
+        Command::Simulate {
             config_path,
             dump_config,
         } => commands::simulate::simulate(config_path, dump_config, args.log_level).await?,
-        Operation::LocalTestbed {
+        Command::LocalTestbed {
             committee_size,
             replica_parameters_path,
             load_generator_config_path,
@@ -56,8 +56,8 @@ async fn main() -> Result<()> {
             )
             .await?
         }
-        Operation::PrintBanner => {
-            replica::banner::BannerPrinter::new("Mysticeti", &[("Mode", "Preview")]).print();
+        Command::PrintBanner => {
+            banner::BannerPrinter::new("Mysticeti", &[("Mode", "Preview")]).print();
         }
     }
 

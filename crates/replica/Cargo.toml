@@ -6,8 +6,6 @@ publish.workspace = true
 
 [dependencies]
 axum = "0.7"
-clap = { workspace = true }
-color-eyre = { workspace = true }
 eyre = { workspace = true }
 dag.workspace = true
 consensus.workspace = true
@@ -16,12 +14,8 @@ prometheus = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
-simulator.workspace = true
 tokio = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-unicode-width = "0.2.2"
-terminal_size = "0.4.4"
 
 [dev-dependencies]
 dag = { workspace = true, features = ["test-utils"] }
