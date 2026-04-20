@@ -89,8 +89,7 @@ impl Replica {
             self.private_config.wal(),
             metrics.clone(),
             &committee,
-        )
-        .expect("Failed to open storage");
+        )?;
 
         // Set up block handling.
         let (block_handler, block_sender) = RealBlockHandler::<TokioCtx>::new(metrics.clone());
@@ -115,7 +114,6 @@ impl Replica {
         // Build the committer and core.
         let commit_handler =
             CommitHandler::new(block_handler.transaction_time.clone(), metrics.clone());
-        let commit_period = parameters.consensus.wave_length();
         let protocol = parameters.consensus.to_protocol(committee.total_stake());
         let round_timeout = parameters
             .dag
@@ -154,7 +152,6 @@ impl Replica {
         let network_synchronizer = NetworkSyncer::start(
             network,
             core,
-            commit_period,
             round_timeout,
             enable_synchronizer,
             commit_handler,

@@ -51,7 +51,6 @@ impl SimulatedReplica {
         let (storage, recovered) =
             Storage::new_for_tests(self.authority, metrics.clone(), &self.committee);
 
-        let commit_period = self.parameters.consensus.wave_length();
         let protocol = self
             .parameters
             .consensus
@@ -87,7 +86,6 @@ impl SimulatedReplica {
         NetworkSyncer::start(
             self.network,
             core,
-            commit_period,
             round_timeout,
             self.parameters.dag.enable_synchronizer,
             commit_handler,

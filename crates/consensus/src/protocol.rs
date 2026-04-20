@@ -72,17 +72,6 @@ impl ConsensusProtocol {
             } => Protocol::mahi_mahi(total_stake, leader_count, wave_length),
         }
     }
-
-    /// Wave length dictated by the chosen protocol.
-    pub fn wave_length(&self) -> RoundNumber {
-        match *self {
-            Self::Mysticeti { .. } => 3,
-            Self::Odontoceti { .. } => 2,
-            Self::MahiMahi { wave_length, .. } => wave_length,
-            Self::CordialMinersPartiallySynchronous => 3,
-            Self::CordialMinersAsynchronous => 5,
-        }
-    }
 }
 
 /// Protocol-specific parameters for the consensus committer.

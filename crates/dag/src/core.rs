@@ -324,11 +324,13 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
     ///
     /// The algorithm to calling is roughly:
     /// if timeout || commit_ready_new_block then try_new_block(..)
-    pub fn ready_new_block(&self, period: u64, connected_authorities: &HashSet<Authority>) -> bool {
+    pub fn ready_new_block(&self, connected_authorities: &HashSet<Authority>) -> bool {
         let quorum_round = self.threshold_clock.get_round();
 
-        // Leader round we check if we have a leader block
-        if quorum_round > self.last_commit_leader.round().max(period - 1) {
+        // Leader round we check if we have a leader block. The floor of 2 prevents
+        // `leader_round = quorum_round - 1` from pointing at genesis (round 0) at
+        // startup; in steady state `last_commit_leader.round()` dominates the max.
+        if quorum_round > self.last_commit_leader.round().max(2) {
             let leader_round = quorum_round - 1;
             let filter = |a: &Authority| connected_authorities.contains(a);
             match self.committer.get_leaders(leader_round) {

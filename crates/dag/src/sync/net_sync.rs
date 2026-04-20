@@ -55,7 +55,6 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
     pub fn start(
         network: Network,
         mut core: Core<C, D>,
-        commit_period: u64,
         round_timeout: Duration,
         enable_synchronizer: bool,
         mut commit_handler: CommitHandler<C>,
@@ -72,7 +71,6 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
         let block_reader = core.block_reader().clone();
         let mut syncer = Syncer::new(
             core,
-            commit_period,
             SyncerSignals::new(notify.clone()),
             commit_handler,
             metrics.clone(),

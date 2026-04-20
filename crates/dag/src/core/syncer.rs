@@ -19,7 +19,6 @@ use crate::{
 pub struct Syncer<C: Ctx, D: DagConsensus> {
     core: Core<C, D>,
     force_new_block: bool,
-    commit_period: u64,
     signals: SyncerSignals,
     commit_handler: CommitHandler<C>,
     pub(crate) connected_authorities: HashSet<Authority>,
@@ -61,7 +60,6 @@ impl SyncerSignals {
 impl<C: Ctx, D: DagConsensus> Syncer<C, D> {
     pub fn new(
         core: Core<C, D>,
-        commit_period: u64,
         signals: SyncerSignals,
         commit_handler: CommitHandler<C>,
         metrics: Arc<Metrics>,
@@ -70,7 +68,6 @@ impl<C: Ctx, D: DagConsensus> Syncer<C, D> {
         Self {
             core,
             force_new_block: false,
-            commit_period,
             signals,
             commit_handler,
             connected_authorities: HashSet::with_capacity(committee_size),
@@ -97,11 +94,7 @@ impl<C: Ctx, D: DagConsensus> Syncer<C, D> {
 
     fn try_new_block(&mut self) {
         let _timer = self.metrics.utilization_timer("Syncer::try_new_block");
-        if self.force_new_block
-            || self
-                .core
-                .ready_new_block(self.commit_period, &self.connected_authorities)
-        {
+        if self.force_new_block || self.core.ready_new_block(&self.connected_authorities) {
             if self.core.try_new_block().is_none() {
                 return;
             }

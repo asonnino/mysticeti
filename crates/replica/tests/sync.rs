@@ -26,7 +26,6 @@ async fn test_network_sync() {
         let network_syncer = NetworkSyncer::start(
             network,
             core,
-            3,
             Duration::from_secs(1),
             false,
             commit_handler,
