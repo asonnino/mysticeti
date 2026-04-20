@@ -23,8 +23,7 @@ pub struct Args {
 #[derive(Parser)]
 pub enum Operation {
     /// Generate test genesis files: one public replica config (identities, stakes, and parameters)
-    /// plus a private config per validator (keys and storage paths). Keys are written in plaintext
-    /// — do NOT use in production.
+    /// plus a private config per validator (keys and storage paths). Keys are written in plaintext.
     TestGenesis {
         /// IP addresses of all validators.
         #[arg(long, value_name = "ADDR", value_delimiter = ' ', num_args(3..))]
