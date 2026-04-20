@@ -327,10 +327,11 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
     pub fn ready_new_block(&self, connected_authorities: &HashSet<Authority>) -> bool {
         let quorum_round = self.threshold_clock.get_round();
 
-        // Leader round we check if we have a leader block. The floor of 2 prevents
-        // `leader_round = quorum_round - 1` from pointing at genesis (round 0) at
-        // startup; in steady state `last_commit_leader.round()` dominates the max.
-        if quorum_round > self.last_commit_leader.round().max(2) {
+        // Leader round check. The floor of 1 keeps `leader_round = quorum_round - 1`
+        // positive at startup; the committer itself filters genesis (round 0) out of
+        // its output sequence. In steady state `last_commit_leader.round()` dominates
+        // the max.
+        if quorum_round > self.last_commit_leader.round().max(1) {
             let leader_round = quorum_round - 1;
             let filter = |a: &Authority| connected_authorities.contains(a);
             match self.committer.get_leaders(leader_round) {
