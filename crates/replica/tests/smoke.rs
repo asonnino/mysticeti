@@ -6,19 +6,20 @@ use std::{collections::VecDeque, fs, net::SocketAddr, sync::Arc, time::Duration}
 use tempfile::TempDir;
 use tokio::time;
 
-use dag::{
-    authority::Authority,
-    committee::Committee,
-    config::{ClientParameters, NodePrivateConfig, NodePublicConfig},
+use dag::{authority::Authority, committee::Committee};
+use replica::{
+    builder::ReplicaBuilder,
+    config::{LoadGeneratorConfig, PrivateReplicaConfig, PublicReplicaConfig},
+    prometheus,
+    replica::ReplicaHandle,
 };
-use replica::{builder::ReplicaBuilder, prometheus, replica::ReplicaHandle};
 
 async fn run_replica(
     authority: Authority,
     committee: &Arc<Committee>,
-    public_config: &NodePublicConfig,
-    private_config: NodePrivateConfig,
-    client_parameters: &ClientParameters,
+    public_config: &PublicReplicaConfig,
+    private_config: PrivateReplicaConfig,
+    load_generator_config: &LoadGeneratorConfig,
 ) -> ReplicaHandle {
     let mut builder = ReplicaBuilder::new(
         authority,
@@ -26,7 +27,7 @@ async fn run_replica(
         public_config.clone(),
         private_config,
     )
-    .with_load_generator(client_parameters.clone());
+    .with_load_generator(load_generator_config.clone());
 
     if let Some(address) = public_config.metrics_address(authority) {
         builder = builder.with_metrics_server(address);
@@ -58,11 +59,11 @@ async fn await_for_commits(addresses: Vec<SocketAddr>) {
 async fn replica_commit() {
     let committee_size = 4;
     let committee = Committee::new_for_benchmarks(committee_size);
-    let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(0);
-    let client_parameters = ClientParameters::default();
+    let public_config = PublicReplicaConfig::new_for_tests(committee_size).with_port_offset(0);
+    let load_generator_config = LoadGeneratorConfig::default();
 
     let dir = TempDir::new().unwrap();
-    let private_configs = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size);
+    let private_configs = PrivateReplicaConfig::new_for_benchmarks(dir.as_ref(), committee_size);
     private_configs.iter().for_each(|private_config| {
         fs::create_dir_all(&private_config.storage_path).unwrap();
     });
@@ -75,7 +76,7 @@ async fn replica_commit() {
                 &committee,
                 &public_config,
                 private_config,
-                &client_parameters,
+                &load_generator_config,
             )
             .await,
         );
@@ -101,11 +102,11 @@ async fn replica_commit() {
 async fn replica_sync() {
     let committee_size = 4;
     let committee = Committee::new_for_benchmarks(committee_size);
-    let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(100);
-    let client_parameters = ClientParameters::default();
+    let public_config = PublicReplicaConfig::new_for_tests(committee_size).with_port_offset(100);
+    let load_generator_config = LoadGeneratorConfig::default();
 
     let dir = TempDir::new().unwrap();
-    let private_configs = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size);
+    let private_configs = PrivateReplicaConfig::new_for_benchmarks(dir.as_ref(), committee_size);
     private_configs.iter().for_each(|private_config| {
         fs::create_dir_all(&private_config.storage_path).unwrap();
     });
@@ -121,7 +122,7 @@ async fn replica_sync() {
                 &committee,
                 &public_config,
                 private_config,
-                &client_parameters,
+                &load_generator_config,
             )
             .await,
         );
@@ -144,14 +145,14 @@ async fn replica_sync() {
 
     let authority = 0;
     let private_config =
-        NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size).remove(authority);
+        PrivateReplicaConfig::new_for_benchmarks(dir.as_ref(), committee_size).remove(authority);
     handles.push(
         run_replica(
             Authority::from(authority),
             &committee,
             &public_config,
             private_config,
-            &client_parameters,
+            &load_generator_config,
         )
         .await,
     );
@@ -176,11 +177,11 @@ async fn replica_sync() {
 async fn replica_crash_faults() {
     let committee_size = 4;
     let committee = Committee::new_for_benchmarks(committee_size);
-    let public_config = NodePublicConfig::new_for_tests(committee_size).with_port_offset(200);
-    let client_parameters = ClientParameters::default();
+    let public_config = PublicReplicaConfig::new_for_tests(committee_size).with_port_offset(200);
+    let load_generator_config = LoadGeneratorConfig::default();
 
     let dir = TempDir::new().unwrap();
-    let private_configs = NodePrivateConfig::new_for_benchmarks(dir.as_ref(), committee_size);
+    let private_configs = PrivateReplicaConfig::new_for_benchmarks(dir.as_ref(), committee_size);
     private_configs.iter().for_each(|private_config| {
         fs::create_dir_all(&private_config.storage_path).unwrap();
     });
@@ -196,7 +197,7 @@ async fn replica_crash_faults() {
                 &committee,
                 &public_config,
                 private_config,
-                &client_parameters,
+                &load_generator_config,
             )
             .await,
         );

@@ -15,7 +15,6 @@ use dag::{
     authority::Authority,
     block::transaction::Transaction,
     committee::Committee,
-    config::{ClientParameters, NodePrivateConfig, NodePublicConfig},
     context::TokioCtx,
     core::{
         Core,
@@ -27,43 +26,39 @@ use dag::{
     sync::{net_sync::NetworkSyncer, network::Network},
 };
 
+use crate::config::{LoadGeneratorConfig, PrivateReplicaConfig, PublicReplicaConfig};
 use crate::generator::TransactionGenerator;
-use crate::params::ReplicaParameters;
 
 use crate::prometheus as metrics_server;
 
 pub struct Replica {
     authority: Authority,
     committee: Arc<Committee>,
-    public_config: NodePublicConfig,
-    private_config: NodePrivateConfig,
-    parameters: ReplicaParameters,
+    public_config: PublicReplicaConfig,
+    private_config: PrivateReplicaConfig,
     registry: Registry,
     metrics_server_address: Option<SocketAddr>,
-    client_parameters: Option<ClientParameters>,
+    load_generator_config: Option<LoadGeneratorConfig>,
 }
 
 impl Replica {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         authority: Authority,
         committee: Arc<Committee>,
-        public_config: NodePublicConfig,
-        private_config: NodePrivateConfig,
-        parameters: ReplicaParameters,
+        public_config: PublicReplicaConfig,
+        private_config: PrivateReplicaConfig,
         registry: Registry,
         metrics_server_address: Option<SocketAddr>,
-        client_parameters: Option<ClientParameters>,
+        load_generator_config: Option<LoadGeneratorConfig>,
     ) -> Self {
         Self {
             authority,
             committee,
             public_config,
             private_config,
-            parameters,
             registry,
             metrics_server_address,
-            client_parameters,
+            load_generator_config,
         }
     }
 
@@ -96,14 +91,16 @@ impl Replica {
         // Set up block handling.
         let (block_handler, block_sender) = RealBlockHandler::<TokioCtx>::new(metrics.clone());
 
+        let parameters = &self.public_config.parameters;
+
         // Start the load generator or expose the tx channel.
-        let tx_sender = match self.client_parameters {
-            Some(params) => {
+        let tx_sender = match self.load_generator_config {
+            Some(config) => {
                 TransactionGenerator::start(
                     block_sender,
                     self.authority,
-                    params,
-                    self.parameters.dag.max_block_size,
+                    config,
+                    parameters.dag.max_block_size,
                     metrics.clone(),
                 );
                 None
@@ -114,16 +111,16 @@ impl Replica {
         // Build the committer and core.
         let commit_handler =
             CommitHandler::new(block_handler.transaction_time.clone(), metrics.clone());
-        let commit_period = self.parameters.consensus.wave_length();
-        let protocol = self
-            .parameters
+        let commit_period = parameters.consensus.wave_length();
+        let protocol = parameters
             .consensus
             .to_protocol(self.committee.total_stake());
-        let round_timeout = self
-            .parameters
+        let round_timeout = parameters
             .dag
             .round_timeout
             .unwrap_or_else(|| protocol.default_round_timeout());
+        let enable_synchronizer = parameters.dag.enable_synchronizer;
+        let fsync = parameters.dag.fsync;
         let crypto = CryptoEngine::new(self.private_config.keypair, protocol.require_crypto);
         let committer = Committer::new(
             self.committee.clone(),
@@ -138,25 +135,21 @@ impl Replica {
             metrics.clone(),
             storage,
             recovered,
-            self.parameters.dag.fsync,
+            fsync,
             committer,
             crypto,
         );
 
         // Bind the network and start the synchronizer.
-        let network = Network::load(
-            &self.public_config,
-            self.authority,
-            binding_address,
-            metrics.clone(),
-        )
-        .await;
+        let addresses: Vec<_> = self.public_config.all_network_addresses().collect();
+        let network =
+            Network::load(&addresses, self.authority, binding_address, metrics.clone()).await;
         let network_synchronizer = NetworkSyncer::start(
             network,
             core,
             commit_period,
             round_timeout,
-            self.parameters.dag.enable_synchronizer,
+            enable_synchronizer,
             commit_handler,
             metrics,
         );

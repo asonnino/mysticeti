@@ -4,9 +4,7 @@
 use std::{net::IpAddr, path::PathBuf};
 
 use clap::Parser;
-// CLI uses raw u64 for clap parsing; conversion
-// to Authority happens in the command handlers.
-type AuthorityArg = u64;
+use dag::authority::Authority;
 use tracing_subscriber::filter::LevelFilter;
 
 /// Mysticeti consensus replica.
@@ -29,7 +27,7 @@ pub enum Operation {
     /// in plaintext — do NOT use in production.
     TestGenesis {
         /// IP addresses of all validators.
-        #[arg(long, value_name = "ADDR", value_delimiter = ' ', num_args(4..))]
+        #[arg(long, value_name = "ADDR", value_delimiter = ' ', num_args(3..))]
         ips: Vec<IpAddr>,
         /// Working directory where files will be generated.
         #[arg(long, value_name = "DIR", default_value = "genesis")]
@@ -43,22 +41,20 @@ pub enum Operation {
     Run {
         /// Authority index of this node.
         #[arg(long, value_name = "INT")]
-        authority: AuthorityArg,
+        authority: Authority,
         /// Path to the committee file (YAML).
         #[arg(long, value_name = "FILE")]
         committee_path: String,
-        /// Path to the public node config file (YAML).
+        /// Path to the public replica config file (YAML, identities + parameters).
         #[arg(long, value_name = "FILE")]
         public_config_path: String,
-        /// Path to the private node config file (YAML, includes keys).
+        /// Path to the private replica config file (YAML, includes keys).
         #[arg(long, value_name = "FILE")]
         private_config_path: String,
-        /// Path to the replica parameters file (YAML).
+        /// Path to the load generator config file (YAML). Omit to run
+        /// without the built-in load generator.
         #[arg(long, value_name = "FILE")]
-        replica_parameters_path: String,
-        /// Path to the client parameters file (YAML).
-        #[arg(long, value_name = "FILE")]
-        client_parameters_path: String,
+        load_generator_config_path: Option<String>,
     },
 
     /// Run a simulated network from a YAML config file.
@@ -76,12 +72,15 @@ pub enum Operation {
     /// Starts all validators in a single process with default keys
     /// and committee configuration. Useful for local testing.
     LocalTestbed {
-        /// Path to testbed config (YAML). Uses defaults if omitted.
-        #[arg(long, value_name = "FILE", conflicts_with = "dump_config")]
-        config_path: Option<PathBuf>,
-        /// Print the default configuration to stdout and exit.
-        #[arg(long, conflicts_with = "config_path")]
-        dump_config: bool,
+        /// Number of validators in the testbed.
+        #[arg(long, value_name = "INT", default_value_t = 4)]
+        committee_size: usize,
+        /// Path to custom replica parameters (YAML). Uses defaults if omitted.
+        #[arg(long, value_name = "FILE")]
+        replica_parameters_path: Option<PathBuf>,
+        /// Path to custom load generator config (YAML). Uses defaults if omitted.
+        #[arg(long, value_name = "FILE")]
+        load_generator_config_path: Option<PathBuf>,
     },
 
     /// Print the startup banner and exit.

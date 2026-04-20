@@ -29,16 +29,14 @@ async fn main() -> Result<()> {
             committee_path,
             public_config_path,
             private_config_path,
-            replica_parameters_path,
-            client_parameters_path,
+            load_generator_config_path,
         } => {
             commands::run::run(
                 authority,
                 committee_path,
                 public_config_path,
                 private_config_path,
-                replica_parameters_path,
-                client_parameters_path,
+                load_generator_config_path,
                 args.log_level,
             )
             .await?
@@ -48,9 +46,18 @@ async fn main() -> Result<()> {
             dump_config,
         } => commands::simulate::simulate(config_path, dump_config, args.log_level).await?,
         Operation::LocalTestbed {
-            config_path,
-            dump_config,
-        } => commands::testbed::local_testbed(config_path, dump_config, args.log_level).await?,
+            committee_size,
+            replica_parameters_path,
+            load_generator_config_path,
+        } => {
+            commands::testbed::local_testbed(
+                committee_size,
+                replica_parameters_path,
+                load_generator_config_path,
+                args.log_level,
+            )
+            .await?
+        }
         Operation::PrintBanner => {
             replica::banner::BannerPrinter::new("Mysticeti", &[("Mode", "Preview")]).print();
         }

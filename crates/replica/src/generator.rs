@@ -11,10 +11,9 @@ use minibytes::Bytes;
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use tokio::{sync::mpsc, time};
 
-use dag::{
-    authority::Authority, block::transaction::Transaction, config::ClientParameters,
-    metrics::Metrics,
-};
+use dag::{authority::Authority, block::transaction::Transaction, metrics::Metrics};
+
+use crate::config::LoadGeneratorConfig;
 
 pub struct TransactionGenerator {
     sender: mpsc::Sender<Vec<Transaction>>,
@@ -29,19 +28,19 @@ impl TransactionGenerator {
     pub fn start(
         sender: mpsc::Sender<Vec<Transaction>>,
         seed: Authority,
-        client_parameters: ClientParameters,
+        config: LoadGeneratorConfig,
         max_block_size: usize,
         metrics: Arc<Metrics>,
     ) {
         assert!(
-            client_parameters.transaction_size > Self::HEADER_SIZE,
+            config.transaction_size > Self::HEADER_SIZE,
             "transaction_size must be greater than {} bytes",
             Self::HEADER_SIZE
         );
         tracing::info!(
             "Starting generator with {} transactions per second, initial delay {:?}",
-            client_parameters.load,
-            client_parameters.initial_delay
+            config.load,
+            config.initial_delay
         );
         let mut rng = StdRng::seed_from_u64(seed.as_u64());
         let random = rng.r#gen();
@@ -51,7 +50,7 @@ impl TransactionGenerator {
                 max_block_size,
                 metrics,
             }
-            .run(client_parameters, random),
+            .run(config, random),
         );
     }
 
@@ -103,9 +102,9 @@ impl TransactionGenerator {
         true
     }
 
-    async fn run(self, client_parameters: ClientParameters, mut random: u64) {
-        let load = client_parameters.load;
-        let transaction_size = client_parameters.transaction_size;
+    async fn run(self, config: LoadGeneratorConfig, mut random: u64) {
+        let load = config.load;
+        let transaction_size = config.transaction_size;
         let intervals_per_second = 1000 / Self::TARGET_BLOCK_INTERVAL.as_millis() as usize;
         let transactions_per_interval = load.div_ceil(intervals_per_second);
         tracing::info!(
@@ -129,7 +128,7 @@ impl TransactionGenerator {
         let base_instant = Instant::now();
 
         let mut interval = time::interval(Self::TARGET_BLOCK_INTERVAL);
-        time::sleep(client_parameters.initial_delay).await;
+        time::sleep(config.initial_delay).await;
         loop {
             interval.tick().await;
             let timestamp_ms = (base_system_time + base_instant.elapsed()).as_millis() as u64;

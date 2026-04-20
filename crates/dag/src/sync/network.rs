@@ -24,7 +24,6 @@ use tokio::{
 use crate::{
     authority::Authority,
     block::{Block, BlockReference, RoundNumber},
-    config::NodePublicConfig,
     data::Data,
     metrics::{Metrics, print_network_address_table},
 };
@@ -60,14 +59,13 @@ impl Network {
     }
 
     pub async fn load(
-        parameters: &NodePublicConfig,
+        addresses: &[SocketAddr],
         our_id: Authority,
         local_addr: SocketAddr,
         metrics: Arc<Metrics>,
     ) -> Self {
-        let addresses = parameters.all_network_addresses().collect::<Vec<_>>();
-        print_network_address_table(&addresses);
-        Self::from_socket_addresses(&addresses, our_id.index(), local_addr, metrics).await
+        print_network_address_table(addresses);
+        Self::from_socket_addresses(addresses, our_id.index(), local_addr, metrics).await
     }
 
     pub fn connection_receiver(&mut self) -> &mut mpsc::Receiver<Connection> {

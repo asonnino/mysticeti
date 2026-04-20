@@ -6,24 +6,22 @@ use std::{
     sync::Arc,
 };
 
-use dag::{
-    authority::Authority,
-    committee::Committee,
-    config::{ClientParameters, ImportExport, NodePrivateConfig, NodePublicConfig},
-};
+use dag::{authority::Authority, committee::Committee, config::ImportExport};
 use eyre::{Result, eyre};
 use tracing_subscriber::filter::LevelFilter;
 
-use crate::{builder::ReplicaBuilder, params::ReplicaParameters, tracing::ReplicaTracing};
+use crate::{
+    builder::ReplicaBuilder,
+    config::{LoadGeneratorConfig, PrivateReplicaConfig, PublicReplicaConfig},
+    tracing::ReplicaTracing,
+};
 
-#[allow(clippy::too_many_arguments)]
 pub async fn run(
-    authority: u64,
+    authority: Authority,
     committee_path: String,
     public_config_path: String,
     private_config_path: String,
-    replica_parameters_path: String,
-    client_parameters_path: String,
+    load_generator_config_path: Option<String>,
     log_level: Option<LevelFilter>,
 ) -> Result<()> {
     match log_level {
@@ -31,15 +29,15 @@ pub async fn run(
         None => ReplicaTracing::default(),
     }
     .setup();
-    let authority = Authority::new(authority);
     tracing::info!("Starting replica {authority}");
 
     // Load all configuration files.
     let committee = Committee::load(&committee_path)?;
-    let public_config = NodePublicConfig::load(&public_config_path)?;
-    let private_config = NodePrivateConfig::load(&private_config_path)?;
-    let replica_parameters = ReplicaParameters::load(&replica_parameters_path)?;
-    let client_parameters = ClientParameters::load(&client_parameters_path)?;
+    let public_config = PublicReplicaConfig::load(&public_config_path)?;
+    let private_config = PrivateReplicaConfig::load(&private_config_path)?;
+    let load_generator_config = load_generator_config_path
+        .map(|path| LoadGeneratorConfig::load(&path))
+        .transpose()?;
 
     // Resolve the metrics address for this authority and bind
     // to 0.0.0.0 so the server is reachable from outside.
@@ -54,18 +52,17 @@ pub async fn run(
         .ok_or(eyre!("No network address for authority {authority}"))?;
 
     // Build and run the replica (blocks forever).
-    let handle = ReplicaBuilder::new(
+    let mut builder = ReplicaBuilder::new(
         authority,
         Arc::new(committee),
         public_config,
         private_config,
     )
-    .with_parameters(replica_parameters)
-    .with_load_generator(client_parameters)
-    .with_metrics_server(binding_address)
-    .build()
-    .run()
-    .await?;
+    .with_metrics_server(binding_address);
+    if let Some(config) = load_generator_config {
+        builder = builder.with_load_generator(config);
+    }
+    let handle = builder.build().run().await?;
 
     tracing::info!("Metrics server listening on {metrics_address}");
     tracing::info!("Replica {authority} listening on {network_address}");

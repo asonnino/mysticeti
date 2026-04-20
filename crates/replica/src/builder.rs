@@ -5,47 +5,39 @@ use std::{net::SocketAddr, sync::Arc};
 
 use ::prometheus::Registry;
 
-use dag::{
-    authority::Authority,
-    committee::Committee,
-    config::{ClientParameters, NodePrivateConfig, NodePublicConfig},
-};
+use dag::{authority::Authority, committee::Committee};
 
-use crate::{params::ReplicaParameters, replica::Replica};
+use crate::{
+    config::{LoadGeneratorConfig, PrivateReplicaConfig, PublicReplicaConfig},
+    replica::Replica,
+};
 
 pub struct ReplicaBuilder {
     authority: Authority,
     committee: Arc<Committee>,
-    public_config: NodePublicConfig,
-    private_config: NodePrivateConfig,
-    parameters: ReplicaParameters,
+    public_config: PublicReplicaConfig,
+    private_config: PrivateReplicaConfig,
     registry: Registry,
     metrics_server_address: Option<SocketAddr>,
-    client_parameters: Option<ClientParameters>,
+    load_generator_config: Option<LoadGeneratorConfig>,
 }
 
 impl ReplicaBuilder {
     pub fn new(
         authority: Authority,
         committee: Arc<Committee>,
-        public_config: NodePublicConfig,
-        private_config: NodePrivateConfig,
+        public_config: PublicReplicaConfig,
+        private_config: PrivateReplicaConfig,
     ) -> Self {
         Self {
             authority,
             committee,
             public_config,
             private_config,
-            parameters: ReplicaParameters::default(),
             registry: Registry::new(),
             metrics_server_address: None,
-            client_parameters: None,
+            load_generator_config: None,
         }
-    }
-
-    pub fn with_parameters(mut self, parameters: ReplicaParameters) -> Self {
-        self.parameters = parameters;
-        self
     }
 
     pub fn with_registry(mut self, registry: Registry) -> Self {
@@ -58,8 +50,8 @@ impl ReplicaBuilder {
         self
     }
 
-    pub fn with_load_generator(mut self, client_parameters: ClientParameters) -> Self {
-        self.client_parameters = Some(client_parameters);
+    pub fn with_load_generator(mut self, config: LoadGeneratorConfig) -> Self {
+        self.load_generator_config = Some(config);
         self
     }
 
@@ -69,10 +61,9 @@ impl ReplicaBuilder {
             self.committee,
             self.public_config,
             self.private_config,
-            self.parameters,
             self.registry,
             self.metrics_server_address,
-            self.client_parameters,
+            self.load_generator_config,
         )
     }
 }

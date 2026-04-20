@@ -8,15 +8,15 @@ use std::{
     path::PathBuf,
 };
 
-use dag::{
-    authority::Authority,
-    config::{self, ClientParameters},
-};
-use replica::params::ReplicaParameters;
+use dag::authority::Authority;
+use replica::config::{LoadGeneratorConfig, PublicReplicaConfig, ReplicaParameters};
 use serde::{Deserialize, Serialize};
 
 use super::{BINARY_PATH, ProtocolCommands, ProtocolMetrics, ProtocolParameters};
 use crate::{benchmark::BenchmarkParameters, client::Instance, settings::Settings};
+
+const PUBLIC_REPLICA_CONFIG_FILENAME: &str = PublicReplicaConfig::DEFAULT_FILENAME;
+const LOAD_GENERATOR_CONFIG_FILENAME: &str = "load-generator-config.yaml";
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(transparent)]
@@ -46,10 +46,10 @@ impl ProtocolParameters for MysticetiNodeParameters {}
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 #[serde(transparent)]
-pub struct MysticetiClientParameters(ClientParameters);
+pub struct MysticetiClientParameters(LoadGeneratorConfig);
 
 impl Deref for MysticetiClientParameters {
-    type Target = ClientParameters;
+    type Target = LoadGeneratorConfig;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -100,13 +100,13 @@ impl ProtocolCommands for MysticetiProtocol {
             replica_parameters_path.display()
         );
 
-        let mut client_parameters = parameters.client_parameters.clone();
-        client_parameters.0.load = parameters.load / parameters.nodes;
-        let client_parameters_string = serde_yaml::to_string(&client_parameters).unwrap();
-        let client_parameters_path = self.working_dir.join("client-parameters.yaml");
-        let upload_client_parameters = format!(
-            "echo -e '{client_parameters_string}' > {}",
-            client_parameters_path.display()
+        let mut load_generator_config = parameters.client_parameters.clone();
+        load_generator_config.0.load = parameters.load / parameters.nodes;
+        let load_generator_config_string = serde_yaml::to_string(&load_generator_config).unwrap();
+        let load_generator_config_path = self.working_dir.join(LOAD_GENERATOR_CONFIG_FILENAME);
+        let upload_load_generator_config = format!(
+            "echo -e '{load_generator_config_string}' > {}",
+            load_generator_config_path.display()
         );
 
         let genesis = [
@@ -123,7 +123,7 @@ impl ProtocolCommands for MysticetiProtocol {
         [
             "source $HOME/.cargo/env",
             &upload_replica_parameters,
-            &upload_client_parameters,
+            &upload_load_generator_config,
             &genesis,
         ]
         .join(" && ")
@@ -143,12 +143,12 @@ impl ProtocolCommands for MysticetiProtocol {
             .map(|(i, instance)| {
                 let authority = Authority::from(i);
                 let committee_path = self.working_dir.join("committee.yaml");
-                let public_config_path = self.working_dir.join("public-config.yaml");
+                let public_config_path = self.working_dir.join(PUBLIC_REPLICA_CONFIG_FILENAME);
                 let private_config_path = self
                     .working_dir
-                    .join(format!("private-config-{authority}.yaml"));
-                let replica_parameters_path = self.working_dir.join("replica-parameters.yaml");
-                let client_parameters_path = self.working_dir.join("client-parameters.yaml");
+                    .join(format!("private-replica-config-{authority}.yaml"));
+                let load_generator_config_path =
+                    self.working_dir.join(LOAD_GENERATOR_CONFIG_FILENAME);
 
                 let run = [
                     &format!("./{BINARY_PATH}/replica"),
@@ -158,12 +158,8 @@ impl ProtocolCommands for MysticetiProtocol {
                     &format!("--public-config-path {}", public_config_path.display()),
                     &format!("--private-config-path {}", private_config_path.display()),
                     &format!(
-                        "--replica-parameters-path {}",
-                        replica_parameters_path.display()
-                    ),
-                    &format!(
-                        "--client-parameters-path {}",
-                        client_parameters_path.display()
+                        "--load-generator-config-path {}",
+                        load_generator_config_path.display()
                     ),
                 ]
                 .join(" ");
@@ -207,8 +203,8 @@ impl ProtocolMetrics for MysticetiProtocol {
             .map(|x| (IpAddr::V4(x.main_ip), x))
             .unzip();
 
-        let node_config = config::NodePublicConfig::new_for_benchmarks(ips);
-        let metrics_paths = node_config
+        let public_config = PublicReplicaConfig::new_for_benchmarks(ips);
+        let metrics_paths = public_config
             .all_metric_addresses()
             .map(|x| format!("{x}{}", replica::prometheus::METRICS_ROUTE));
 

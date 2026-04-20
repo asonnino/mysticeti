@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::fmt;
+use std::{fmt, num::ParseIntError, str::FromStr};
 
 use digest::Digest;
 use serde::{Deserialize, Serialize};
@@ -49,6 +49,14 @@ impl From<u64> for Authority {
 impl From<usize> for Authority {
     fn from(index: usize) -> Self {
         Self(index as u64)
+    }
+}
+
+impl FromStr for Authority {
+    type Err = ParseIntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.parse::<u64>().map(Self::from)
     }
 }
 

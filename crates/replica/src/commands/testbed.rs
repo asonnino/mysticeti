@@ -7,83 +7,62 @@ use std::{
     path::PathBuf,
 };
 
-use dag::{
-    authority::Authority,
-    committee::Committee,
-    config::{ClientParameters, ImportExport, NodePrivateConfig, NodePublicConfig},
-};
+use dag::{authority::Authority, committee::Committee, config::ImportExport};
 use eyre::{Context, Result};
-use serde::{Deserialize, Serialize};
 use tracing_subscriber::filter::LevelFilter;
 
-use crate::{banner, builder::ReplicaBuilder, params::ReplicaParameters, tracing::ReplicaTracing};
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct TestbedConfig {
-    pub committee_size: usize,
-    #[serde(default)]
-    pub replica_parameters: ReplicaParameters,
-    #[serde(default)]
-    pub client_parameters: ClientParameters,
-}
-
-impl Default for TestbedConfig {
-    fn default() -> Self {
-        Self {
-            committee_size: 4,
-            replica_parameters: ReplicaParameters::default(),
-            client_parameters: ClientParameters::default(),
-        }
-    }
-}
-
-impl ImportExport for TestbedConfig {}
+use crate::{
+    banner,
+    builder::ReplicaBuilder,
+    config::{LoadGeneratorConfig, PrivateReplicaConfig, PublicReplicaConfig, ReplicaParameters},
+    tracing::ReplicaTracing,
+};
 
 pub async fn local_testbed(
-    config_path: Option<PathBuf>,
-    dump_config: bool,
+    committee_size: usize,
+    replica_parameters_path: Option<PathBuf>,
+    load_generator_config_path: Option<PathBuf>,
     log_level: Option<LevelFilter>,
 ) -> Result<()> {
-    if dump_config {
-        println!("{}", TestbedConfig::default().to_yaml());
-        return Ok(());
-    }
-
     match log_level {
         Some(level) => ReplicaTracing::new(level),
         None => ReplicaTracing::new(LevelFilter::DEBUG),
     }
     .setup();
 
-    let config = match config_path {
+    let replica_parameters = match replica_parameters_path {
         Some(path) => {
-            tracing::info!("Loading testbed config from {}", path.display());
-            TestbedConfig::load(&path)?
+            tracing::info!("Loading replica parameters from {}", path.display());
+            ReplicaParameters::load(&path)?
         }
-        None => {
-            tracing::info!("Using default testbed config");
-            TestbedConfig::default()
+        None => ReplicaParameters::default(),
+    };
+    let load_generator_config = match load_generator_config_path {
+        Some(path) => {
+            tracing::info!("Loading load generator config from {}", path.display());
+            LoadGeneratorConfig::load(&path)?
         }
+        None => LoadGeneratorConfig::default(),
     };
 
-    let committee_size = config.committee_size;
     let nodes = committee_size.to_string();
-    let tx_size = config.client_parameters.transaction_size.to_string();
-    let load = config.client_parameters.load.to_string();
+    let tx_size = load_generator_config.transaction_size.to_string();
+    let load_str = load_generator_config.load.to_string();
     banner::BannerPrinter::new(
         "Mysticeti",
         &[
             ("Mode", "Local Testbed"),
             ("Nodes", &nodes),
             ("Tx size", &tx_size),
-            ("Load", &load),
+            ("Load", &load_str),
         ],
     )
     .print();
 
     let ips = vec![IpAddr::V4(Ipv4Addr::LOCALHOST); committee_size];
     let committee = Committee::new_for_benchmarks(committee_size);
-    let public_config = NodePublicConfig::new_for_benchmarks(ips);
+    let public_config =
+        PublicReplicaConfig::new_for_benchmarks(ips).with_parameters(replica_parameters);
 
     let working_dir = PathBuf::from("local-testbed");
     match fs::remove_dir_all(&working_dir) {
@@ -97,7 +76,7 @@ pub async fn local_testbed(
         }
     }
 
-    let private_configs = NodePrivateConfig::new_for_benchmarks(&working_dir, committee_size);
+    let private_configs = PrivateReplicaConfig::new_for_benchmarks(&working_dir, committee_size);
     for private_config in &private_configs {
         fs::create_dir_all(&private_config.storage_path).wrap_err(format!(
             "Failed to create directory '{}'",
@@ -116,8 +95,7 @@ pub async fn local_testbed(
             public_config.clone(),
             private_config,
         )
-        .with_parameters(config.replica_parameters.clone())
-        .with_load_generator(config.client_parameters.clone());
+        .with_load_generator(load_generator_config.clone());
 
         if let Some(address) = public_config.metrics_address(authority) {
             builder = builder.with_metrics_server(address);
