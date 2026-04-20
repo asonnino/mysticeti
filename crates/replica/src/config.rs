@@ -4,12 +4,14 @@
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
+    sync::Arc,
     time::Duration,
 };
 
 use consensus::protocol::ConsensusProtocol;
 use dag::{
     authority::Authority,
+    committee::{AuthorityInfo, Committee},
     config::{DagParameters, ImportExport, ReplicaIdentifier},
     crypto::Signer,
 };
@@ -52,6 +54,7 @@ impl PublicReplicaConfig {
             let metrics_address = SocketAddr::new(ip, metrics_port);
             identifiers.push(ReplicaIdentifier {
                 public_key,
+                stake: 1,
                 network_address,
                 metrics_address,
             });
@@ -61,6 +64,16 @@ impl PublicReplicaConfig {
             parameters: ReplicaParameters::default(),
             identifiers,
         }
+    }
+
+    /// Build the `Committee` implied by this config's identifiers.
+    pub fn committee(&self) -> Arc<Committee> {
+        Committee::new(
+            self.identifiers
+                .iter()
+                .map(|id| AuthorityInfo::new(id.stake, id.public_key.clone()))
+                .collect(),
+        )
     }
 
     pub fn new_for_benchmarks(ips: Vec<IpAddr>) -> Self {

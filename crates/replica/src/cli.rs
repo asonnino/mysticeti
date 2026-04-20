@@ -11,8 +11,8 @@ use tracing_subscriber::filter::LevelFilter;
 #[derive(Parser)]
 #[command(author, version, propagate_version = true)]
 pub struct Args {
-    /// Log level (trace, debug, info, warn, error). Overrides the
-    /// per-command default. RUST_LOG env var takes precedence over this.
+    /// Log level (trace, debug, info, warn, error). Overrides the per-command default.
+    /// RUST_LOG env var takes precedence over this.
     #[arg(long, global = true)]
     pub log_level: Option<LevelFilter>,
 
@@ -22,9 +22,9 @@ pub struct Args {
 
 #[derive(Parser)]
 pub enum Operation {
-    /// Generate test genesis files (committee, public config, and
-    /// private keys) for all validators. All keys are written to disk
-    /// in plaintext — do NOT use in production.
+    /// Generate test genesis files: one public replica config (identities, stakes, and parameters)
+    /// plus a private config per validator (keys and storage paths). Keys are written in plaintext
+    /// — do NOT use in production.
     TestGenesis {
         /// IP addresses of all validators.
         #[arg(long, value_name = "ADDR", value_delimiter = ' ', num_args(3..))]
@@ -42,17 +42,15 @@ pub enum Operation {
         /// Authority index of this node.
         #[arg(long, value_name = "INT")]
         authority: Authority,
-        /// Path to the committee file (YAML).
-        #[arg(long, value_name = "FILE")]
-        committee_path: String,
-        /// Path to the public replica config file (YAML, identities + parameters).
+        /// Path to the public replica config file (YAML: identities, stakes, and parameters).
+        /// The committee is derived from this file's identifiers + stakes.
         #[arg(long, value_name = "FILE")]
         public_config_path: String,
         /// Path to the private replica config file (YAML, includes keys).
         #[arg(long, value_name = "FILE")]
         private_config_path: String,
-        /// Path to the load generator config file (YAML). Omit to run
-        /// without the built-in load generator.
+        /// Path to the load generator config file (YAML). Omit to run without the built-in load
+        /// generator and expose the transaction channel for external submission instead.
         #[arg(long, value_name = "FILE")]
         load_generator_config_path: Option<String>,
     },
@@ -69,8 +67,8 @@ pub enum Operation {
 
     /// Deploy a local testbed of validators on localhost.
     ///
-    /// Starts all validators in a single process with default keys
-    /// and committee configuration. Useful for local testing.
+    /// Starts all validators in a single process with default keys and committee configuration.
+    /// Useful for local testing.
     LocalTestbed {
         /// Number of validators in the testbed.
         #[arg(long, value_name = "INT", default_value_t = 4)]

@@ -26,14 +26,12 @@ async fn main() -> Result<()> {
         )?,
         Operation::Run {
             authority,
-            committee_path,
             public_config_path,
             private_config_path,
             load_generator_config_path,
         } => {
             commands::run::run(
                 authority,
-                committee_path,
                 public_config_path,
                 private_config_path,
                 load_generator_config_path,

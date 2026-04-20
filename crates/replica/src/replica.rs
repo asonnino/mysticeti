@@ -1,10 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    sync::Arc,
-};
+use std::net::{IpAddr, Ipv4Addr};
 
 use ::prometheus::Registry;
 use color_eyre::eyre::{Result, eyre};
@@ -14,7 +11,6 @@ use consensus::committer::Committer;
 use dag::{
     authority::Authority,
     block::transaction::Transaction,
-    committee::Committee,
     context::TokioCtx,
     core::{
         Core,
@@ -33,58 +29,66 @@ use crate::prometheus as metrics_server;
 
 pub struct Replica {
     authority: Authority,
-    committee: Arc<Committee>,
     public_config: PublicReplicaConfig,
     private_config: PrivateReplicaConfig,
     registry: Registry,
-    metrics_server_address: Option<SocketAddr>,
+    metrics_server_enabled: bool,
     load_generator_config: Option<LoadGeneratorConfig>,
 }
 
 impl Replica {
     pub(crate) fn new(
         authority: Authority,
-        committee: Arc<Committee>,
         public_config: PublicReplicaConfig,
         private_config: PrivateReplicaConfig,
         registry: Registry,
-        metrics_server_address: Option<SocketAddr>,
+        metrics_server_enabled: bool,
         load_generator_config: Option<LoadGeneratorConfig>,
     ) -> Self {
         Self {
             authority,
-            committee,
             public_config,
             private_config,
             registry,
-            metrics_server_address,
+            metrics_server_enabled,
             load_generator_config,
         }
     }
 
     #[tracing::instrument(skip_all, fields(authority = %self.authority))]
     pub async fn run(self) -> Result<ReplicaHandle> {
-        let metrics = Metrics::new(&self.registry, self.committee.len(), None);
+        let committee = self.public_config.committee();
+        let metrics = Metrics::new(&self.registry, committee.len(), None);
 
-        // Start the metrics HTTP server if configured.
-        let metrics_handle = self
-            .metrics_server_address
-            .map(|address| metrics_server::start_prometheus_server(address, &self.registry));
+        // Start the metrics HTTP server on the authority's metrics
+        // address, rebound to 0.0.0.0 so it's reachable from outside.
+        let metrics_handle = if self.metrics_server_enabled {
+            let mut address = self
+                .public_config
+                .metrics_address(self.authority)
+                .ok_or(eyre!("No metrics address for authority {}", self.authority))?;
+            address.set_ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+            Some(metrics_server::start_prometheus_server(
+                address,
+                &self.registry,
+            ))
+        } else {
+            None
+        };
 
-        // Resolve the network binding address.
-        let network_address = self
+        // Resolve the network binding address (rebound to 0.0.0.0).
+        let mut network_binding_address = self
             .public_config
             .network_address(self.authority)
             .ok_or(eyre!("No network address for authority {}", self.authority))?;
-        let mut binding_address = network_address;
-        binding_address.set_ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+        network_binding_address.set_ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
 
         // Open storage and recover state.
         let (storage, recovered) = Storage::open(
             self.authority,
             self.private_config.wal(),
             metrics.clone(),
-            &self.committee,
+            &committee,
         )
         .expect("Failed to open storage");
 
@@ -112,9 +116,7 @@ impl Replica {
         let commit_handler =
             CommitHandler::new(block_handler.transaction_time.clone(), metrics.clone());
         let commit_period = parameters.consensus.wave_length();
-        let protocol = parameters
-            .consensus
-            .to_protocol(self.committee.total_stake());
+        let protocol = parameters.consensus.to_protocol(committee.total_stake());
         let round_timeout = parameters
             .dag
             .round_timeout
@@ -123,7 +125,7 @@ impl Replica {
         let fsync = parameters.dag.fsync;
         let crypto = CryptoEngine::new(self.private_config.keypair, protocol.require_crypto);
         let committer = Committer::new(
-            self.committee.clone(),
+            committee.clone(),
             storage.block_reader().clone(),
             protocol,
             metrics.clone(),
@@ -131,7 +133,7 @@ impl Replica {
         let core = Core::open(
             block_handler,
             self.authority,
-            self.committee.clone(),
+            committee.clone(),
             metrics.clone(),
             storage,
             recovered,
@@ -142,8 +144,13 @@ impl Replica {
 
         // Bind the network and start the synchronizer.
         let addresses: Vec<_> = self.public_config.all_network_addresses().collect();
-        let network =
-            Network::load(&addresses, self.authority, binding_address, metrics.clone()).await;
+        let network = Network::load(
+            &addresses,
+            self.authority,
+            network_binding_address,
+            metrics.clone(),
+        )
+        .await;
         let network_synchronizer = NetworkSyncer::start(
             network,
             core,

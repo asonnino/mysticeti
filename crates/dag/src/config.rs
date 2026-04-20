@@ -10,7 +10,7 @@ use std::{
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use crate::crypto::PublicKey;
+use crate::{committee::Stake, crypto::PublicKey};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
@@ -95,6 +95,7 @@ impl Default for DagParameters {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ReplicaIdentifier {
     pub public_key: PublicKey,
+    pub stake: Stake,
     pub network_address: SocketAddr,
     pub metrics_address: SocketAddr,
 }

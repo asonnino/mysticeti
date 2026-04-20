@@ -3,13 +3,12 @@
 
 use std::{borrow::Borrow, collections::HashSet, sync::Arc};
 
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     authority::{Authority, AuthoritySet},
-    config::ImportExport,
-    crypto::{PublicKey, Signer},
+    crypto::PublicKey,
 };
 
 pub type Stake = u64;
@@ -21,8 +20,6 @@ pub struct Committee {
 }
 
 impl Committee {
-    pub const DEFAULT_FILENAME: &'static str = "committee.yaml";
-
     pub fn new_test(stake: Vec<Stake>) -> Arc<Self> {
         let authorities = stake
             .into_iter()
@@ -97,18 +94,6 @@ impl Committee {
     pub fn is_empty(&self) -> bool {
         self.authorities.is_empty()
     }
-
-    pub fn new_for_benchmarks(committee_size: usize) -> Arc<Self> {
-        let mut rng = StdRng::seed_from_u64(0);
-        Self::new(
-            (0..committee_size)
-                .map(|_| AuthorityInfo {
-                    stake: 1,
-                    public_key: Signer::new(&mut rng).public_key(),
-                })
-                .collect(),
-        )
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -118,6 +103,10 @@ pub struct AuthorityInfo {
 }
 
 impl AuthorityInfo {
+    pub fn new(stake: Stake, public_key: PublicKey) -> Self {
+        Self { stake, public_key }
+    }
+
     pub fn test_from_stake(stake: Stake) -> Self {
         Self {
             stake,
@@ -133,8 +122,6 @@ impl AuthorityInfo {
         &self.public_key
     }
 }
-
-impl ImportExport for Committee {}
 
 pub struct StakeAggregator {
     votes: AuthoritySet,

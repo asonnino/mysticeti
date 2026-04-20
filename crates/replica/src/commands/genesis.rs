@@ -3,7 +3,7 @@
 
 use std::{fs, net::IpAddr, path::PathBuf};
 
-use dag::{authority::Authority, committee::Committee, config::ImportExport};
+use dag::{authority::Authority, config::ImportExport};
 use eyre::{Context, Result};
 use tracing_subscriber::filter::LevelFilter;
 
@@ -33,20 +33,11 @@ pub fn test_genesis(
         working_directory.display()
     ))?;
 
-    // Generate the committee file (maps authorities to stakes).
-    let committee = Committee::new_for_benchmarks(committee_size);
-    let committee_path = working_directory.join(Committee::DEFAULT_FILENAME);
-    committee.print(&committee_path)?;
-    tracing::info!("Wrote {}", committee_path.display());
-
     // Load custom replica parameters or fall back to defaults.
     let parameters = match replica_parameters_path {
         Some(path) => {
             tracing::info!("Loading replica parameters from {}", path.display());
-            let yaml = fs::read_to_string(&path).wrap_err_with(|| {
-                format!("Failed to read replica parameters from {}", path.display())
-            })?;
-            serde_yaml::from_str(&yaml).wrap_err("Invalid replica parameters YAML")?
+            ReplicaParameters::load(&path)?
         }
         None => {
             tracing::info!("Using default replica parameters");
@@ -54,7 +45,9 @@ pub fn test_genesis(
         }
     };
 
-    // Generate the public replica config (parameters + network identities).
+    // Generate the public replica config: parameters + per-validator
+    // identities (public key, stake, network/metrics addresses). The
+    // committee used by consensus is derived from this file at runtime.
     let public_config = PublicReplicaConfig::new_for_benchmarks(ips).with_parameters(parameters);
     let public_config_path = working_directory.join(PublicReplicaConfig::DEFAULT_FILENAME);
     public_config.print(&public_config_path)?;

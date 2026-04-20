@@ -7,7 +7,7 @@ use std::{
     path::PathBuf,
 };
 
-use dag::{authority::Authority, committee::Committee, config::ImportExport};
+use dag::{authority::Authority, config::ImportExport};
 use eyre::{Context, Result};
 use tracing_subscriber::filter::LevelFilter;
 
@@ -60,7 +60,6 @@ pub async fn local_testbed(
     .print();
 
     let ips = vec![IpAddr::V4(Ipv4Addr::LOCALHOST); committee_size];
-    let committee = Committee::new_for_benchmarks(committee_size);
     let public_config =
         PublicReplicaConfig::new_for_benchmarks(ips).with_parameters(replica_parameters);
 
@@ -89,18 +88,9 @@ pub async fn local_testbed(
     let mut handles = Vec::with_capacity(committee_size);
     for (i, private_config) in private_configs.into_iter().enumerate() {
         let authority = Authority::from(i);
-        let mut builder = ReplicaBuilder::new(
-            authority,
-            committee.clone(),
-            public_config.clone(),
-            private_config,
-        )
-        .with_load_generator(load_generator_config.clone());
-
-        if let Some(address) = public_config.metrics_address(authority) {
-            builder = builder.with_metrics_server(address);
-        }
-
+        let builder = ReplicaBuilder::new(authority, public_config.clone(), private_config)
+            .with_metrics_server()
+            .with_load_generator(load_generator_config.clone());
         handles.push(builder.build().run().await?);
     }
 

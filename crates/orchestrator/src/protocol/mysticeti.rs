@@ -142,7 +142,6 @@ impl ProtocolCommands for MysticetiProtocol {
             .enumerate()
             .map(|(i, instance)| {
                 let authority = Authority::from(i);
-                let committee_path = self.working_dir.join("committee.yaml");
                 let public_config_path = self.working_dir.join(PUBLIC_REPLICA_CONFIG_FILENAME);
                 let private_config_path = self
                     .working_dir
@@ -154,7 +153,6 @@ impl ProtocolCommands for MysticetiProtocol {
                     &format!("./{BINARY_PATH}/replica"),
                     "run",
                     &format!("--authority {authority}"),
-                    &format!("--committee-path {}", committee_path.display()),
                     &format!("--public-config-path {}", public_config_path.display()),
                     &format!("--private-config-path {}", private_config_path.display()),
                     &format!(

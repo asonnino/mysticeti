@@ -6,7 +6,7 @@ type: project
 
 `ReplicaParameters { dag: DagParameters, consensus: ConsensusProtocol }` lives
 verbatim in two places:
-- `crates/replica/src/params.rs`
+- `crates/replica/src/config.rs` (alongside `PublicReplicaConfig` et al.)
 - `crates/simulator/src/params.rs`
 
 **Why:** `simulator` cannot depend on `replica` today because `replica` is a
@@ -16,7 +16,7 @@ will let simulator depend on the lib. Until then, the user explicitly
 approved the mirror and the simulator copy carries a `NOTE:` header.
 
 **How to apply:** When reviewing edits to either file, diff against the other
-and flag drift. The only intentional difference today: the replica copy has
-`pub const DEFAULT_FILENAME` and a doc comment; the simulator copy does not
-(it has no use for the filename constant). Field order, derives, serde
-attributes, and `ImportExport` impl must stay identical.
+and flag drift. Current structural state is identical: `#[derive(Serialize,
+Deserialize, Clone, Default)]` + two `#[serde(default)]` fields `dag` +
+`consensus` + `impl ImportExport`. Field order, derives, serde attributes,
+and `ImportExport` impl must stay identical.

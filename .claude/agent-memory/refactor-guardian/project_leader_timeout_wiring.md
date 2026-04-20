@@ -1,27 +1,30 @@
 ---
-name: leader_timeout wiring
-description: leader_timeout was hardcoded 1s in leader_timeout_task despite NodeParameters.leader_timeout defaulting to 2s; refactor made the field actually load-bearing.
+name: round_timeout wiring
+description: round_timeout is now Option<Duration>; None falls back to the consensus protocol's default_round_timeout (1s for leader_wait, 75ms otherwise). For Mysticeti end-to-end behavior matches the historical hardcoded 1s.
 type: project
 ---
 
-Prior to the `refactor` branch, `NetworkSyncer::leader_timeout_task` hardcoded
-`Duration::from_secs(1)` in `crates/dag/src/sync/net_sync.rs`, while
-`NodeParameters::leader_timeout` (serialized into the public config YAML)
-defaulted to `2s`. The field was written to disk, visible in config dumps,
-but completely ignored at runtime.
+Prior to the `refactor`/`config-cleanup` work, `NetworkSyncer::leader_timeout_task`
+hardcoded `Duration::from_secs(1)` regardless of the serialized
+`NodeParameters::leader_timeout` field — the field was written to disk but
+ignored at runtime.
 
-**Why:** This mattered for the `refactor` branch audit — the refactor wired
-the field end-to-end, which flips the effective default from 1s to 2s for any
-deployment that relied on defaults. Benchmarks/orchestrator pin `secs: 1`
-explicitly in `crates/orchestrator/assets/node-parameters.yml`, so CI-style
-benchmarks are unaffected. But `replica_commit` / `replica_sync` /
-`replica_crash_faults` integration tests in `crates/replica/tests/smoke.rs`
-now use a 2s timeout (they call `default_leader_timeout() * 5` for their
-overall budget, so they self-correct), and `replica/tests/sync.rs` still
-passes an explicit `Duration::from_secs(1)`.
+Current state (post `config-cleanup`):
+- `DagParameters::round_timeout: Option<Duration>`, `#[serde(default)]` so
+  `None` is the YAML default.
+- `Replica::run` / `SimulatedReplica::start` resolve via
+  `round_timeout.unwrap_or_else(|| protocol.default_round_timeout())`.
+- `Protocol::default_round_timeout` returns `1s` when `leader_wait == true`
+  (Mysticeti, Odontoceti, CordialMinersPartiallySynchronous), `75ms` otherwise
+  (MahiMahi, CordialMinersAsynchronous).
 
-**How to apply:** When reviewing any future changes that touch
-`leader_timeout_task` or `DagParameters::leader_timeout`, double-check
-whether the caller is relying on the (now-live) YAML value vs. an explicit
-override. Specifically: bench harness comparisons across the refactor
-boundary need the YAML pinned to `1s` to be apples-to-apples.
+**Why:** Mysticeti's effective timeout remains 1s — identical to the historical
+hardcoded value. But if someone flips `consensus` to `MahiMahi` or
+`CordialMinersAsynchronous` without overriding `round_timeout`, the effective
+timeout drops to 75ms. Today only Mysticeti is exercised by tests/benchmarks,
+so this is latent but real.
+
+**How to apply:** When reviewing refactors that touch round timeouts, check
+which protocol resolves the default and whether any caller relies on the old
+1s-for-all-protocols behavior. Any bench harness comparing across protocol
+variants must pin `round_timeout` explicitly.

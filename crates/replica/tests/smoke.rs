@@ -1,12 +1,12 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::VecDeque, fs, net::SocketAddr, sync::Arc, time::Duration};
+use std::{collections::VecDeque, fs, net::SocketAddr, time::Duration};
 
 use tempfile::TempDir;
 use tokio::time;
 
-use dag::{authority::Authority, committee::Committee};
+use dag::authority::Authority;
 use replica::{
     builder::ReplicaBuilder,
     config::{LoadGeneratorConfig, PrivateReplicaConfig, PublicReplicaConfig},
@@ -16,24 +16,17 @@ use replica::{
 
 async fn run_replica(
     authority: Authority,
-    committee: &Arc<Committee>,
     public_config: &PublicReplicaConfig,
     private_config: PrivateReplicaConfig,
     load_generator_config: &LoadGeneratorConfig,
 ) -> ReplicaHandle {
-    let mut builder = ReplicaBuilder::new(
-        authority,
-        committee.clone(),
-        public_config.clone(),
-        private_config,
-    )
-    .with_load_generator(load_generator_config.clone());
-
-    if let Some(address) = public_config.metrics_address(authority) {
-        builder = builder.with_metrics_server(address);
-    }
-
-    builder.build().run().await.unwrap()
+    ReplicaBuilder::new(authority, public_config.clone(), private_config)
+        .with_metrics_server()
+        .with_load_generator(load_generator_config.clone())
+        .build()
+        .run()
+        .await
+        .unwrap()
 }
 
 async fn check_commit(address: &SocketAddr) -> Result<bool, reqwest::Error> {
@@ -58,7 +51,6 @@ async fn await_for_commits(addresses: Vec<SocketAddr>) {
 #[tokio::test]
 async fn replica_commit() {
     let committee_size = 4;
-    let committee = Committee::new_for_benchmarks(committee_size);
     let public_config = PublicReplicaConfig::new_for_tests(committee_size).with_port_offset(0);
     let load_generator_config = LoadGeneratorConfig::default();
 
@@ -73,7 +65,6 @@ async fn replica_commit() {
         handles.push(
             run_replica(
                 Authority::from(i),
-                &committee,
                 &public_config,
                 private_config,
                 &load_generator_config,
@@ -101,7 +92,6 @@ async fn replica_commit() {
 #[tokio::test]
 async fn replica_sync() {
     let committee_size = 4;
-    let committee = Committee::new_for_benchmarks(committee_size);
     let public_config = PublicReplicaConfig::new_for_tests(committee_size).with_port_offset(100);
     let load_generator_config = LoadGeneratorConfig::default();
 
@@ -119,7 +109,6 @@ async fn replica_sync() {
         handles.push(
             run_replica(
                 Authority::from(i),
-                &committee,
                 &public_config,
                 private_config,
                 &load_generator_config,
@@ -149,7 +138,6 @@ async fn replica_sync() {
     handles.push(
         run_replica(
             Authority::from(authority),
-            &committee,
             &public_config,
             private_config,
             &load_generator_config,
@@ -176,7 +164,6 @@ async fn replica_sync() {
 #[tokio::test]
 async fn replica_crash_faults() {
     let committee_size = 4;
-    let committee = Committee::new_for_benchmarks(committee_size);
     let public_config = PublicReplicaConfig::new_for_tests(committee_size).with_port_offset(200);
     let load_generator_config = LoadGeneratorConfig::default();
 
@@ -194,7 +181,6 @@ async fn replica_crash_faults() {
         handles.push(
             run_replica(
                 Authority::from(i),
-                &committee,
                 &public_config,
                 private_config,
                 &load_generator_config,

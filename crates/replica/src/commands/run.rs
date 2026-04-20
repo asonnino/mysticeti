@@ -1,12 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    net::{IpAddr, Ipv4Addr},
-    sync::Arc,
-};
-
-use dag::{authority::Authority, committee::Committee, config::ImportExport};
+use dag::{authority::Authority, config::ImportExport};
 use eyre::{Result, eyre};
 use tracing_subscriber::filter::LevelFilter;
 
@@ -18,7 +13,6 @@ use crate::{
 
 pub async fn run(
     authority: Authority,
-    committee_path: String,
     public_config_path: String,
     private_config_path: String,
     load_generator_config_path: Option<String>,
@@ -31,34 +25,23 @@ pub async fn run(
     .setup();
     tracing::info!("Starting replica {authority}");
 
-    // Load all configuration files.
-    let committee = Committee::load(&committee_path)?;
+    // Load configuration files.
     let public_config = PublicReplicaConfig::load(&public_config_path)?;
     let private_config = PrivateReplicaConfig::load(&private_config_path)?;
     let load_generator_config = load_generator_config_path
         .map(|path| LoadGeneratorConfig::load(&path))
         .transpose()?;
 
-    // Resolve the metrics address for this authority and bind
-    // to 0.0.0.0 so the server is reachable from outside.
     let metrics_address = public_config
         .metrics_address(authority)
         .ok_or(eyre!("No metrics address for authority {authority}"))?;
-    let mut binding_address = metrics_address;
-    binding_address.set_ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
-
     let network_address = public_config
         .network_address(authority)
         .ok_or(eyre!("No network address for authority {authority}"))?;
 
     // Build and run the replica (blocks forever).
-    let mut builder = ReplicaBuilder::new(
-        authority,
-        Arc::new(committee),
-        public_config,
-        private_config,
-    )
-    .with_metrics_server(binding_address);
+    let mut builder =
+        ReplicaBuilder::new(authority, public_config, private_config).with_metrics_server();
     if let Some(config) = load_generator_config {
         builder = builder.with_load_generator(config);
     }
