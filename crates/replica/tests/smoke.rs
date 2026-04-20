@@ -9,7 +9,7 @@ use tokio::time;
 use dag::{
     authority::Authority,
     committee::Committee,
-    config::{self, ClientParameters, NodePrivateConfig, NodePublicConfig},
+    config::{ClientParameters, NodePrivateConfig, NodePublicConfig},
 };
 use replica::{builder::ReplicaBuilder, prometheus, replica::ReplicaHandle};
 
@@ -85,7 +85,7 @@ async fn replica_commit() {
         .all_metric_addresses()
         .map(|address| address.to_owned())
         .collect();
-    let timeout = config::node_defaults::default_leader_timeout() * 5;
+    let timeout = Duration::from_secs(5);
 
     tokio::select! {
         _ = await_for_commits(addresses) => (),
@@ -132,7 +132,7 @@ async fn replica_sync() {
         .skip(1)
         .map(|address| address.to_owned())
         .collect();
-    let timeout = config::node_defaults::default_leader_timeout() * 5;
+    let timeout = Duration::from_secs(5);
     tokio::select! {
         _ = await_for_commits(addresses) => (),
         _ = time::sleep(timeout) => {
@@ -161,7 +161,7 @@ async fn replica_sync() {
         .next()
         .map(|address| address.to_owned())
         .unwrap();
-    let timeout = config::node_defaults::default_leader_timeout() * 5;
+    let timeout = Duration::from_secs(5);
     tokio::select! {
         _ = await_for_commits(vec![address]) => (),
         _ = time::sleep(timeout) => {
@@ -207,7 +207,7 @@ async fn replica_crash_faults() {
         .skip(1)
         .map(|address| address.to_owned())
         .collect();
-    let timeout = config::node_defaults::default_leader_timeout() * 15;
+    let timeout = Duration::from_secs(15);
 
     tokio::select! {
         _ = await_for_commits(addresses) => (),

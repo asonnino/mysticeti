@@ -10,18 +10,20 @@ use std::{
 use dag::{
     authority::Authority,
     committee::Committee,
-    config::{ClientParameters, ImportExport, NodeParameters, NodePrivateConfig, NodePublicConfig},
+    config::{ClientParameters, ImportExport, NodePrivateConfig, NodePublicConfig},
 };
 use eyre::{Context, Result};
 use serde::{Deserialize, Serialize};
 use tracing_subscriber::filter::LevelFilter;
 
-use crate::{banner, builder::ReplicaBuilder, tracing::ReplicaTracing};
+use crate::{banner, builder::ReplicaBuilder, params::ReplicaParameters, tracing::ReplicaTracing};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct TestbedConfig {
     pub committee_size: usize,
-    pub node_parameters: NodeParameters,
+    #[serde(default)]
+    pub replica_parameters: ReplicaParameters,
+    #[serde(default)]
     pub client_parameters: ClientParameters,
 }
 
@@ -29,7 +31,7 @@ impl Default for TestbedConfig {
     fn default() -> Self {
         Self {
             committee_size: 4,
-            node_parameters: NodeParameters::default(),
+            replica_parameters: ReplicaParameters::default(),
             client_parameters: ClientParameters::default(),
         }
     }
@@ -81,7 +83,7 @@ pub async fn local_testbed(
 
     let ips = vec![IpAddr::V4(Ipv4Addr::LOCALHOST); committee_size];
     let committee = Committee::new_for_benchmarks(committee_size);
-    let public_config = NodePublicConfig::new_for_benchmarks(ips, Some(config.node_parameters));
+    let public_config = NodePublicConfig::new_for_benchmarks(ips);
 
     let working_dir = PathBuf::from("local-testbed");
     match fs::remove_dir_all(&working_dir) {
@@ -114,6 +116,7 @@ pub async fn local_testbed(
             public_config.clone(),
             private_config,
         )
+        .with_parameters(config.replica_parameters.clone())
         .with_load_generator(config.client_parameters.clone());
 
         if let Some(address) = public_config.metrics_address(authority) {

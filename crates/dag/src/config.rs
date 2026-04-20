@@ -4,7 +4,6 @@
 use std::{
     fs, io,
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    num::NonZeroUsize,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -14,7 +13,6 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
     authority::Authority,
-    block::RoundNumber,
     crypto::{PublicKey, Signer},
 };
 
@@ -59,62 +57,44 @@ pub trait ImportExport: Serialize + DeserializeOwned {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct NodeParameters {
-    #[serde(default = "node_defaults::default_wave_length")]
-    pub wave_length: RoundNumber,
-    #[serde(default = "node_defaults::default_leader_timeout")]
-    pub leader_timeout: Duration,
-    #[serde(default = "node_defaults::default_max_block_size")]
+#[derive(Serialize, Deserialize, Clone)]
+pub struct DagParameters {
+    /// Override the round timeout. When `None`, the runtime falls
+    /// back to the chosen consensus protocol's default.
+    #[serde(default)]
+    pub round_timeout: Option<Duration>,
+    #[serde(default = "dag_defaults::default_max_block_size")]
     pub max_block_size: usize,
-    #[serde(default = "node_defaults::default_leader_count")]
-    pub leader_count: NonZeroUsize,
-    #[serde(default = "node_defaults::default_enable_pipelining")]
-    pub enable_pipelining: bool,
-    #[serde(default = "node_defaults::default_enable_synchronizer")]
+    #[serde(default = "dag_defaults::default_enable_synchronizer")]
     pub enable_synchronizer: bool,
+    #[serde(default = "dag_defaults::default_fsync")]
+    pub fsync: bool,
 }
 
-pub mod node_defaults {
-    pub fn default_wave_length() -> super::RoundNumber {
-        3
-    }
-
-    pub fn default_leader_timeout() -> std::time::Duration {
-        std::time::Duration::from_secs(2)
-    }
-
+pub mod dag_defaults {
     pub fn default_max_block_size() -> usize {
         4 * 1024 * 1024
-    }
-
-    pub fn default_leader_count() -> super::NonZeroUsize {
-        super::NonZeroUsize::new(2).unwrap()
-    }
-
-    pub fn default_enable_pipelining() -> bool {
-        true
     }
 
     pub fn default_enable_synchronizer() -> bool {
         false
     }
-}
 
-impl Default for NodeParameters {
-    fn default() -> Self {
-        Self {
-            wave_length: node_defaults::default_wave_length(),
-            leader_timeout: node_defaults::default_leader_timeout(),
-            max_block_size: node_defaults::default_max_block_size(),
-            leader_count: node_defaults::default_leader_count(),
-            enable_pipelining: node_defaults::default_enable_pipelining(),
-            enable_synchronizer: node_defaults::default_enable_synchronizer(),
-        }
+    pub fn default_fsync() -> bool {
+        false
     }
 }
 
-impl ImportExport for NodeParameters {}
+impl Default for DagParameters {
+    fn default() -> Self {
+        Self {
+            round_timeout: None,
+            max_block_size: dag_defaults::default_max_block_size(),
+            enable_synchronizer: dag_defaults::default_enable_synchronizer(),
+            fsync: dag_defaults::default_fsync(),
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct NodeIdentifier {
@@ -126,7 +106,6 @@ pub struct NodeIdentifier {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NodePublicConfig {
     pub identifiers: Vec<NodeIdentifier>,
-    pub parameters: NodeParameters,
 }
 
 impl NodePublicConfig {
@@ -152,18 +131,11 @@ impl NodePublicConfig {
             });
         }
 
-        Self {
-            identifiers,
-            parameters: NodeParameters::default(),
-        }
+        Self { identifiers }
     }
 
-    pub fn new_for_benchmarks(ips: Vec<IpAddr>, node_parameters: Option<NodeParameters>) -> Self {
-        let default_with_ips = Self::new_for_tests(ips.len()).with_ips(ips);
-        Self {
-            identifiers: default_with_ips.identifiers,
-            parameters: node_parameters.unwrap_or_default(),
-        }
+    pub fn new_for_benchmarks(ips: Vec<IpAddr>) -> Self {
+        Self::new_for_tests(ips.len()).with_ips(ips)
     }
 
     pub fn with_ips(mut self, ips: Vec<IpAddr>) -> Self {

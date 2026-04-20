@@ -5,9 +5,12 @@ use std::{ops::Range, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
-use dag::config::{ImportExport, NodeParameters};
+use dag::config::ImportExport;
+
+use crate::params::ReplicaParameters;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub enum NetworkTopology {
     #[default]
     FullMesh,
@@ -16,7 +19,7 @@ pub enum NetworkTopology {
     Star(usize),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SimulationConfig {
     #[serde(default = "defaults::committee_size")]
     pub committee_size: usize,
@@ -30,10 +33,8 @@ pub struct SimulationConfig {
     pub duration_secs: u64,
     #[serde(default)]
     pub rng_seed: u64,
-    #[serde(default = "defaults::commit_period")]
-    pub commit_period: u64,
     #[serde(default)]
-    pub node_parameters: NodeParameters,
+    pub replica_parameters: ReplicaParameters,
 }
 
 impl Default for SimulationConfig {
@@ -45,8 +46,7 @@ impl Default for SimulationConfig {
             topology: NetworkTopology::default(),
             duration_secs: defaults::duration_secs(),
             rng_seed: 0,
-            commit_period: defaults::commit_period(),
-            node_parameters: NodeParameters::default(),
+            replica_parameters: ReplicaParameters::default(),
         }
     }
 }
@@ -83,8 +83,5 @@ mod defaults {
     }
     pub fn duration_secs() -> u64 {
         20
-    }
-    pub fn commit_period() -> u64 {
-        3
     }
 }

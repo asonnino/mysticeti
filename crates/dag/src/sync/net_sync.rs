@@ -13,7 +13,6 @@ use crate::{
     authority::Authority,
     committee::Committee,
     committee::Stake,
-    config::NodePublicConfig,
     consensus::DagConsensus,
     context::Ctx,
     core::{
@@ -48,18 +47,19 @@ pub struct NetworkSyncerInner<C: Ctx, D: DagConsensus> {
     committee: Arc<Committee>,
     quorum_threshold: Stake,
     crypto: CryptoVerifier,
+    round_timeout: Duration,
     stop: mpsc::Sender<()>,
 }
 
 impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
-    #[allow(clippy::too_many_arguments)]
     pub fn start(
         network: Network,
         mut core: Core<C, D>,
         commit_period: u64,
+        round_timeout: Duration,
+        enable_synchronizer: bool,
         mut commit_handler: CommitHandler<C>,
         metrics: Arc<Metrics>,
-        public_config: &NodePublicConfig,
     ) -> Self {
         let authority_index = core.authority();
         let notify = Arc::new(Notify::new());
@@ -90,13 +90,14 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
             committee,
             quorum_threshold,
             crypto,
+            round_timeout,
             stop: stop_sender.clone(),
         });
         let block_fetcher = Arc::new(BlockFetcher::start(
             authority_index,
             inner.clone(),
             metrics.clone(),
-            public_config.parameters.enable_synchronizer,
+            enable_synchronizer,
         ));
         let main_task = C::spawn(Self::run(
             network,
@@ -131,7 +132,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
         metrics: Arc<Metrics>,
     ) {
         let mut connections: HashMap<usize, C::JoinHandle<Option<()>>> = HashMap::new();
-        let leader_timeout_task = C::spawn(Self::leader_timeout_task(inner.clone()));
+        let round_timeout_task = C::spawn(Self::round_timeout_task(inner.clone()));
         let cleanup_task = C::spawn(Self::cleanup_task(inner.clone()));
         while let Some(connection) = inner.recv_or_stopped(network.connection_receiver()).await {
             let peer_id = connection.peer_id;
@@ -154,7 +155,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
         join_all(
             connections
                 .into_values()
-                .chain([leader_timeout_task, cleanup_task].into_iter()),
+                .chain([round_timeout_task, cleanup_task].into_iter()),
         )
         .await;
         Arc::try_unwrap(block_fetcher)
@@ -240,8 +241,8 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn leader_timeout_task(inner: Arc<NetworkSyncerInner<C, D>>) -> Option<()> {
-        let leader_timeout = Duration::from_secs(1);
+    async fn round_timeout_task(inner: Arc<NetworkSyncerInner<C, D>>) -> Option<()> {
+        let round_timeout = inner.round_timeout;
         loop {
             let notified = inner.notify.notified();
             let round = inner
@@ -250,7 +251,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
                 .map(|b| b.round())
                 .unwrap_or_default();
             select! {
-                _sleep = C::sleep(leader_timeout) => {
+                _sleep = C::sleep(round_timeout) => {
                     tracing::debug!("Timeout {round}");
                     // todo - more then one round timeout can happen, need to fix this
                     inner.syncer.force_new_block(round).await;

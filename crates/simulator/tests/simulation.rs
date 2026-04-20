@@ -3,8 +3,9 @@
 
 use std::{num::NonZeroUsize, path::PathBuf};
 
-use dag::config::{ImportExport, NodeParameters};
-use simulator::{NetworkTopology, SimulationConfig, SimulationRunner};
+use consensus::protocol::ConsensusProtocol;
+use dag::config::ImportExport;
+use simulator::{NetworkTopology, ReplicaParameters, SimulationConfig, SimulationRunner};
 
 #[test]
 fn full_mesh() {
@@ -39,7 +40,6 @@ fn config_yaml_round_trip() {
         topology: NetworkTopology::Star(0),
         duration_secs: 30,
         rng_seed: 42,
-        commit_period: 5,
         ..Default::default()
     };
 
@@ -51,7 +51,6 @@ fn config_yaml_round_trip() {
     assert_eq!(restored.latency_max_ms, 200);
     assert_eq!(restored.duration_secs, 30);
     assert_eq!(restored.rng_seed, 42);
-    assert_eq!(restored.commit_period, 5);
     assert!(matches!(restored.topology, NetworkTopology::Star(0)));
 }
 
@@ -99,9 +98,11 @@ fn small_committee() {
 #[test]
 fn custom_node_parameters() {
     let config = SimulationConfig {
-        node_parameters: NodeParameters {
-            leader_count: NonZeroUsize::new(1).unwrap(),
-            wave_length: 4,
+        replica_parameters: ReplicaParameters {
+            consensus: ConsensusProtocol::MahiMahi {
+                leader_count: NonZeroUsize::new(1).unwrap(),
+                wave_length: 4,
+            },
             ..Default::default()
         },
         duration_secs: 20,

@@ -34,9 +34,9 @@ pub enum Operation {
         /// Working directory where files will be generated.
         #[arg(long, value_name = "DIR", default_value = "genesis")]
         working_directory: PathBuf,
-        /// Path to custom node parameters (YAML). Uses defaults if omitted.
+        /// Path to custom replica parameters (YAML). Uses defaults if omitted.
         #[arg(long, value_name = "FILE")]
-        node_parameters_path: Option<PathBuf>,
+        replica_parameters_path: Option<PathBuf>,
     },
 
     /// Run a single replica from config files.
@@ -53,6 +53,9 @@ pub enum Operation {
         /// Path to the private node config file (YAML, includes keys).
         #[arg(long, value_name = "FILE")]
         private_config_path: String,
+        /// Path to the replica parameters file (YAML).
+        #[arg(long, value_name = "FILE")]
+        replica_parameters_path: String,
         /// Path to the client parameters file (YAML).
         #[arg(long, value_name = "FILE")]
         client_parameters_path: String,

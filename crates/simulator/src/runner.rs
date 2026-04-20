@@ -8,7 +8,7 @@ use dag::{
     authority::Authority,
     block::BlockReference,
     committee::Committee,
-    config::{ConfigError, ImportExport, NodePublicConfig},
+    config::{ConfigError, ImportExport},
     context::Ctx,
     metrics::MetricsSnapshot,
     sync::net_sync::NetworkSyncer,
@@ -103,9 +103,6 @@ impl SimulationState {
         let committee_size = config.committee_size;
         let committee = Committee::new_test(vec![1; committee_size]);
 
-        let mut public_config = NodePublicConfig::new_for_tests(committee_size);
-        public_config.parameters = config.node_parameters.clone();
-
         let (network, networks) = SimulatedNetwork::new(&committee, config.latency_range());
 
         let network_syncers = networks
@@ -115,9 +112,8 @@ impl SimulationState {
                 SimulatedReplica::new(
                     Authority::from(i),
                     committee.clone(),
-                    public_config.clone(),
+                    config.replica_parameters.clone(),
                     node_network,
-                    config.commit_period,
                 )
                 .start()
             })

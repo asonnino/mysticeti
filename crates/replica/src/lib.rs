@@ -6,6 +6,7 @@ pub mod builder;
 pub mod cli;
 pub mod commands;
 pub mod generator;
+pub mod params;
 pub mod prometheus;
 pub mod replica;
 pub mod tracing;

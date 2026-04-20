@@ -6,6 +6,7 @@ publish.workspace = true
 
 [dependencies]
 dag.workspace = true
+serde = { workspace = true }
 tracing.workspace = true
 
 [dev-dependencies]

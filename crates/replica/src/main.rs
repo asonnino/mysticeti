@@ -17,11 +17,11 @@ async fn main() -> Result<()> {
         Operation::TestGenesis {
             ips,
             working_directory,
-            node_parameters_path,
+            replica_parameters_path,
         } => commands::genesis::test_genesis(
             ips,
             working_directory,
-            node_parameters_path,
+            replica_parameters_path,
             args.log_level,
         )?,
         Operation::Run {
@@ -29,6 +29,7 @@ async fn main() -> Result<()> {
             committee_path,
             public_config_path,
             private_config_path,
+            replica_parameters_path,
             client_parameters_path,
         } => {
             commands::run::run(
@@ -36,6 +37,7 @@ async fn main() -> Result<()> {
                 committee_path,
                 public_config_path,
                 private_config_path,
+                replica_parameters_path,
                 client_parameters_path,
                 args.log_level,
             )

@@ -11,13 +11,14 @@ use dag::{
     config::{ClientParameters, NodePrivateConfig, NodePublicConfig},
 };
 
-use crate::replica::Replica;
+use crate::{params::ReplicaParameters, replica::Replica};
 
 pub struct ReplicaBuilder {
     authority: Authority,
     committee: Arc<Committee>,
     public_config: NodePublicConfig,
     private_config: NodePrivateConfig,
+    parameters: ReplicaParameters,
     registry: Registry,
     metrics_server_address: Option<SocketAddr>,
     client_parameters: Option<ClientParameters>,
@@ -35,10 +36,16 @@ impl ReplicaBuilder {
             committee,
             public_config,
             private_config,
+            parameters: ReplicaParameters::default(),
             registry: Registry::new(),
             metrics_server_address: None,
             client_parameters: None,
         }
+    }
+
+    pub fn with_parameters(mut self, parameters: ReplicaParameters) -> Self {
+        self.parameters = parameters;
+        self
     }
 
     pub fn with_registry(mut self, registry: Registry) -> Self {
@@ -62,6 +69,7 @@ impl ReplicaBuilder {
             self.committee,
             self.public_config,
             self.private_config,
+            self.parameters,
             self.registry,
             self.metrics_server_address,
             self.client_parameters,

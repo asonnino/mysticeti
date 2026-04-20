@@ -10,8 +10,9 @@ use std::{
 
 use dag::{
     authority::Authority,
-    config::{self, ClientParameters, NodeParameters},
+    config::{self, ClientParameters},
 };
+use replica::params::ReplicaParameters;
 use serde::{Deserialize, Serialize};
 
 use super::{BINARY_PATH, ProtocolCommands, ProtocolMetrics, ProtocolParameters};
@@ -19,10 +20,10 @@ use crate::{benchmark::BenchmarkParameters, client::Instance, settings::Settings
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(transparent)]
-pub struct MysticetiNodeParameters(NodeParameters);
+pub struct MysticetiNodeParameters(ReplicaParameters);
 
 impl Deref for MysticetiNodeParameters {
-    type Target = NodeParameters;
+    type Target = ReplicaParameters;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -91,12 +92,12 @@ impl ProtocolCommands for MysticetiProtocol {
             .collect::<Vec<_>>()
             .join(" ");
 
-        let node_parameters = parameters.node_parameters.clone();
-        let node_parameters_string = serde_yaml::to_string(&node_parameters).unwrap();
-        let node_parameters_path = self.working_dir.join("node-parameters.yaml");
-        let upload_node_parameters = format!(
-            "echo -e '{node_parameters_string}' > {}",
-            node_parameters_path.display()
+        let replica_parameters = parameters.node_parameters.clone();
+        let replica_parameters_string = serde_yaml::to_string(&replica_parameters).unwrap();
+        let replica_parameters_path = self.working_dir.join("replica-parameters.yaml");
+        let upload_replica_parameters = format!(
+            "echo -e '{replica_parameters_string}' > {}",
+            replica_parameters_path.display()
         );
 
         let mut client_parameters = parameters.client_parameters.clone();
@@ -112,16 +113,16 @@ impl ProtocolCommands for MysticetiProtocol {
             &format!("./{BINARY_PATH}/replica"),
             "test-genesis",
             &format!(
-                "--ips {ips} --working-directory {} --node-parameters-path {}",
+                "--ips {ips} --working-directory {} --replica-parameters-path {}",
                 self.working_dir.display(),
-                node_parameters_path.display(),
+                replica_parameters_path.display(),
             ),
         ]
         .join(" ");
 
         [
             "source $HOME/.cargo/env",
-            &upload_node_parameters,
+            &upload_replica_parameters,
             &upload_client_parameters,
             &genesis,
         ]
@@ -146,6 +147,7 @@ impl ProtocolCommands for MysticetiProtocol {
                 let private_config_path = self
                     .working_dir
                     .join(format!("private-config-{authority}.yaml"));
+                let replica_parameters_path = self.working_dir.join("replica-parameters.yaml");
                 let client_parameters_path = self.working_dir.join("client-parameters.yaml");
 
                 let run = [
@@ -155,6 +157,10 @@ impl ProtocolCommands for MysticetiProtocol {
                     &format!("--committee-path {}", committee_path.display()),
                     &format!("--public-config-path {}", public_config_path.display()),
                     &format!("--private-config-path {}", private_config_path.display()),
+                    &format!(
+                        "--replica-parameters-path {}",
+                        replica_parameters_path.display()
+                    ),
                     &format!(
                         "--client-parameters-path {}",
                         client_parameters_path.display()
@@ -191,7 +197,7 @@ impl ProtocolMetrics for MysticetiProtocol {
     fn nodes_metrics_path<I>(
         &self,
         instances: I,
-        parameters: &BenchmarkParameters,
+        _parameters: &BenchmarkParameters,
     ) -> Vec<(Instance, String)>
     where
         I: IntoIterator<Item = Instance>,
@@ -201,8 +207,7 @@ impl ProtocolMetrics for MysticetiProtocol {
             .map(|x| (IpAddr::V4(x.main_ip), x))
             .unzip();
 
-        let node_parameters = Some(parameters.node_parameters.deref().clone());
-        let node_config = config::NodePublicConfig::new_for_benchmarks(ips, node_parameters);
+        let node_config = config::NodePublicConfig::new_for_benchmarks(ips);
         let metrics_paths = node_config
             .all_metric_addresses()
             .map(|x| format!("{x}{}", replica::prometheus::METRICS_ROUTE));

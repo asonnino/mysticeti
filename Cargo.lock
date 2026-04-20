@@ -812,6 +812,7 @@ name = "consensus"
 version = "0.1.0"
 dependencies = [
  "dag",
+ "serde",
  "tracing",
  "tracing-test",
 ]

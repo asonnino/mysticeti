@@ -5,7 +5,6 @@ use std::time::Duration;
 
 use consensus::test_util::committee_and_cores;
 use dag::{
-    config::NodePublicConfig,
     context::TokioCtx,
     core::block_handler::CommitHandler,
     metrics::Metrics,
@@ -28,9 +27,10 @@ async fn test_network_sync() {
             network,
             core,
             3,
+            Duration::from_secs(1),
+            false,
             commit_handler,
             Metrics::new_for_test(0),
-            &NodePublicConfig::new_for_tests(4),
         );
         network_syncers.push(network_syncer);
     }

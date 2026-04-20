@@ -45,15 +45,11 @@ pub struct Core<C: Ctx, D: DagConsensus> {
     last_commit_leader: BlockReference,
     storage: Storage,
     pub metrics: Arc<Metrics>,
-    options: CoreOptions,
+    fsync: bool,
     crypto: CryptoEngine,
     // todo - ugly, probably need to merge syncer and core
     recovered_committed_blocks: Option<HashSet<BlockReference>>,
     committer: D,
-}
-
-pub struct CoreOptions {
-    fsync: bool,
 }
 
 #[derive(Debug)]
@@ -71,7 +67,7 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
         metrics: Arc<Metrics>,
         mut storage: Storage,
         recovered: RecoveredState,
-        options: CoreOptions,
+        fsync: bool,
         committer: D,
         crypto: CryptoEngine,
     ) -> Self {
@@ -131,7 +127,7 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
             last_commit_leader: last_committed_leader.unwrap_or_default(),
             storage,
             metrics,
-            options,
+            fsync,
             crypto,
             recovered_committed_blocks: Some(committed_blocks),
             committer,
@@ -150,11 +146,6 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
 
     pub fn quorum_threshold(&self) -> Stake {
         self.committer.quorum_threshold()
-    }
-
-    pub fn with_options(mut self, options: CoreOptions) -> Self {
-        self.options = options;
-        self
     }
 
     pub fn verifier(&self) -> CryptoVerifier {
@@ -281,7 +272,7 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
         };
         self.storage.insert_own_block(&self.last_own_block);
 
-        if self.options.fsync {
+        if self.fsync {
             self.storage.sync();
         }
 
@@ -400,21 +391,5 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
 
     pub fn committee(&self) -> &Arc<Committee> {
         &self.committee
-    }
-}
-
-impl Default for CoreOptions {
-    fn default() -> Self {
-        Self::test()
-    }
-}
-
-impl CoreOptions {
-    pub fn test() -> Self {
-        Self { fsync: false }
-    }
-
-    pub fn production() -> Self {
-        Self { fsync: true }
     }
 }

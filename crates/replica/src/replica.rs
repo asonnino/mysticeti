@@ -10,7 +10,7 @@ use ::prometheus::Registry;
 use color_eyre::eyre::{Result, eyre};
 use tokio::{sync::mpsc, task::JoinHandle};
 
-use consensus::{committer::Committer, protocol::Protocol};
+use consensus::committer::Committer;
 use dag::{
     authority::Authority,
     block::transaction::Transaction,
@@ -18,7 +18,7 @@ use dag::{
     config::{ClientParameters, NodePrivateConfig, NodePublicConfig},
     context::TokioCtx,
     core::{
-        Core, CoreOptions,
+        Core,
         block_handler::{CommitHandler, RealBlockHandler},
     },
     crypto::CryptoEngine,
@@ -28,6 +28,7 @@ use dag::{
 };
 
 use crate::generator::TransactionGenerator;
+use crate::params::ReplicaParameters;
 
 use crate::prometheus as metrics_server;
 
@@ -36,17 +37,20 @@ pub struct Replica {
     committee: Arc<Committee>,
     public_config: NodePublicConfig,
     private_config: NodePrivateConfig,
+    parameters: ReplicaParameters,
     registry: Registry,
     metrics_server_address: Option<SocketAddr>,
     client_parameters: Option<ClientParameters>,
 }
 
 impl Replica {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         authority: Authority,
         committee: Arc<Committee>,
         public_config: NodePublicConfig,
         private_config: NodePrivateConfig,
+        parameters: ReplicaParameters,
         registry: Registry,
         metrics_server_address: Option<SocketAddr>,
         client_parameters: Option<ClientParameters>,
@@ -56,6 +60,7 @@ impl Replica {
             committee,
             public_config,
             private_config,
+            parameters,
             registry,
             metrics_server_address,
             client_parameters,
@@ -98,7 +103,7 @@ impl Replica {
                     block_sender,
                     self.authority,
                     params,
-                    self.public_config.parameters.max_block_size,
+                    self.parameters.dag.max_block_size,
                     metrics.clone(),
                 );
                 None
@@ -109,10 +114,16 @@ impl Replica {
         // Build the committer and core.
         let commit_handler =
             CommitHandler::new(block_handler.transaction_time.clone(), metrics.clone());
-        let protocol = Protocol::mysticeti(
-            self.committee.total_stake(),
-            self.public_config.parameters.leader_count,
-        );
+        let commit_period = self.parameters.consensus.wave_length();
+        let protocol = self
+            .parameters
+            .consensus
+            .to_protocol(self.committee.total_stake());
+        let round_timeout = self
+            .parameters
+            .dag
+            .round_timeout
+            .unwrap_or_else(|| protocol.default_round_timeout());
         let crypto = CryptoEngine::new(self.private_config.keypair, protocol.require_crypto);
         let committer = Committer::new(
             self.committee.clone(),
@@ -127,7 +138,7 @@ impl Replica {
             metrics.clone(),
             storage,
             recovered,
-            CoreOptions::default(),
+            self.parameters.dag.fsync,
             committer,
             crypto,
         );
@@ -143,10 +154,11 @@ impl Replica {
         let network_synchronizer = NetworkSyncer::start(
             network,
             core,
-            self.public_config.parameters.wave_length,
+            commit_period,
+            round_timeout,
+            self.parameters.dag.enable_synchronizer,
             commit_handler,
             metrics,
-            &self.public_config,
         );
 
         Ok(ReplicaHandle {

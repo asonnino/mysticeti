@@ -1,3 +1,7 @@
-leader_timeout:
-  secs: 1
-  nanos: 0
+dag:
+  round_timeout:
+    secs: 1
+    nanos: 0
+consensus:
+  type: mysticeti
+  leader_count: 2

@@ -6,17 +6,17 @@ use std::{fs, net::IpAddr, path::PathBuf};
 use dag::{
     authority::Authority,
     committee::Committee,
-    config::{ImportExport, NodeParameters, NodePrivateConfig, NodePublicConfig},
+    config::{ImportExport, NodePrivateConfig, NodePublicConfig},
 };
 use eyre::{Context, Result};
 use tracing_subscriber::filter::LevelFilter;
 
-use crate::tracing::ReplicaTracing;
+use crate::{params::ReplicaParameters, tracing::ReplicaTracing};
 
 pub fn test_genesis(
     ips: Vec<IpAddr>,
     working_directory: PathBuf,
-    node_parameters_path: Option<PathBuf>,
+    replica_parameters_path: Option<PathBuf>,
     log_level: Option<LevelFilter>,
 ) -> Result<()> {
     match log_level {
@@ -40,23 +40,26 @@ pub fn test_genesis(
     committee.print(&committee_path)?;
     tracing::info!("Wrote {}", committee_path.display());
 
-    // Load custom node parameters or fall back to defaults.
-    let node_parameters = match node_parameters_path {
-        Some(path) => {
-            tracing::info!("Loading node parameters from {}", path.display());
-            NodeParameters::load(&path)?
-        }
-        None => {
-            tracing::info!("Using default node parameters");
-            NodeParameters::default()
-        }
-    };
-
-    // Generate the public config (network addresses, parameters).
-    let public_config = NodePublicConfig::new_for_benchmarks(ips, Some(node_parameters));
+    // Generate the public config (network addresses only).
+    let public_config = NodePublicConfig::new_for_benchmarks(ips);
     let public_config_path = working_directory.join(NodePublicConfig::DEFAULT_FILENAME);
     public_config.print(&public_config_path)?;
     tracing::info!("Wrote {}", public_config_path.display());
+
+    // Load custom replica parameters or fall back to defaults, then write them out.
+    let replica_parameters = match replica_parameters_path {
+        Some(path) => {
+            tracing::info!("Loading replica parameters from {}", path.display());
+            ReplicaParameters::load(&path)?
+        }
+        None => {
+            tracing::info!("Using default replica parameters");
+            ReplicaParameters::default()
+        }
+    };
+    let replica_parameters_path = working_directory.join(ReplicaParameters::DEFAULT_FILENAME);
+    replica_parameters.print(&replica_parameters_path)?;
+    tracing::info!("Wrote {}", replica_parameters_path.display());
 
     // Generate one private config per validator (keys, storage path).
     let private_configs = NodePrivateConfig::new_for_benchmarks(&working_directory, committee_size);

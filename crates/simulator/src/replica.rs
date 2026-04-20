@@ -3,12 +3,11 @@
 
 use std::sync::Arc;
 
-use consensus::{committer::Committer, protocol::Protocol};
+use consensus::committer::Committer;
 use dag::{
     authority::Authority,
-    config::NodePublicConfig,
     core::{
-        Core, CoreOptions,
+        Core,
         block_handler::{CommitHandler, RealBlockHandler},
     },
     crypto::CryptoEngine,
@@ -19,32 +18,29 @@ use dag::{
 
 use dag::committee::Committee;
 
-use crate::context::SimulatorContext;
+use crate::{context::SimulatorContext, params::ReplicaParameters};
 
 type Syncer = NetworkSyncer<SimulatorContext, Committer>;
 
 pub(crate) struct SimulatedReplica {
     authority: Authority,
     committee: Arc<Committee>,
-    public_config: NodePublicConfig,
+    parameters: ReplicaParameters,
     network: Network,
-    commit_period: u64,
 }
 
 impl SimulatedReplica {
     pub fn new(
         authority: Authority,
         committee: Arc<Committee>,
-        public_config: NodePublicConfig,
+        parameters: ReplicaParameters,
         network: Network,
-        commit_period: u64,
     ) -> Self {
         Self {
             authority,
             committee,
-            public_config,
+            parameters,
             network,
-            commit_period,
         }
     }
 
@@ -55,13 +51,20 @@ impl SimulatedReplica {
         let (storage, recovered) =
             Storage::new_for_tests(self.authority, metrics.clone(), &self.committee);
 
+        let commit_period = self.parameters.consensus.wave_length();
+        let protocol = self
+            .parameters
+            .consensus
+            .to_protocol(self.committee.total_stake());
+        let round_timeout = self
+            .parameters
+            .dag
+            .round_timeout
+            .unwrap_or_else(|| protocol.default_round_timeout());
         let committer = Committer::new(
             self.committee.clone(),
             storage.block_reader().clone(),
-            Protocol::mysticeti(
-                self.committee.total_stake(),
-                self.public_config.parameters.leader_count,
-            ),
+            protocol,
             metrics.clone(),
         );
 
@@ -76,7 +79,7 @@ impl SimulatedReplica {
             metrics.clone(),
             storage,
             recovered,
-            CoreOptions::test(),
+            self.parameters.dag.fsync,
             committer,
             crypto,
         );
@@ -84,10 +87,11 @@ impl SimulatedReplica {
         NetworkSyncer::start(
             self.network,
             core,
-            self.commit_period,
+            commit_period,
+            round_timeout,
+            self.parameters.dag.enable_synchronizer,
             commit_handler,
             metrics,
-            &self.public_config,
         )
     }
 }

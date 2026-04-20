@@ -6,21 +6,19 @@ use std::{path::Path, sync::Arc};
 use dag::{
     authority::Authority,
     committee::Committee,
-    config::NodePublicConfig,
     context::Ctx,
-    core::{Core, CoreOptions, block_handler::RealBlockHandler},
+    core::{Core, block_handler::RealBlockHandler},
     crypto::CryptoEngine,
     metrics::Metrics,
     storage::Storage,
     test_util::committee,
 };
 
-use crate::{committer::Committer, protocol::Protocol};
+use crate::{committer::Committer, protocol::ConsensusProtocol};
 
 fn open_core<C: Ctx>(
     authority: Authority,
     committee: &Arc<Committee>,
-    public_config: &NodePublicConfig,
     path: Option<&Path>,
 ) -> Core<C, Committer> {
     let metrics = Metrics::new_for_test(committee.len());
@@ -31,13 +29,11 @@ fn open_core<C: Ctx>(
     } else {
         Storage::new_for_tests(authority, metrics.clone(), committee)
     };
+    let protocol = ConsensusProtocol::default().to_protocol(committee.total_stake());
     let committer = Committer::new(
         committee.clone(),
         storage.block_reader().clone(),
-        Protocol::mysticeti(
-            committee.total_stake(),
-            public_config.parameters.leader_count,
-        ),
+        protocol,
         metrics.clone(),
     );
     let (block_handler, _tx_sender) = RealBlockHandler::new(metrics.clone());
@@ -49,7 +45,7 @@ fn open_core<C: Ctx>(
         metrics,
         storage,
         recovered,
-        CoreOptions::test(),
+        false,
         committer,
         crypto,
     )
@@ -63,19 +59,10 @@ pub fn committee_and_cores_persisted<C: Ctx>(
     n: usize,
     path: Option<&Path>,
 ) -> (Arc<Committee>, Vec<Core<C, Committer>>) {
-    let public_config = NodePublicConfig::new_for_tests(n);
-    committee_and_cores_with_config(n, path, &public_config)
-}
-
-fn committee_and_cores_with_config<C: Ctx>(
-    n: usize,
-    path: Option<&Path>,
-    public_config: &NodePublicConfig,
-) -> (Arc<Committee>, Vec<Core<C, Committer>>) {
     let committee = committee(n);
     let cores = committee
         .authorities()
-        .map(|authority| open_core(authority, &committee, public_config, path))
+        .map(|authority| open_core(authority, &committee, path))
         .collect();
     (committee, cores)
 }

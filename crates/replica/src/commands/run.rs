@@ -14,13 +14,15 @@ use dag::{
 use eyre::{Result, eyre};
 use tracing_subscriber::filter::LevelFilter;
 
-use crate::{builder::ReplicaBuilder, tracing::ReplicaTracing};
+use crate::{builder::ReplicaBuilder, params::ReplicaParameters, tracing::ReplicaTracing};
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     authority: u64,
     committee_path: String,
     public_config_path: String,
     private_config_path: String,
+    replica_parameters_path: String,
     client_parameters_path: String,
     log_level: Option<LevelFilter>,
 ) -> Result<()> {
@@ -36,6 +38,7 @@ pub async fn run(
     let committee = Committee::load(&committee_path)?;
     let public_config = NodePublicConfig::load(&public_config_path)?;
     let private_config = NodePrivateConfig::load(&private_config_path)?;
+    let replica_parameters = ReplicaParameters::load(&replica_parameters_path)?;
     let client_parameters = ClientParameters::load(&client_parameters_path)?;
 
     // Resolve the metrics address for this authority and bind
@@ -57,6 +60,7 @@ pub async fn run(
         public_config,
         private_config,
     )
+    .with_parameters(replica_parameters)
     .with_load_generator(client_parameters)
     .with_metrics_server(binding_address)
     .build()
