@@ -18,7 +18,6 @@ futures = { workspace = true }
 glob = "0.3.1"
 dag.workspace = true
 replica.workspace = true
-plotters = "0.3.4"
 prettytable-rs = "0.10"
 prometheus-parse = { git = "https://github.com/asonnino/prometheus-parser.git", rev = "75334db" }
 rand = { workspace = true }
