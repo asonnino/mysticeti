@@ -11,7 +11,7 @@ use std::{
 
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr, DurationSeconds};
+use serde_with::{DisplayFromStr, DurationSeconds, serde_as};
 
 use crate::{
     client::Instance,
@@ -290,7 +290,7 @@ impl Settings {
     #[cfg(test)]
     pub fn new_for_test() -> Self {
         // Create a temporary public key file.
-        let mut path = tempfile::tempdir().unwrap().into_path();
+        let mut path = tempfile::tempdir().unwrap().keep();
         path.push("test_public_key.pub");
         let public_key = "This is a fake public key for tests";
         fs::write(&path, public_key).unwrap();

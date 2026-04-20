@@ -15,14 +15,20 @@ trim_trailing_whitespace = true
 
 [*.md]
 indent_size = unset
-max_line_length = 150
+max_line_length = 200
 
 [{*.yml,*.yaml,*.toml}]
 indent_size = 2
 max_line_length = 150
 
+[**/assets/banner.txt]
+indent_size = unset
+indent_style = unset
+trim_trailing_whitespace = false
+max_line_length = unset
+
 # Ignore paths
-[{.git/**/*,**/*.lock,LICENSE}]
+[{.git/**/*,.claude/**/*,**/*.lock,LICENSE,**/grafana-dashboard.json}]
 charset = unset
 end_of_line = unset
 indent_size = unset

@@ -5,7 +5,7 @@ use std::fmt::{Debug, Display};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{protocol::ProtocolParameters, settings::Settings, ClientParameters, NodeParameters};
+use crate::{ClientParameters, NodeParameters, protocol::ProtocolParameters, settings::Settings};
 
 /// Shortcut avoiding to use the generic version of the benchmark parameters.
 pub type BenchmarkParameters = BenchmarkParametersGeneric<NodeParameters, ClientParameters>;
@@ -81,35 +81,4 @@ impl<N: ProtocolParameters, C: ProtocolParameters> BenchmarkParametersGeneric<N,
             load: 500,
         }
     }
-}
-
-#[cfg(test)]
-pub mod test {
-    use std::{fmt::Display, str::FromStr};
-
-    use serde::{Deserialize, Serialize};
-
-    use super::ProtocolParameters;
-
-    /// Mock benchmark type for unit tests.
-    #[derive(
-        Serialize, Deserialize, Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash, Default,
-    )]
-    pub struct TestNodeConfig;
-
-    impl Display for TestNodeConfig {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "TestNodeConfig")
-        }
-    }
-
-    impl FromStr for TestNodeConfig {
-        type Err = ();
-
-        fn from_str(_s: &str) -> Result<Self, Self::Err> {
-            Ok(Self {})
-        }
-    }
-
-    impl ProtocolParameters for TestNodeConfig {}
 }

@@ -8,21 +8,22 @@ use std::{
     path::PathBuf,
 };
 
-use mysticeti_core::{
-    config::{self, ClientParameters, NodeParameters},
-    types::AuthorityIndex,
-};
+use dag::authority::Authority;
+use replica::config::{LoadGeneratorConfig, PublicReplicaConfig, ReplicaParameters};
 use serde::{Deserialize, Serialize};
 
-use super::{ProtocolCommands, ProtocolMetrics, ProtocolParameters, BINARY_PATH};
+use super::{BINARY_PATH, ProtocolCommands, ProtocolMetrics, ProtocolParameters};
 use crate::{benchmark::BenchmarkParameters, client::Instance, settings::Settings};
+
+const PUBLIC_REPLICA_CONFIG_FILENAME: &str = PublicReplicaConfig::DEFAULT_FILENAME;
+const LOAD_GENERATOR_CONFIG_FILENAME: &str = "load-generator-config.yaml";
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(transparent)]
-pub struct MysticetiNodeParameters(NodeParameters);
+pub struct MysticetiNodeParameters(ReplicaParameters);
 
 impl Deref for MysticetiNodeParameters {
-    type Target = NodeParameters;
+    type Target = ReplicaParameters;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -31,21 +32,13 @@ impl Deref for MysticetiNodeParameters {
 
 impl Debug for MysticetiNodeParameters {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.consensus_only {
-            write!(f, "c")
-        } else {
-            write!(f, "fpc")
-        }
+        write!(f, "c")
     }
 }
 
 impl Display for MysticetiNodeParameters {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.consensus_only {
-            write!(f, "Consensus-only mode")
-        } else {
-            write!(f, "FPC mode")
-        }
+        write!(f, "Consensus-only mode")
     }
 }
 
@@ -53,10 +46,10 @@ impl ProtocolParameters for MysticetiNodeParameters {}
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 #[serde(transparent)]
-pub struct MysticetiClientParameters(ClientParameters);
+pub struct MysticetiClientParameters(LoadGeneratorConfig);
 
 impl Deref for MysticetiClientParameters {
-    type Target = ClientParameters;
+    type Target = LoadGeneratorConfig;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -99,38 +92,38 @@ impl ProtocolCommands for MysticetiProtocol {
             .collect::<Vec<_>>()
             .join(" ");
 
-        let node_parameters = parameters.node_parameters.clone();
-        let node_parameters_string = serde_yaml::to_string(&node_parameters).unwrap();
-        let node_parameters_path = self.working_dir.join("node-parameters.yaml");
-        let upload_node_parameters = format!(
-            "echo -e '{node_parameters_string}' > {}",
-            node_parameters_path.display()
+        let replica_parameters = parameters.node_parameters.clone();
+        let replica_parameters_string = serde_yaml::to_string(&replica_parameters).unwrap();
+        let replica_parameters_path = self.working_dir.join("replica-parameters.yaml");
+        let upload_replica_parameters = format!(
+            "echo -e '{replica_parameters_string}' > {}",
+            replica_parameters_path.display()
         );
 
-        let mut client_parameters = parameters.client_parameters.clone();
-        client_parameters.0.load = parameters.load / parameters.nodes;
-        let client_parameters_string = serde_yaml::to_string(&client_parameters).unwrap();
-        let client_parameters_path = self.working_dir.join("client-parameters.yaml");
-        let upload_client_parameters = format!(
-            "echo -e '{client_parameters_string}' > {}",
-            client_parameters_path.display()
+        let mut load_generator_config = parameters.client_parameters.clone();
+        load_generator_config.0.load = parameters.load / parameters.nodes;
+        let load_generator_config_string = serde_yaml::to_string(&load_generator_config).unwrap();
+        let load_generator_config_path = self.working_dir.join(LOAD_GENERATOR_CONFIG_FILENAME);
+        let upload_load_generator_config = format!(
+            "echo -e '{load_generator_config_string}' > {}",
+            load_generator_config_path.display()
         );
 
         let genesis = [
-            &format!("./{BINARY_PATH}/mysticeti"),
-            "benchmark-genesis",
+            &format!("./{BINARY_PATH}/replica"),
+            "test-genesis",
             &format!(
-                "--ips {ips} --working-directory {} --node-parameters-path {}",
+                "--ips {ips} --working-directory {} --replica-parameters-path {}",
                 self.working_dir.display(),
-                node_parameters_path.display(),
+                replica_parameters_path.display(),
             ),
         ]
         .join(" ");
 
         [
             "source $HOME/.cargo/env",
-            &upload_node_parameters,
-            &upload_client_parameters,
+            &upload_replica_parameters,
+            &upload_load_generator_config,
             &genesis,
         ]
         .join(" && ")
@@ -148,24 +141,23 @@ impl ProtocolCommands for MysticetiProtocol {
             .into_iter()
             .enumerate()
             .map(|(i, instance)| {
-                let authority = i as AuthorityIndex;
-                let committee_path = self.working_dir.join("committee.yaml");
-                let public_config_path = self.working_dir.join("public-config.yaml");
+                let authority = Authority::from(i);
+                let public_config_path = self.working_dir.join(PUBLIC_REPLICA_CONFIG_FILENAME);
                 let private_config_path = self
                     .working_dir
-                    .join(format!("private-config-{authority}.yaml"));
-                let client_parameters_path = self.working_dir.join("client-parameters.yaml");
+                    .join(format!("private-replica-config-{authority}.yaml"));
+                let load_generator_config_path =
+                    self.working_dir.join(LOAD_GENERATOR_CONFIG_FILENAME);
 
                 let run = [
-                    &format!("./{BINARY_PATH}/mysticeti"),
+                    &format!("./{BINARY_PATH}/replica"),
                     "run",
                     &format!("--authority {authority}"),
-                    &format!("--committee-path {}", committee_path.display()),
                     &format!("--public-config-path {}", public_config_path.display()),
                     &format!("--private-config-path {}", private_config_path.display()),
                     &format!(
-                        "--client-parameters-path {}",
-                        client_parameters_path.display()
+                        "--load-generator-config-path {}",
+                        load_generator_config_path.display()
                     ),
                 ]
                 .join(" ");
@@ -190,16 +182,16 @@ impl ProtocolCommands for MysticetiProtocol {
 }
 
 impl ProtocolMetrics for MysticetiProtocol {
-    const BENCHMARK_DURATION: &'static str = mysticeti_core::metrics::BENCHMARK_DURATION;
+    const BENCHMARK_DURATION: &'static str = dag::metrics::BENCHMARK_DURATION;
     const TOTAL_TRANSACTIONS: &'static str = "latency_s_count";
     const LATENCY_BUCKETS: &'static str = "latency_s";
     const LATENCY_SUM: &'static str = "latency_s_sum";
-    const LATENCY_SQUARED_SUM: &'static str = mysticeti_core::metrics::LATENCY_SQUARED_S;
+    const LATENCY_SQUARED_SUM: &'static str = dag::metrics::LATENCY_SQUARED_S;
 
     fn nodes_metrics_path<I>(
         &self,
         instances: I,
-        parameters: &BenchmarkParameters,
+        _parameters: &BenchmarkParameters,
     ) -> Vec<(Instance, String)>
     where
         I: IntoIterator<Item = Instance>,
@@ -209,11 +201,10 @@ impl ProtocolMetrics for MysticetiProtocol {
             .map(|x| (IpAddr::V4(x.main_ip), x))
             .unzip();
 
-        let node_parameters = Some(parameters.node_parameters.deref().clone());
-        let node_config = config::NodePublicConfig::new_for_benchmarks(ips, node_parameters);
-        let metrics_paths = node_config
+        let public_config = PublicReplicaConfig::new_for_benchmarks(ips);
+        let metrics_paths = public_config
             .all_metric_addresses()
-            .map(|x| format!("{x}{}", mysticeti_core::prometheus::METRICS_ROUTE));
+            .map(|x| format!("{x}{}", replica::prometheus::METRICS_ROUTE));
 
         instances.into_iter().zip(metrics_paths).collect()
     }

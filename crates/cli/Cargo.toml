@@ -1,0 +1,24 @@
+[package]
+name = "cli"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "mysticeti"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+color-eyre = { workspace = true }
+eyre = { workspace = true }
+dag.workspace = true
+consensus.workspace = true
+replica.workspace = true
+simulator.workspace = true
+serde_yaml = { workspace = true }
+terminal_size = "0.4.4"
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+unicode-width = "0.2.2"

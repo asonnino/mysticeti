@@ -1,0 +1,28 @@
+[package]
+name = "replica"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+axum = "0.7"
+eyre = { workspace = true }
+# `test-utils` is required for `Storage::new_for_tests`, used by
+# `StorageKind::Ephemeral`. Replace with a dedicated constructor once true
+# in-memory storage lands (see project_ephemeral_storage memory).
+dag = { workspace = true, features = ["test-utils"] }
+consensus.workspace = true
+minibytes = { workspace = true, default-features = false }
+prometheus = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+dag = { workspace = true, features = ["test-utils"] }
+consensus = { workspace = true, features = ["test-utils"] }
+reqwest = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }

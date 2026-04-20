@@ -13,17 +13,11 @@ use aws_sdk_ec2::{
     meta::PKG_VERSION,
     primitives::Blob,
     types::{
+        EphemeralNvmeSupport, Instance as AwsInstance, ResourceType, VolumeType,
         builders::{
-            BlockDeviceMappingBuilder,
-            EbsBlockDeviceBuilder,
-            FilterBuilder,
-            TagBuilder,
+            BlockDeviceMappingBuilder, EbsBlockDeviceBuilder, FilterBuilder, TagBuilder,
             TagSpecificationBuilder,
         },
-        EphemeralNvmeSupport,
-        Instance as AwsInstance,
-        ResourceType,
-        VolumeType,
     },
 };
 use serde::Serialize;
@@ -72,7 +66,7 @@ impl AwsClient {
 
         let mut clients = HashMap::new();
         for region in settings.regions.clone() {
-            let sdk_config = aws_config::defaults(BehaviorVersion::v2024_03_28())
+            let sdk_config = aws_config::defaults(BehaviorVersion::v2026_01_12())
                 .region(Region::new(region.clone()))
                 .profile_files(profile_files.clone())
                 .load()
@@ -228,12 +222,11 @@ impl AwsClient {
         let response = request.send().await?;
 
         // Return true if the response contains references to NVMe drives.
-        if let Some(info) = response.instance_types().first() {
-            if let Some(info) = info.instance_storage_info() {
-                if info.nvme_support() == Some(&EphemeralNvmeSupport::Required) {
-                    return Ok(true);
-                }
-            }
+        if let Some(info) = response.instance_types().first()
+            && let Some(info) = info.instance_storage_info()
+            && info.nvme_support() == Some(&EphemeralNvmeSupport::Required)
+        {
+            return Ok(true);
         }
         Ok(false)
     }

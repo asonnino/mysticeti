@@ -1,0 +1,95 @@
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+use std::collections::{BTreeMap, HashSet, VecDeque};
+
+use minibytes::Bytes;
+
+use crate::{
+    block::{Block, BlockReference},
+    block_store::{CommitData, OwnBlockData},
+    core::MetaStatement,
+    data::Data,
+    wal::WalPosition,
+};
+
+pub struct RecoveredState {
+    pub last_own_block: Option<OwnBlockData>,
+    pub pending: VecDeque<(WalPosition, MetaStatement)>,
+    pub unprocessed_blocks: Vec<Data<Block>>,
+
+    pub last_committed_leader: Option<BlockReference>,
+    pub committed_blocks: HashSet<BlockReference>,
+}
+
+#[derive(Default)]
+pub(super) struct RecoveredStateBuilder {
+    pending: BTreeMap<WalPosition, RawMetaStatement>,
+    last_own_block: Option<OwnBlockData>,
+    unprocessed_blocks: Vec<Data<Block>>,
+
+    last_committed_leader: Option<BlockReference>,
+    committed_blocks: HashSet<BlockReference>,
+}
+
+impl RecoveredStateBuilder {
+    pub(super) fn new() -> Self {
+        Self::default()
+    }
+
+    pub(super) fn block(&mut self, pos: WalPosition, block: &Data<Block>) {
+        self.pending
+            .insert(pos, RawMetaStatement::Include(*block.reference()));
+        self.unprocessed_blocks.push(block.clone());
+    }
+
+    pub(super) fn payload(&mut self, pos: WalPosition, payload: Bytes) {
+        self.pending.insert(pos, RawMetaStatement::Payload(payload));
+    }
+
+    pub(super) fn own_block(&mut self, own_block_data: OwnBlockData) {
+        // Edge case of WalPosition::MAX is automatically handled here, empty map is returned
+        self.pending = self.pending.split_off(&own_block_data.next_entry);
+        self.unprocessed_blocks.push(own_block_data.block.clone());
+        self.last_own_block = Some(own_block_data);
+    }
+
+    pub(super) fn commit_data(&mut self, commits: Vec<CommitData>) {
+        for commit_data in commits {
+            self.last_committed_leader = Some(commit_data.leader);
+            self.committed_blocks
+                .extend(commit_data.sub_dag.into_iter());
+        }
+    }
+
+    pub(super) fn build(self) -> RecoveredState {
+        let pending = self
+            .pending
+            .into_iter()
+            .map(|(pos, raw)| (pos, raw.into_meta_statement()))
+            .collect();
+        RecoveredState {
+            pending,
+            last_own_block: self.last_own_block,
+            unprocessed_blocks: self.unprocessed_blocks,
+            last_committed_leader: self.last_committed_leader,
+            committed_blocks: self.committed_blocks,
+        }
+    }
+}
+
+enum RawMetaStatement {
+    Include(BlockReference),
+    Payload(Bytes),
+}
+
+impl RawMetaStatement {
+    fn into_meta_statement(self) -> MetaStatement {
+        match self {
+            RawMetaStatement::Include(include) => MetaStatement::Include(include),
+            RawMetaStatement::Payload(payload) => MetaStatement::Payload(
+                bincode::deserialize(&payload).expect("Failed to deserialize payload"),
+            ),
+        }
+    }
+}

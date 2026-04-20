@@ -4,7 +4,7 @@ version = "0.0.1"
 authors = ["Mysten Labs <build@mystenlabs.com>"]
 license = "Apache-2.0"
 publish = false
-edition = "2021"
+edition.workspace = true
 
 [dependencies]
 aws-config = "1.5.1"
@@ -16,18 +16,18 @@ crossterm = "0.27.0"
 eyre = { workspace = true }
 futures = { workspace = true }
 glob = "0.3.1"
-mysticeti-core = { path = "../mysticeti-core" }
-plotters = "0.3.4"
+dag.workspace = true
+replica.workspace = true
 prettytable-rs = "0.10"
 prometheus-parse = { git = "https://github.com/asonnino/prometheus-parser.git", rev = "75334db" }
-rand = "0.8.5"
+rand = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = "1.0.88"
 serde_with = "3.8.1"
-serde_yaml = "0.9.33"
+serde_yaml = { workspace = true }
 ssh2 = "0.9.4"                                                                                    # TODO: remove this dependency
-thiserror = "1.0.38"
+thiserror = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]

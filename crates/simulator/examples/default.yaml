@@ -1,0 +1,38 @@
+# Example simulation configuration.
+#
+# All fields are optional and fall back to sensible defaults.
+# Use this file as a starting point:
+#   cargo run -p replica -- simulate --config-path path/to/config.yaml
+#
+# To dump the built-in defaults:
+#   cargo run -p replica -- simulate --dump-config
+committee_size: 10
+latency_min_ms: 50
+latency_max_ms: 100
+duration_secs: 20
+rng_seed: 0
+# Network topology. Options:
+#   fullMesh                   - every node connected to every other
+#   oneDown: <node_index>      - one node isolated from the rest
+#   star: <center_index>       - star topology with a center node
+#   partition:                 - partition into groups of node indices
+#     - [0, 1]
+#     - [2, 3, 4, 5, 6, 7, 8, 9]
+topology: fullMesh
+# Replica-level tunable parameters (all optional, shown with defaults).
+replica_parameters:
+  dag:
+    # Omit round_timeout to use the protocol-dependent default.
+    round_timeout: null
+    max_block_size: 4194304
+    enable_synchronizer: false
+    fsync: false
+  # Consensus protocol variant. Options:
+  #   mysticeti                            { leader_count }
+  #   odontoceti                           { leader_count }
+  #   mahiMahi                             { leader_count, wave_length: 4 | 5 }
+  #   cordialMinersPartiallySynchronous
+  #   cordialMinersAsynchronous
+  consensus:
+    type: mysticeti
+    leader_count: 2

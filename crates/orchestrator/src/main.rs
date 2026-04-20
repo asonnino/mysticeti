@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use benchmark::BenchmarkParameters;
 use clap::Parser;
-use client::{aws::AwsClient, vultr::VultrClient, ServerProviderClient};
+use client::{ServerProviderClient, aws::AwsClient, vultr::VultrClient};
 use eyre::Context;
 use measurements::MeasurementsCollection;
 use orchestrator::Orchestrator;
