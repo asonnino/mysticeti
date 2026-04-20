@@ -8,18 +8,32 @@ use serde::{Deserialize, Serialize};
 use dag::config::ImportExport;
 use replica::config::ReplicaParameters;
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-#[serde(rename_all = "camelCase")]
-pub enum NetworkTopology {
-    #[default]
-    FullMesh,
-    OneDown(usize),
-    Partition(Vec<Vec<usize>>),
-    Star(usize),
+/// Either a single simulation or a suite of simulations to run sequentially.
+///
+/// The untagged representation lets one YAML file be either a mapping (single
+/// config, as before) or a top-level sequence of configs (suite).
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(untagged)]
+pub enum SimulationMode {
+    Suite(Vec<SimulationConfig>),
+    Single(SimulationConfig),
 }
+
+impl SimulationMode {
+    pub fn into_configs(self) -> Vec<SimulationConfig> {
+        match self {
+            SimulationMode::Single(config) => vec![config],
+            SimulationMode::Suite(configs) => configs,
+        }
+    }
+}
+
+impl ImportExport for SimulationMode {}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SimulationConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     #[serde(default = "defaults::committee_size")]
     pub committee_size: usize,
     #[serde(default = "defaults::latency_min_ms")]
@@ -39,6 +53,7 @@ pub struct SimulationConfig {
 impl Default for SimulationConfig {
     fn default() -> Self {
         Self {
+            name: None,
             committee_size: defaults::committee_size(),
             latency_min_ms: defaults::latency_min_ms(),
             latency_max_ms: defaults::latency_max_ms(),
@@ -69,6 +84,16 @@ impl SimulationConfig {
 }
 
 impl ImportExport for SimulationConfig {}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum NetworkTopology {
+    #[default]
+    FullMesh,
+    OneDown(usize),
+    Partition(Vec<Vec<usize>>),
+    Star(usize),
+}
 
 mod defaults {
     pub fn committee_size() -> usize {

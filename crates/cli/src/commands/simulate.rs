@@ -4,8 +4,8 @@
 use std::path::PathBuf;
 
 use dag::config::ImportExport;
-use eyre::{Result, eyre};
-use simulator::{SimulationConfig, SimulationRunner, SimulatorTracing};
+use eyre::{Result, bail, eyre};
+use simulator::{SimulationConfig, SimulationMode, SimulationRunner, SimulatorTracing};
 use tracing_subscriber::filter::LevelFilter;
 
 use crate::banner;
@@ -26,45 +26,69 @@ pub async fn simulate(
         None => SimulatorTracing::setup(),
     };
 
-    // Load simulation config or fall back to defaults.
-    let config = match config_path {
+    let configs = match config_path {
         Some(path) => {
             tracing::info!("Loading simulation config from {}", path.display());
-            SimulationConfig::load(&path)?
+            SimulationMode::load(&path)?.into_configs()
         }
         None => {
             tracing::info!("Using default simulation config");
-            SimulationConfig::default()
+            vec![SimulationConfig::default()]
         }
     };
 
-    let nodes = config.committee_size.to_string();
-    let duration = format!("{}s", config.duration_secs);
+    if configs.is_empty() {
+        bail!("simulation suite is empty");
+    }
+
     banner::BannerPrinter::new(
         "Mysticeti",
         &[
             ("Mode", "Simulator"),
-            ("Nodes", &nodes),
-            ("Duration", &duration),
+            ("Simulations", &configs.len().to_string()),
         ],
     )
     .print();
 
-    // Run the simulation on a blocking thread (it uses simulated time, not tokio).
-    let results = tokio::task::spawn_blocking(move || SimulationRunner::new(config).run())
-        .await
-        .map_err(|error| eyre!("Simulation task panicked: {error}"))?;
+    let total = configs.len();
+    let mut diverged = 0;
+    for (index, config) in configs.into_iter().enumerate() {
+        if total > 1 {
+            print_run_header(index + 1, total, &config);
+        }
+        let results = tokio::task::spawn_blocking(move || SimulationRunner::new(config).run())
+            .await
+            .map_err(|error| eyre!("Simulation task panicked: {error}"))?;
 
-    // Report results.
-    println!();
-    if results.commits_consistent {
-        println!("Commits consistent across all validators");
-    } else {
-        eprintln!("ERROR: Commits DIVERGED");
-    }
-    for (i, leaders) in results.committed_leaders.iter().enumerate() {
-        println!("  Validator {i}: {} committed leaders", leaders.len());
+        println!();
+        if results.commits_consistent {
+            println!("Commits consistent across all validators");
+        } else {
+            eprintln!("ERROR: Commits DIVERGED");
+            diverged += 1;
+        }
+        for (i, leaders) in results.committed_leaders.iter().enumerate() {
+            println!("  Validator {i}: {} committed leaders", leaders.len());
+        }
     }
 
+    if total > 1 {
+        let consistent = total - diverged;
+        println!();
+        println!("{total} simulations run, {consistent} consistent, {diverged} diverged");
+    }
+
+    if diverged > 0 {
+        bail!("{diverged} of {total} simulation(s) diverged");
+    }
     Ok(())
+}
+
+fn print_run_header(index: usize, total: usize, config: &SimulationConfig) {
+    let label = config.name.as_deref().unwrap_or("unnamed");
+    println!();
+    println!(
+        "──── [{index}/{total}] {label} — {} nodes, {}s ────",
+        config.committee_size, config.duration_secs,
+    );
 }

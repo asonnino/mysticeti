@@ -1,22 +1,17 @@
 ---
-name: Duplicated ReplicaParameters (replica + simulator)
-description: ReplicaParameters intentionally duplicated in replica/src/params.rs and simulator/src/params.rs to avoid a crate cycle; unified after the replica→lib+cli split.
+name: ReplicaParameters unification (resolved)
+description: The ReplicaParameters duplication between replica and simulator was removed by the cli/replica crate split in commit b465cba.
 type: project
 ---
 
-`ReplicaParameters { dag: DagParameters, consensus: ConsensusProtocol }` lives
-verbatim in two places:
-- `crates/replica/src/config.rs` (alongside `PublicReplicaConfig` et al.)
-- `crates/simulator/src/params.rs`
+Historical note: `ReplicaParameters` used to be duplicated in `crates/replica/src/config.rs`
+and `crates/simulator/src/params.rs` because `simulator` could not depend on `replica` without
+a cycle (replica owned the CLI which pulled in simulator).
 
-**Why:** `simulator` cannot depend on `replica` today because `replica` is a
-binary-shaped crate (owns the CLI) and pulls in runtime concerns simulator
-doesn't want. The planned split (replica → `replica_lib` + `replica_cli`)
-will let simulator depend on the lib. Until then, the user explicitly
-approved the mirror and the simulator copy carries a `NOTE:` header.
+**Resolved:** commit `b465cba feat: split cli and replica crate` split the replica crate into
+a pure library (`replica`) and a new binary (`cli`). The simulator now depends on `replica`;
+`crates/simulator/src/params.rs` was deleted and `crates/simulator/src/config.rs` imports
+`ReplicaParameters` from `replica::config` directly.
 
-**How to apply:** When reviewing edits to either file, diff against the other
-and flag drift. Current structural state is identical: `#[derive(Serialize,
-Deserialize, Clone, Default)]` + two `#[serde(default)]` fields `dag` +
-`consensus` + `impl ImportExport`. Field order, derives, serde attributes,
-and `ImportExport` impl must stay identical.
+**How to apply:** no longer a drift risk — the sole source of truth is
+`crates/replica/src/config.rs`. Keep this note only long enough to explain older commits.

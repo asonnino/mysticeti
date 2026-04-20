@@ -5,8 +5,9 @@ use std::{num::NonZeroUsize, path::PathBuf};
 
 use consensus::protocol::ConsensusProtocol;
 use dag::config::ImportExport;
+use indoc::indoc;
 use replica::config::ReplicaParameters;
-use simulator::{NetworkTopology, SimulationConfig, SimulationRunner};
+use simulator::{NetworkTopology, SimulationConfig, SimulationMode, SimulationRunner};
 
 #[test]
 fn full_mesh() {
@@ -124,6 +125,39 @@ fn from_example_config() {
 
     assert!(results.commits_consistent);
     assert!(!results.committed_leaders.is_empty());
+}
+
+#[test]
+fn mode_parses_single_mapping() {
+    let yaml = "committee_size: 7\nduration_secs: 30\n";
+    let configs = serde_yaml::from_str::<SimulationMode>(yaml)
+        .unwrap()
+        .into_configs();
+    assert_eq!(configs.len(), 1);
+    assert_eq!(configs[0].committee_size, 7);
+    assert_eq!(configs[0].duration_secs, 30);
+    assert!(configs[0].name.is_none());
+}
+
+#[test]
+fn mode_parses_suite_sequence() {
+    let yaml = indoc! {"
+        -   name: baseline
+            committee_size: 4
+            duration_secs: 20
+        -   name: one-down
+            topology:
+                oneDown: 0
+            duration_secs: 40
+    "};
+    let configs = serde_yaml::from_str::<SimulationMode>(yaml)
+        .unwrap()
+        .into_configs();
+    assert_eq!(configs.len(), 2);
+    assert_eq!(configs[0].name.as_deref(), Some("baseline"));
+    assert_eq!(configs[0].committee_size, 4);
+    assert_eq!(configs[1].name.as_deref(), Some("one-down"));
+    assert!(matches!(configs[1].topology, NetworkTopology::OneDown(0)));
 }
 
 #[test]
