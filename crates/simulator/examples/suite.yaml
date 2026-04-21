@@ -2,54 +2,58 @@
 #
 # The top-level YAML sequence lets you run several simulations sequentially
 # with one command. Each item is a full SimulationConfig: any field omitted
-# falls back to the same default as a single-config run (see default.yaml).
+# falls back to the same default as a single-config run (see single.yaml for
+# the full list of tunables and their defaults).
 #
 # Run with:
 #   cargo run -p cli -- simulate --config-path crates/simulator/examples/suite.yaml
 #
 # A final summary table is printed at the end showing each run's consistency
 # and committed-leader count.
+# Small honest committee with a customized load generator. The load generator
+# is enabled by default; this entry shows how to override its parameters.
+# Omit the `load_generator` block to use the built-in defaults.
 - name: baseline
   committee_size: 4
   duration_secs: 30
   load_generator:
-    load: 100
-    transaction_size: 512
-    initial_delay: 0s
+    load: 100 # transactions per second
+    transaction_size: 512 # bytes per transaction (must exceed 16-byte header)
+    initial_delay: 0s # humantime: "0s", "500ms", "30s"
+# Stresses the committee-size axis: more authorities, same network conditions.
 - name: larger-committee
   committee_size: 10
   duration_secs: 30
-  load_generator:
-    load: 100
-    transaction_size: 512
-    initial_delay: 0s
+# Stresses the latency axis: WAN-like link delays exercise timeout paths.
+# latency_min_ms / latency_max_ms define the uniform link-latency range.
 - name: high-latency
   committee_size: 7
   duration_secs: 30
   latency_min_ms: 200
   latency_max_ms: 400
-  load_generator:
-    load: 100
-    transaction_size: 512
-    initial_delay: 0s
+# Fault scenario: one authority is fully isolated. Consensus must still
+# progress with the remaining 2f+1 stake.
+# Topology options (also documented in single.yaml):
+#   fullMesh                   - every node connected to every other (default)
+#   oneDown: <node_index>      - one node isolated from the rest
+#   star: <center_index>       - only the center talks to everyone else
+#   partition:                 - partition into groups of node indices
+#     - [0, 1]
+#     - [2, 3, 4, 5, 6, 7, 8, 9]
 - name: one-down
   committee_size: 7
   duration_secs: 30
   topology:
     oneDown: 0
-  load_generator:
-    load: 100
-    transaction_size: 512
-    initial_delay: 0s
+# Degenerate topology: everyone talks only through node 0. Useful for
+# probing how the protocol behaves when a single node becomes a bottleneck.
 - name: star
   committee_size: 7
   duration_secs: 30
   topology:
     star: 0
-  load_generator:
-    load: 100
-    transaction_size: 512
-    initial_delay: 0s
+# Network split: the committee is partitioned into two disjoint groups,
+# neither of which holds enough stake to commit on its own.
 - name: partition
   committee_size: 6
   duration_secs: 30
@@ -57,10 +61,8 @@
     partition:
       - [0, 1, 2]
       - [3, 4, 5]
-  load_generator:
-    load: 100
-    transaction_size: 512
-    initial_delay: 0s
+# Protocol variant: runs mahi-mahi instead of the default mysticeti.
+# See single.yaml for the full list of supported consensus protocols.
 - name: mahi-mahi
   committee_size: 7
   duration_secs: 30
@@ -69,7 +71,3 @@
       protocol: mahiMahi
       leader_count: 2
       wave_length: 4
-  load_generator:
-    load: 100
-    transaction_size: 512
-    initial_delay: 0s
