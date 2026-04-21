@@ -5,6 +5,11 @@ use std::time::Duration;
 
 use prometheus::proto::MetricFamily;
 
+use super::names::{
+    COMMITTED_LEADERS_TOTAL, LABEL_AUTHORITY, LABEL_WORKLOAD, LATENCY_S, MISSING_BLOCKS,
+    WORKLOAD_SHARED,
+};
+
 /// A point-in-time snapshot of all metrics from a Prometheus
 /// registry. Test-only — no production cost.
 #[derive(Debug)]
@@ -51,14 +56,14 @@ impl MetricsSnapshot {
     /// replica. Returns `None` when no committed transaction reached
     /// `update_metrics`.
     pub fn mean_latency_ms(&self) -> Option<f64> {
-        self.histogram_mean("latency_s", &[("workload", "shared")])
+        self.histogram_mean(LATENCY_S, &[(LABEL_WORKLOAD, WORKLOAD_SHARED)])
             .map(|seconds| seconds * 1000.0)
     }
 
     /// Number of blocks this replica knows it's still missing from
     /// the given peer authority.
     pub fn missing_blocks(&self, authority: &str) -> i64 {
-        self.metric("missing_blocks", &[("authority", authority)]) as i64
+        self.metric(MISSING_BLOCKS, &[(LABEL_AUTHORITY, authority)]) as i64
     }
 
     /// Total committed leaders for `authority`, summed across all
@@ -66,14 +71,14 @@ impl MetricsSnapshot {
     pub fn committed_leaders(&self, authority: &str) -> u64 {
         let mut total = 0.0;
         for family in &self.families {
-            if family.get_name() != "committed_leaders_total" {
+            if family.get_name() != COMMITTED_LEADERS_TOTAL {
                 continue;
             }
             for metric in family.get_metric() {
                 let matches = metric
                     .get_label()
                     .iter()
-                    .any(|l| l.get_name() == "authority" && l.get_value() == authority);
+                    .any(|l| l.get_name() == LABEL_AUTHORITY && l.get_value() == authority);
                 if matches && metric.has_counter() {
                     total += metric.get_counter().get_value();
                 }

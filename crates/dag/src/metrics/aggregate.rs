@@ -3,7 +3,10 @@
 
 use std::time::Duration;
 
-use super::MetricsSnapshot;
+use super::{
+    MetricsSnapshot,
+    names::{LABEL_WORKLOAD, LATENCY_S, WORKLOAD_SHARED},
+};
 
 /// Cross-replica aggregations over a slice of [`MetricsSnapshot`]s.
 /// Each snapshot is indexed by authority (position `i` = authority `i`),
@@ -78,7 +81,7 @@ impl<'a> AggregateMetrics<'a> {
         let counts: Vec<u64> = self
             .snapshots
             .iter()
-            .filter_map(|s| s.histogram_stats("latency_s", &[("workload", "shared")]))
+            .filter_map(|s| s.histogram_stats(LATENCY_S, &[(LABEL_WORKLOAD, WORKLOAD_SHARED)]))
             .map(|(_, count)| count)
             .collect();
         if counts.is_empty() {

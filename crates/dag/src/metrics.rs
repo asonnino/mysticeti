@@ -4,6 +4,7 @@
 mod aggregate;
 mod coarse;
 mod histogram;
+mod names;
 mod precise;
 mod snapshot;
 mod timers;
@@ -15,7 +16,8 @@ use tabled::{Table, Tabled};
 use tokio::time::Instant;
 
 pub use self::aggregate::AggregateMetrics;
-pub use self::coarse::{BENCHMARK_DURATION, LATENCY_S, LATENCY_SQUARED_S};
+pub(crate) use self::names::WORKLOAD_SHARED;
+pub use self::names::{BENCHMARK_DURATION, LATENCY_S, LATENCY_SQUARED_S};
 pub use self::snapshot::MetricsSnapshot;
 pub use self::timers::{OwnedUtilizationTimer, UtilizationTimer};
 use self::{coarse::CoarseMetrics, precise::PreciseMetrics};
