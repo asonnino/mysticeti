@@ -25,7 +25,7 @@ impl SimulatorTracing {
     /// Set up simulator tracing with the default filter.
     /// `RUST_LOG` env var takes precedence.
     pub fn setup() {
-        Self::setup_with_filter("simulator=info,dag=info,dag::block_store=warn");
+        Self::setup_with_filter("simulator=warn,dag=warn");
     }
 
     /// Set up simulator tracing with an explicit filter

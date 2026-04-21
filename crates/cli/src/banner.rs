@@ -1,20 +1,14 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::io::IsTerminal;
-
 use terminal_size::terminal_size;
 use unicode_width::UnicodeWidthStr;
+
+use crate::reporter::{BLUE_BACKGROUND, BLUE_FOREGROUND, BOLD, DIM, RESET, stderr_supports_color};
 
 macro_rules! display {
     ($($arg:tt)*) => { eprintln!($($arg)*) };
 }
-
-const BLUE_FOREGROUND: &str = "\x1b[34m";
-const BLUE_BACKGROUND: &str = "\x1b[44m";
-const BOLD: &str = "\x1b[1m";
-const DIM: &str = "\x1b[2m";
-const RESET: &str = "\x1b[0m";
 
 const ART: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/banner.txt"));
 
@@ -40,7 +34,7 @@ impl BannerPrinter {
                 .iter()
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect(),
-            color: std::io::stderr().is_terminal(),
+            color: stderr_supports_color(),
             inner_width,
             top_border: format!("┌{border_fill}┐"),
             bottom_border: format!("└{border_fill}┘"),

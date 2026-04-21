@@ -34,5 +34,5 @@ replica_parameters:
   #   cordialMinersPartiallySynchronous
   #   cordialMinersAsynchronous
   consensus:
-    type: mysticeti
+    protocol: mysticeti
     leader_count: 2

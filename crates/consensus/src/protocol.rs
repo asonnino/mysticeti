@@ -12,7 +12,7 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 /// that are fixed by the protocol (wave length, pipelining, quorum
 /// thresholds) are derived in `to_protocol`.
 #[derive(Serialize, Deserialize, Clone)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(tag = "protocol", rename_all = "camelCase")]
 pub enum ConsensusProtocol {
     CordialMinersPartiallySynchronous,
     CordialMinersAsynchronous,
