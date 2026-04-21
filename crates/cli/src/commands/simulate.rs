@@ -14,6 +14,7 @@ pub async fn simulate(
     config_path: Option<PathBuf>,
     dump_config: bool,
     log_level: Option<LevelFilter>,
+    log_file: Option<PathBuf>,
 ) -> Result<()> {
     // Print default config to stdout and exit.
     if dump_config {
@@ -21,10 +22,11 @@ pub async fn simulate(
         return Ok(());
     }
 
-    match log_level {
-        Some(level) => SimulatorTracing::setup_with_filter(&level.to_string()),
-        None => SimulatorTracing::setup(),
-    };
+    let mut tracing = SimulatorTracing::new().with_log_file(log_file);
+    if let Some(level) = log_level {
+        tracing = tracing.with_filter(level.to_string());
+    }
+    let _guard = tracing.setup()?;
 
     let configs = match config_path {
         Some(path) => {

@@ -16,6 +16,10 @@ pub struct Args {
     #[arg(long, global = true)]
     pub log_level: Option<LevelFilter>,
 
+    /// Write logs to this file instead of stderr.
+    #[arg(long, global = true, value_name = "FILE")]
+    pub log_file: Option<PathBuf>,
+
     #[command(subcommand)]
     pub command: Command,
 }

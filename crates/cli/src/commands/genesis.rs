@@ -16,12 +16,14 @@ pub fn test_genesis(
     working_directory: PathBuf,
     replica_parameters_path: Option<PathBuf>,
     log_level: Option<LevelFilter>,
+    log_file: Option<PathBuf>,
 ) -> Result<()> {
-    match log_level {
+    let _guard = match log_level {
         Some(level) => ReplicaTracing::new(level),
         None => ReplicaTracing::default(),
     }
-    .setup();
+    .with_log_file(log_file)
+    .setup()?;
 
     let committee_size = ips.len();
     tracing::info!("Generating test genesis for {committee_size} validators");
