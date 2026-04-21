@@ -10,7 +10,7 @@ use dag::{
     committee::Committee,
     committee::Stake,
     consensus::{DagConsensus, LeaderStatus},
-    metrics::{CommitType, Metrics},
+    metrics::{DecisionType, Metrics},
     storage::BlockReader,
 };
 
@@ -119,12 +119,12 @@ impl Committer {
             .inspect(|x| tracing::debug!("Decided {x}"))
     }
 
-    /// Record this leader's commit outcome on `committed_leaders_total`. `Undecided` leaders
-    /// aren't a commit outcome, so `CommitType::classify` returns `None` and we skip emission.
+    /// Record this leader's decision outcome on `committed_leaders_total`. `Undecided` leaders
+    /// aren't a decision outcome, so `DecisionType::classify` returns `None` and we skip emission.
     fn update_metrics(&self, leader: &LeaderStatus, direct_decide: bool) {
-        if let Some(commit_type) = CommitType::classify(leader, direct_decide) {
+        if let Some(decision) = DecisionType::classify(leader, direct_decide) {
             self.metrics
-                .inc_committed_leaders(leader.authority(), commit_type);
+                .inc_committed_leaders(leader.authority(), decision);
         }
     }
 }

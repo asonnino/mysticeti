@@ -6,8 +6,8 @@ use std::time::Duration;
 use prometheus::proto::MetricFamily;
 
 use super::names::{
-    COMMITTED_LEADERS_TOTAL, LABEL_AUTHORITY, LABEL_WORKLOAD, LATENCY_S, MISSING_BLOCKS,
-    WORKLOAD_SHARED,
+    COMMITTED_LEADERS_TOTAL, DecisionType, LABEL_AUTHORITY, LABEL_COMMIT_TYPE, LABEL_WORKLOAD,
+    LATENCY_S, MISSING_BLOCKS, WORKLOAD_SHARED,
 };
 use crate::authority::Authority;
 
@@ -67,8 +67,8 @@ impl MetricsSnapshot {
         self.metric(MISSING_BLOCKS, &[(LABEL_AUTHORITY, &label)]) as i64
     }
 
-    /// Total committed leaders for `authority`, summed across all `commit_type` labels
-    /// (direct-commit, indirect-skip, ...).
+    /// Total leaders *committed* by `authority` — the commit rows of `committed_leaders_total`,
+    /// as identified by [`DecisionType::is_committed`]. Skipped leaders are excluded.
     pub fn committed_leaders(&self, authority: Authority) -> u64 {
         let label = authority.to_string();
         let mut total = 0.0;
@@ -77,11 +77,15 @@ impl MetricsSnapshot {
                 continue;
             }
             for metric in family.get_metric() {
-                let matches = metric
-                    .get_label()
+                let labels = metric.get_label();
+                let authority_matches = labels
                     .iter()
                     .any(|l| l.get_name() == LABEL_AUTHORITY && l.get_value() == label);
-                if matches && metric.has_counter() {
+                let is_commit = labels.iter().any(|l| {
+                    l.get_name() == LABEL_COMMIT_TYPE
+                        && DecisionType::from_label(l.get_value()).is_some_and(|d| d.is_committed())
+                });
+                if authority_matches && is_commit && metric.has_counter() {
                     total += metric.get_counter().get_value();
                 }
             }
@@ -135,7 +139,8 @@ impl MetricsSnapshot {
 
 #[cfg(test)]
 mod test {
-    use super::MetricsSnapshot;
+    use super::{DecisionType, MetricsSnapshot};
+    use crate::{authority::Authority, metrics::Metrics};
     use prometheus::{
         Registry, register_int_counter_vec_with_registry, register_int_counter_with_registry,
         register_int_gauge_with_registry,
@@ -183,6 +188,18 @@ mod test {
         let registry = Registry::new();
         let snapshot = collect_snapshot(&registry);
         assert_eq!(snapshot.metric("nonexistent", &[]), 0.0);
+    }
+
+    #[test]
+    fn committed_leaders_excludes_skips() {
+        let metrics = Metrics::new_for_test(4);
+        let a = Authority::from(0_usize);
+        metrics.inc_committed_leaders(a, DecisionType::DirectCommit);
+        metrics.inc_committed_leaders(a, DecisionType::IndirectCommit);
+        metrics.inc_committed_leaders(a, DecisionType::DirectSkip);
+        metrics.inc_committed_leaders(a, DecisionType::IndirectSkip);
+        let snapshot = metrics.collect();
+        assert_eq!(snapshot.committed_leaders(a), 2);
     }
 
     #[test]
