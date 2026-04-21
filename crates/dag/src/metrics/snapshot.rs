@@ -281,6 +281,8 @@ mod test {
         // Drives `committed_leaders_total` directly so the test doesn't need a `Data<Block>` to
         // construct `LeaderStatus::DirectCommit`. Label values here must match the wire strings
         // that `Metrics::inc_decided_leaders` writes.
+        let authority = Authority::from(0_usize);
+        let authority_label = authority.to_string();
         let registry = Registry::new();
         let counter = register_int_counter_vec_with_registry!(
             "committed_leaders_total",
@@ -290,19 +292,19 @@ mod test {
         )
         .unwrap();
         counter
-            .with_label_values(&["A", COMMIT_TYPE_DIRECT_COMMIT])
+            .with_label_values(&[&authority_label, COMMIT_TYPE_DIRECT_COMMIT])
             .inc();
         counter
-            .with_label_values(&["A", COMMIT_TYPE_INDIRECT_COMMIT])
+            .with_label_values(&[&authority_label, COMMIT_TYPE_INDIRECT_COMMIT])
             .inc();
         counter
-            .with_label_values(&["A", COMMIT_TYPE_DIRECT_SKIP])
+            .with_label_values(&[&authority_label, COMMIT_TYPE_DIRECT_SKIP])
             .inc();
         counter
-            .with_label_values(&["A", COMMIT_TYPE_INDIRECT_SKIP])
+            .with_label_values(&[&authority_label, COMMIT_TYPE_INDIRECT_SKIP])
             .inc();
         let snapshot = collect_snapshot(&registry);
-        assert_eq!(snapshot.committed_leaders(Authority::from(0_usize)), 2);
+        assert_eq!(snapshot.committed_leaders(authority), 2);
     }
 
     #[test]

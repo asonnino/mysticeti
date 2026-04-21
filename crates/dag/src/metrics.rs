@@ -272,6 +272,10 @@ mod test {
 
     use super::{Authority, Metrics};
     use crate::consensus::LeaderStatus;
+    use crate::metrics::names::{
+        COMMIT_TYPE_DIRECT_SKIP, COMMIT_TYPE_INDIRECT_SKIP, COMMITTED_LEADERS_TOTAL,
+        LABEL_AUTHORITY, LABEL_COMMIT_TYPE,
+    };
 
     #[test]
     fn new_for_test_collect_roundtrip() {
@@ -304,23 +308,34 @@ mod test {
         metrics.set_missing_blocks(a, 3);
         metrics.inc_block_sync_requests_sent(a);
         let snapshot = metrics.collect();
+        let authority_a = a.to_string();
+        let authority_b = b.to_string();
         assert_eq!(
             snapshot.metric(
-                "committed_leaders_total",
-                &[("authority", "A"), ("commit_type", "direct-skip")]
+                COMMITTED_LEADERS_TOTAL,
+                &[
+                    (LABEL_AUTHORITY, &authority_a),
+                    (LABEL_COMMIT_TYPE, COMMIT_TYPE_DIRECT_SKIP),
+                ]
             ),
             2.0
         );
         assert_eq!(
             snapshot.metric(
-                "committed_leaders_total",
-                &[("authority", "B"), ("commit_type", "indirect-skip")]
+                COMMITTED_LEADERS_TOTAL,
+                &[
+                    (LABEL_AUTHORITY, &authority_b),
+                    (LABEL_COMMIT_TYPE, COMMIT_TYPE_INDIRECT_SKIP),
+                ]
             ),
             1.0
         );
         assert_eq!(snapshot.missing_blocks(a), 3);
         assert_eq!(
-            snapshot.metric("block_sync_requests_sent", &[("authority", "A")]),
+            snapshot.metric(
+                "block_sync_requests_sent",
+                &[(LABEL_AUTHORITY, &authority_a)]
+            ),
             1.0
         );
     }
