@@ -8,6 +8,8 @@ use replica::{
     config::{LoadGeneratorConfig, PrivateReplicaConfig, PublicReplicaConfig},
     prometheus::{MetricsRegistry, PrometheusServer},
 };
+use std::path::PathBuf;
+
 use tracing_subscriber::filter::LevelFilter;
 
 use crate::tracing::ReplicaTracing;
@@ -18,12 +20,14 @@ pub async fn run(
     private_config_path: String,
     load_generator_config_path: Option<String>,
     log_level: Option<LevelFilter>,
+    log_file: Option<PathBuf>,
 ) -> Result<()> {
-    match log_level {
+    let _guard = match log_level {
         Some(level) => ReplicaTracing::new(level),
         None => ReplicaTracing::default(),
     }
-    .setup();
+    .with_log_file(log_file)
+    .setup()?;
     tracing::info!("Starting replica {authority}");
 
     // Load configuration from YAML.

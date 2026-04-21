@@ -1,9 +1,11 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::env;
+use std::{env, fs::File, path::PathBuf};
 
+use eyre::{Result, WrapErr};
 use tracing::{Event, Subscriber, field::Visit};
+pub use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{
     fmt::{
         FmtContext, FormatEvent, FormatFields, format,
@@ -19,32 +21,67 @@ use dag::authority::Authority;
 
 use super::context::SimulatorContext;
 
-pub struct SimulatorTracing;
+const DEFAULT_FILTER: &str = "simulator=warn,dag=warn";
+
+#[derive(Default)]
+pub struct SimulatorTracing {
+    filter: Option<String>,
+    log_file: Option<PathBuf>,
+}
 
 impl SimulatorTracing {
-    /// Set up simulator tracing with the default filter.
-    /// `RUST_LOG` env var takes precedence.
-    pub fn setup() {
-        Self::setup_with_filter("simulator=warn,dag=warn");
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    /// Set up simulator tracing with an explicit filter
-    /// string. `RUST_LOG` env var takes precedence.
-    pub fn setup_with_filter(default_filter: &str) {
+    pub fn with_filter(mut self, filter: impl Into<String>) -> Self {
+        self.filter = Some(filter.into());
+        self
+    }
+
+    pub fn with_log_file(mut self, path: Option<PathBuf>) -> Self {
+        self.log_file = path;
+        self
+    }
+
+    /// Install the subscriber. `RUST_LOG` takes precedence over the configured filter. When a log
+    /// file is configured, logs go to the file via a non-blocking background writer instead of
+    /// stderr — bind the returned guard to a `_guard` local so its `Drop` flushes buffered lines
+    /// before the process exits.
+    pub fn setup(self) -> Result<Option<WorkerGuard>> {
+        let default_filter = self.filter.as_deref().unwrap_or(DEFAULT_FILTER);
         let env_log = env::var("RUST_LOG");
         let env_log = env_log.as_deref().unwrap_or(default_filter);
+        let filter = tracing_subscriber::EnvFilter::new(env_log);
         let fmt_layer = tracing_subscriber::fmt::layer()
             .with_timer(SimulatorTime)
             .event_format(SimulatorFormat(
                 format().with_timer(SimulatorTime).compact(),
             ));
-        let filter = tracing_subscriber::EnvFilter::new(env_log);
-        tracing_subscriber::registry()
-            .with(filter)
-            .with(AuthorityLayer)
-            .with(fmt_layer)
-            .try_init()
-            .ok();
+        match self.log_file {
+            Some(path) => {
+                let file = File::create(&path)
+                    .wrap_err_with(|| format!("opening log file {}", path.display()))?;
+                let (writer, guard) = tracing_appender::non_blocking(file);
+                let fmt_layer = fmt_layer.with_writer(writer).with_ansi(false);
+                tracing_subscriber::registry()
+                    .with(filter)
+                    .with(AuthorityLayer)
+                    .with(fmt_layer)
+                    .try_init()
+                    .ok();
+                Ok(Some(guard))
+            }
+            None => {
+                tracing_subscriber::registry()
+                    .with(filter)
+                    .with(AuthorityLayer)
+                    .with(fmt_layer)
+                    .try_init()
+                    .ok();
+                Ok(None)
+            }
+        }
     }
 }
 

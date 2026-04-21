@@ -23,12 +23,14 @@ pub async fn local_testbed(
     replica_parameters_path: Option<PathBuf>,
     load_generator_config_path: Option<PathBuf>,
     log_level: Option<LevelFilter>,
+    log_file: Option<PathBuf>,
 ) -> Result<()> {
-    match log_level {
+    let _guard = match log_level {
         Some(level) => ReplicaTracing::new(level),
         None => ReplicaTracing::new(LevelFilter::DEBUG),
     }
-    .setup();
+    .with_log_file(log_file)
+    .setup()?;
 
     // Load optional parameter overrides; fall back to defaults.
     let replica_parameters = match replica_parameters_path {

@@ -89,7 +89,7 @@ impl SimulationRunner {
     /// Executes inside a deterministic discrete-event simulator:
     /// all time is simulated, no real wall-clock time elapses.
     pub fn run(self) -> SimulationResults {
-        SimulatorTracing::setup();
+        let _guard = SimulatorTracing::new().setup().ok();
         let rng = StdRng::seed_from_u64(self.config.rng_seed);
         SimulatorExecutor::run(rng, async {
             let duration = self.config.duration();

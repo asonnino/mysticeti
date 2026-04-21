@@ -23,6 +23,7 @@ async fn main() -> Result<()> {
             working_directory,
             replica_parameters_path,
             args.log_level,
+            args.log_file,
         )?,
         Command::Run {
             authority,
@@ -36,13 +37,17 @@ async fn main() -> Result<()> {
                 private_config_path,
                 load_generator_config_path,
                 args.log_level,
+                args.log_file,
             )
             .await?
         }
         Command::Simulate {
             config_path,
             dump_config,
-        } => commands::simulate::simulate(config_path, dump_config, args.log_level).await?,
+        } => {
+            commands::simulate::simulate(config_path, dump_config, args.log_level, args.log_file)
+                .await?
+        }
         Command::LocalTestbed {
             committee_size,
             replica_parameters_path,
@@ -53,6 +58,7 @@ async fn main() -> Result<()> {
                 replica_parameters_path,
                 load_generator_config_path,
                 args.log_level,
+                args.log_file,
             )
             .await?
         }
