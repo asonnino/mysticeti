@@ -176,11 +176,14 @@ impl MetricsSnapshot {
                     prev_bound = if upper.is_finite() { upper } else { prev_bound };
                     prev_count = count;
                 }
-                // Unreachable: the `+Inf` bucket's cumulative_count always equals total, so the
-                // `count >= target` branch must fire before falling out of the loop.
-                unreachable!(
+                // The `+Inf` bucket's cumulative_count should always equal total, so the
+                // `count >= target` branch must fire before falling out of the loop. If we
+                // still get here the metric data is malformed — log and treat as unavailable
+                // rather than panic in the reporting path.
+                tracing::error!(
                     "malformed histogram {name:?}: cumulative_count never reaches sample_count"
                 );
+                return None;
             }
         }
         None
@@ -220,6 +223,10 @@ impl MetricsSnapshot {
 mod test {
     use super::MetricsSnapshot;
     use crate::authority::Authority;
+    use crate::metrics::names::{
+        COMMIT_TYPE_DIRECT_COMMIT, COMMIT_TYPE_DIRECT_SKIP, COMMIT_TYPE_INDIRECT_COMMIT,
+        COMMIT_TYPE_INDIRECT_SKIP,
+    };
     use prometheus::{
         Registry, register_histogram_with_registry, register_int_counter_vec_with_registry,
         register_int_counter_with_registry, register_int_gauge_with_registry,
@@ -282,10 +289,18 @@ mod test {
             registry
         )
         .unwrap();
-        counter.with_label_values(&["A", "direct-commit"]).inc();
-        counter.with_label_values(&["A", "indirect-commit"]).inc();
-        counter.with_label_values(&["A", "direct-skip"]).inc();
-        counter.with_label_values(&["A", "indirect-skip"]).inc();
+        counter
+            .with_label_values(&["A", COMMIT_TYPE_DIRECT_COMMIT])
+            .inc();
+        counter
+            .with_label_values(&["A", COMMIT_TYPE_INDIRECT_COMMIT])
+            .inc();
+        counter
+            .with_label_values(&["A", COMMIT_TYPE_DIRECT_SKIP])
+            .inc();
+        counter
+            .with_label_values(&["A", COMMIT_TYPE_INDIRECT_SKIP])
+            .inc();
         let snapshot = collect_snapshot(&registry);
         assert_eq!(snapshot.committed_leaders(Authority::from(0_usize)), 2);
     }

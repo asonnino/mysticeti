@@ -75,7 +75,11 @@ impl LeaderStatus {
         match self {
             Self::DirectCommit(block) | Self::IndirectCommit(block) => Some(block),
             Self::DirectSkip(..) | Self::IndirectSkip(..) => None,
-            Self::Undecided(..) => panic!("Decided block is either Commit or Skip"),
+            Self::Undecided(..) => {
+                panic!(
+                    "Decided block must be DirectCommit/IndirectCommit or DirectSkip/IndirectSkip"
+                )
+            }
         }
     }
 }
