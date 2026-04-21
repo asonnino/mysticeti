@@ -119,8 +119,9 @@ impl Reporter {
                 None => "— commits/s".into(),
             };
             let mut headline = Vec::new();
-            if let Some(ms) = aggregate.mean_latency_ms() {
-                headline.push(format!("mean latency {ms:.0} ms"));
+            if let (Some(p50), Some(p90)) = (aggregate.p50_latency_ms(), aggregate.p90_latency_ms())
+            {
+                headline.push(format!("p50 {p50:.0} ms · p90 {p90:.0} ms"));
             }
             if let Some(tps) = aggregate.committed_tps(duration) {
                 headline.push(format!("{tps:.0} TPS"));

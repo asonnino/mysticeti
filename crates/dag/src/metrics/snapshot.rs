@@ -107,6 +107,65 @@ impl MetricsSnapshot {
         (count > 0).then(|| count as f64 / duration.as_secs_f64())
     }
 
+    /// Percentile `p` (clamped to `[0, 1]`) of a histogram's observations, in the histogram's
+    /// native unit. Uses the Prometheus `histogram_quantile` idiom: linear interpolation between
+    /// the upper bounds of adjacent buckets. Returns `None` when the histogram is absent or has
+    /// zero observations. When the selected bucket is the `+Inf` terminal, falls back to the
+    /// previous finite upper bound so the result stays plottable.
+    pub fn histogram_percentile(&self, name: &str, labels: &[(&str, &str)], p: f64) -> Option<f64> {
+        let p = p.clamp(0.0, 1.0);
+        for family in &self.families {
+            if family.get_name() != name {
+                continue;
+            }
+            for metric in family.get_metric() {
+                if !metric.has_histogram() || !Self::labels_match(metric, labels) {
+                    continue;
+                }
+                let histogram = metric.get_histogram();
+                let total = histogram.get_sample_count();
+                if total == 0 {
+                    return None;
+                }
+                let buckets = histogram.get_bucket();
+                if buckets.is_empty() {
+                    return None;
+                }
+                let target = p * total as f64;
+                let mut prev_bound = 0.0_f64;
+                let mut prev_count = 0_u64;
+                let mut last_finite_bound = 0.0_f64;
+                for bucket in buckets {
+                    let upper = bucket.get_upper_bound();
+                    let count = bucket.get_cumulative_count();
+                    if count as f64 >= target {
+                        let high = if upper.is_finite() {
+                            upper
+                        } else {
+                            last_finite_bound
+                        };
+                        if count == prev_count {
+                            return Some(prev_bound);
+                        }
+                        let fraction = (target - prev_count as f64) / (count - prev_count) as f64;
+                        return Some(prev_bound + fraction * (high - prev_bound));
+                    }
+                    if upper.is_finite() {
+                        last_finite_bound = upper;
+                    }
+                    prev_bound = if upper.is_finite() { upper } else { prev_bound };
+                    prev_count = count;
+                }
+                // Unreachable: the `+Inf` bucket's cumulative_count always equals total, so the
+                // `count >= target` branch must fire before falling out of the loop.
+                unreachable!(
+                    "malformed histogram {name:?}: cumulative_count never reaches sample_count"
+                );
+            }
+        }
+        None
+    }
+
     /// Read a histogram's sample sum and count. Returns `None` when no
     /// matching histogram is found (distinct from a present histogram
     /// with zero observations, which returns `Some((0.0, 0))`).
@@ -142,8 +201,8 @@ mod test {
     use super::{DecisionType, MetricsSnapshot};
     use crate::{authority::Authority, metrics::Metrics};
     use prometheus::{
-        Registry, register_int_counter_vec_with_registry, register_int_counter_with_registry,
-        register_int_gauge_with_registry,
+        Registry, register_histogram_with_registry, register_int_counter_vec_with_registry,
+        register_int_counter_with_registry, register_int_gauge_with_registry,
     };
 
     fn collect_snapshot(registry: &Registry) -> MetricsSnapshot {
@@ -200,6 +259,60 @@ mod test {
         metrics.inc_committed_leaders(a, DecisionType::IndirectSkip);
         let snapshot = metrics.collect();
         assert_eq!(snapshot.committed_leaders(a), 2);
+    }
+
+    #[test]
+    fn histogram_percentile_interpolates_within_bucket() {
+        // Buckets ≤0.25, ≤0.5, ≤0.75, ≤1.0, ≤+Inf. 100 obs uniformly spread across each of the
+        // first four buckets gives cumulative counts [100, 200, 300, 400, 400]; p50 sits at
+        // target=200, exactly the upper edge of the second bucket, so it should return 0.5.
+        let registry = Registry::new();
+        let histogram = register_histogram_with_registry!(
+            "demo_latency_s",
+            "help",
+            vec![0.25, 0.5, 0.75, 1.0],
+            registry
+        )
+        .unwrap();
+        for value in [0.1, 0.3, 0.6, 0.8] {
+            for _ in 0..100 {
+                histogram.observe(value);
+            }
+        }
+        let snapshot = collect_snapshot(&registry);
+        assert_eq!(
+            snapshot.histogram_percentile("demo_latency_s", &[], 0.0),
+            Some(0.0)
+        );
+        assert_eq!(
+            snapshot.histogram_percentile("demo_latency_s", &[], 0.5),
+            Some(0.5)
+        );
+        // p90 target = 360, lies in the fourth bucket between cumulative 300 and 400 → 0.75 +
+        // 0.6 * 0.25 = 0.9.
+        let p90 = snapshot
+            .histogram_percentile("demo_latency_s", &[], 0.9)
+            .unwrap();
+        assert!((p90 - 0.9).abs() < 1e-9, "p90 = {p90}");
+        // p100: prometheus crate adds an implicit +Inf bucket; fall back to the previous finite
+        // edge.
+        assert_eq!(
+            snapshot.histogram_percentile("demo_latency_s", &[], 1.0),
+            Some(1.0)
+        );
+    }
+
+    #[test]
+    fn histogram_percentile_empty_returns_none() {
+        let registry = Registry::new();
+        let _histogram =
+            register_histogram_with_registry!("demo_empty_s", "help", vec![0.25, 0.5], registry)
+                .unwrap();
+        let snapshot = collect_snapshot(&registry);
+        assert_eq!(
+            snapshot.histogram_percentile("demo_empty_s", &[], 0.5),
+            None
+        );
     }
 
     #[test]

@@ -38,6 +38,31 @@ impl<'a> AggregateMetrics<'a> {
         }
     }
 
+    /// 50th-percentile end-to-end transaction latency (ms), averaged across per-replica values.
+    pub fn p50_latency_ms(&self) -> Option<f64> {
+        self.latency_percentile_ms(0.5)
+    }
+
+    /// 90th-percentile end-to-end transaction latency (ms), averaged across per-replica values.
+    pub fn p90_latency_ms(&self) -> Option<f64> {
+        self.latency_percentile_ms(0.9)
+    }
+
+    fn latency_percentile_ms(&self, p: f64) -> Option<f64> {
+        let per_replica: Vec<f64> = self
+            .snapshots
+            .iter()
+            .filter_map(|s| {
+                s.histogram_percentile(LATENCY_S, &[(LABEL_WORKLOAD, WORKLOAD_SHARED)], p)
+            })
+            .collect();
+        if per_replica.is_empty() {
+            None
+        } else {
+            Some(per_replica.iter().sum::<f64>() / per_replica.len() as f64 * 1000.0)
+        }
+    }
+
     /// True if any replica reports one or more missing blocks from any peer.
     pub fn any_missing_blocks(&self) -> bool {
         self.snapshots
