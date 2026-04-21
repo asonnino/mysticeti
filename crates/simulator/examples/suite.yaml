@@ -1,0 +1,47 @@
+# Example simulation suite.
+#
+# The top-level YAML sequence lets you run several simulations sequentially
+# with one command. Each item is a full SimulationConfig: any field omitted
+# falls back to the same default as a single-config run (see default.yaml).
+#
+# Run with:
+#   cargo run -p cli -- simulate --config-path crates/simulator/examples/suite.yaml
+#
+# A final summary table is printed at the end showing each run's consistency
+# and committed-leader count.
+- name: baseline
+  committee_size: 4
+  duration_secs: 30
+- name: larger-committee
+  committee_size: 10
+  duration_secs: 30
+- name: high-latency
+  committee_size: 7
+  duration_secs: 30
+  latency_min_ms: 200
+  latency_max_ms: 400
+- name: one-down
+  committee_size: 7
+  duration_secs: 30
+  topology:
+    oneDown: 0
+- name: star
+  committee_size: 7
+  duration_secs: 30
+  topology:
+    star: 0
+- name: partition
+  committee_size: 6
+  duration_secs: 30
+  topology:
+    partition:
+      - [0, 1, 2]
+      - [3, 4, 5]
+- name: mahi-mahi
+  committee_size: 7
+  duration_secs: 30
+  replica_parameters:
+    consensus:
+      protocol: mahiMahi
+      leader_count: 2
+      wave_length: 4

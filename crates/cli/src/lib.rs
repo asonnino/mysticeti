@@ -4,4 +4,6 @@
 pub mod args;
 pub mod banner;
 pub mod commands;
+pub mod reporter;
+pub mod table;
 pub mod tracing;

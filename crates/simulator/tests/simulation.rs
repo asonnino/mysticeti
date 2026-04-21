@@ -119,7 +119,7 @@ fn custom_node_parameters() {
 
 #[test]
 fn from_example_config() {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/default.yaml");
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/single.yaml");
     let runner = SimulationRunner::from_yaml(&path).unwrap();
     let results = runner.run();
 

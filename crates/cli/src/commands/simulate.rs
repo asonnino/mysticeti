@@ -1,14 +1,14 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::path::PathBuf;
+use std::{fmt, path::PathBuf};
 
 use dag::config::ImportExport;
-use eyre::{Result, bail, eyre};
-use simulator::{SimulationConfig, SimulationMode, SimulationRunner, SimulatorTracing};
+use eyre::{Result, bail};
+use simulator::{SimulationConfig, SimulationMode, SimulatorTracing};
 use tracing_subscriber::filter::LevelFilter;
 
-use crate::banner;
+use crate::reporter::{GREEN, RED, Reporter, YELLOW};
 
 pub async fn simulate(
     config_path: Option<PathBuf>,
@@ -41,41 +41,29 @@ pub async fn simulate(
         bail!("simulation suite is empty");
     }
 
-    banner::BannerPrinter::new(
+    let reporter = Reporter::new();
+    reporter.banner(
         "Mysticeti",
         &[
             ("Mode", "Simulator"),
             ("Simulations", &configs.len().to_string()),
         ],
-    )
-    .print();
+    );
 
     let total = configs.len();
+    let mut suite_rows = Vec::with_capacity(total);
     let mut diverged = 0;
     for (index, config) in configs.into_iter().enumerate() {
-        if total > 1 {
-            print_run_header(index + 1, total, &config);
-        }
-        let results = tokio::task::spawn_blocking(move || SimulationRunner::new(config).run())
-            .await
-            .map_err(|error| eyre!("Simulation task panicked: {error}"))?;
-
-        println!();
-        if results.commits_consistent {
-            println!("Commits consistent across all validators");
-        } else {
-            eprintln!("ERROR: Commits DIVERGED");
+        reporter.config_summary(index + 1, total, &config);
+        let (outcome, suite_row) = reporter.run(config).await?;
+        if outcome == Outcome::Diverged {
             diverged += 1;
         }
-        for (i, leaders) in results.committed_leaders.iter().enumerate() {
-            println!("  Validator {i}: {} committed leaders", leaders.len());
-        }
+        suite_rows.push(suite_row);
     }
 
     if total > 1 {
-        let consistent = total - diverged;
-        println!();
-        println!("{total} simulations run, {consistent} consistent, {diverged} diverged");
+        reporter.suite_summary(&suite_rows);
     }
 
     if diverged > 0 {
@@ -84,11 +72,63 @@ pub async fn simulate(
     Ok(())
 }
 
-fn print_run_header(index: usize, total: usize, config: &SimulationConfig) {
-    let label = config.name.as_deref().unwrap_or("unnamed");
-    println!();
-    println!(
-        "──── [{index}/{total}] {label} — {} nodes, {}s ────",
-        config.committee_size, config.duration_secs,
-    );
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    /// Safety held and at least one leader was committed somewhere.
+    Pass,
+    /// Safety held but no validator committed a single leader.
+    /// Expected under unrecoverable partitions (star, symmetric split).
+    NoProgress,
+    /// Safety violated: commit histories disagree.
+    Diverged,
+}
+
+impl Outcome {
+    pub fn from(consistent: bool, commit_counts: &[usize]) -> Self {
+        if !consistent {
+            return Self::Diverged;
+        }
+        if commit_counts.iter().all(|c| *c == 0) {
+            return Self::NoProgress;
+        }
+        Self::Pass
+    }
+
+    pub fn glyph(&self) -> &'static str {
+        match self {
+            Self::Pass => "✓",
+            Self::NoProgress => "⚠",
+            Self::Diverged => "✗",
+        }
+    }
+
+    pub fn message(&self) -> &'static str {
+        match self {
+            Self::Pass => "Commits consistent across all validators",
+            Self::NoProgress => "Safe but no leader was committed",
+            Self::Diverged => "Commits DIVERGED across validators",
+        }
+    }
+
+    pub fn color(&self) -> &'static str {
+        match self {
+            Self::Pass => GREEN,
+            Self::NoProgress => YELLOW,
+            Self::Diverged => RED,
+        }
+    }
+
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Pass => "PASS",
+            Self::NoProgress => "WARN",
+            Self::Diverged => "FAIL",
+        }
+    }
+}
+
+impl fmt::Display for Outcome {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.label(), self.message())
+    }
 }

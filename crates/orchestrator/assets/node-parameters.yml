@@ -3,5 +3,5 @@ dag:
     secs: 1
     nanos: 0
 consensus:
-  type: mysticeti
+  protocol: mysticeti
   leader_count: 2

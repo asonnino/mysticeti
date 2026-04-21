@@ -18,11 +18,7 @@ impl MetricsSnapshot {
     }
 
     /// Read a metric by name and optional label key-value pairs.
-    pub fn metric(&self, name: &str, labels: &[(&str, &str)]) -> f64 {
-        self.find(name, labels)
-    }
-
-    fn find(&self, name: &str, label_values: &[(&str, &str)]) -> f64 {
+    pub fn metric(&self, name: &str, label_values: &[(&str, &str)]) -> f64 {
         for family in &self.families {
             if family.get_name() != name {
                 continue;

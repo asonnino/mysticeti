@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{ops::Range, time::Duration};
+use std::{fmt, ops::Range, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
@@ -93,6 +93,33 @@ pub enum NetworkTopology {
     OneDown(usize),
     Partition(Vec<Vec<usize>>),
     Star(usize),
+}
+
+impl fmt::Display for NetworkTopology {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::FullMesh => f.write_str("full mesh"),
+            Self::OneDown(index) => write!(f, "one down ({index})"),
+            Self::Star(center) => write!(f, "star (center={center})"),
+            Self::Partition(groups) => {
+                f.write_str("partition (")?;
+                for (i, group) in groups.iter().enumerate() {
+                    if i > 0 {
+                        f.write_str(",")?;
+                    }
+                    f.write_str("[")?;
+                    for (j, index) in group.iter().enumerate() {
+                        if j > 0 {
+                            f.write_str(",")?;
+                        }
+                        write!(f, "{index}")?;
+                    }
+                    f.write_str("]")?;
+                }
+                f.write_str(")")
+            }
+        }
+    }
 }
 
 mod defaults {
