@@ -76,3 +76,28 @@ impl CommitType {
         }
     }
 }
+
+/// Outcome of a block sync request from a peer, recorded in the `fulfilled` Prometheus label on
+/// `block_sync_requests_received`. `Found` = we had the block and served it; `Missing` = we did
+/// not and returned `BlockNotFound`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SyncRequestFulfilled {
+    Found,
+    Missing,
+}
+
+impl SyncRequestFulfilled {
+    /// Canonical string used in the Prometheus `fulfilled` label.
+    pub fn as_label(&self) -> &'static str {
+        match self {
+            Self::Found => "found",
+            Self::Missing => "missing",
+        }
+    }
+}
+
+impl From<bool> for SyncRequestFulfilled {
+    fn from(found: bool) -> Self {
+        if found { Self::Found } else { Self::Missing }
+    }
+}

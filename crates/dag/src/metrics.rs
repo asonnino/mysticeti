@@ -19,7 +19,7 @@ pub use self::aggregate::AggregateMetrics;
 pub(crate) use self::names::WORKLOAD_SHARED;
 pub use self::names::{
     BENCHMARK_DURATION, BLOCK_SYNC_REQUESTS_SENT, CommitType, LABEL_AUTHORITY, LABEL_WORKLOAD,
-    LATENCY_S, LATENCY_SQUARED_S, LEADER_TIMEOUT_TOTAL,
+    LATENCY_S, LATENCY_SQUARED_S, LEADER_TIMEOUT_TOTAL, SyncRequestFulfilled,
 };
 pub use self::snapshot::MetricsSnapshot;
 pub use self::timers::{OwnedUtilizationTimer, UtilizationTimer};
@@ -168,11 +168,15 @@ impl Metrics {
             .inc();
     }
 
-    pub fn inc_block_sync_requests_received(&self, authority: Authority, fulfilled: &str) {
+    pub fn inc_block_sync_requests_received(
+        &self,
+        authority: Authority,
+        fulfilled: SyncRequestFulfilled,
+    ) {
         let label = authority.to_string();
         self.coarse
             .block_sync_requests_received
-            .with_label_values(&[&label, fulfilled])
+            .with_label_values(&[&label, fulfilled.as_label()])
             .inc();
     }
 

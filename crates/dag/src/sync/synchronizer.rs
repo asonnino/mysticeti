@@ -13,7 +13,7 @@ use crate::{
     consensus::DagConsensus,
     context::Ctx,
     core::core_thread::CoreDispatch,
-    metrics::Metrics,
+    metrics::{Metrics, SyncRequestFulfilled},
     sync::{
         net_sync::{self, NetworkSyncerInner},
         network::NetworkMessage,
@@ -93,7 +93,7 @@ impl<C: Ctx, D: DagConsensus + Send + 'static> BlockDisseminator<C, D> {
                 None => missing.push(reference),
             }
             self.metrics
-                .inc_block_sync_requests_received(peer, &found.to_string());
+                .inc_block_sync_requests_received(peer, SyncRequestFulfilled::from(found));
         }
         self.sender
             .send(NetworkMessage::BlockNotFound(missing))
