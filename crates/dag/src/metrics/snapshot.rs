@@ -107,6 +107,27 @@ impl MetricsSnapshot {
         (count > 0).then(|| count as f64 / duration.as_secs_f64())
     }
 
+    /// Total committed leaders observed by by this replica. Skipped leaders are excluded,
+    /// same rule as [`committed_leaders`].
+    pub fn total_committed_leaders(&self) -> u64 {
+        let mut total = 0.0;
+        for family in &self.families {
+            if family.get_name() != COMMITTED_LEADERS_TOTAL {
+                continue;
+            }
+            for metric in family.get_metric() {
+                let is_commit = metric.get_label().iter().any(|l| {
+                    l.get_name() == LABEL_COMMIT_TYPE
+                        && DecisionType::from_label(l.get_value()).is_some_and(|d| d.is_committed())
+                });
+                if is_commit && metric.has_counter() {
+                    total += metric.get_counter().get_value();
+                }
+            }
+        }
+        total as u64
+    }
+
     /// Percentile `p` (clamped to `[0, 1]`) of a histogram's observations, in the histogram's
     /// native unit. Uses the Prometheus `histogram_quantile` idiom: linear interpolation between
     /// the upper bounds of adjacent buckets. Returns `None` when the histogram is absent or has

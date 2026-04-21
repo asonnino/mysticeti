@@ -1,8 +1,6 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::time::Duration;
-
 use dag::{
     authority::Authority,
     metrics::{
@@ -90,10 +88,14 @@ impl ValidatorRow {
         metrics: &MetricsSnapshot,
     ) -> Self {
         let label = authority.to_string();
-        let commits_per_sec = metrics
-            .leader_commits_per_second(authority, Duration::from_secs(duration_secs))
-            .map(|rate| format!("{rate:.1}"))
-            .unwrap_or_else(|| "—".into());
+        // Per-replica rate pairs with the `committed_leaders` cell on the same row (both are
+        // this replica's view of the committed chain): divide the row's own chain length by the
+        // run duration rather than going back through a metric.
+        let commits_per_sec = if duration_secs == 0 {
+            "—".into()
+        } else {
+            format!("{:.1}", committed_leaders as f64 / duration_secs as f64)
+        };
         let mean_latency = metrics
             .histogram_mean(LATENCY_S, &[(LABEL_WORKLOAD, "shared")])
             .map(|seconds| format!("{:.0} ms", seconds * 1000.0))
