@@ -78,7 +78,7 @@ jobs:
             --workspace \
             --skip-clean \
             --run-types Bins --run-types Doctests --run-types Examples --run-types Lib --run-types Tests \
-            --out Html,Xml \
+            --out Html --out Xml \
             --exclude-files "crates/**/benches/**/*" \
             --exclude-files "crates/**/tests/**/*" \
             --exclude-files "crates/**/test_utils/**/*" \
