@@ -68,7 +68,7 @@ pub async fn local_testbed(
     let public_config =
         PublicReplicaConfig::new_for_benchmarks(ips).with_parameters(replica_parameters);
 
-    // Prepare a clean working directory for the validators' WAL files.
+    // Prepare a clean working directory for the replicas' WAL files.
     let working_dir = PathBuf::from("local-testbed");
     match fs::remove_dir_all(&working_dir) {
         Ok(_) => {}
@@ -88,10 +88,10 @@ pub async fn local_testbed(
         ))?;
     }
 
-    tracing::info!("Starting local testbed with {committee_size} validators");
+    tracing::info!("Starting local testbed with {committee_size} replicas");
 
-    // Spin up each validator: run the replica, start its load generator, expose its metrics.
-    // Each validator gets its own registry and metrics server on a distinct port.
+    // Spin up each replica: run it, start its load generator, expose its metrics.
+    // Each replica gets its own registry and metrics server on a distinct port.
     let mut handles = Vec::with_capacity(committee_size);
     let mut metrics_servers = Vec::with_capacity(committee_size);
     let mut load_generators = Vec::with_capacity(committee_size);
@@ -116,7 +116,7 @@ pub async fn local_testbed(
         handles.push(handle);
     }
 
-    tracing::info!("All {committee_size} validators running. Press Ctrl-C to stop.");
+    tracing::info!("All {committee_size} replicas running. Press Ctrl-C to stop.");
 
     // Block until the user interrupts, then tear everything down.
     tokio::signal::ctrl_c()

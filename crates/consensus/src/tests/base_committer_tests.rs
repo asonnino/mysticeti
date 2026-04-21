@@ -357,7 +357,7 @@ fn indirect_commit() {
         .filter(|x| x.authority != leader_elector.elect_leader(leader_round_1))
         .collect();
 
-    // Only 2f+1 validators vote for the 1st leader.
+    // Only 2f+1 replicas vote for the 1st leader.
     let connections_with_leader_1 = committee
         .authorities()
         .take(strong_quorum as usize)
@@ -374,7 +374,7 @@ fn indirect_commit() {
     let references_without_votes_for_leader_1 =
         build_dag_layer(connections_without_leader_1, &mut storage);
 
-    // Only f+1 validators certify the 1st leader.
+    // Only f+1 replicas certify the 1st leader.
     let mut references_3 = Vec::new();
 
     let connections_with_votes_for_leader_1 = committee
@@ -467,7 +467,7 @@ fn indirect_skip() {
         .filter(|x| x.authority != leader_2)
         .collect();
 
-    // Only f+1 validators connect to the 2nd leader.
+    // Only f+1 replicas connect to the 2nd leader.
     let mut references = Vec::new();
 
     let connections_with_leader_2 = committee

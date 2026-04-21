@@ -78,7 +78,7 @@ pub async fn simulate(
 pub enum Outcome {
     /// Safety held and at least one leader was committed somewhere.
     Pass,
-    /// Safety held but no validator committed a single leader.
+    /// Safety held but no replica committed a single leader.
     /// Expected under unrecoverable partitions (star, symmetric split).
     NoProgress,
     /// Safety violated: commit histories disagree.
@@ -108,9 +108,9 @@ impl Outcome {
 
     pub fn message(&self) -> &'static str {
         match self {
-            Self::Pass => "Commits consistent across all validators",
+            Self::Pass => "Commits consistent across all replicas",
             Self::NoProgress => "Safe but no leader was committed",
-            Self::Diverged => "Commits DIVERGED across validators",
+            Self::Diverged => "Commits DIVERGED across replicas",
         }
     }
 

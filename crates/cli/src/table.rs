@@ -51,9 +51,9 @@ impl ConfigRow {
 }
 
 #[derive(Tabled)]
-pub struct ValidatorRow {
-    #[tabled(rename = "validator")]
-    validator: Authority,
+pub struct ReplicaRow {
+    #[tabled(rename = "replica")]
+    replica: Authority,
     #[tabled(rename = "committed leaders")]
     committed_leaders: usize,
     #[tabled(rename = "commits/s")]
@@ -70,7 +70,7 @@ pub struct ValidatorRow {
     sync_requests_sent: u64,
 }
 
-impl ValidatorRow {
+impl ReplicaRow {
     pub fn for_results(results: &SimulationResults, duration_secs: u64) -> Vec<Self> {
         results
             .committed_leaders
@@ -112,7 +112,7 @@ impl ValidatorRow {
             metrics.metric(BLOCK_SYNC_REQUESTS_SENT, &[(LABEL_AUTHORITY, &label)]) as u64;
 
         Self {
-            validator: authority,
+            replica: authority,
             committed_leaders,
             commits_per_sec,
             p50_latency,

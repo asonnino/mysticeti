@@ -11,7 +11,7 @@ use simulator::{SimulationConfig, SimulationResults, SimulationRunner};
 use crate::{
     banner::BannerPrinter,
     commands::simulate::Outcome,
-    table::{self, ConfigRow, SuiteRow, ValidatorRow},
+    table::{self, ConfigRow, ReplicaRow, SuiteRow},
 };
 
 pub const BLUE_FOREGROUND: &str = "\x1b[34m";
@@ -72,7 +72,7 @@ impl Reporter {
         println!("{}", table::render(ConfigRow::for_config(config)));
     }
 
-    /// Execute one simulation: spinner → run → badge → per-validator
+    /// Execute one simulation: spinner → run → badge → per-replica
     /// report. Returns the outcome and the suite-level row so the
     /// caller can track suite-wide aggregates.
     pub async fn run(&self, config: SimulationConfig) -> Result<(Outcome, SuiteRow)> {
@@ -103,10 +103,10 @@ impl Reporter {
     fn render_run(&self, results: &SimulationResults, duration_secs: u64, outcome: Outcome) {
         self.run_badge(outcome);
 
-        let rows = ValidatorRow::for_results(results, duration_secs);
+        let rows = ReplicaRow::for_results(results, duration_secs);
 
         // Collapse to a single-line summary in the happy path when every
-        // validator committed the same leaders and nothing is noteworthy.
+        // replica committed the same leaders and nothing is noteworthy.
         let aggregate = AggregateMetrics::new(&results.metrics);
         if outcome != Outcome::Diverged
             && results.uniform_commits()
@@ -130,7 +130,7 @@ impl Reporter {
             return;
         }
 
-        self.validators_table(rows);
+        self.replicas_table(rows);
     }
 
     fn start_spinner(&self) -> Option<ProgressBar> {
@@ -174,7 +174,7 @@ impl Reporter {
         }
     }
 
-    fn validators_table(&self, rows: Vec<ValidatorRow>) {
+    fn replicas_table(&self, rows: Vec<ReplicaRow>) {
         println!("{}", table::render(rows));
     }
 

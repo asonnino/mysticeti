@@ -361,7 +361,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
 
     /// Deploy the nodes.
     pub async fn run_nodes(&self, parameters: &BenchmarkParameters) -> TestbedResult<()> {
-        display::action("\nDeploying validators");
+        display::action("\nDeploying replicas");
 
         // Select the instances to run.
         let (_, nodes, _) = self.select_instances(parameters)?;
@@ -599,7 +599,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
                 latest_committee_size = parameters.nodes;
             }
 
-            // Deploy the validators.
+            // Deploy the replicas.
             self.run_nodes(&parameters).await?;
             if parameters.settings.benchmark_duration.as_secs() == 0 {
                 return Ok(());
