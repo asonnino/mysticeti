@@ -176,7 +176,9 @@ pub struct LoadGeneratorConfig {
     #[serde(default = "load_generator_defaults::default_transaction_size")]
     pub transaction_size: usize,
     /// The initial delay before starting to send transactions.
+    /// Accepts humantime strings in YAML (e.g. `"0s"`, `"500ms"`, `"30s"`).
     #[serde(default = "load_generator_defaults::default_initial_delay")]
+    #[serde(with = "humantime_serde")]
     pub initial_delay: Duration,
 }
 
@@ -202,6 +204,20 @@ impl Default for LoadGeneratorConfig {
             load: load_generator_defaults::default_load(),
             transaction_size: load_generator_defaults::default_transaction_size(),
             initial_delay: load_generator_defaults::default_initial_delay(),
+        }
+    }
+}
+
+impl LoadGeneratorConfig {
+    /// Minimal load-gen profile suitable for simulator runs and unit
+    /// tests: 10 tx/s of 32 B transactions, no startup delay. Too
+    /// light for production benchmarks, just enough to populate
+    /// latency histograms and exercise the commit path.
+    pub fn new_for_test() -> Self {
+        Self {
+            load: 10,
+            transaction_size: 32,
+            initial_delay: Duration::ZERO,
         }
     }
 }

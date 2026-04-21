@@ -1,17 +1,13 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    mem,
-    sync::Arc,
-    time::{Duration, Instant, SystemTime},
-};
+use std::{mem, sync::Arc, time::Duration};
 
 use minibytes::Bytes;
 use rand::{Rng, SeedableRng, rngs::StdRng};
-use tokio::{sync::mpsc, time};
+use tokio::sync::mpsc;
 
-use dag::{authority::Authority, block::transaction::Transaction, metrics::Metrics};
+use dag::{authority::Authority, block::transaction::Transaction, context::Ctx, metrics::Metrics};
 
 use crate::config::LoadGeneratorConfig;
 
@@ -25,13 +21,13 @@ impl TransactionGenerator {
     const TARGET_BLOCK_INTERVAL: Duration = Duration::from_millis(100);
     const HEADER_SIZE: usize = 8 + 8; // timestamp + random
 
-    pub fn start(
+    pub fn start<C: Ctx>(
         sender: mpsc::Sender<Vec<Transaction>>,
         seed: Authority,
         config: LoadGeneratorConfig,
         max_block_size: usize,
         metrics: Arc<Metrics>,
-    ) {
+    ) -> C::JoinHandle<()> {
         assert!(
             config.transaction_size > Self::HEADER_SIZE,
             "transaction_size must be greater than {} bytes",
@@ -44,14 +40,14 @@ impl TransactionGenerator {
         );
         let mut rng = StdRng::seed_from_u64(seed.as_u64());
         let random = rng.r#gen();
-        tokio::spawn(
+        C::spawn(
             Self {
                 sender,
                 max_block_size,
                 metrics,
             }
-            .run(config, random),
-        );
+            .run::<C>(config, random),
+        )
     }
 
     fn fill_batch(
@@ -102,7 +98,7 @@ impl TransactionGenerator {
         true
     }
 
-    async fn run(self, config: LoadGeneratorConfig, mut random: u64) {
+    async fn run<C: Ctx>(self, config: LoadGeneratorConfig, mut random: u64) {
         let load = config.load;
         let transaction_size = config.transaction_size;
         let intervals_per_second = 1000 / Self::TARGET_BLOCK_INTERVAL.as_millis() as usize;
@@ -119,19 +115,18 @@ impl TransactionGenerator {
         let batch_size = transaction_size * transactions_per_interval;
         let mut buffer = vec![0u8; batch_size];
 
-        // Cache the system clock at startup and derive
-        // subsequent timestamps from a monotonic instant,
-        // avoiding repeated clock syscalls in the hot loop.
-        let base_system_time = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap();
-        let base_instant = Instant::now();
+        // Cache the context clock at startup and derive subsequent
+        // timestamps from a monotonic instant, avoiding repeated clock
+        // syscalls in the hot loop. Works uniformly under TokioCtx
+        // (real clock) and SimulatorContext (simulated clock).
+        let base_system_time = C::timestamp_utc();
+        let base_instant = C::now();
 
-        let mut interval = time::interval(Self::TARGET_BLOCK_INTERVAL);
-        time::sleep(config.initial_delay).await;
+        let mut interval = C::interval(Self::TARGET_BLOCK_INTERVAL);
+        C::sleep(config.initial_delay).await;
         loop {
-            interval.tick().await;
-            let timestamp_ms = (base_system_time + base_instant.elapsed()).as_millis() as u64;
+            C::interval_tick(&mut interval).await;
+            let timestamp_ms = (base_system_time + C::elapsed(&base_instant)).as_millis() as u64;
 
             let batch = Self::fill_batch(
                 &mut buffer,

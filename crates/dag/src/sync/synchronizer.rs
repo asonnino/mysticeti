@@ -13,7 +13,7 @@ use crate::{
     consensus::DagConsensus,
     context::Ctx,
     core::core_thread::CoreDispatch,
-    metrics::Metrics,
+    metrics::{Metrics, SyncRequestFulfilled},
     sync::{
         net_sync::{self, NetworkSyncerInner},
         network::NetworkMessage,
@@ -93,7 +93,7 @@ impl<C: Ctx, D: DagConsensus + Send + 'static> BlockDisseminator<C, D> {
                 None => missing.push(reference),
             }
             self.metrics
-                .inc_block_sync_requests_received(&peer.to_string(), &found.to_string());
+                .inc_block_sync_requests_received(peer, SyncRequestFulfilled::from(found));
         }
         self.sender
             .send(NetworkMessage::BlockNotFound(missing))
@@ -284,7 +284,7 @@ impl<C: Ctx, D: DagConsensus + Send + 'static> BlockFetcherWorker<C, D> {
         let missing_blocks = self.inner.syncer.get_missing_blocks().await;
         for (authority, missing) in missing_blocks.into_iter().enumerate() {
             self.metrics
-                .set_missing_blocks(&authority.to_string(), missing.len() as i64);
+                .set_missing_blocks(Authority::from(authority), missing.len() as i64);
 
             for reference in missing {
                 let time = self.missing.entry(reference).or_insert(now);
@@ -305,7 +305,7 @@ impl<C: Ctx, D: DagConsensus + Send + 'static> BlockFetcherWorker<C, D> {
             let message = NetworkMessage::RequestBlocks(chunks.to_vec());
             permit.send(message);
 
-            self.metrics.inc_block_sync_requests_sent(&peer.to_string());
+            self.metrics.inc_block_sync_requests_sent(peer);
         }
     }
 

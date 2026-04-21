@@ -20,7 +20,7 @@ async fn run_replica(
     public_config: &PublicReplicaConfig,
     private_config: PrivateReplicaConfig,
     load_generator_config: &LoadGeneratorConfig,
-) -> (ReplicaHandle<TokioCtx>, JoinHandle<()>) {
+) -> (ReplicaHandle<TokioCtx>, JoinHandle<()>, JoinHandle<()>) {
     let metrics_address = public_config
         .metrics_address(authority)
         .expect("metrics address must exist");
@@ -31,13 +31,13 @@ async fn run_replica(
         .run::<TokioCtx>()
         .await
         .unwrap();
-    handle.start_load_generator(load_generator_config.clone());
+    let load_generator = handle.start_load_generator(load_generator_config.clone());
     let metrics_server = PrometheusServer::new(metrics_address, &registry)
         .bind_all_interfaces()
         .start()
         .await
         .expect("metrics server bind failed");
-    (handle, metrics_server)
+    (handle, metrics_server, load_generator)
 }
 
 async fn check_commit(address: &SocketAddr) -> Result<bool, reqwest::Error> {

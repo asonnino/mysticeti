@@ -49,9 +49,8 @@ pub async fn run(
         .build()
         .run::<TokioCtx>()
         .await?;
-    if let Some(config) = load_generator_config {
-        handle.start_load_generator(config);
-    }
+    // Keep the generator task bound to the command's scope so it isn't dropped (detached) mid-run.
+    let load_generator = load_generator_config.map(|config| handle.start_load_generator(config));
 
     // Expose metrics over HTTP on all interfaces for external scraping.
     let metrics_server = PrometheusServer::new(metrics_address, &registry)
@@ -66,5 +65,14 @@ pub async fn run(
     tokio::select! {
         result = handle.await_completion() => result,
         result = metrics_server => result.map_err(|error| eyre!("Metrics server crashed: {error}")),
+        result = async {
+            match load_generator {
+                Some(task) => match task.await {
+                    Ok(()) => Err(eyre!("Load generator stopped unexpectedly")),
+                    Err(error) => Err(eyre!("Load generator crashed: {error}")),
+                },
+                None => std::future::pending::<Result<()>>().await,
+            }
+        } => result,
     }
 }

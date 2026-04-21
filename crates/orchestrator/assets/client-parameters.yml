@@ -1,3 +1,1 @@
-initial_delay:
-  secs: 30
-  nanos: 0
+initial_delay: 30s

@@ -12,24 +12,44 @@
 - name: baseline
   committee_size: 4
   duration_secs: 30
+  load_generator:
+    load: 100
+    transaction_size: 512
+    initial_delay: 0s
 - name: larger-committee
   committee_size: 10
   duration_secs: 30
+  load_generator:
+    load: 100
+    transaction_size: 512
+    initial_delay: 0s
 - name: high-latency
   committee_size: 7
   duration_secs: 30
   latency_min_ms: 200
   latency_max_ms: 400
+  load_generator:
+    load: 100
+    transaction_size: 512
+    initial_delay: 0s
 - name: one-down
   committee_size: 7
   duration_secs: 30
   topology:
     oneDown: 0
+  load_generator:
+    load: 100
+    transaction_size: 512
+    initial_delay: 0s
 - name: star
   committee_size: 7
   duration_secs: 30
   topology:
     star: 0
+  load_generator:
+    load: 100
+    transaction_size: 512
+    initial_delay: 0s
 - name: partition
   committee_size: 6
   duration_secs: 30
@@ -37,6 +57,10 @@
     partition:
       - [0, 1, 2]
       - [3, 4, 5]
+  load_generator:
+    load: 100
+    transaction_size: 512
+    initial_delay: 0s
 - name: mahi-mahi
   committee_size: 7
   duration_secs: 30
@@ -45,3 +69,7 @@
       protocol: mahiMahi
       leader_count: 2
       wave_length: 4
+  load_generator:
+    load: 100
+    transaction_size: 512
+    initial_delay: 0s

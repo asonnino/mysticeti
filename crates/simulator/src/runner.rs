@@ -23,7 +23,7 @@ use replica::{
 use crate::{
     config::{NetworkTopology, SimulationConfig},
     context::SimulatorContext,
-    executor::SimulatorExecutor,
+    executor::{JoinHandle, SimulatorExecutor},
     network::SimulatedNetwork,
     tracing::SimulatorTracing,
 };
@@ -35,6 +35,20 @@ pub struct SimulationResults {
 }
 
 impl SimulationResults {
+    /// Committed-leader count per validator, in authority order.
+    pub fn commit_counts(&self) -> Vec<usize> {
+        self.committed_leaders.iter().map(|v| v.len()).collect()
+    }
+
+    /// True when every validator committed the exact same number of leaders.
+    pub fn uniform_commits(&self) -> bool {
+        let counts = self.commit_counts();
+        counts
+            .first()
+            .map(|first| counts.iter().all(|c| c == first))
+            .unwrap_or(true)
+    }
+
     fn check_consistency(committed: &[Vec<BlockReference>]) -> bool {
         let empty: &[BlockReference] = &[];
         let mut max_commit: &[BlockReference] = empty;
@@ -91,6 +105,9 @@ struct SimulationState {
     config: SimulationConfig,
     network: SimulatedNetwork,
     replicas: Vec<ReplicaHandle<SimulatorContext>>,
+    /// JoinHandles for any load generators we started, so they stay alive for the duration
+    /// of the simulation.
+    _load_generators: Vec<JoinHandle<()>>,
 }
 
 impl SimulationState {
@@ -109,12 +126,13 @@ impl SimulationState {
             PrivateReplicaConfig::new_for_benchmarks(&PathBuf::from("simulator"), committee_size);
 
         let mut replicas = Vec::with_capacity(committee_size);
+        let mut load_generators = Vec::new();
         for (i, (node_network, private_config)) in
             networks.into_iter().zip(private_configs).enumerate()
         {
             let authority = Authority::from(i);
             let metrics = Metrics::new_for_test(committee_size);
-            let handle = ReplicaBuilder::new(authority, public_config.clone(), private_config)
+            let mut handle = ReplicaBuilder::new(authority, public_config.clone(), private_config)
                 .with_storage(StorageKind::Ephemeral)
                 .with_crypto_disabled()
                 .with_metrics(metrics)
@@ -123,6 +141,9 @@ impl SimulationState {
                 .run::<SimulatorContext>()
                 .await
                 .expect("simulator replica build must not fail");
+            if let Some(load_generator) = config.load_generator.clone() {
+                load_generators.push(handle.start_load_generator(load_generator));
+            }
             replicas.push(handle);
         }
 
@@ -130,6 +151,7 @@ impl SimulationState {
             config,
             network,
             replicas,
+            _load_generators: load_generators,
         }
     }
 

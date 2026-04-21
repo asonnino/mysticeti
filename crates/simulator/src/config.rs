@@ -6,7 +6,7 @@ use std::{fmt, ops::Range, time::Duration};
 use serde::{Deserialize, Serialize};
 
 use dag::config::ImportExport;
-use replica::config::ReplicaParameters;
+use replica::config::{LoadGeneratorConfig, ReplicaParameters};
 
 /// Either a single simulation or a suite of simulations to run sequentially.
 ///
@@ -48,6 +48,8 @@ pub struct SimulationConfig {
     pub rng_seed: u64,
     #[serde(default)]
     pub replica_parameters: ReplicaParameters,
+    #[serde(default = "defaults::load_generator")]
+    pub load_generator: Option<LoadGeneratorConfig>,
 }
 
 impl Default for SimulationConfig {
@@ -61,6 +63,7 @@ impl Default for SimulationConfig {
             duration_secs: defaults::duration_secs(),
             rng_seed: 0,
             replica_parameters: ReplicaParameters::default(),
+            load_generator: Some(LoadGeneratorConfig::new_for_test()),
         }
     }
 }
@@ -123,6 +126,8 @@ impl fmt::Display for NetworkTopology {
 }
 
 mod defaults {
+    use replica::config::LoadGeneratorConfig;
+
     pub fn committee_size() -> usize {
         10
     }
@@ -134,5 +139,8 @@ mod defaults {
     }
     pub fn duration_secs() -> u64 {
         20
+    }
+    pub fn load_generator() -> Option<LoadGeneratorConfig> {
+        Some(LoadGeneratorConfig::new_for_test())
     }
 }

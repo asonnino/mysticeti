@@ -10,7 +10,7 @@ use dag::{
     committee::Committee,
     committee::Stake,
     consensus::{DagConsensus, LeaderStatus},
-    metrics::Metrics,
+    metrics::{CommitType, Metrics},
     storage::BlockReader,
 };
 
@@ -119,20 +119,13 @@ impl Committer {
             .inspect(|x| tracing::debug!("Decided {x}"))
     }
 
-    /// Return list of leaders for the round. The DAG core may give those leaders some extra
-    /// time. To preserve (theoretical) liveness, we should wait `Delta` time for at least
-    /// the first leader. Can return empty vec if round does not have a designated leader.
-    /// Update metrics.
+    /// Record this leader's commit outcome on `committed_leaders_total`. `Undecided` leaders
+    /// aren't a commit outcome, so `CommitType::classify` returns `None` and we skip emission.
     fn update_metrics(&self, leader: &LeaderStatus, direct_decide: bool) {
-        let status = match (leader, direct_decide) {
-            (LeaderStatus::Commit(..), true) => "direct-commit",
-            (LeaderStatus::Commit(..), false) => "indirect-commit",
-            (LeaderStatus::Skip(..), true) => "direct-skip",
-            (LeaderStatus::Skip(..), false) => "indirect-skip",
-            (LeaderStatus::Undecided(..), _) => return,
-        };
-        let authority = leader.authority().to_string(); // todo: avoid allocation
-        self.metrics.inc_committed_leaders(&authority, status);
+        if let Some(commit_type) = CommitType::classify(leader, direct_decide) {
+            self.metrics
+                .inc_committed_leaders(leader.authority(), commit_type);
+        }
     }
 }
 

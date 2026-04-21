@@ -5,7 +5,7 @@ use std::{fmt, path::PathBuf};
 
 use dag::config::ImportExport;
 use eyre::{Result, bail};
-use simulator::{SimulationConfig, SimulationMode, SimulatorTracing};
+use simulator::{SimulationConfig, SimulationMode, SimulationResults, SimulatorTracing};
 use tracing_subscriber::filter::LevelFilter;
 
 use crate::reporter::{GREEN, RED, Reporter, YELLOW};
@@ -83,17 +83,19 @@ pub enum Outcome {
     Diverged,
 }
 
-impl Outcome {
-    pub fn from(consistent: bool, commit_counts: &[usize]) -> Self {
-        if !consistent {
+impl From<&SimulationResults> for Outcome {
+    fn from(results: &SimulationResults) -> Self {
+        if !results.commits_consistent {
             return Self::Diverged;
         }
-        if commit_counts.iter().all(|c| *c == 0) {
+        if results.commit_counts().iter().all(|c| *c == 0) {
             return Self::NoProgress;
         }
         Self::Pass
     }
+}
 
+impl Outcome {
     pub fn glyph(&self) -> &'static str {
         match self {
             Self::Pass => "✓",

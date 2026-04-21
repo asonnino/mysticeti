@@ -18,7 +18,7 @@ use crate::{
     consensus::{CommittedSubDag, Linearizer},
     context::Ctx,
     data::Data,
-    metrics::Metrics,
+    metrics::{Metrics, WORKLOAD_SHARED},
     storage::BlockReader,
 };
 
@@ -120,7 +120,7 @@ impl<C: Ctx> CommitHandler<C> {
             let latency = C::elapsed(instant);
             self.metrics.observe_transaction_committed_latency(latency);
             self.metrics
-                .observe_inter_block_latency_s("shared", latency.as_secs_f64());
+                .observe_inter_block_latency_s(WORKLOAD_SHARED, latency.as_secs_f64());
         }
 
         let time_from_start = C::elapsed(&self.start_time);
@@ -136,9 +136,9 @@ impl<C: Ctx> CommitHandler<C> {
         let latency = current_timestamp.saturating_sub(tx_submission_timestamp);
         let square_latency = latency.as_secs_f64().powf(2.0);
         self.metrics
-            .observe_latency_s("shared", latency.as_secs_f64());
+            .observe_latency_s(WORKLOAD_SHARED, latency.as_secs_f64());
         self.metrics
-            .observe_latency_squared_s("shared", square_latency);
+            .observe_latency_squared_s(WORKLOAD_SHARED, square_latency);
     }
 
     pub fn handle_commit(
