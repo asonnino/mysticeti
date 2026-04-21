@@ -6,8 +6,8 @@ use std::time::Duration;
 use prometheus::proto::MetricFamily;
 
 use super::names::{
-    COMMITTED_LEADERS_TOTAL, DecisionType, LABEL_AUTHORITY, LABEL_COMMIT_TYPE, LABEL_WORKLOAD,
-    LATENCY_S, MISSING_BLOCKS, WORKLOAD_SHARED,
+    COMMIT_TYPE_DIRECT_COMMIT, COMMIT_TYPE_INDIRECT_COMMIT, COMMITTED_LEADERS_TOTAL,
+    LABEL_AUTHORITY, LABEL_COMMIT_TYPE, LABEL_WORKLOAD, LATENCY_S, MISSING_BLOCKS, WORKLOAD_SHARED,
 };
 use crate::authority::Authority;
 
@@ -67,30 +67,26 @@ impl MetricsSnapshot {
         self.metric(MISSING_BLOCKS, &[(LABEL_AUTHORITY, &label)]) as i64
     }
 
-    /// Total leaders *committed* by `authority` — the commit rows of `committed_leaders_total`,
-    /// as identified by [`DecisionType::is_committed`]. Skipped leaders are excluded.
+    /// Total leaders *committed* by `authority` — the commit rows of `committed_leaders_total`
+    /// (the `direct-commit` and `indirect-commit` `commit_type` labels). Skipped leaders are
+    /// excluded.
     pub fn committed_leaders(&self, authority: Authority) -> u64 {
         let label = authority.to_string();
-        let mut total = 0.0;
-        for family in &self.families {
-            if family.get_name() != COMMITTED_LEADERS_TOTAL {
-                continue;
-            }
-            for metric in family.get_metric() {
-                let labels = metric.get_label();
-                let authority_matches = labels
-                    .iter()
-                    .any(|l| l.get_name() == LABEL_AUTHORITY && l.get_value() == label);
-                let is_commit = labels.iter().any(|l| {
-                    l.get_name() == LABEL_COMMIT_TYPE
-                        && DecisionType::from_label(l.get_value()).is_some_and(|d| d.is_committed())
-                });
-                if authority_matches && is_commit && metric.has_counter() {
-                    total += metric.get_counter().get_value();
-                }
-            }
-        }
-        total as u64
+        let direct = self.metric(
+            COMMITTED_LEADERS_TOTAL,
+            &[
+                (LABEL_AUTHORITY, &label),
+                (LABEL_COMMIT_TYPE, COMMIT_TYPE_DIRECT_COMMIT),
+            ],
+        );
+        let indirect = self.metric(
+            COMMITTED_LEADERS_TOTAL,
+            &[
+                (LABEL_AUTHORITY, &label),
+                (LABEL_COMMIT_TYPE, COMMIT_TYPE_INDIRECT_COMMIT),
+            ],
+        );
+        (direct + indirect) as u64
     }
 
     /// Committed leaders per second observed by this replica. Returns `None` when `duration` is
@@ -107,8 +103,8 @@ impl MetricsSnapshot {
         (count > 0).then(|| count as f64 / duration.as_secs_f64())
     }
 
-    /// Total committed leaders observed by by this replica. Skipped leaders are excluded,
-    /// same rule as [`committed_leaders`].
+    /// Total committed leaders observed by this replica. Skipped leaders are excluded, same
+    /// rule as [`committed_leaders`].
     pub fn total_committed_leaders(&self) -> u64 {
         let mut total = 0.0;
         for family in &self.families {
@@ -118,7 +114,10 @@ impl MetricsSnapshot {
             for metric in family.get_metric() {
                 let is_commit = metric.get_label().iter().any(|l| {
                     l.get_name() == LABEL_COMMIT_TYPE
-                        && DecisionType::from_label(l.get_value()).is_some_and(|d| d.is_committed())
+                        && matches!(
+                            l.get_value(),
+                            COMMIT_TYPE_DIRECT_COMMIT | COMMIT_TYPE_INDIRECT_COMMIT,
+                        )
                 });
                 if is_commit && metric.has_counter() {
                     total += metric.get_counter().get_value();
@@ -177,11 +176,14 @@ impl MetricsSnapshot {
                     prev_bound = if upper.is_finite() { upper } else { prev_bound };
                     prev_count = count;
                 }
-                // Unreachable: the `+Inf` bucket's cumulative_count always equals total, so the
-                // `count >= target` branch must fire before falling out of the loop.
-                unreachable!(
+                // The `+Inf` bucket's cumulative_count should always equal total, so the
+                // `count >= target` branch must fire before falling out of the loop. If we
+                // still get here the metric data is malformed — log and treat as unavailable
+                // rather than panic in the reporting path.
+                tracing::error!(
                     "malformed histogram {name:?}: cumulative_count never reaches sample_count"
                 );
+                return None;
             }
         }
         None
@@ -219,8 +221,12 @@ impl MetricsSnapshot {
 
 #[cfg(test)]
 mod test {
-    use super::{DecisionType, MetricsSnapshot};
-    use crate::{authority::Authority, metrics::Metrics};
+    use super::MetricsSnapshot;
+    use crate::authority::Authority;
+    use crate::metrics::names::{
+        COMMIT_TYPE_DIRECT_COMMIT, COMMIT_TYPE_DIRECT_SKIP, COMMIT_TYPE_INDIRECT_COMMIT,
+        COMMIT_TYPE_INDIRECT_SKIP,
+    };
     use prometheus::{
         Registry, register_histogram_with_registry, register_int_counter_vec_with_registry,
         register_int_counter_with_registry, register_int_gauge_with_registry,
@@ -272,14 +278,33 @@ mod test {
 
     #[test]
     fn committed_leaders_excludes_skips() {
-        let metrics = Metrics::new_for_test(4);
-        let a = Authority::from(0_usize);
-        metrics.inc_committed_leaders(a, DecisionType::DirectCommit);
-        metrics.inc_committed_leaders(a, DecisionType::IndirectCommit);
-        metrics.inc_committed_leaders(a, DecisionType::DirectSkip);
-        metrics.inc_committed_leaders(a, DecisionType::IndirectSkip);
-        let snapshot = metrics.collect();
-        assert_eq!(snapshot.committed_leaders(a), 2);
+        // Drives `committed_leaders_total` directly so the test doesn't need a `Data<Block>` to
+        // construct `LeaderStatus::DirectCommit`. Label values here must match the wire strings
+        // that `Metrics::inc_decided_leaders` writes.
+        let authority = Authority::from(0_usize);
+        let authority_label = authority.to_string();
+        let registry = Registry::new();
+        let counter = register_int_counter_vec_with_registry!(
+            "committed_leaders_total",
+            "help",
+            &["authority", "commit_type"],
+            registry
+        )
+        .unwrap();
+        counter
+            .with_label_values(&[&authority_label, COMMIT_TYPE_DIRECT_COMMIT])
+            .inc();
+        counter
+            .with_label_values(&[&authority_label, COMMIT_TYPE_INDIRECT_COMMIT])
+            .inc();
+        counter
+            .with_label_values(&[&authority_label, COMMIT_TYPE_DIRECT_SKIP])
+            .inc();
+        counter
+            .with_label_values(&[&authority_label, COMMIT_TYPE_INDIRECT_SKIP])
+            .inc();
+        let snapshot = collect_snapshot(&registry);
+        assert_eq!(snapshot.committed_leaders(authority), 2);
     }
 
     #[test]
