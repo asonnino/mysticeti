@@ -3,7 +3,13 @@
 
 use std::time::Duration;
 
-use dag::metrics::MetricsSnapshot;
+use dag::{
+    authority::Authority,
+    metrics::{
+        BLOCK_SYNC_REQUESTS_SENT, LABEL_AUTHORITY, LABEL_WORKLOAD, LATENCY_S, LEADER_TIMEOUT_TOTAL,
+        MetricsSnapshot,
+    },
+};
 use simulator::{SimulationConfig, SimulationResults};
 use tabled::{Table, Tabled, settings::Style};
 
@@ -71,32 +77,34 @@ impl ValidatorRow {
             .iter()
             .zip(results.metrics.iter())
             .enumerate()
-            .map(|(i, (leaders, metrics))| Self::new(i, leaders.len(), duration_secs, metrics))
+            .map(|(i, (leaders, metrics))| {
+                Self::new(Authority::from(i), leaders.len(), duration_secs, metrics)
+            })
             .collect()
     }
 
     fn new(
-        index: usize,
+        authority: Authority,
         committed_leaders: usize,
         duration_secs: u64,
         metrics: &MetricsSnapshot,
     ) -> Self {
-        let authority = index.to_string();
+        let label = authority.to_string();
         let commits_per_sec = metrics
-            .leader_commits_per_second(&authority, Duration::from_secs(duration_secs))
+            .leader_commits_per_second(authority, Duration::from_secs(duration_secs))
             .map(|rate| format!("{rate:.1}"))
             .unwrap_or_else(|| "—".into());
         let mean_latency = metrics
-            .histogram_mean("latency_s", &[("workload", "shared")])
+            .histogram_mean(LATENCY_S, &[(LABEL_WORKLOAD, "shared")])
             .map(|seconds| format!("{:.0} ms", seconds * 1000.0))
             .unwrap_or_else(|| "—".into());
-        let leader_timeouts = metrics.metric("leader_timeout_total", &[]) as u64;
-        let missing_blocks = metrics.metric("missing_blocks", &[("authority", &authority)]) as i64;
+        let leader_timeouts = metrics.metric(LEADER_TIMEOUT_TOTAL, &[]) as u64;
+        let missing_blocks = metrics.missing_blocks(authority);
         let sync_requests_sent =
-            metrics.metric("block_sync_requests_sent", &[("authority", &authority)]) as u64;
+            metrics.metric(BLOCK_SYNC_REQUESTS_SENT, &[(LABEL_AUTHORITY, &label)]) as u64;
 
         Self {
-            validator: index,
+            validator: authority.index(),
             committed_leaders,
             commits_per_sec,
             mean_latency,

@@ -7,6 +7,7 @@ use super::{
     MetricsSnapshot,
     names::{LABEL_WORKLOAD, LATENCY_S, WORKLOAD_SHARED},
 };
+use crate::authority::Authority;
 
 /// Cross-replica aggregations over a slice of [`MetricsSnapshot`]s.
 /// Each snapshot is indexed by authority (position `i` = authority `i`),
@@ -37,18 +38,16 @@ impl<'a> AggregateMetrics<'a> {
         }
     }
 
-    /// True if any replica reports one or more missing blocks from
-    /// any peer.
+    /// True if any replica reports one or more missing blocks from any peer.
     pub fn any_missing_blocks(&self) -> bool {
         self.snapshots
             .iter()
             .enumerate()
-            .any(|(i, snapshot)| snapshot.missing_blocks(&i.to_string()) > 0)
+            .any(|(i, snapshot)| snapshot.missing_blocks(Authority::from(i)) > 0)
     }
 
-    /// Mean committed leaders per second, averaged across replicas.
-    /// Returns `None` when `duration` is zero or no replica committed
-    /// a leader.
+    /// Mean committed leaders per second, averaged across replicas. Returns `None` when
+    /// `duration` is zero or no replica committed a leader.
     pub fn leader_commits_per_second(&self, duration: Duration) -> Option<f64> {
         if duration.is_zero() {
             return None;
@@ -58,7 +57,7 @@ impl<'a> AggregateMetrics<'a> {
             .iter()
             .enumerate()
             .filter_map(|(i, snapshot)| {
-                snapshot.leader_commits_per_second(&i.to_string(), duration)
+                snapshot.leader_commits_per_second(Authority::from(i), duration)
             })
             .collect();
         if rates.is_empty() {

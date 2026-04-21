@@ -113,22 +113,19 @@ impl Reporter {
             && !aggregate.any_missing_blocks()
         {
             let duration = Duration::from_secs(duration_secs);
-            let validators = rows.len();
             let committed = results.commit_counts().first().copied().unwrap_or_default();
             let rate = match aggregate.leader_commits_per_second(duration) {
                 Some(r) => format!("{r:.1} commits/s"),
                 None => "— commits/s".into(),
             };
-            let latency = match aggregate.mean_latency_ms() {
-                Some(ms) => format!(" · mean latency {ms:.0} ms"),
-                None => String::new(),
-            };
-            let tps = match aggregate.committed_tps(duration) {
-                Some(value) => format!(" · {value:.0} TPS"),
-                None => String::new(),
-            };
-            let trailer = format!("{latency}{tps}");
-            self.run_summary_line(validators, committed, &rate, &trailer);
+            let mut headline = Vec::new();
+            if let Some(ms) = aggregate.mean_latency_ms() {
+                headline.push(format!("mean latency {ms:.0} ms"));
+            }
+            if let Some(tps) = aggregate.committed_tps(duration) {
+                headline.push(format!("{tps:.0} TPS"));
+            }
+            self.run_summary_line(&headline.join(" · "), committed, &rate);
             return;
         }
 
@@ -168,8 +165,12 @@ impl Reporter {
         }
     }
 
-    fn run_summary_line(&self, validators: usize, committed: usize, rate: &str, latency: &str) {
-        println!("  {validators} validators · {committed} committed leaders ({rate}){latency}");
+    fn run_summary_line(&self, headline: &str, committed: usize, rate: &str) {
+        if headline.is_empty() {
+            println!("  {committed} commits, {rate}");
+        } else {
+            println!("  {headline} ({committed} commits, {rate})");
+        }
     }
 
     fn validators_table(&self, rows: Vec<ValidatorRow>) {

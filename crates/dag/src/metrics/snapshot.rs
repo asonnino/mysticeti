@@ -9,6 +9,7 @@ use super::names::{
     COMMITTED_LEADERS_TOTAL, LABEL_AUTHORITY, LABEL_WORKLOAD, LATENCY_S, MISSING_BLOCKS,
     WORKLOAD_SHARED,
 };
+use crate::authority::Authority;
 
 /// A point-in-time snapshot of all metrics from a Prometheus
 /// registry. Test-only — no production cost.
@@ -60,15 +61,16 @@ impl MetricsSnapshot {
             .map(|seconds| seconds * 1000.0)
     }
 
-    /// Number of blocks this replica knows it's still missing from
-    /// the given peer authority.
-    pub fn missing_blocks(&self, authority: &str) -> i64 {
-        self.metric(MISSING_BLOCKS, &[(LABEL_AUTHORITY, authority)]) as i64
+    /// Number of blocks this replica knows it's still missing from the given peer authority.
+    pub fn missing_blocks(&self, authority: Authority) -> i64 {
+        let label = authority.to_string();
+        self.metric(MISSING_BLOCKS, &[(LABEL_AUTHORITY, &label)]) as i64
     }
 
-    /// Total committed leaders for `authority`, summed across all
-    /// `commit_type` labels (direct-commit, indirect-skip, ...).
-    pub fn committed_leaders(&self, authority: &str) -> u64 {
+    /// Total committed leaders for `authority`, summed across all `commit_type` labels
+    /// (direct-commit, indirect-skip, ...).
+    pub fn committed_leaders(&self, authority: Authority) -> u64 {
+        let label = authority.to_string();
         let mut total = 0.0;
         for family in &self.families {
             if family.get_name() != COMMITTED_LEADERS_TOTAL {
@@ -78,7 +80,7 @@ impl MetricsSnapshot {
                 let matches = metric
                     .get_label()
                     .iter()
-                    .any(|l| l.get_name() == LABEL_AUTHORITY && l.get_value() == authority);
+                    .any(|l| l.get_name() == LABEL_AUTHORITY && l.get_value() == label);
                 if matches && metric.has_counter() {
                     total += metric.get_counter().get_value();
                 }
@@ -87,9 +89,13 @@ impl MetricsSnapshot {
         total as u64
     }
 
-    /// Committed leaders per second observed by this replica.
-    /// Returns `None` when `duration` is zero or nothing committed.
-    pub fn leader_commits_per_second(&self, authority: &str, duration: Duration) -> Option<f64> {
+    /// Committed leaders per second observed by this replica. Returns `None` when `duration` is
+    /// zero or nothing committed.
+    pub fn leader_commits_per_second(
+        &self,
+        authority: Authority,
+        duration: Duration,
+    ) -> Option<f64> {
         if duration.is_zero() {
             return None;
         }

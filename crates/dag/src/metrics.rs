@@ -17,7 +17,10 @@ use tokio::time::Instant;
 
 pub use self::aggregate::AggregateMetrics;
 pub(crate) use self::names::WORKLOAD_SHARED;
-pub use self::names::{BENCHMARK_DURATION, LATENCY_S, LATENCY_SQUARED_S};
+pub use self::names::{
+    BENCHMARK_DURATION, BLOCK_SYNC_REQUESTS_SENT, LABEL_AUTHORITY, LABEL_WORKLOAD, LATENCY_S,
+    LATENCY_SQUARED_S, LEADER_TIMEOUT_TOTAL,
+};
 pub use self::snapshot::MetricsSnapshot;
 pub use self::timers::{OwnedUtilizationTimer, UtilizationTimer};
 use self::{coarse::CoarseMetrics, precise::PreciseMetrics};
@@ -141,31 +144,35 @@ impl Metrics {
             .observe(value);
     }
 
-    pub fn inc_committed_leaders(&self, authority: &str, commit_type: &str) {
+    pub fn inc_committed_leaders(&self, authority: Authority, commit_type: &str) {
+        let label = authority.to_string();
         self.coarse
             .committed_leaders_total
-            .with_label_values(&[authority, commit_type])
+            .with_label_values(&[&label, commit_type])
             .inc();
     }
 
-    pub fn set_missing_blocks(&self, authority: &str, value: i64) {
+    pub fn set_missing_blocks(&self, authority: Authority, value: i64) {
+        let label = authority.to_string();
         self.coarse
             .missing_blocks
-            .with_label_values(&[authority])
+            .with_label_values(&[&label])
             .set(value);
     }
 
-    pub fn inc_block_sync_requests_sent(&self, authority: &str) {
+    pub fn inc_block_sync_requests_sent(&self, authority: Authority) {
+        let label = authority.to_string();
         self.coarse
             .block_sync_requests_sent
-            .with_label_values(&[authority])
+            .with_label_values(&[&label])
             .inc();
     }
 
-    pub fn inc_block_sync_requests_received(&self, authority: &str, fulfilled: &str) {
+    pub fn inc_block_sync_requests_received(&self, authority: Authority, fulfilled: &str) {
+        let label = authority.to_string();
         self.coarse
             .block_sync_requests_received
-            .with_label_values(&[authority, fulfilled])
+            .with_label_values(&[&label, fulfilled])
             .inc();
     }
 
@@ -242,7 +249,7 @@ struct NetworkAddressTable {
 mod test {
     use std::time::Duration;
 
-    use super::Metrics;
+    use super::{Authority, Metrics};
 
     #[test]
     fn new_for_test_collect_roundtrip() {
@@ -266,12 +273,14 @@ mod test {
 
     #[test]
     fn labeled_metrics_roundtrip() {
+        let a = Authority::from(0_usize);
+        let b = Authority::from(1_usize);
         let metrics = Metrics::new_for_test(4);
-        metrics.inc_committed_leaders("A", "direct");
-        metrics.inc_committed_leaders("A", "direct");
-        metrics.inc_committed_leaders("B", "indirect");
-        metrics.set_missing_blocks("A", 3);
-        metrics.inc_block_sync_requests_sent("A");
+        metrics.inc_committed_leaders(a, "direct");
+        metrics.inc_committed_leaders(a, "direct");
+        metrics.inc_committed_leaders(b, "indirect");
+        metrics.set_missing_blocks(a, 3);
+        metrics.inc_block_sync_requests_sent(a);
         let snapshot = metrics.collect();
         assert_eq!(
             snapshot.metric(
@@ -287,10 +296,7 @@ mod test {
             ),
             1.0
         );
-        assert_eq!(
-            snapshot.metric("missing_blocks", &[("authority", "A")]),
-            3.0,
-        );
+        assert_eq!(snapshot.missing_blocks(a), 3);
         assert_eq!(
             snapshot.metric("block_sync_requests_sent", &[("authority", "A")]),
             1.0

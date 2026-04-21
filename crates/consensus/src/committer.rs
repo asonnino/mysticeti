@@ -131,8 +131,8 @@ impl Committer {
             (LeaderStatus::Skip(..), false) => "indirect-skip",
             (LeaderStatus::Undecided(..), _) => return,
         };
-        let authority = leader.authority().to_string(); // todo: avoid allocation
-        self.metrics.inc_committed_leaders(&authority, status);
+        self.metrics
+            .inc_committed_leaders(leader.authority(), status);
     }
 }
 
