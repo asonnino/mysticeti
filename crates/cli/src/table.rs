@@ -65,7 +65,7 @@ pub struct ValidatorRow {
     #[tabled(rename = "leader timeouts")]
     leader_timeouts: u64,
     #[tabled(rename = "missing blocks")]
-    pub missing_blocks: String,
+    pub missing_blocks: i64,
     #[tabled(rename = "sync requests sent")]
     sync_requests_sent: u64,
 }
@@ -118,7 +118,7 @@ impl ValidatorRow {
             p50_latency,
             p90_latency,
             leader_timeouts,
-            missing_blocks: missing_blocks.to_string(),
+            missing_blocks,
             sync_requests_sent,
         }
     }
