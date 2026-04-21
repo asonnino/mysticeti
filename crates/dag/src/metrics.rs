@@ -18,8 +18,8 @@ use tokio::time::Instant;
 pub use self::aggregate::AggregateMetrics;
 pub(crate) use self::names::WORKLOAD_SHARED;
 pub use self::names::{
-    BENCHMARK_DURATION, BLOCK_SYNC_REQUESTS_SENT, LABEL_AUTHORITY, LABEL_WORKLOAD, LATENCY_S,
-    LATENCY_SQUARED_S, LEADER_TIMEOUT_TOTAL,
+    BENCHMARK_DURATION, BLOCK_SYNC_REQUESTS_SENT, CommitType, LABEL_AUTHORITY, LABEL_WORKLOAD,
+    LATENCY_S, LATENCY_SQUARED_S, LEADER_TIMEOUT_TOTAL,
 };
 pub use self::snapshot::MetricsSnapshot;
 pub use self::timers::{OwnedUtilizationTimer, UtilizationTimer};
@@ -144,11 +144,11 @@ impl Metrics {
             .observe(value);
     }
 
-    pub fn inc_committed_leaders(&self, authority: Authority, commit_type: &str) {
+    pub fn inc_committed_leaders(&self, authority: Authority, commit_type: CommitType) {
         let label = authority.to_string();
         self.coarse
             .committed_leaders_total
-            .with_label_values(&[&label, commit_type])
+            .with_label_values(&[&label, commit_type.as_label()])
             .inc();
     }
 
@@ -249,7 +249,7 @@ struct NetworkAddressTable {
 mod test {
     use std::time::Duration;
 
-    use super::{Authority, Metrics};
+    use super::{Authority, CommitType, Metrics};
 
     #[test]
     fn new_for_test_collect_roundtrip() {
@@ -276,23 +276,29 @@ mod test {
         let a = Authority::from(0_usize);
         let b = Authority::from(1_usize);
         let metrics = Metrics::new_for_test(4);
-        metrics.inc_committed_leaders(a, "direct");
-        metrics.inc_committed_leaders(a, "direct");
-        metrics.inc_committed_leaders(b, "indirect");
+        metrics.inc_committed_leaders(a, CommitType::DirectCommit);
+        metrics.inc_committed_leaders(a, CommitType::DirectCommit);
+        metrics.inc_committed_leaders(b, CommitType::IndirectSkip);
         metrics.set_missing_blocks(a, 3);
         metrics.inc_block_sync_requests_sent(a);
         let snapshot = metrics.collect();
         assert_eq!(
             snapshot.metric(
                 "committed_leaders_total",
-                &[("authority", "A"), ("commit_type", "direct")]
+                &[
+                    ("authority", "A"),
+                    ("commit_type", CommitType::DirectCommit.as_label()),
+                ]
             ),
             2.0
         );
         assert_eq!(
             snapshot.metric(
                 "committed_leaders_total",
-                &[("authority", "B"), ("commit_type", "indirect")]
+                &[
+                    ("authority", "B"),
+                    ("commit_type", CommitType::IndirectSkip.as_label()),
+                ]
             ),
             1.0
         );

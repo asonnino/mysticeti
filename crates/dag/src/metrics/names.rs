@@ -6,6 +6,8 @@
 // `AggregateMetrics`) both reference these constants so a rename is a one-line diff and typos
 // become compile errors.
 
+use crate::consensus::LeaderStatus;
+
 // Metric names.
 pub const BENCHMARK_DURATION: &str = "benchmark_duration";
 pub const LATENCY_S: &str = "latency_s";
@@ -39,3 +41,38 @@ pub const LABEL_PROC: &str = "proc";
 
 // Well-known label values (extracted when used in more than one place).
 pub const WORKLOAD_SHARED: &str = "shared";
+
+/// Canonical commit outcome for a leader slot, as recorded in the `commit_type` Prometheus label
+/// on `committed_leaders_total`. Producers classify a `(LeaderStatus, direct_decide)` pair into
+/// one of these four variants; consumers compare against `CommitType::as_label()` when reading.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CommitType {
+    DirectCommit,
+    IndirectCommit,
+    DirectSkip,
+    IndirectSkip,
+}
+
+impl CommitType {
+    /// Canonical string used in the Prometheus `commit_type` label.
+    pub fn as_label(&self) -> &'static str {
+        match self {
+            Self::DirectCommit => "direct-commit",
+            Self::IndirectCommit => "indirect-commit",
+            Self::DirectSkip => "direct-skip",
+            Self::IndirectSkip => "indirect-skip",
+        }
+    }
+
+    /// Classify a `(LeaderStatus, direct_decide)` pair. Returns `None` for `Undecided` — it's not
+    /// a commit outcome, so callers should skip metric emission entirely in that case.
+    pub fn classify(leader: &LeaderStatus, direct: bool) -> Option<Self> {
+        match (leader, direct) {
+            (LeaderStatus::Commit(..), true) => Some(Self::DirectCommit),
+            (LeaderStatus::Commit(..), false) => Some(Self::IndirectCommit),
+            (LeaderStatus::Skip(..), true) => Some(Self::DirectSkip),
+            (LeaderStatus::Skip(..), false) => Some(Self::IndirectSkip),
+            (LeaderStatus::Undecided(..), _) => None,
+        }
+    }
+}
