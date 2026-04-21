@@ -53,7 +53,7 @@ impl ConfigRow {
 #[derive(Tabled)]
 pub struct ValidatorRow {
     #[tabled(rename = "validator")]
-    validator: String,
+    validator: Authority,
     #[tabled(rename = "committed leaders")]
     committed_leaders: usize,
     #[tabled(rename = "commits/s")]
@@ -112,7 +112,7 @@ impl ValidatorRow {
             metrics.metric(BLOCK_SYNC_REQUESTS_SENT, &[(LABEL_AUTHORITY, &label)]) as u64;
 
         Self {
-            validator: label,
+            validator: authority,
             committed_leaders,
             commits_per_sec,
             p50_latency,
