@@ -70,14 +70,6 @@ pub fn check_commits<C: Ctx, D: DagConsensus>(syncers: &[Syncer<C, D>]) {
     eprintln!("Max commit sequence: {max_commit:?}");
 }
 
-pub fn print_stats<C: Ctx, D: DagConsensus>(syncers: &[Syncer<C, D>]) {
-    for s in syncers {
-        let authority = s.core().authority();
-        let snapshot = s.core().metrics.collect();
-        tracing::info!("Validator {authority} metrics:\n{snapshot}");
-    }
-}
-
 pub fn build_dag(
     committee: &Committee,
     storage: &mut Storage,

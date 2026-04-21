@@ -3,6 +3,7 @@
 
 use std::{io::IsTerminal, time::Duration};
 
+use dag::metrics::AggregateMetrics;
 use eyre::{Result, eyre};
 use indicatif::{ProgressBar, ProgressStyle};
 use simulator::{SimulationConfig, SimulationResults, SimulationRunner};
@@ -85,8 +86,7 @@ impl Reporter {
             .map_err(|error| eyre!("Simulation task panicked: {error}"))?;
         self.finish_spinner(spinner);
 
-        let commit_counts: Vec<usize> = results.committed_leaders.iter().map(|v| v.len()).collect();
-        let outcome = Outcome::from(results.commits_consistent, &commit_counts);
+        let outcome = Outcome::from(&results);
         self.render_run(&results, duration_secs, outcome);
         println!();
 
@@ -95,7 +95,7 @@ impl Reporter {
             committee_size,
             duration_secs,
             outcome,
-            &commit_counts,
+            &results.commit_counts(),
         );
         Ok((outcome, suite_row))
     }
@@ -107,22 +107,28 @@ impl Reporter {
 
         // Collapse to a single-line summary in the happy path when every
         // validator committed the same leaders and nothing is noteworthy.
-        let commit_counts: Vec<usize> = results.committed_leaders.iter().map(|v| v.len()).collect();
-        let uniform_commits = commit_counts
-            .first()
-            .map(|first| commit_counts.iter().all(|c| c == first))
-            .unwrap_or(true);
-        let no_missing = rows.iter().all(|row| row.missing_blocks == "0");
-
-        if outcome != Outcome::Diverged && uniform_commits && no_missing {
+        let aggregate = AggregateMetrics::new(&results.metrics);
+        if outcome != Outcome::Diverged
+            && results.uniform_commits()
+            && !aggregate.any_missing_blocks()
+        {
+            let duration = Duration::from_secs(duration_secs);
             let validators = rows.len();
-            let committed = commit_counts.first().copied().unwrap_or_default();
-            let rate = if duration_secs == 0 {
-                "— commits/s".into()
-            } else {
-                format!("{:.1} commits/s", committed as f64 / duration_secs as f64)
+            let committed = results.commit_counts().first().copied().unwrap_or_default();
+            let rate = match aggregate.leader_commits_per_second(duration) {
+                Some(r) => format!("{r:.1} commits/s"),
+                None => "— commits/s".into(),
             };
-            self.run_summary_line(validators, committed, &rate);
+            let latency = match aggregate.mean_latency_ms() {
+                Some(ms) => format!(" · mean latency {ms:.0} ms"),
+                None => String::new(),
+            };
+            let tps = match aggregate.committed_tps(duration) {
+                Some(value) => format!(" · {value:.0} TPS"),
+                None => String::new(),
+            };
+            let trailer = format!("{latency}{tps}");
+            self.run_summary_line(validators, committed, &rate, &trailer);
             return;
         }
 
@@ -162,8 +168,8 @@ impl Reporter {
         }
     }
 
-    fn run_summary_line(&self, validators: usize, committed: usize, rate: &str) {
-        println!("  {validators} validators · {committed} committed leaders ({rate})");
+    fn run_summary_line(&self, validators: usize, committed: usize, rate: &str, latency: &str) {
+        println!("  {validators} validators · {committed} committed leaders ({rate}){latency}");
     }
 
     fn validators_table(&self, rows: Vec<ValidatorRow>) {

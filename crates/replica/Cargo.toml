@@ -12,6 +12,7 @@ eyre = { workspace = true }
 # in-memory storage lands (see project_ephemeral_storage memory).
 dag = { workspace = true, features = ["test-utils"] }
 consensus.workspace = true
+humantime-serde = "1.1"
 minibytes = { workspace = true, default-features = false }
 prometheus = { workspace = true }
 rand = { workspace = true }

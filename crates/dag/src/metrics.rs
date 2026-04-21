@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 mod aggregate;
+mod coarse;
 mod histogram;
 mod precise;
 mod snapshot;
@@ -13,14 +14,15 @@ use ::prometheus::Registry;
 use tabled::{Table, Tabled};
 use tokio::time::Instant;
 
-pub use self::aggregate::{BENCHMARK_DURATION, LATENCY_S, LATENCY_SQUARED_S};
+pub use self::aggregate::AggregateMetrics;
+pub use self::coarse::{BENCHMARK_DURATION, LATENCY_S, LATENCY_SQUARED_S};
 pub use self::snapshot::MetricsSnapshot;
 pub use self::timers::{OwnedUtilizationTimer, UtilizationTimer};
-use self::{aggregate::AggregateMetrics, precise::PreciseMetrics};
+use self::{coarse::CoarseMetrics, precise::PreciseMetrics};
 use crate::authority::Authority;
 
 pub struct Metrics {
-    aggregate: AggregateMetrics,
+    coarse: CoarseMetrics,
     precise: PreciseMetrics,
     registry: Option<Registry>,
 }
@@ -32,23 +34,23 @@ impl Metrics {
         committee_size: usize,
         report_interval: Option<Duration>,
     ) -> Arc<Self> {
-        let aggregate = AggregateMetrics::new(registry);
+        let coarse = CoarseMetrics::new(registry);
         let precise = PreciseMetrics::spawn(registry, committee_size, report_interval);
         Arc::new(Self {
-            aggregate,
+            coarse,
             precise,
             registry: None, // Not needed in production
         })
     }
 
-    /// Create metrics for tests. The reporter is stored
-    /// internally and drained on-demand via `print_stats`.
+    /// Create metrics for tests. The registry is stored internally
+    /// and drained on-demand via [`Metrics::collect`].
     pub fn new_for_test(committee_size: usize) -> Arc<Self> {
         let registry = Registry::new();
-        let aggregate = AggregateMetrics::new(&registry);
+        let coarse = CoarseMetrics::new(&registry);
         let precise = PreciseMetrics::new_for_test(&registry, committee_size);
         Arc::new(Self {
-            aggregate,
+            coarse,
             precise,
             registry: Some(registry),
         })
@@ -57,47 +59,47 @@ impl Metrics {
 
 impl Metrics {
     pub fn inc_leader_timeout(&self) {
-        self.aggregate.leader_timeout_total.inc();
+        self.coarse.leader_timeout_total.inc();
     }
 
     pub fn inc_core_lock_enqueued(&self) {
-        self.aggregate.core_lock_enqueued.inc();
+        self.coarse.core_lock_enqueued.inc();
     }
 
     pub fn inc_core_lock_dequeued(&self) {
-        self.aggregate.core_lock_dequeued.inc();
+        self.coarse.core_lock_dequeued.inc();
     }
 
     pub fn inc_block_store_entries(&self) {
-        self.aggregate.block_store_entries.inc();
+        self.coarse.block_store_entries.inc();
     }
 
     pub fn inc_block_store_entries_by(&self, n: u64) {
-        self.aggregate.block_store_entries.inc_by(n);
+        self.coarse.block_store_entries.inc_by(n);
     }
 
     pub fn inc_block_store_loaded_blocks(&self) {
-        self.aggregate.block_store_loaded_blocks.inc();
+        self.coarse.block_store_loaded_blocks.inc();
     }
 
     pub fn inc_block_store_unloaded_blocks_by(&self, n: u64) {
-        self.aggregate.block_store_unloaded_blocks.inc_by(n);
+        self.coarse.block_store_unloaded_blocks.inc_by(n);
     }
 
     pub fn inc_submitted_transactions(&self, n: u64) {
-        self.aggregate.submitted_transactions.inc_by(n);
+        self.coarse.submitted_transactions.inc_by(n);
     }
 
     pub fn inc_benchmark_duration_by(&self, delta: u64) {
-        self.aggregate.benchmark_duration.inc_by(delta);
+        self.coarse.benchmark_duration.inc_by(delta);
     }
 
     pub fn set_wal_mappings(&self, value: i64) {
-        self.aggregate.wal_mappings.set(value);
+        self.coarse.wal_mappings.set(value);
     }
 
     pub fn benchmark_duration_secs(&self) -> u64 {
-        self.aggregate.benchmark_duration.get()
+        self.coarse.benchmark_duration.get()
     }
 
     pub fn observe_transaction_committed_latency(&self, d: Duration) {
@@ -117,49 +119,49 @@ impl Metrics {
     }
 
     pub fn observe_latency_s(&self, workload: &str, value: f64) {
-        self.aggregate
+        self.coarse
             .latency_s
             .with_label_values(&[workload])
             .observe(value);
     }
 
     pub fn observe_latency_squared_s(&self, workload: &str, value: f64) {
-        self.aggregate
+        self.coarse
             .latency_squared_s
             .with_label_values(&[workload])
             .inc_by(value);
     }
 
     pub fn observe_inter_block_latency_s(&self, workload: &str, value: f64) {
-        self.aggregate
+        self.coarse
             .inter_block_latency_s
             .with_label_values(&[workload])
             .observe(value);
     }
 
     pub fn inc_committed_leaders(&self, authority: &str, commit_type: &str) {
-        self.aggregate
+        self.coarse
             .committed_leaders_total
             .with_label_values(&[authority, commit_type])
             .inc();
     }
 
     pub fn set_missing_blocks(&self, authority: &str, value: i64) {
-        self.aggregate
+        self.coarse
             .missing_blocks
             .with_label_values(&[authority])
             .set(value);
     }
 
     pub fn inc_block_sync_requests_sent(&self, authority: &str) {
-        self.aggregate
+        self.coarse
             .block_sync_requests_sent
             .with_label_values(&[authority])
             .inc();
     }
 
     pub fn inc_block_sync_requests_received(&self, authority: &str, fulfilled: &str) {
-        self.aggregate
+        self.coarse
             .block_sync_requests_received
             .with_label_values(&[authority, fulfilled])
             .inc();
@@ -171,28 +173,28 @@ impl Metrics {
 
     pub fn core_lock_utilization_timer(&self) -> UtilizationTimer<'_> {
         UtilizationTimer {
-            metric: &self.aggregate.core_lock_util,
+            metric: &self.coarse.core_lock_util,
             start: Instant::now(),
         }
     }
 
     pub fn block_store_cleanup_utilization_timer(&self) -> UtilizationTimer<'_> {
         UtilizationTimer {
-            metric: &self.aggregate.block_store_cleanup_util,
+            metric: &self.coarse.block_store_cleanup_util,
             start: Instant::now(),
         }
     }
 
     pub fn block_handler_cleanup_utilization_timer(&self) -> UtilizationTimer<'_> {
         UtilizationTimer {
-            metric: &self.aggregate.block_handler_cleanup_util,
+            metric: &self.coarse.block_handler_cleanup_util,
             start: Instant::now(),
         }
     }
 
     pub fn utilization_timer(&self, label: &str) -> OwnedUtilizationTimer {
         OwnedUtilizationTimer {
-            metric: self.aggregate.utilization_timer.with_label_values(&[label]),
+            metric: self.coarse.utilization_timer.with_label_values(&[label]),
             start: Instant::now(),
         }
     }

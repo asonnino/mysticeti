@@ -171,6 +171,20 @@ impl<C: Ctx> ReplicaHandle<C> {
     pub async fn shutdown(self) -> Syncer<C, Committer> {
         self.network_synchronizer.shutdown().await
     }
+
+    /// Start the built-in load generator. Transactions from the generator and from
+    /// [`ReplicaHandle::submit`] (on `TokioCtx`) share the same channel and are interleaved
+    /// in arrival order. Returns the task handle; drop it to detach, or keep it to abort
+    /// later via `C::abort`.
+    pub fn start_load_generator(&mut self, config: LoadGeneratorConfig) -> C::JoinHandle<()> {
+        TransactionGenerator::start::<C>(
+            self.transaction_sender.clone(),
+            self.authority,
+            config,
+            self.public_config.parameters.dag.max_block_size,
+            self.metrics.clone(),
+        )
+    }
 }
 
 impl ReplicaHandle<TokioCtx> {
@@ -180,18 +194,6 @@ impl ReplicaHandle<TokioCtx> {
             .send(transactions)
             .await
             .map_err(|_| eyre!("Transaction channel closed"))
-    }
-
-    /// Start the built-in tokio-based load generator. Transactions from the generator and from
-    /// [`ReplicaHandle::submit`] share the same channel and are interleaved in arrival order.
-    pub fn start_load_generator(&mut self, config: LoadGeneratorConfig) {
-        TransactionGenerator::start(
-            self.transaction_sender.clone(),
-            self.authority,
-            config,
-            self.public_config.parameters.dag.max_block_size,
-            self.metrics.clone(),
-        );
     }
 
     /// Wait for the replica to finish.

@@ -36,3 +36,9 @@ replica_parameters:
   consensus:
     protocol: mysticeti
     leader_count: 2
+# Built-in transaction load. Omit to run without transactions (consensus
+# metrics only, empty latency histograms).
+load_generator:
+  load: 100 # transactions per second
+  transaction_size: 512 # bytes per transaction (must exceed 16-byte header)
+  initial_delay: 0s # humantime: "0s", "500ms", "30s"

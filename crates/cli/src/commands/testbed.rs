@@ -92,6 +92,7 @@ pub async fn local_testbed(
     // Each validator gets its own registry and metrics server on a distinct port.
     let mut handles = Vec::with_capacity(committee_size);
     let mut metrics_servers = Vec::with_capacity(committee_size);
+    let mut load_generators = Vec::with_capacity(committee_size);
     for (i, private_config) in private_configs.into_iter().enumerate() {
         let authority = Authority::from(i);
         let metrics_address = public_config
@@ -103,7 +104,7 @@ pub async fn local_testbed(
             .build()
             .run::<TokioCtx>()
             .await?;
-        handle.start_load_generator(load_generator_config.clone());
+        load_generators.push(handle.start_load_generator(load_generator_config.clone()));
         metrics_servers.push(
             PrometheusServer::new(metrics_address, &registry)
                 .bind_all_interfaces()
@@ -123,6 +124,7 @@ pub async fn local_testbed(
     tracing::info!("Shutting down...");
     drop(handles);
     drop(metrics_servers);
+    drop(load_generators);
 
     Ok(())
 }

@@ -1,9 +1,9 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::fmt;
+use std::time::Duration;
 
-use prometheus::{TextEncoder, proto::MetricFamily};
+use prometheus::proto::MetricFamily;
 
 /// A point-in-time snapshot of all metrics from a Prometheus
 /// registry. Test-only — no production cost.
@@ -24,35 +24,101 @@ impl MetricsSnapshot {
                 continue;
             }
             for metric in family.get_metric() {
-                let labels = metric.get_label();
-                let matches = label_values.iter().all(|(key, value)| {
-                    labels
-                        .iter()
-                        .any(|l| l.get_name() == *key && l.get_value() == *value)
-                }) && labels.len() == label_values.len();
-
-                if matches {
-                    if metric.has_counter() {
-                        return metric.get_counter().get_value();
-                    } else if metric.has_gauge() {
-                        return metric.get_gauge().get_value();
-                    } else if metric.has_untyped() {
-                        return metric.get_untyped().get_value();
-                    }
+                if !Self::labels_match(metric, label_values) {
+                    continue;
+                }
+                if metric.has_counter() {
+                    return metric.get_counter().get_value();
+                } else if metric.has_gauge() {
+                    return metric.get_gauge().get_value();
+                } else if metric.has_untyped() {
+                    return metric.get_untyped().get_value();
                 }
             }
         }
         0.0
     }
-}
 
-impl fmt::Display for MetricsSnapshot {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let encoder = TextEncoder::new();
-        let text = encoder
-            .encode_to_string(&self.families)
-            .map_err(|_| fmt::Error)?;
-        f.write_str(&text)
+    /// Mean of all observations in a histogram, in the histogram's
+    /// native unit. Returns `None` when the histogram is absent or
+    /// has zero observations.
+    pub fn histogram_mean(&self, name: &str, labels: &[(&str, &str)]) -> Option<f64> {
+        let (sum, count) = self.histogram_stats(name, labels)?;
+        (count > 0).then(|| sum / count as f64)
+    }
+
+    /// Mean end-to-end transaction latency (ms) observed by this
+    /// replica. Returns `None` when no committed transaction reached
+    /// `update_metrics`.
+    pub fn mean_latency_ms(&self) -> Option<f64> {
+        self.histogram_mean("latency_s", &[("workload", "shared")])
+            .map(|seconds| seconds * 1000.0)
+    }
+
+    /// Number of blocks this replica knows it's still missing from
+    /// the given peer authority.
+    pub fn missing_blocks(&self, authority: &str) -> i64 {
+        self.metric("missing_blocks", &[("authority", authority)]) as i64
+    }
+
+    /// Total committed leaders for `authority`, summed across all
+    /// `commit_type` labels (direct-commit, indirect-skip, ...).
+    pub fn committed_leaders(&self, authority: &str) -> u64 {
+        let mut total = 0.0;
+        for family in &self.families {
+            if family.get_name() != "committed_leaders_total" {
+                continue;
+            }
+            for metric in family.get_metric() {
+                let matches = metric
+                    .get_label()
+                    .iter()
+                    .any(|l| l.get_name() == "authority" && l.get_value() == authority);
+                if matches && metric.has_counter() {
+                    total += metric.get_counter().get_value();
+                }
+            }
+        }
+        total as u64
+    }
+
+    /// Committed leaders per second observed by this replica.
+    /// Returns `None` when `duration` is zero or nothing committed.
+    pub fn leader_commits_per_second(&self, authority: &str, duration: Duration) -> Option<f64> {
+        if duration.is_zero() {
+            return None;
+        }
+        let count = self.committed_leaders(authority);
+        (count > 0).then(|| count as f64 / duration.as_secs_f64())
+    }
+
+    /// Read a histogram's sample sum and count. Returns `None` when no
+    /// matching histogram is found (distinct from a present histogram
+    /// with zero observations, which returns `Some((0.0, 0))`).
+    pub fn histogram_stats(&self, name: &str, labels: &[(&str, &str)]) -> Option<(f64, u64)> {
+        for family in &self.families {
+            if family.get_name() != name {
+                continue;
+            }
+            for metric in family.get_metric() {
+                if !metric.has_histogram() || !Self::labels_match(metric, labels) {
+                    continue;
+                }
+                let histogram = metric.get_histogram();
+                return Some((histogram.get_sample_sum(), histogram.get_sample_count()));
+            }
+        }
+        None
+    }
+
+    fn labels_match(metric: &prometheus::proto::Metric, expected: &[(&str, &str)]) -> bool {
+        let actual = metric.get_label();
+        actual.len() == expected.len()
+            && expected.iter().all(|(key, value)| {
+                actual
+                    .iter()
+                    .any(|l| l.get_name() == *key && l.get_value() == *value)
+            })
     }
 }
 
@@ -125,17 +191,5 @@ mod test {
             snapshot.metric("label_test", &[("a", "x"), ("b", "y")]),
             1.0
         );
-    }
-
-    #[test]
-    fn display_is_nonempty() {
-        let registry = Registry::new();
-        let counter =
-            register_int_counter_with_registry!("display_counter", "help", registry).unwrap();
-        counter.inc();
-        let snapshot = collect_snapshot(&registry);
-        let text = format!("{snapshot}");
-        assert!(!text.is_empty());
-        assert!(text.contains("display_counter"));
     }
 }

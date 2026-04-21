@@ -1,6 +1,8 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::time::Duration;
+
 use dag::metrics::MetricsSnapshot;
 use simulator::{SimulationConfig, SimulationResults};
 use tabled::{Table, Tabled, settings::Style};
@@ -52,6 +54,8 @@ pub struct ValidatorRow {
     committed_leaders: usize,
     #[tabled(rename = "commits/s")]
     commits_per_sec: String,
+    #[tabled(rename = "mean latency")]
+    mean_latency: String,
     #[tabled(rename = "leader timeouts")]
     leader_timeouts: u64,
     #[tabled(rename = "missing blocks")]
@@ -78,11 +82,14 @@ impl ValidatorRow {
         metrics: &MetricsSnapshot,
     ) -> Self {
         let authority = index.to_string();
-        let commits_per_sec = if duration_secs == 0 {
-            "—".into()
-        } else {
-            format!("{:.1}", committed_leaders as f64 / duration_secs as f64)
-        };
+        let commits_per_sec = metrics
+            .leader_commits_per_second(&authority, Duration::from_secs(duration_secs))
+            .map(|rate| format!("{rate:.1}"))
+            .unwrap_or_else(|| "—".into());
+        let mean_latency = metrics
+            .histogram_mean("latency_s", &[("workload", "shared")])
+            .map(|seconds| format!("{:.0} ms", seconds * 1000.0))
+            .unwrap_or_else(|| "—".into());
         let leader_timeouts = metrics.metric("leader_timeout_total", &[]) as u64;
         let missing_blocks = metrics.metric("missing_blocks", &[("authority", &authority)]) as i64;
         let sync_requests_sent =
@@ -92,6 +99,7 @@ impl ValidatorRow {
             validator: index,
             committed_leaders,
             commits_per_sec,
+            mean_latency,
             leader_timeouts,
             missing_blocks: missing_blocks.to_string(),
             sync_requests_sent,
