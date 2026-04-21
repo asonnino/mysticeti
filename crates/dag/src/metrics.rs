@@ -18,7 +18,7 @@ use tokio::time::Instant;
 pub use self::aggregate::AggregateMetrics;
 pub(crate) use self::names::WORKLOAD_SHARED;
 pub use self::names::{
-    BENCHMARK_DURATION, BLOCK_SYNC_REQUESTS_SENT, CommitType, LABEL_AUTHORITY, LABEL_WORKLOAD,
+    BENCHMARK_DURATION, BLOCK_SYNC_REQUESTS_SENT, DecisionType, LABEL_AUTHORITY, LABEL_WORKLOAD,
     LATENCY_S, LATENCY_SQUARED_S, LEADER_TIMEOUT_TOTAL, SyncRequestFulfilled,
 };
 pub use self::snapshot::MetricsSnapshot;
@@ -144,11 +144,11 @@ impl Metrics {
             .observe(value);
     }
 
-    pub fn inc_committed_leaders(&self, authority: Authority, commit_type: CommitType) {
+    pub fn inc_committed_leaders(&self, authority: Authority, decision: DecisionType) {
         let label = authority.to_string();
         self.coarse
             .committed_leaders_total
-            .with_label_values(&[&label, commit_type.as_label()])
+            .with_label_values(&[&label, decision.as_label()])
             .inc();
     }
 
@@ -253,7 +253,7 @@ struct NetworkAddressTable {
 mod test {
     use std::time::Duration;
 
-    use super::{Authority, CommitType, Metrics};
+    use super::{Authority, DecisionType, Metrics};
 
     #[test]
     fn new_for_test_collect_roundtrip() {
@@ -280,9 +280,9 @@ mod test {
         let a = Authority::from(0_usize);
         let b = Authority::from(1_usize);
         let metrics = Metrics::new_for_test(4);
-        metrics.inc_committed_leaders(a, CommitType::DirectCommit);
-        metrics.inc_committed_leaders(a, CommitType::DirectCommit);
-        metrics.inc_committed_leaders(b, CommitType::IndirectSkip);
+        metrics.inc_committed_leaders(a, DecisionType::DirectCommit);
+        metrics.inc_committed_leaders(a, DecisionType::DirectCommit);
+        metrics.inc_committed_leaders(b, DecisionType::IndirectSkip);
         metrics.set_missing_blocks(a, 3);
         metrics.inc_block_sync_requests_sent(a);
         let snapshot = metrics.collect();
@@ -291,7 +291,7 @@ mod test {
                 "committed_leaders_total",
                 &[
                     ("authority", "A"),
-                    ("commit_type", CommitType::DirectCommit.as_label()),
+                    ("commit_type", DecisionType::DirectCommit.as_label()),
                 ]
             ),
             2.0
@@ -301,7 +301,7 @@ mod test {
                 "committed_leaders_total",
                 &[
                     ("authority", "B"),
-                    ("commit_type", CommitType::IndirectSkip.as_label()),
+                    ("commit_type", DecisionType::IndirectSkip.as_label()),
                 ]
             ),
             1.0
