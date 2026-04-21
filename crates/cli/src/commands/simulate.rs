@@ -43,7 +43,7 @@ pub async fn simulate(
 
     let reporter = Reporter::new();
     reporter.banner(
-        "Mysticeti",
+        "Uncertified DAG",
         &[
             ("Mode", "Simulator"),
             ("Simulations", &configs.len().to_string()),
