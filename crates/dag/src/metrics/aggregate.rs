@@ -38,6 +38,31 @@ impl<'a> AggregateMetrics<'a> {
         }
     }
 
+    /// 50th-percentile end-to-end transaction latency (ms), averaged across per-replica values.
+    pub fn p50_latency_ms(&self) -> Option<f64> {
+        self.latency_percentile_ms(0.5)
+    }
+
+    /// 90th-percentile end-to-end transaction latency (ms), averaged across per-replica values.
+    pub fn p90_latency_ms(&self) -> Option<f64> {
+        self.latency_percentile_ms(0.9)
+    }
+
+    fn latency_percentile_ms(&self, p: f64) -> Option<f64> {
+        let per_replica: Vec<f64> = self
+            .snapshots
+            .iter()
+            .filter_map(|s| {
+                s.histogram_percentile(LATENCY_S, &[(LABEL_WORKLOAD, WORKLOAD_SHARED)], p)
+            })
+            .collect();
+        if per_replica.is_empty() {
+            None
+        } else {
+            Some(per_replica.iter().sum::<f64>() / per_replica.len() as f64 * 1000.0)
+        }
+    }
+
     /// True if any replica reports one or more missing blocks from any peer.
     pub fn any_missing_blocks(&self) -> bool {
         self.snapshots
@@ -46,33 +71,29 @@ impl<'a> AggregateMetrics<'a> {
             .any(|(i, snapshot)| snapshot.missing_blocks(Authority::from(i)) > 0)
     }
 
-    /// Mean committed leaders per second, averaged across replicas. Returns `None` when
-    /// `duration` is zero or no replica committed a leader.
+    /// Total committed leaders per second. Each replica contributes its observed
+    /// committed-leader sequence length (all authorities, commits only). Returns `None`
+    /// when `duration` is zero or nothing committed anywhere.
     pub fn leader_commits_per_second(&self, duration: Duration) -> Option<f64> {
         if duration.is_zero() {
             return None;
         }
-        let rates: Vec<f64> = self
+        let totals: Vec<u64> = self
             .snapshots
             .iter()
-            .enumerate()
-            .filter_map(|(i, snapshot)| {
-                snapshot.leader_commits_per_second(Authority::from(i), duration)
-            })
+            .map(MetricsSnapshot::total_committed_leaders)
             .collect();
-        if rates.is_empty() {
-            None
-        } else {
-            Some(rates.iter().sum::<f64>() / rates.len() as f64)
+        if totals.is_empty() {
+            return None;
         }
+        let mean = totals.iter().sum::<u64>() as f64 / totals.len() as f64;
+        (mean > 0.0).then(|| mean / duration.as_secs_f64())
     }
 
     /// Committed transactions per second, averaged across replicas.
     /// Each replica's `latency_s` sample count equals the number of
-    /// transactions it has observed committed; under consensus those
-    /// counts converge, so the mean is the committee's TPS.
-    /// Returns `None` when no transactions committed or `duration`
-    /// is zero.
+    /// transactions it has observed committed. Returns `None` when no
+    /// transactions committed or `duration` is zero.
     pub fn committed_tps(&self, duration: Duration) -> Option<f64> {
         if duration.is_zero() {
             return None;
