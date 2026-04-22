@@ -22,7 +22,7 @@ pub use self::names::{
     BENCHMARK_DURATION, BLOCK_SYNC_REQUESTS_SENT, LABEL_AUTHORITY, LABEL_WORKLOAD, LATENCY_S,
     LATENCY_SQUARED_S, LEADER_TIMEOUT_TOTAL, SyncRequestFulfilled,
 };
-pub use self::run_result::Outcome;
+pub use self::run_result::{Outcome, RunResult};
 pub use self::snapshot::{MetricsSnapshot, ReplicaStats};
 pub use self::timers::{OwnedUtilizationTimer, UtilizationTimer};
 use self::{
