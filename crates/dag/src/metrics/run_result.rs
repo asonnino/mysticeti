@@ -3,19 +3,27 @@
 
 //! Run-level results derived from per-replica observations.
 //!
-//! Holds the `Outcome` classification of a run and the cross-replica consistency check used
-//! to derive it. `RunResult<C>` (added later) is the shared container that sim, testbed, and
-//! smoke tests build from a set of `MetricsSnapshot`s.
+//! `RunResult<C>` is the shared container that sim, testbed, and smoke tests build from a
+//! set of `MetricsSnapshot`s plus per-replica storages. `Outcome` classifies the run; it is
+//! computed at construction by a streaming consistency check over each storage's committed
+//! sub-dag sequence (no commit history retained in memory).
+
+use std::{io, time::Duration};
 
 use blake2::Blake2b;
 use digest::{Digest, consts::U32};
+use serde::Serialize;
 
-use crate::{crypto::CryptoHash, storage::block_store::CommitData};
+use crate::{
+    authority::Authority, crypto::CryptoHash, metrics::MetricsSnapshot, storage::Storage,
+    storage::block_store::CommitData,
+};
 
 type PrefixHasher = Blake2b<U32>;
 
 /// Verdict on a single run, derived from the committed-leader sequences across replicas.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Outcome {
     /// Every replica's committed prefix agrees with the others', and at least one replica
     /// committed a leader.
@@ -24,6 +32,69 @@ pub enum Outcome {
     NoProgress,
     /// At least two replicas disagree on a commit within their shared prefix. Safety bug.
     Diverged,
+}
+
+/// Cross-replica summary of a single run: per-replica metrics, the derived outcome, the
+/// configuration that drove the run, and wall-clock duration.
+///
+/// Generic over `C` so simulator, testbed, and future smoke-test configs all share this
+/// type. `outcome` is precomputed at construction from a streaming consistency check; the
+/// commit history is never materialised in memory.
+pub struct RunResult<C> {
+    pub metrics: Vec<MetricsSnapshot>,
+    pub outcome: Outcome,
+    pub config: C,
+    pub duration: Duration,
+}
+
+impl<C> RunResult<C> {
+    /// Build a result from per-replica metrics and storages, running the consistency check
+    /// to derive `Outcome`. Storages are iterated once; no commit is retained.
+    pub fn new(
+        metrics: Vec<MetricsSnapshot>,
+        storages: &[Storage],
+        config: C,
+        duration: Duration,
+    ) -> Self {
+        let outcome = Outcome::from(storages.iter().map(Storage::iter_commits));
+        Self {
+            metrics,
+            outcome,
+            config,
+            duration,
+        }
+    }
+
+    /// Same as [`RunResult::new`], plus stream every committed sub-dag to `writer` as
+    /// newline-delimited JSON (one object per line, `{"authority":…, "commit":…}`). The
+    /// writer is driven in a separate pass over each storage before the consistency check,
+    /// so memory stays bounded even for long runs.
+    pub fn new_with_commit_log<W: io::Write>(
+        metrics: Vec<MetricsSnapshot>,
+        storages: &[Storage],
+        config: C,
+        duration: Duration,
+        writer: &mut W,
+    ) -> io::Result<Self> {
+        for (index, storage) in storages.iter().enumerate() {
+            let authority = Authority::from(index as u64);
+            for commit in storage.iter_commits() {
+                let record = CommitRecord {
+                    authority,
+                    commit: &commit,
+                };
+                serde_json::to_writer(&mut *writer, &record).map_err(io::Error::other)?;
+                writeln!(writer)?;
+            }
+        }
+        Ok(Self::new(metrics, storages, config, duration))
+    }
+}
+
+#[derive(Serialize)]
+struct CommitRecord<'a> {
+    authority: Authority,
+    commit: &'a CommitData,
 }
 
 /// Classify a run by streaming each replica's committed sub-dag sequence through a per-replica
@@ -88,8 +159,14 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use crate::{
-        block::BlockReference, metrics::run_result::Outcome, storage::block_store::CommitData,
+        authority::Authority,
+        block::BlockReference,
+        committee::Committee,
+        metrics::{Metrics, Outcome, RunResult},
+        storage::{Storage, block_store::CommitData},
     };
 
     fn commit(leader_authority: u64, round: u64) -> CommitData {
@@ -101,6 +178,24 @@ mod tests {
 
     fn sequence(leaders: &[(u64, u64)]) -> Vec<CommitData> {
         leaders.iter().map(|(a, r)| commit(*a, *r)).collect()
+    }
+
+    fn build_storages_with_commits(
+        replica_count: usize,
+        batch: &[CommitData],
+    ) -> (Vec<Storage>, Vec<crate::metrics::MetricsSnapshot>) {
+        let committee = Committee::new_test(vec![1; replica_count]);
+        let mut storages = Vec::with_capacity(replica_count);
+        let mut snapshots = Vec::with_capacity(replica_count);
+        for index in 0..replica_count {
+            let metrics = Metrics::new_for_test(replica_count);
+            let (mut storage, _) =
+                Storage::new_for_tests(Authority::from(index as u64), metrics.clone(), &committee);
+            storage.write_commits(batch);
+            snapshots.push(metrics.collect());
+            storages.push(storage);
+        }
+        (storages, snapshots)
     }
 
     #[test]
@@ -178,5 +273,74 @@ mod tests {
         let seq: Vec<CommitData> = (1..=10_000).map(|round| commit(0, round)).collect();
         let streams = vec![seq.clone(), seq];
         assert_eq!(Outcome::from(streams), Outcome::Pass);
+    }
+
+    #[test]
+    fn run_result_new_classifies_consistent_run_as_pass() {
+        let batch = sequence(&[(0, 1), (1, 2), (2, 3)]);
+        let (storages, snapshots) = build_storages_with_commits(3, &batch);
+
+        let result: RunResult<()> =
+            RunResult::new(snapshots, &storages, (), Duration::from_secs(30));
+
+        assert_eq!(result.outcome, Outcome::Pass);
+        assert_eq!(result.duration, Duration::from_secs(30));
+        assert_eq!(result.metrics.len(), 3);
+    }
+
+    #[test]
+    fn run_result_new_classifies_empty_run_as_no_progress() {
+        let (storages, snapshots) = build_storages_with_commits(2, &[]);
+        let result: RunResult<()> =
+            RunResult::new(snapshots, &storages, (), Duration::from_secs(5));
+        assert_eq!(result.outcome, Outcome::NoProgress);
+    }
+
+    #[test]
+    fn run_result_new_with_commit_log_writes_one_ndjson_line_per_commit() {
+        let batch = sequence(&[(0, 1), (1, 2), (2, 3)]);
+        let (storages, snapshots) = build_storages_with_commits(2, &batch);
+
+        let mut buffer = Vec::new();
+        let result: RunResult<()> = RunResult::new_with_commit_log(
+            snapshots,
+            &storages,
+            (),
+            Duration::from_secs(10),
+            &mut buffer,
+        )
+        .expect("NDJSON write");
+
+        assert_eq!(result.outcome, Outcome::Pass);
+
+        let text = String::from_utf8(buffer).expect("NDJSON is UTF-8");
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines.len(), 6, "2 replicas × 3 commits");
+        for line in &lines {
+            let value: serde_json::Value = serde_json::from_str(line).expect("valid JSON");
+            assert!(value.get("authority").is_some());
+            assert!(value.get("commit").is_some());
+        }
+    }
+
+    #[test]
+    fn run_result_constructors_agree_on_outcome() {
+        let batch = sequence(&[(0, 1), (1, 2)]);
+        let (storages_a, snapshots_a) = build_storages_with_commits(3, &batch);
+        let (storages_b, snapshots_b) = build_storages_with_commits(3, &batch);
+
+        let plain: RunResult<()> =
+            RunResult::new(snapshots_a, &storages_a, (), Duration::from_secs(1));
+        let mut sink = Vec::new();
+        let logged: RunResult<()> = RunResult::new_with_commit_log(
+            snapshots_b,
+            &storages_b,
+            (),
+            Duration::from_secs(1),
+            &mut sink,
+        )
+        .expect("NDJSON write");
+
+        assert_eq!(plain.outcome, logged.outcome);
     }
 }
