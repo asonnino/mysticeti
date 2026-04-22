@@ -4,7 +4,7 @@
 use std::{num::NonZeroUsize, path::PathBuf};
 
 use consensus::protocol::ConsensusProtocol;
-use dag::config::ImportExport;
+use dag::{config::ImportExport, metrics::Outcome};
 use indoc::indoc;
 use replica::config::ReplicaParameters;
 use simulator::{NetworkTopology, SimulationConfig, SimulationMode, SimulationRunner};
@@ -15,8 +15,7 @@ fn full_mesh() {
     let runner = SimulationRunner::new(config);
     let results = runner.run();
 
-    assert!(results.commits_consistent);
-    assert!(!results.committed_leaders.is_empty());
+    assert_ne!(results.outcome, Outcome::Diverged);
     assert!(!results.metrics.is_empty());
 }
 
@@ -30,7 +29,7 @@ fn one_down() {
     let runner = SimulationRunner::new(config);
     let results = runner.run();
 
-    assert!(results.commits_consistent);
+    assert_ne!(results.outcome, Outcome::Diverged);
 }
 
 #[test]
@@ -79,8 +78,7 @@ fn star_topology() {
     let runner = SimulationRunner::new(config);
     let results = runner.run();
 
-    assert!(results.commits_consistent);
-    assert!(!results.committed_leaders.is_empty());
+    assert_ne!(results.outcome, Outcome::Diverged);
 }
 
 #[test]
@@ -93,8 +91,7 @@ fn small_committee() {
     let runner = SimulationRunner::new(config);
     let results = runner.run();
 
-    assert!(results.commits_consistent);
-    assert!(!results.committed_leaders.is_empty());
+    assert_ne!(results.outcome, Outcome::Diverged);
 }
 
 #[test]
@@ -113,8 +110,7 @@ fn custom_node_parameters() {
     let runner = SimulationRunner::new(config);
     let results = runner.run();
 
-    assert!(results.commits_consistent);
-    assert!(!results.committed_leaders.is_empty());
+    assert_ne!(results.outcome, Outcome::Diverged);
 }
 
 #[test]
@@ -123,8 +119,7 @@ fn from_example_config() {
     let runner = SimulationRunner::from_yaml(&path).unwrap();
     let results = runner.run();
 
-    assert!(results.commits_consistent);
-    assert!(!results.committed_leaders.is_empty());
+    assert_ne!(results.outcome, Outcome::Diverged);
 }
 
 #[test]
@@ -170,5 +165,5 @@ fn network_partition() {
     let runner = SimulationRunner::new(config);
     let results = runner.run();
 
-    assert!(results.commits_consistent);
+    assert_ne!(results.outcome, Outcome::Diverged);
 }

@@ -3,19 +3,19 @@
 
 use std::path::Path;
 
-use dag::{authority::Authority, metrics::ReplicaStats};
+use dag::{
+    authority::Authority,
+    metrics::{Outcome, ReplicaStats, RunResult},
+};
 use eyre::{Result, WrapErr, bail};
 use serde::Serialize;
-use simulator::{SimulationConfig, SimulationResults};
+use simulator::SimulationConfig;
 use tempfile::NamedTempFile;
-
-use crate::commands::simulate::Outcome;
 
 #[derive(Serialize)]
 pub struct SimulationReport {
     pub config: SimulationConfig,
     pub outcome: Outcome,
-    pub commits_consistent: bool,
     pub duration_secs: u64,
     pub replicas: Vec<ReplicaReport>,
 }
@@ -23,11 +23,6 @@ pub struct SimulationReport {
 #[derive(Serialize)]
 pub struct ReplicaReport {
     pub authority: Authority,
-    /// Each leader formatted via `BlockReference::Display` (`"A3"` — authority+round).
-    /// `BlockDigest::serialize` uses `serialize_bytes` (bincode wire format) which
-    /// `serde_yaml` can't encode; stringifying in the report layer keeps the wire format
-    /// untouched.
-    pub committed_leaders: Vec<String>,
     pub commits: usize,
     pub commits_per_sec: Option<f64>,
     #[serde(flatten)]
@@ -39,21 +34,19 @@ pub struct ReplicaReport {
 }
 
 impl SimulationReport {
-    pub fn new(config: SimulationConfig, results: &SimulationResults, outcome: Outcome) -> Self {
-        let duration_secs = config.duration_secs;
-        let replicas = results
-            .committed_leaders
+    pub fn new(result: &RunResult<SimulationConfig>, outcome: Outcome) -> Self {
+        let duration_secs = result.config.duration_secs;
+        let commit_counts = result.commit_count_per_replica();
+        let replicas = result
+            .metrics
             .iter()
-            .zip(results.metrics.iter())
+            .zip(commit_counts.iter().copied())
             .enumerate()
-            .map(|(index, (leaders, metrics))| {
-                let authority = Authority::from(index);
-                let commits = leaders.len();
+            .map(|(index, (metrics, commits))| {
                 let commits_per_sec =
                     (duration_secs > 0).then(|| commits as f64 / duration_secs as f64);
                 ReplicaReport {
-                    authority,
-                    committed_leaders: leaders.iter().map(|leader| leader.to_string()).collect(),
+                    authority: Authority::from(index),
                     commits,
                     commits_per_sec,
                     stats: metrics.replica_stats(),
@@ -62,9 +55,8 @@ impl SimulationReport {
             })
             .collect();
         Self {
-            config,
+            config: result.config.clone(),
             outcome,
-            commits_consistent: results.commits_consistent,
             duration_secs,
             replicas,
         }

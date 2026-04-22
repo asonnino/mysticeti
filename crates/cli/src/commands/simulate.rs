@@ -1,16 +1,16 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{fmt, path::PathBuf};
+use std::path::PathBuf;
 
-use dag::config::ImportExport;
+use dag::{config::ImportExport, metrics::Outcome};
 use eyre::{Result, bail};
-use simulator::{SimulationConfig, SimulationMode, SimulationResults, SimulatorTracing};
+use simulator::{SimulationConfig, SimulationMode, SimulatorTracing};
 use tracing_subscriber::filter::LevelFilter;
 
 use crate::{
     report::{self, SimulationReport},
-    reporter::{GREEN, RED, Reporter, YELLOW},
+    reporter::Reporter,
 };
 
 pub async fn simulate(
@@ -66,14 +66,14 @@ pub async fn simulate(
     let mut diverged = 0;
     for (index, config) in configs.into_iter().enumerate() {
         reporter.config_summary(index + 1, total, &config);
-        let config_for_report = results_file.is_some().then(|| config.clone());
-        let (outcome, suite_row, results) = reporter.run(config).await?;
+        let want_report = results_file.is_some();
+        let (outcome, suite_row, result) = reporter.run(config).await?;
         if outcome == Outcome::Diverged {
             diverged += 1;
         }
         suite_rows.push(suite_row);
-        if let Some(config_snapshot) = config_for_report {
-            reports.push(SimulationReport::new(config_snapshot, &results, outcome));
+        if want_report {
+            reports.push(SimulationReport::new(&result, outcome));
         }
     }
 
@@ -90,68 +90,4 @@ pub async fn simulate(
         bail!("{diverged} of {total} simulation(s) diverged");
     }
     Ok(())
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Outcome {
-    /// Safety held and at least one leader was committed somewhere.
-    Pass,
-    /// Safety held but no replica committed a single leader.
-    /// Expected under unrecoverable partitions (star, symmetric split).
-    NoProgress,
-    /// Safety violated: commit histories disagree.
-    Diverged,
-}
-
-impl From<&SimulationResults> for Outcome {
-    fn from(results: &SimulationResults) -> Self {
-        if !results.commits_consistent {
-            return Self::Diverged;
-        }
-        if results.commit_counts().iter().all(|c| *c == 0) {
-            return Self::NoProgress;
-        }
-        Self::Pass
-    }
-}
-
-impl Outcome {
-    pub fn glyph(&self) -> &'static str {
-        match self {
-            Self::Pass => "✓",
-            Self::NoProgress => "⚠",
-            Self::Diverged => "✗",
-        }
-    }
-
-    pub fn message(&self) -> &'static str {
-        match self {
-            Self::Pass => "Commits consistent across all replicas",
-            Self::NoProgress => "Safe but no leader was committed",
-            Self::Diverged => "Commits DIVERGED across replicas",
-        }
-    }
-
-    pub fn color(&self) -> &'static str {
-        match self {
-            Self::Pass => GREEN,
-            Self::NoProgress => YELLOW,
-            Self::Diverged => RED,
-        }
-    }
-
-    fn label(&self) -> &'static str {
-        match self {
-            Self::Pass => "PASS",
-            Self::NoProgress => "WARN",
-            Self::Diverged => "FAIL",
-        }
-    }
-}
-
-impl fmt::Display for Outcome {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.label(), self.message())
-    }
 }
