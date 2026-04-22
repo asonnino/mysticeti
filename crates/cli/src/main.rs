@@ -44,9 +44,16 @@ async fn main() -> Result<()> {
         Command::Simulate {
             config_path,
             dump_config,
+            results_file,
         } => {
-            commands::simulate::simulate(config_path, dump_config, args.log_level, args.log_file)
-                .await?
+            commands::simulate::simulate(
+                config_path,
+                dump_config,
+                results_file,
+                args.log_level,
+                args.log_file,
+            )
+            .await?
         }
         Command::LocalTestbed {
             committee_size,

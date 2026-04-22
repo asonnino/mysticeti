@@ -8,11 +8,15 @@ use eyre::{Result, bail};
 use simulator::{SimulationConfig, SimulationMode, SimulationResults, SimulatorTracing};
 use tracing_subscriber::filter::LevelFilter;
 
-use crate::reporter::{GREEN, RED, Reporter, YELLOW};
+use crate::{
+    report::{self, SimulationReport},
+    reporter::{GREEN, RED, Reporter, YELLOW},
+};
 
 pub async fn simulate(
     config_path: Option<PathBuf>,
     dump_config: bool,
+    results_file: Option<PathBuf>,
     log_level: Option<LevelFilter>,
     log_file: Option<PathBuf>,
 ) -> Result<()> {
@@ -54,18 +58,32 @@ pub async fn simulate(
 
     let total = configs.len();
     let mut suite_rows = Vec::with_capacity(total);
+    let mut reports: Vec<SimulationReport> = if results_file.is_some() {
+        Vec::with_capacity(total)
+    } else {
+        Vec::new()
+    };
     let mut diverged = 0;
     for (index, config) in configs.into_iter().enumerate() {
         reporter.config_summary(index + 1, total, &config);
-        let (outcome, suite_row) = reporter.run(config).await?;
+        let config_for_report = results_file.is_some().then(|| config.clone());
+        let (outcome, suite_row, results) = reporter.run(config).await?;
         if outcome == Outcome::Diverged {
             diverged += 1;
         }
         suite_rows.push(suite_row);
+        if let Some(config_snapshot) = config_for_report {
+            reports.push(SimulationReport::new(config_snapshot, &results, outcome));
+        }
     }
 
     if total > 1 {
         reporter.suite_summary(&suite_rows);
+    }
+
+    if let Some(path) = results_file {
+        report::write_reports(&path, &reports)?;
+        tracing::info!("Wrote detailed results to {}", path.display());
     }
 
     if diverged > 0 {
@@ -74,7 +92,8 @@ pub async fn simulate(
     Ok(())
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Outcome {
     /// Safety held and at least one leader was committed somewhere.
     Pass,
