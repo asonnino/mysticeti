@@ -11,8 +11,8 @@ What's simulated and what's real:
 - **Simulated**: time, the inter-replica network (uniform-random latency), and cryptography
   (disabled — signatures are skipped).
 - **Real**: the `consensus` crate, the `replica` orchestration, the block pipeline, the commit rule,
-  the WAL-backed storage (each replica gets its own ephemeral WAL directory, discarded at the end of
-  the run), and the metrics stack. Faults you observe in a simulation run map directly onto faults
+  the WAL-backed storage (each replica gets its own temporary WAL-backed store, discarded at the end
+  of the run), and the metrics stack. Faults you observe in a simulation run map directly onto faults
   in the actual protocol code.
 
 ## Running a Simulation
@@ -99,7 +99,7 @@ Each report contains:
 - The full `SimulationConfig` that produced the run (including any defaults filled in).
 - The `Outcome` and a `commits_consistent` flag.
 - `duration_secs` of the run.
-- Per-replica entries with `authority`, `committed_leaders` (formatted `"A<round>"`, e.g. `"3-17"`),
+- Per-replica entries with `authority`, `committed_leaders` (formatted `"A<round>"`, e.g. `"A17"`),
   `commits`, `commits_per_sec`, aggregated `ReplicaStats`, and the full per-replica metrics as a
   Prometheus text-exposition string. The Prometheus blob is parseable by `promtool`, Prometheus
   itself, and most TSDB ingesters — so a simulation can be post-hoc dropped into the same tooling

@@ -188,7 +188,7 @@ transaction batch, it becomes a `WAL_ENTRY_PAYLOAD` before the block handler hol
 trivial.
 
 **Durability.** A second dedicated OS thread — spawned with name `wal-syncer` by the `TokioCtx` —
-calls `wal_writer.sync_data()` once per second
+calls `wal_syncer.sync()` once per second
 ([`crates/dag/src/context.rs`](../crates/dag/src/context.rs)). The `dag.fsync` parameter (off by
 default) additionally forces a sync on every new own block before it goes out on the wire; setting
 it to `true` trades a few ms of latency for the guarantee that a proposer never publishes a block it
