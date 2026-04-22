@@ -27,9 +27,9 @@ pub struct Args {
 #[derive(Parser)]
 pub enum Command {
     /// Generate test genesis files: one public replica config (identities, stakes, and parameters)
-    /// plus a private config per validator (keys and storage paths). Keys are written in plaintext.
+    /// plus a private config per replica (keys and storage paths). Keys are written in plaintext.
     TestGenesis {
-        /// IP addresses of all validators.
+        /// IP addresses of all replicas.
         #[arg(long, value_name = "ADDR", value_delimiter = ' ', num_args(3..))]
         ips: Vec<IpAddr>,
         /// Working directory where files will be generated.
@@ -68,12 +68,12 @@ pub enum Command {
         dump_config: bool,
     },
 
-    /// Deploy a local testbed of validators on localhost.
+    /// Deploy a local testbed of replicas on localhost.
     ///
-    /// Starts all validators in a single process with default keys and committee configuration.
+    /// Starts all replicas in a single process with default keys and committee configuration.
     /// Useful for local testing.
     LocalTestbed {
-        /// Number of validators in the testbed.
+        /// Number of replicas in the testbed.
         #[arg(long, value_name = "INT", default_value_t = 4)]
         committee_size: usize,
         /// Path to custom replica parameters (YAML). Uses defaults if omitted.

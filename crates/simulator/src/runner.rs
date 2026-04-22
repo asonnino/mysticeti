@@ -35,12 +35,12 @@ pub struct SimulationResults {
 }
 
 impl SimulationResults {
-    /// Committed-leader count per validator, in authority order.
+    /// Committed-leader count per replica, in authority order.
     pub fn commit_counts(&self) -> Vec<usize> {
         self.committed_leaders.iter().map(|v| v.len()).collect()
     }
 
-    /// True when every validator committed the exact same number of leaders.
+    /// True when every replica committed the exact same number of leaders.
     pub fn uniform_commits(&self) -> bool {
         let counts = self.commit_counts();
         counts

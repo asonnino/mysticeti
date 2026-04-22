@@ -51,24 +51,26 @@ impl ConfigRow {
 }
 
 #[derive(Tabled)]
-pub struct ValidatorRow {
-    #[tabled(rename = "validator")]
-    validator: usize,
+pub struct ReplicaRow {
+    #[tabled(rename = "replica")]
+    replica: Authority,
     #[tabled(rename = "committed leaders")]
     committed_leaders: usize,
     #[tabled(rename = "commits/s")]
     commits_per_sec: String,
-    #[tabled(rename = "mean latency")]
-    mean_latency: String,
+    #[tabled(rename = "p50 latency")]
+    p50_latency: String,
+    #[tabled(rename = "p90 latency")]
+    p90_latency: String,
     #[tabled(rename = "leader timeouts")]
     leader_timeouts: u64,
     #[tabled(rename = "missing blocks")]
-    pub missing_blocks: String,
+    pub missing_blocks: i64,
     #[tabled(rename = "sync requests sent")]
     sync_requests_sent: u64,
 }
 
-impl ValidatorRow {
+impl ReplicaRow {
     pub fn for_results(results: &SimulationResults, duration_secs: u64) -> Vec<Self> {
         results
             .committed_leaders
@@ -96,22 +98,27 @@ impl ValidatorRow {
         } else {
             format!("{:.1}", committed_leaders as f64 / duration_secs as f64)
         };
-        let mean_latency = metrics
-            .histogram_mean(LATENCY_S, &[(LABEL_WORKLOAD, "shared")])
-            .map(|seconds| format!("{:.0} ms", seconds * 1000.0))
-            .unwrap_or_else(|| "—".into());
+        let latency_ms = |p: f64| {
+            metrics
+                .histogram_percentile(LATENCY_S, &[(LABEL_WORKLOAD, "shared")], p)
+                .map(|seconds| format!("{:.0} ms", seconds * 1000.0))
+                .unwrap_or_else(|| "—".into())
+        };
+        let p50_latency = latency_ms(0.5);
+        let p90_latency = latency_ms(0.9);
         let leader_timeouts = metrics.metric(LEADER_TIMEOUT_TOTAL, &[]) as u64;
         let missing_blocks = metrics.missing_blocks(authority);
         let sync_requests_sent =
             metrics.metric(BLOCK_SYNC_REQUESTS_SENT, &[(LABEL_AUTHORITY, &label)]) as u64;
 
         Self {
-            validator: authority.index(),
+            replica: authority,
             committed_leaders,
             commits_per_sec,
-            mean_latency,
+            p50_latency,
+            p90_latency,
             leader_timeouts,
-            missing_blocks: missing_blocks.to_string(),
+            missing_blocks,
             sync_requests_sent,
         }
     }

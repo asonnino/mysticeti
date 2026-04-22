@@ -77,14 +77,14 @@ a red number are stopped.
 ## Step 4. Running benchmarks
 
 Running benchmarks involves installing the specified version of the codebase on the remote machines
-and running one validator and one load generator per instance. For example, the following command
-benchmarks a committee of 10 validators under a constant load of 200 tx/s:
+and running one replica and one load generator per instance. For example, the following command
+benchmarks a committee of 10 replicas under a constant load of 200 tx/s:
 
 ```bash
 cargo run --bin orchestrator -- benchmark --committee 10 --loads 200
 ```
 
-In a network of 10 validators, each with a corresponding load generator, each load generator
+In a network of 10 replicas, each with a corresponding load generator, each load generator
 submits a fixed load of 20 tx/s. Performance measurements are collected by regularly scraping the
 Prometheus metrics exposed by the load generators. The `orchestrator` binary provides additional
 commands to run a specific number of load generators on separate machines.
