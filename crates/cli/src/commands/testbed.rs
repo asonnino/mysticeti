@@ -16,7 +16,7 @@ use replica::{
 };
 use tracing_subscriber::filter::LevelFilter;
 
-use crate::{banner, tracing::ReplicaTracing};
+use crate::{terminal, tracing::ReplicaTracing};
 
 pub async fn local_testbed(
     committee_size: usize,
@@ -52,7 +52,7 @@ pub async fn local_testbed(
     let nodes = committee_size.to_string();
     let tx_size = load_generator_config.transaction_size.to_string();
     let load_str = load_generator_config.load.to_string();
-    banner::BannerPrinter::new(
+    terminal::BannerPrinter::new(
         "Mysticeti",
         &[
             ("Mode", "Local Testbed"),

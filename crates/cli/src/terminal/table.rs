@@ -8,7 +8,7 @@ use dag::{
 use simulator::SimulationConfig;
 use tabled::{Table, Tabled, settings::Style};
 
-use crate::reporter::OutcomeDisplay;
+use super::OutcomeDisplay;
 
 /// Render any iterable of `Tabled` rows with the suite's
 /// standard rounded style. Single call site so the border

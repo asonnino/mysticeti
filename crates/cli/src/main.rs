@@ -4,7 +4,7 @@
 use clap::Parser;
 use cli::{
     args::{Args, Command},
-    banner, commands,
+    commands, terminal,
 };
 use eyre::Result;
 
@@ -70,7 +70,7 @@ async fn main() -> Result<()> {
             .await?
         }
         Command::PrintBanner => {
-            banner::BannerPrinter::new("Mysticeti", &[("Mode", "Preview")]).print();
+            terminal::BannerPrinter::new("Mysticeti", &[("Mode", "Preview")]).print();
         }
     }
 

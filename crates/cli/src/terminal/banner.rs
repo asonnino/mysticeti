@@ -4,7 +4,7 @@
 use terminal_size::terminal_size;
 use unicode_width::UnicodeWidthStr;
 
-use crate::reporter::{BLUE_BACKGROUND, BLUE_FOREGROUND, BOLD, DIM, RESET, stderr_supports_color};
+use super::{BLUE_BACKGROUND, BLUE_FOREGROUND, BOLD, DIM, RESET, stderr_supports_color};
 
 macro_rules! display {
     ($($arg:tt)*) => { eprintln!($($arg)*) };
