@@ -46,22 +46,6 @@ impl MetricsSnapshot {
         0.0
     }
 
-    /// Mean of all observations in a histogram, in the histogram's
-    /// native unit. Returns `None` when the histogram is absent or
-    /// has zero observations.
-    pub fn histogram_mean(&self, name: &str, labels: &[(&str, &str)]) -> Option<f64> {
-        let (sum, count) = self.histogram_stats(name, labels)?;
-        (count > 0).then(|| sum / count as f64)
-    }
-
-    /// Mean end-to-end transaction latency (ms) observed by this
-    /// replica. Returns `None` when no committed transaction reached
-    /// `update_metrics`.
-    pub fn mean_latency_ms(&self) -> Option<f64> {
-        self.histogram_mean(LATENCY_S, &[(LABEL_WORKLOAD, WORKLOAD_SHARED)])
-            .map(|seconds| seconds * 1000.0)
-    }
-
     /// Number of blocks this replica knows it's still missing from the given peer authority.
     pub fn missing_blocks(&self, authority: Authority) -> i64 {
         let label = authority.to_string();

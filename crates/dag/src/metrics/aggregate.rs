@@ -22,22 +22,6 @@ impl<'a> AggregateMetrics<'a> {
         Self { snapshots }
     }
 
-    /// Mean end-to-end transaction latency (ms), averaged across
-    /// per-replica means. Returns `None` when no replica observed
-    /// any committed transaction (e.g. no load generator).
-    pub fn mean_latency_ms(&self) -> Option<f64> {
-        let per_replica: Vec<f64> = self
-            .snapshots
-            .iter()
-            .filter_map(MetricsSnapshot::mean_latency_ms)
-            .collect();
-        if per_replica.is_empty() {
-            None
-        } else {
-            Some(per_replica.iter().sum::<f64>() / per_replica.len() as f64)
-        }
-    }
-
     /// 50th-percentile end-to-end transaction latency (ms), averaged across per-replica values.
     pub fn p50_latency_ms(&self) -> Option<f64> {
         self.latency_percentile_ms(0.5)
