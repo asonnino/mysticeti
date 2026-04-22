@@ -5,75 +5,36 @@
 //! tabled-driven display code lives here.
 
 pub mod banner;
+mod result;
 mod spinner;
 pub mod table;
 
-use std::{io::IsTerminal, time::Duration};
+use std::io::IsTerminal;
 
-use dag::metrics::{AggregateMetrics, Outcome, RunResult};
+use dag::metrics::RunResult;
 use simulator::SimulationConfig;
 
+use self::result::RunResultRender;
 use self::spinner::Spinner;
-use self::table::{ConfigRow, ReplicaRow, SuiteRow};
+use self::table::{ConfigRow, SuiteRow};
 
 pub use self::banner::BannerPrinter;
 
-pub const BLUE_FOREGROUND: &str = "\x1b[34m";
-pub const BLUE_BACKGROUND: &str = "\x1b[44m";
-pub const BOLD: &str = "\x1b[1m";
-pub const DIM: &str = "\x1b[2m";
-pub const GREEN: &str = "\x1b[32m";
-pub const RED: &str = "\x1b[31m";
-pub const YELLOW: &str = "\x1b[33m";
+// ANSI SGR escapes. `BLUE_FOREGROUND` and `BLUE_BACKGROUND` pair up in the banner art:
+// one paints character glyphs, the other fills the cell behind them.
+pub const BLUE_FOREGROUND: &str = "\x1b[34m"; // banner art edges (half-block glyphs)
+pub const BLUE_BACKGROUND: &str = "\x1b[44m"; // banner art fill (full-block glyph)
+pub const GREEN: &str = "\x1b[32m"; // Outcome::Pass badge
+pub const YELLOW: &str = "\x1b[33m"; // Outcome::NoProgress badge
+pub const RED: &str = "\x1b[31m"; // Outcome::Diverged badge
+pub const BOLD: &str = "\x1b[1m"; // headings, protocol line, banner key values
+pub const DIM: &str = "\x1b[2m"; // banner info-key labels
 pub const RESET: &str = "\x1b[0m";
 
 /// True when stderr points at an interactive terminal and is therefore safe to emit ANSI
 /// escape codes to.
 pub fn stderr_supports_color() -> bool {
     std::io::stderr().is_terminal()
-}
-
-/// Display helpers for the plain [`Outcome`] enum. Extension trait on the domain type so
-/// the domain stays free of presentation concerns.
-pub trait OutcomeDisplay {
-    /// Single-character glyph, no colour. Usable standalone (e.g. inside a table cell).
-    fn glyph(&self) -> &'static str;
-    /// Fully-formatted badge line. When `color=true`, wraps the glyph + prose in ANSI
-    /// colour escapes; when `false`, returns `"LABEL: prose"`.
-    fn badge(&self, color: bool) -> String;
-}
-
-impl OutcomeDisplay for Outcome {
-    fn glyph(&self) -> &'static str {
-        match self {
-            Outcome::Pass => "✓",
-            Outcome::NoProgress => "⚠",
-            Outcome::Diverged => "✗",
-        }
-    }
-
-    fn badge(&self, color: bool) -> String {
-        let prose = match self {
-            Outcome::Pass => "Commits consistent across all replicas",
-            Outcome::NoProgress => "Safe but no leader was committed",
-            Outcome::Diverged => "Commits DIVERGED across replicas",
-        };
-        if color {
-            let color_code = match self {
-                Outcome::Pass => GREEN,
-                Outcome::NoProgress => YELLOW,
-                Outcome::Diverged => RED,
-            };
-            format!("{color_code}{glyph} {prose}{RESET}", glyph = self.glyph())
-        } else {
-            let label = match self {
-                Outcome::Pass => "PASS",
-                Outcome::NoProgress => "WARN",
-                Outcome::Diverged => "FAIL",
-            };
-            format!("{label}: {prose}")
-        }
-    }
 }
 
 /// Stateful renderer for one command invocation. Owns the suite-row history and the
@@ -156,61 +117,5 @@ impl Terminal {
             println!("Suite summary");
         }
         println!("{}", table::render(self.suite_rows.iter().cloned()));
-    }
-}
-
-/// What a `RunResult<C>` knows about rendering itself to the terminal. Parallels
-/// [`OutcomeDisplay`] — the domain type stays plain, the extension trait lives next to
-/// the renderer. Adding a new run kind (testbed in #64) means another impl here, not
-/// another method on `Terminal`.
-pub trait RunResultRender {
-    /// Produce the per-result display block: outcome badge followed by either a
-    /// one-line happy-path summary or the full per-replica table.
-    fn render(&self, color: bool) -> String;
-}
-
-impl RunResultRender for RunResult<SimulationConfig> {
-    fn render(&self, color: bool) -> String {
-        let outcome = self.outcome;
-        let duration_secs = self.config.duration_secs;
-        let commit_counts = self.commit_count_per_replica();
-
-        let mut out = outcome.badge(color);
-        out.push('\n');
-
-        // Collapse to a one-line summary when every replica committed identically and
-        // nothing else is noteworthy (sim-only pattern; testbed shutdowns aren't
-        // synchronised so counts almost never align there).
-        let uniform_commits = commit_counts
-            .first()
-            .map(|first| commit_counts.iter().all(|c| c == first))
-            .unwrap_or(true);
-        let aggregate = AggregateMetrics::new(&self.metrics);
-        if outcome != Outcome::Diverged && uniform_commits && !aggregate.any_missing_blocks() {
-            let duration = Duration::from_secs(duration_secs);
-            let committed = commit_counts.first().copied().unwrap_or_default();
-            let rate = match aggregate.leader_commits_per_second(duration) {
-                Some(r) => format!("{r:.1} commits/s"),
-                None => "— commits/s".into(),
-            };
-            let mut headline = Vec::new();
-            if let (Some(p50), Some(p90)) = (aggregate.p50_latency_ms(), aggregate.p90_latency_ms())
-            {
-                headline.push(format!("p50 {p50:.0} ms · p90 {p90:.0} ms"));
-            }
-            if let Some(tps) = aggregate.committed_tps(duration) {
-                headline.push(format!("{tps:.0} TPS"));
-            }
-            let headline = headline.join(" · ");
-            if headline.is_empty() {
-                out.push_str(&format!("  {committed} commits, {rate}"));
-            } else {
-                out.push_str(&format!("  {headline} ({committed} commits, {rate})"));
-            }
-        } else {
-            let rows = ReplicaRow::for_result(self, duration_secs);
-            out.push_str(&table::render(rows));
-        }
-        out
     }
 }
