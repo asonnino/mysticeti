@@ -8,7 +8,7 @@ use dag::{
 use simulator::SimulationConfig;
 use tabled::{Table, Tabled, settings::Style};
 
-use super::OutcomeDisplay;
+use super::result::OutcomeDisplay;
 
 /// Render any iterable of `Tabled` rows with the suite's
 /// standard rounded style. Single call site so the border
@@ -26,6 +26,13 @@ pub struct ConfigRow {
 }
 
 impl ConfigRow {
+    fn new(parameter: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            parameter: parameter.into(),
+            value: value.into(),
+        }
+    }
+
     pub fn for_config(config: &SimulationConfig) -> Vec<Self> {
         vec![
             Self::new("Committee size", config.committee_size.to_string()),
@@ -37,13 +44,6 @@ impl ConfigRow {
             ),
             Self::new("RNG seed", config.rng_seed.to_string()),
         ]
-    }
-
-    fn new(parameter: impl Into<String>, value: impl Into<String>) -> Self {
-        Self {
-            parameter: parameter.into(),
-            value: value.into(),
-        }
     }
 }
 
@@ -60,19 +60,6 @@ pub struct ReplicaRow {
 }
 
 impl ReplicaRow {
-    pub fn for_result<C>(result: &RunResult<C>, duration_secs: u64) -> Vec<Self> {
-        result
-            .metrics
-            .iter()
-            .enumerate()
-            .map(|(i, metrics)| {
-                let authority = Authority::from(i);
-                let committed_leaders = metrics.committed_leaders(authority) as usize;
-                Self::new(authority, committed_leaders, duration_secs, metrics)
-            })
-            .collect()
-    }
-
     fn new(
         authority: Authority,
         committed_leaders: usize,
@@ -93,6 +80,24 @@ impl ReplicaRow {
             commits_per_sec,
             stats: metrics.replica_stats(),
         }
+    }
+
+    pub fn for_result<C>(result: &RunResult<C>) -> Vec<Self> {
+        let duration_secs = result.duration.as_secs();
+        result
+            .metrics
+            .iter()
+            .zip(result.commit_count_per_replica())
+            .enumerate()
+            .map(|(index, (metrics, committed_leaders))| {
+                Self::new(
+                    Authority::from(index),
+                    committed_leaders,
+                    duration_secs,
+                    metrics,
+                )
+            })
+            .collect()
     }
 }
 
