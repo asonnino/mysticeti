@@ -118,21 +118,10 @@ impl Storage {
 mod tests {
     use crate::{
         authority::Authority,
-        block::BlockReference,
         committee::Committee,
         metrics::Metrics,
         storage::{Storage, block_store::CommitData},
     };
-
-    fn commit(leader_authority: u64, round: u64, sub_dag: &[(u64, u64)]) -> CommitData {
-        CommitData {
-            leader: BlockReference::new_test(leader_authority, round),
-            sub_dag: sub_dag
-                .iter()
-                .map(|(a, r)| BlockReference::new_test(*a, *r))
-                .collect(),
-        }
-    }
 
     #[test]
     fn iter_commits_yields_every_batch_in_order() {
@@ -140,12 +129,9 @@ mod tests {
         let (mut storage, _recovered) =
             Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
 
-        let batch_one = vec![commit(0, 1, &[(0, 1), (1, 1)]), commit(1, 2, &[(1, 2)])];
-        let batch_two = vec![commit(2, 3, &[(2, 3), (3, 3)])];
-        let batch_three = vec![
-            commit(3, 4, &[(3, 4)]),
-            commit(0, 5, &[(0, 5), (1, 5), (2, 5)]),
-        ];
+        let batch_one = CommitData::new_for_test(&[(0, 1), (1, 2)]);
+        let batch_two = CommitData::new_for_test(&[(2, 3)]);
+        let batch_three = CommitData::new_for_test(&[(3, 4), (0, 5)]);
 
         storage.write_commits(&batch_one);
         storage.write_commits(&batch_two);

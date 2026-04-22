@@ -305,6 +305,22 @@ impl From<&CommittedSubDag> for CommitData {
     }
 }
 
+impl CommitData {
+    /// Build a sequence of [`CommitData`] for tests. Each leader at `(authority, round)`
+    /// becomes a `CommitData` whose `sub_dag` is a single-element vector containing the
+    /// leader itself — enough for tests that only care about commit ordering or identity.
+    #[cfg(any(test, feature = "test-utils"))]
+    pub fn new_for_test(leaders: &[(u64, u64)]) -> Vec<Self> {
+        leaders
+            .iter()
+            .map(|(authority, round)| Self {
+                leader: BlockReference::new_test(*authority, *round),
+                sub_dag: vec![BlockReference::new_test(*authority, *round)],
+            })
+            .collect()
+    }
+}
+
 impl CryptoHash for CommitData {
     fn crypto_hash(&self, state: &mut impl digest::Digest) {
         self.leader.crypto_hash(state);
