@@ -46,7 +46,7 @@ use crate::{
 pub type RoundNumber = u64;
 
 /// The round of genesis blocks, which are trusted by construction and never sent over the wire.
-const GENESIS_ROUND: RoundNumber = 0;
+pub const GENESIS_ROUND: RoundNumber = 0;
 
 /// A block in the DAG. Contains references to prior-round blocks, a batch of transactions, and a
 /// signature from the proposing authority.
