@@ -6,7 +6,7 @@ use std::{collections::VecDeque, sync::Arc};
 use crate::{base::BaseCommitter, leader::LeaderElector, protocol::Protocol};
 use dag::{
     authority::Authority,
-    block::{BlockReference, RoundNumber},
+    block::RoundNumber,
     committee::Committee,
     committee::Stake,
     consensus::{DagConsensus, LeaderStatus},
@@ -58,15 +58,16 @@ impl Committer {
     }
 
     /// Try to commit part of the dag. This function is idempotent and returns a list of
-    /// ordered decided leaders.
-    #[tracing::instrument(level = "debug", skip_all, fields(last_decided = %last_decided))]
+    /// ordered decided leaders. `last_decided` is the slot of the most recently consumed
+    /// decision; pass `None` on a fresh start to yield every decided leader from round 0
+    /// upward.
+    #[tracing::instrument(level = "debug", skip_all, fields(last_decided = ?last_decided))]
     pub(crate) fn try_commit(
         &mut self,
-        last_decided: BlockReference,
+        last_decided: Option<(RoundNumber, Authority)>,
     ) -> impl Iterator<Item = LeaderStatus> + '_ {
         let highest_known_round = self.block_reader.highest_round();
-        let last_decided_round = last_decided.round();
-        let last_decided_round_authority = (last_decided.round(), last_decided.authority);
+        let last_decided_round = last_decided.map(|(round, _)| round).unwrap_or(0);
 
         // Try to decide as many leaders as possible, starting with the highest round.
         self.leaders.clear();
@@ -98,10 +99,13 @@ impl Committer {
         // The decided sequence is the longest prefix of decided leaders.
         self.leaders
             .drain(..)
-            // Skip all leaders before the last decided round.
-            .skip_while(move |x| (x.round(), x.authority()) != last_decided_round_authority)
-            // Skip the last decided leader.
-            .skip(1)
+            // Position past the previously-yielded decision, if any. When `None`
+            // (fresh start), yield every decided leader from round 0 upward.
+            .skip_while(move |x| match last_decided {
+                Some(round_author) => (x.round(), x.authority()) != round_author,
+                None => false,
+            })
+            .skip(if last_decided.is_some() { 1 } else { 0 })
             // Filter out all the genesis.
             .filter(|x| x.round() > 0)
             // Stop the sequence upon encountering an undecided leader.
@@ -115,7 +119,10 @@ impl DagConsensus for Committer {
         self.strong_quorum
     }
 
-    fn try_commit(&mut self, last_decided: BlockReference) -> impl Iterator<Item = LeaderStatus> {
+    fn try_commit(
+        &mut self,
+        last_decided: Option<(RoundNumber, Authority)>,
+    ) -> impl Iterator<Item = LeaderStatus> {
         self.try_commit(last_decided)
     }
 

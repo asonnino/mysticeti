@@ -8,7 +8,7 @@ use crate::{committer::Committer, leader::LeaderElector, protocol::Protocol};
 const WAVE_LENGTH: u64 = 3;
 use dag::{
     authority::Authority,
-    block::{Block, BlockReference},
+    block::{Block, RoundNumber},
     consensus::LeaderStatus,
     metrics::Metrics,
     storage::Storage,
@@ -33,7 +33,7 @@ fn direct_commit() {
         Protocol::mysticeti(committee.total_stake(), NonZeroUsize::new(1).unwrap()),
     );
 
-    let last_committed = BlockReference::new_test(0, 0);
+    let last_committed: Option<(RoundNumber, Authority)> = None;
     let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
 
@@ -64,12 +64,12 @@ fn idempotence() {
     );
 
     // Commit one block.
-    let last_committed = BlockReference::new_test(0, 0);
+    let last_committed: Option<(RoundNumber, Authority)> = None;
     let committed = committer.try_commit(last_committed).collect::<Vec<_>>();
 
     // Ensure we don't commit it again.
     let last = committed.into_iter().last().unwrap();
-    let last_committed = BlockReference::new_test(last.authority().as_u64(), last.round());
+    let last_committed = Some((last.round(), last.authority()));
     let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
     assert!(sequence.is_empty());
@@ -83,7 +83,7 @@ fn multiple_direct_commit() {
     let leader_elector = LeaderElector::new(committee.len());
     let wave_length = WAVE_LENGTH;
 
-    let mut last_committed = BlockReference::new_test(0, 0);
+    let mut last_committed: Option<(RoundNumber, Authority)> = None;
     for n in 1..=10 {
         let enough_blocks = n + (wave_length - 1);
         let (mut storage, _) =
@@ -110,7 +110,7 @@ fn multiple_direct_commit() {
         }
 
         let last = sequence.into_iter().last().unwrap();
-        last_committed = BlockReference::new_test(last.authority().as_u64(), last.round());
+        last_committed = Some((last.round(), last.authority()));
     }
 }
 
@@ -134,7 +134,7 @@ fn direct_commit_late_call() {
         Protocol::mysticeti(committee.total_stake(), NonZeroUsize::new(1).unwrap()),
     );
 
-    let last_committed = BlockReference::new_test(0, 0);
+    let last_committed: Option<(RoundNumber, Authority)> = None;
     let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
 
@@ -170,7 +170,7 @@ fn no_genesis_commit() {
             Protocol::mysticeti(committee.total_stake(), NonZeroUsize::new(1).unwrap()),
         );
 
-        let last_committed = BlockReference::new_test(0, 0);
+        let last_committed: Option<(RoundNumber, Authority)> = None;
         let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
         tracing::info!("Commit sequence: {sequence:?}");
         assert!(sequence.is_empty());
@@ -212,7 +212,7 @@ fn no_leader() {
         Protocol::mysticeti(committee.total_stake(), NonZeroUsize::new(1).unwrap()),
     );
 
-    let last_committed = BlockReference::new_test(0, 0);
+    let last_committed: Option<(RoundNumber, Authority)> = None;
     let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
 
@@ -264,7 +264,7 @@ fn direct_skip() {
         Protocol::mysticeti(committee.total_stake(), NonZeroUsize::new(1).unwrap()),
     );
 
-    let last_committed = BlockReference::new_test(0, 0);
+    let last_committed: Option<(RoundNumber, Authority)> = None;
     let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
 
@@ -367,7 +367,7 @@ fn indirect_commit() {
         Protocol::mysticeti(committee.total_stake(), NonZeroUsize::new(1).unwrap()),
     );
 
-    let last_committed = BlockReference::new_test(0, 0);
+    let last_committed: Option<(RoundNumber, Authority)> = None;
     let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
     assert_eq!(sequence.len(), 5);
@@ -440,7 +440,7 @@ fn indirect_skip() {
         Protocol::mysticeti(committee.total_stake(), NonZeroUsize::new(1).unwrap()),
     );
 
-    let last_committed = BlockReference::new_test(0, 0);
+    let last_committed: Option<(RoundNumber, Authority)> = None;
     let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
     assert_eq!(sequence.len(), 7);
@@ -527,7 +527,7 @@ fn undecided() {
         Protocol::mysticeti(committee.total_stake(), NonZeroUsize::new(1).unwrap()),
     );
 
-    let last_committed = BlockReference::new_test(0, 0);
+    let last_committed: Option<(RoundNumber, Authority)> = None;
     let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
     assert!(sequence.is_empty());
