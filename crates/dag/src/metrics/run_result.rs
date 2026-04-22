@@ -12,6 +12,8 @@ use digest::{Digest, consts::U32};
 
 use crate::{crypto::CryptoHash, storage::block_store::CommitData};
 
+type PrefixHasher = Blake2b<U32>;
+
 /// Verdict on a single run, derived from the committed-leader sequences across replicas.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Outcome {
@@ -24,8 +26,6 @@ pub enum Outcome {
     Diverged,
 }
 
-type PrefixHasher = Blake2b<U32>;
-
 /// Classify a run by streaming each replica's committed sub-dag sequence through a per-replica
 /// rolling hash (leader + ordered sub-dag, via [`CryptoHash`]) and comparing cumulative hashes
 /// in lock-step. Replicas that reach a shared index must produce identical cumulative hashes
@@ -36,59 +36,60 @@ type PrefixHasher = Blake2b<U32>;
 /// will show as `Diverged`.
 ///
 /// Memory: `O(replicas)` regardless of commit count.
-pub fn check_consistency<R>(streams: impl IntoIterator<Item = R>) -> Outcome
+impl<I, R> From<I> for Outcome
 where
+    I: IntoIterator<Item = R>,
     R: IntoIterator<Item = CommitData>,
 {
-    let mut replicas: Vec<(PrefixHasher, R::IntoIter)> = streams
-        .into_iter()
-        .map(|s| (PrefixHasher::new(), s.into_iter()))
-        .collect();
+    fn from(streams: I) -> Self {
+        let mut replicas: Vec<(PrefixHasher, R::IntoIter)> = streams
+            .into_iter()
+            .map(|stream| (PrefixHasher::new(), stream.into_iter()))
+            .collect();
 
-    if replicas.is_empty() {
-        return Outcome::NoProgress;
-    }
+        if replicas.is_empty() {
+            return Outcome::NoProgress;
+        }
 
-    let mut any_commit_seen = false;
+        let mut any_commit_seen = false;
 
-    while !replicas.is_empty() {
-        // Advance each replica by one commit, dropping any that have exhausted their stream.
-        // `hashes_this_step` collects the cumulative hash at this prefix length for every
-        // replica still alive after the advance — they must all agree.
-        let mut hashes_this_step: Vec<[u8; 32]> = Vec::with_capacity(replicas.len());
-        replicas.retain_mut(|(hasher, iter)| match iter.next() {
-            Some(commit) => {
-                commit.crypto_hash(hasher);
-                hashes_this_step.push(hasher.clone().finalize().into());
-                true
+        while !replicas.is_empty() {
+            // Advance each replica by one commit, dropping any that have exhausted their
+            // stream. `hashes_this_step` collects the cumulative hash at this prefix length
+            // for every replica still alive after the advance — they must all agree.
+            let mut hashes_this_step: Vec<[u8; 32]> = Vec::with_capacity(replicas.len());
+            replicas.retain_mut(|(hasher, iter)| match iter.next() {
+                Some(commit) => {
+                    commit.crypto_hash(hasher);
+                    hashes_this_step.push(hasher.clone().finalize().into());
+                    true
+                }
+                None => false,
+            });
+
+            if hashes_this_step.is_empty() {
+                break;
             }
-            None => false,
-        });
+            any_commit_seen = true;
 
-        if hashes_this_step.is_empty() {
-            break;
+            let reference = hashes_this_step[0];
+            if hashes_this_step[1..].iter().any(|h| *h != reference) {
+                return Outcome::Diverged;
+            }
         }
-        any_commit_seen = true;
 
-        let reference = hashes_this_step[0];
-        if hashes_this_step[1..].iter().any(|h| *h != reference) {
-            return Outcome::Diverged;
+        if any_commit_seen {
+            Outcome::Pass
+        } else {
+            Outcome::NoProgress
         }
-    }
-
-    if any_commit_seen {
-        Outcome::Pass
-    } else {
-        Outcome::NoProgress
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        block::BlockReference,
-        metrics::run_result::{Outcome, check_consistency},
-        storage::block_store::CommitData,
+        block::BlockReference, metrics::run_result::Outcome, storage::block_store::CommitData,
     };
 
     fn commit(leader_authority: u64, round: u64) -> CommitData {
@@ -106,40 +107,40 @@ mod tests {
     fn identical_sequences_pass() {
         let seq = sequence(&[(0, 1), (1, 2), (2, 3), (3, 4)]);
         let streams = vec![seq.clone(), seq.clone(), seq.clone(), seq];
-        assert_eq!(check_consistency(streams), Outcome::Pass);
+        assert_eq!(Outcome::from(streams), Outcome::Pass);
     }
 
     #[test]
     fn all_empty_is_no_progress() {
         let streams: Vec<Vec<CommitData>> = vec![vec![], vec![], vec![]];
-        assert_eq!(check_consistency(streams), Outcome::NoProgress);
+        assert_eq!(Outcome::from(streams), Outcome::NoProgress);
     }
 
     #[test]
     fn no_replicas_is_no_progress() {
         let streams: Vec<Vec<CommitData>> = vec![];
-        assert_eq!(check_consistency(streams), Outcome::NoProgress);
+        assert_eq!(Outcome::from(streams), Outcome::NoProgress);
     }
 
     #[test]
     fn diverging_tails_are_detected() {
         let a = sequence(&[(0, 1), (1, 2), (2, 3)]);
         let b = sequence(&[(0, 1), (1, 2), (3, 3)]);
-        assert_eq!(check_consistency(vec![a, b]), Outcome::Diverged);
+        assert_eq!(Outcome::from(vec![a, b]), Outcome::Diverged);
     }
 
     #[test]
     fn divergence_at_first_position_is_detected() {
         let a = sequence(&[(0, 1)]);
         let b = sequence(&[(1, 1)]);
-        assert_eq!(check_consistency(vec![a, b]), Outcome::Diverged);
+        assert_eq!(Outcome::from(vec![a, b]), Outcome::Diverged);
     }
 
     #[test]
     fn shorter_replica_on_shared_prefix_passes() {
         let full = sequence(&[(0, 1), (1, 2), (2, 3)]);
         let short = sequence(&[(0, 1), (1, 2)]);
-        assert_eq!(check_consistency(vec![full, short]), Outcome::Pass);
+        assert_eq!(Outcome::from(vec![full, short]), Outcome::Pass);
     }
 
     #[test]
@@ -149,7 +150,7 @@ mod tests {
         let short = sequence(&[(0, 1), (1, 2)]);
         let a = sequence(&[(0, 1), (1, 2), (2, 3), (3, 4)]);
         let b = sequence(&[(0, 1), (1, 2), (2, 3), (0, 4)]);
-        assert_eq!(check_consistency(vec![short, a, b]), Outcome::Diverged);
+        assert_eq!(Outcome::from(vec![short, a, b]), Outcome::Diverged);
     }
 
     #[test]
@@ -169,13 +170,13 @@ mod tests {
                 BlockReference::new_test(1, 1),
             ],
         }];
-        assert_eq!(check_consistency(vec![a, b]), Outcome::Diverged);
+        assert_eq!(Outcome::from(vec![a, b]), Outcome::Diverged);
     }
 
     #[test]
     fn memory_bounded_for_large_identical_streams() {
         let seq: Vec<CommitData> = (1..=10_000).map(|round| commit(0, round)).collect();
         let streams = vec![seq.clone(), seq];
-        assert_eq!(check_consistency(streams), Outcome::Pass);
+        assert_eq!(Outcome::from(streams), Outcome::Pass);
     }
 }
