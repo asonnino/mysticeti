@@ -80,6 +80,21 @@ impl Storage {
         &self.reader
     }
 
+    /// Stream every committed sub-dag written to this storage so far, in order.
+    /// Each `WAL_ENTRY_COMMIT` entry carries a `Vec<CommitData>` (one batch per commit
+    /// flush), which this iterator flattens to a single `CommitData` stream.
+    pub fn iter_commits(&self) -> impl Iterator<Item = CommitData> + '_ {
+        self.reader
+            .wal_reader()
+            .iter_until(&self.wal_writer)
+            .filter_map(|(_pos, (tag, data))| (tag == WAL_ENTRY_COMMIT).then_some(data))
+            .flat_map(|data| {
+                let batch: Vec<CommitData> = bincode::deserialize(&data)
+                    .expect("Failed to deserialize commit data from wal");
+                batch.into_iter()
+            })
+    }
+
     pub(crate) fn insert_block(&mut self, block: Data<Block>) -> WalPosition {
         let pos = self
             .wal_writer
@@ -96,5 +111,65 @@ impl Storage {
         self.reader
             .write_inner()
             .add_loaded(block_pos, data.block.clone());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        authority::Authority,
+        block::BlockReference,
+        committee::Committee,
+        metrics::Metrics,
+        storage::{Storage, block_store::CommitData},
+    };
+
+    fn commit(leader_authority: u64, round: u64, sub_dag: &[(u64, u64)]) -> CommitData {
+        CommitData {
+            leader: BlockReference::new_test(leader_authority, round),
+            sub_dag: sub_dag
+                .iter()
+                .map(|(a, r)| BlockReference::new_test(*a, *r))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn iter_commits_yields_every_batch_in_order() {
+        let committee = Committee::new_test(vec![1; 4]);
+        let (mut storage, _recovered) =
+            Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
+
+        let batch_one = vec![commit(0, 1, &[(0, 1), (1, 1)]), commit(1, 2, &[(1, 2)])];
+        let batch_two = vec![commit(2, 3, &[(2, 3), (3, 3)])];
+        let batch_three = vec![
+            commit(3, 4, &[(3, 4)]),
+            commit(0, 5, &[(0, 5), (1, 5), (2, 5)]),
+        ];
+
+        storage.write_commits(&batch_one);
+        storage.write_commits(&batch_two);
+        storage.write_commits(&batch_three);
+
+        let expected: Vec<_> = batch_one
+            .iter()
+            .chain(&batch_two)
+            .chain(&batch_three)
+            .collect();
+        let actual: Vec<_> = storage.iter_commits().collect();
+
+        assert_eq!(actual.len(), expected.len());
+        for (got, want) in actual.iter().zip(expected.iter()) {
+            assert_eq!(got.leader, want.leader);
+            assert_eq!(got.sub_dag, want.sub_dag);
+        }
+    }
+
+    #[test]
+    fn iter_commits_is_empty_for_fresh_storage() {
+        let committee = Committee::new_test(vec![1; 4]);
+        let (storage, _recovered) =
+            Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
+        assert_eq!(storage.iter_commits().count(), 0);
     }
 }
