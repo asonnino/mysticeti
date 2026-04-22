@@ -14,7 +14,7 @@ use crate::{
     authority::Authority,
     block::{Block, BlockReference, RoundNumber},
     consensus::CommittedSubDag,
-    crypto::BlockDigest,
+    crypto::{BlockDigest, CryptoHash},
     data::Data,
     wal::{Tag, WalPosition, WalWriter},
 };
@@ -288,6 +288,7 @@ impl OwnBlockData {
 }
 
 #[derive(Serialize, Deserialize)]
+#[cfg_attr(test, derive(Clone))]
 pub struct CommitData {
     pub leader: BlockReference,
     // All committed blocks, including the leader
@@ -300,6 +301,16 @@ impl From<&CommittedSubDag> for CommitData {
         Self {
             leader: value.anchor,
             sub_dag,
+        }
+    }
+}
+
+impl CryptoHash for CommitData {
+    fn crypto_hash(&self, state: &mut impl digest::Digest) {
+        self.leader.crypto_hash(state);
+        (self.sub_dag.len() as u64).crypto_hash(state);
+        for reference in &self.sub_dag {
+            reference.crypto_hash(state);
         }
     }
 }

@@ -6,6 +6,7 @@ mod coarse;
 mod histogram;
 mod names;
 mod precise;
+mod run_result;
 mod snapshot;
 mod timers;
 
@@ -21,6 +22,7 @@ pub use self::names::{
     BENCHMARK_DURATION, BLOCK_SYNC_REQUESTS_SENT, LABEL_AUTHORITY, LABEL_WORKLOAD, LATENCY_S,
     LATENCY_SQUARED_S, LEADER_TIMEOUT_TOTAL, SyncRequestFulfilled,
 };
+pub use self::run_result::{Outcome, check_consistency};
 pub use self::snapshot::{MetricsSnapshot, ReplicaStats};
 pub use self::timers::{OwnedUtilizationTimer, UtilizationTimer};
 use self::{
