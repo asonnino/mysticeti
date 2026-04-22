@@ -95,7 +95,7 @@ impl Terminal {
         }
     }
 
-    /// Begin a run: print the per-sim heading + config table and arm the spinner.
+    /// Begin a run: print the per-run heading + config table and arm the spinner.
     pub fn start_run(&mut self, index: usize, config: &SimulationConfig) {
         let heading = match (self.total > 1, config.name.as_deref()) {
             (true, Some(name)) => Some(format!(
@@ -126,7 +126,7 @@ impl Terminal {
         if let Some(spinner) = self.spinner.take() {
             spinner.finish();
         }
-        self.render_result(result);
+        println!("{}", result.render(self.color));
         println!();
 
         let run_name = result
@@ -157,24 +157,35 @@ impl Terminal {
         }
         println!("{}", table::render(self.suite_rows.iter().cloned()));
     }
+}
 
-    fn render_result(&self, result: &RunResult<SimulationConfig>) {
-        let outcome = result.outcome;
-        let duration_secs = result.config.duration_secs;
-        let commit_counts = result.commit_count_per_replica();
+/// What a `RunResult<C>` knows about rendering itself to the terminal. Parallels
+/// [`OutcomeDisplay`] — the domain type stays plain, the extension trait lives next to
+/// the renderer. Adding a new run kind (testbed in #64) means another impl here, not
+/// another method on `Terminal`.
+pub trait RunResultRender {
+    /// Produce the per-result display block: outcome badge followed by either a
+    /// one-line happy-path summary or the full per-replica table.
+    fn render(&self, color: bool) -> String;
+}
 
-        println!("{}", outcome.badge(self.color));
+impl RunResultRender for RunResult<SimulationConfig> {
+    fn render(&self, color: bool) -> String {
+        let outcome = self.outcome;
+        let duration_secs = self.config.duration_secs;
+        let commit_counts = self.commit_count_per_replica();
 
-        let rows = ReplicaRow::for_result(result, duration_secs);
+        let mut out = outcome.badge(color);
+        out.push('\n');
 
-        // Collapse to a single-line summary when every replica committed identically and
+        // Collapse to a one-line summary when every replica committed identically and
         // nothing else is noteworthy (sim-only pattern; testbed shutdowns aren't
         // synchronised so counts almost never align there).
         let uniform_commits = commit_counts
             .first()
             .map(|first| commit_counts.iter().all(|c| c == first))
             .unwrap_or(true);
-        let aggregate = AggregateMetrics::new(&result.metrics);
+        let aggregate = AggregateMetrics::new(&self.metrics);
         if outcome != Outcome::Diverged && uniform_commits && !aggregate.any_missing_blocks() {
             let duration = Duration::from_secs(duration_secs);
             let committed = commit_counts.first().copied().unwrap_or_default();
@@ -190,18 +201,16 @@ impl Terminal {
             if let Some(tps) = aggregate.committed_tps(duration) {
                 headline.push(format!("{tps:.0} TPS"));
             }
-            print_summary_line(&headline.join(" · "), committed, &rate);
-            return;
+            let headline = headline.join(" · ");
+            if headline.is_empty() {
+                out.push_str(&format!("  {committed} commits, {rate}"));
+            } else {
+                out.push_str(&format!("  {headline} ({committed} commits, {rate})"));
+            }
+        } else {
+            let rows = ReplicaRow::for_result(self, duration_secs);
+            out.push_str(&table::render(rows));
         }
-
-        println!("{}", table::render(rows));
-    }
-}
-
-fn print_summary_line(headline: &str, committed: usize, rate: &str) {
-    if headline.is_empty() {
-        println!("  {committed} commits, {rate}");
-    } else {
-        println!("  {headline} ({committed} commits, {rate})");
+        out
     }
 }
