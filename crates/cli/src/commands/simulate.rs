@@ -5,12 +5,12 @@ use std::path::PathBuf;
 
 use dag::{config::ImportExport, metrics::Outcome};
 use eyre::{Result, bail};
-use simulator::{SimulationConfig, SimulationMode, SimulatorTracing};
+use simulator::{SimulationConfig, SimulationMode, SimulationRunner, SimulatorTracing};
 use tracing_subscriber::filter::LevelFilter;
 
 use crate::{
     report::{self, SimulationReport},
-    reporter::Reporter,
+    terminal::{BannerPrinter, Terminal},
 };
 
 pub async fn simulate(
@@ -47,39 +47,40 @@ pub async fn simulate(
         bail!("simulation suite is empty");
     }
 
-    let reporter = Reporter::new();
-    reporter.banner(
-        "Uncertified DAG",
-        &[
-            ("Mode", "Simulator"),
-            ("Simulations", &configs.len().to_string()),
-        ],
-    );
-
     let total = configs.len();
-    let mut suite_rows = Vec::with_capacity(total);
-    let mut reports: Vec<SimulationReport> = if results_file.is_some() {
+    BannerPrinter::new(
+        "Uncertified DAG",
+        &[("Mode", "Simulator"), ("Simulations", &total.to_string())],
+    )
+    .print();
+
+    let mut terminal = Terminal::new(total);
+    let want_report = results_file.is_some();
+    let mut reports: Vec<SimulationReport> = if want_report {
         Vec::with_capacity(total)
     } else {
         Vec::new()
     };
     let mut diverged = 0;
+
     for (index, config) in configs.into_iter().enumerate() {
-        reporter.config_summary(index + 1, total, &config);
-        let want_report = results_file.is_some();
-        let (outcome, suite_row, result) = reporter.run(config).await?;
-        if outcome == Outcome::Diverged {
+        terminal.start_run(index + 1, &config);
+
+        let result = tokio::task::spawn_blocking(move || SimulationRunner::new(config).run())
+            .await
+            .map_err(|error| eyre::eyre!("Simulation task panicked: {error}"))?;
+
+        terminal.stop_run(&result);
+
+        if result.outcome == Outcome::Diverged {
             diverged += 1;
         }
-        suite_rows.push(suite_row);
         if want_report {
-            reports.push(SimulationReport::new(&result, outcome));
+            reports.push(SimulationReport::new(&result, result.outcome));
         }
     }
 
-    if total > 1 {
-        reporter.suite_summary(&suite_rows);
-    }
+    terminal.finish();
 
     if let Some(path) = results_file {
         report::write_reports(&path, &reports)?;
