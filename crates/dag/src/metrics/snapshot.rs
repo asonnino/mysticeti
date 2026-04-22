@@ -6,9 +6,9 @@ use std::time::Duration;
 use prometheus::{Encoder, TextEncoder, proto::MetricFamily};
 
 use super::names::{
-    BLOCK_SYNC_REQUESTS_SENT, COMMIT_TYPE_DIRECT_COMMIT, COMMIT_TYPE_INDIRECT_COMMIT,
-    COMMITTED_LEADERS_TOTAL, LABEL_AUTHORITY, LABEL_COMMIT_TYPE, LABEL_WORKLOAD, LATENCY_S,
-    LEADER_TIMEOUT_TOTAL, MISSING_BLOCKS, WORKLOAD_SHARED,
+    COMMIT_TYPE_DIRECT_COMMIT, COMMIT_TYPE_INDIRECT_COMMIT, COMMITTED_LEADERS_TOTAL,
+    LABEL_AUTHORITY, LABEL_COMMIT_TYPE, LABEL_WORKLOAD, LATENCY_S, LEADER_TIMEOUT_TOTAL,
+    MISSING_BLOCKS, WORKLOAD_SHARED,
 };
 use crate::authority::Authority;
 
@@ -212,8 +212,7 @@ impl MetricsSnapshot {
     /// Derived per-replica stats pulled in a single pass — shared by the terminal table
     /// (`ReplicaRow`) and the structured results file (`SimulationReport`) so both read from
     /// one definition.
-    pub fn replica_stats(&self, authority: Authority) -> ReplicaStats {
-        let label = authority.to_string();
+    pub fn replica_stats(&self) -> ReplicaStats {
         let latency_ms = |p: f64| {
             self.histogram_percentile(LATENCY_S, &[(LABEL_WORKLOAD, WORKLOAD_SHARED)], p)
                 .map(|seconds| seconds * 1000.0)
@@ -222,9 +221,6 @@ impl MetricsSnapshot {
             p50_latency_ms: latency_ms(0.5),
             p90_latency_ms: latency_ms(0.9),
             leader_timeouts: self.metric(LEADER_TIMEOUT_TOTAL, &[]) as u64,
-            missing_blocks: self.missing_blocks(authority),
-            sync_requests_sent: self.metric(BLOCK_SYNC_REQUESTS_SENT, &[(LABEL_AUTHORITY, &label)])
-                as u64,
         }
     }
 
@@ -261,10 +257,6 @@ pub struct ReplicaStats {
     pub p90_latency_ms: Option<f64>,
     #[tabled(rename = "leader timeouts")]
     pub leader_timeouts: u64,
-    #[tabled(rename = "missing blocks")]
-    pub missing_blocks: i64,
-    #[tabled(rename = "sync requests sent")]
-    pub sync_requests_sent: u64,
 }
 
 fn fmt_latency_ms(value: &Option<f64>) -> String {

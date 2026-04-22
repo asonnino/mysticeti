@@ -90,7 +90,7 @@ impl ReplicaRow {
             replica: authority,
             committed_leaders,
             commits_per_sec,
-            stats: metrics.replica_stats(authority),
+            stats: metrics.replica_stats(),
         }
     }
 }

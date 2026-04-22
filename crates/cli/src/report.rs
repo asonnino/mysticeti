@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{io::Write, path::Path};
+use std::path::Path;
 
 use dag::{authority::Authority, metrics::ReplicaStats};
 use eyre::{Result, WrapErr, bail};
@@ -56,7 +56,7 @@ impl SimulationReport {
                     committed_leaders: leaders.iter().map(|leader| leader.to_string()).collect(),
                     commits,
                     commits_per_sec,
-                    stats: metrics.replica_stats(authority),
+                    stats: metrics.replica_stats(),
                     metrics: metrics.to_prometheus_text(),
                 }
             })
@@ -103,7 +103,7 @@ pub fn write_reports(path: &Path, reports: &[SimulationReport]) -> Result<()> {
         .wrap_err_with(|| format!("creating temp file in {}", parent.display()))?;
     match format {
         Format::Json => serde_json::to_writer_pretty(&mut temp, reports)?,
-        Format::Yaml => temp.write_all(serde_yaml::to_string(reports)?.as_bytes())?,
+        Format::Yaml => serde_yaml::to_writer(&mut temp, reports)?,
     }
     temp.persist(path)
         .map_err(|error| eyre::eyre!("writing {}: {}", path.display(), error.error))?;
