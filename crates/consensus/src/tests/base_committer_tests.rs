@@ -6,7 +6,7 @@ use std::num::NonZeroUsize;
 use crate::{committer::Committer, leader::LeaderElector, protocol::Protocol};
 use dag::{
     authority::Authority,
-    block::BlockReference,
+    block::RoundNumber,
     consensus::LeaderStatus,
     metrics::Metrics,
     storage::Storage,
@@ -38,7 +38,7 @@ fn direct_commit() {
         },
     );
 
-    let last_committed = BlockReference::new_test(0, 0);
+    let last_committed: Option<(RoundNumber, Authority)> = None;
     let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
 
@@ -77,12 +77,12 @@ fn idempotence() {
     );
 
     // Commit one block.
-    let last_committed = BlockReference::new_test(0, 0);
+    let last_committed: Option<(RoundNumber, Authority)> = None;
     let committed = committer.try_commit(last_committed).collect::<Vec<_>>();
 
     // Ensure we don't commit it again.
     let max = committed.into_iter().max().unwrap();
-    let last_committed = BlockReference::new_test(max.authority().as_u64(), max.round());
+    let last_committed = Some((max.round(), max.authority()));
     let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
     assert!(sequence.is_empty());
@@ -96,7 +96,7 @@ fn multiple_direct_commit() {
     let leader_elector = LeaderElector::new(committee.len());
     let wave_length = 3;
 
-    let mut last_committed = BlockReference::new_test(0, 0);
+    let mut last_committed: Option<(RoundNumber, Authority)> = None;
     for n in 1..=10 {
         let enough_blocks = wave_length * (n + 1) - 1;
         let (mut storage, _) =
@@ -131,7 +131,7 @@ fn multiple_direct_commit() {
         }
 
         let max = sequence.iter().max().unwrap();
-        last_committed = BlockReference::new_test(max.authority().as_u64(), max.round());
+        last_committed = Some((max.round(), max.authority()));
     }
 }
 
@@ -163,7 +163,7 @@ fn direct_commit_late_call() {
         },
     );
 
-    let last_committed = BlockReference::new_test(0, 0);
+    let last_committed: Option<(RoundNumber, Authority)> = None;
     let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
 
@@ -207,7 +207,7 @@ fn no_genesis_commit() {
             },
         );
 
-        let last_committed = BlockReference::new_test(0, 0);
+        let last_committed: Option<(RoundNumber, Authority)> = None;
         let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
         tracing::info!("Commit sequence: {sequence:?}");
         assert!(sequence.is_empty());
@@ -257,7 +257,7 @@ fn no_leader() {
         },
     );
 
-    let last_committed = BlockReference::new_test(0, 0);
+    let last_committed: Option<(RoundNumber, Authority)> = None;
     let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
 
@@ -317,7 +317,7 @@ fn direct_skip() {
         },
     );
 
-    let last_committed = BlockReference::new_test(0, 0);
+    let last_committed: Option<(RoundNumber, Authority)> = None;
     let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
 
@@ -426,7 +426,7 @@ fn indirect_commit() {
         },
     );
 
-    let last_committed = BlockReference::new_test(0, 0);
+    let last_committed: Option<(RoundNumber, Authority)> = None;
     let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
     assert_eq!(sequence.len(), 2);
@@ -503,7 +503,7 @@ fn indirect_skip() {
         },
     );
 
-    let last_committed = BlockReference::new_test(0, 0);
+    let last_committed: Option<(RoundNumber, Authority)> = None;
     let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
     assert_eq!(sequence.len(), 3);
@@ -596,8 +596,66 @@ fn undecided() {
         },
     );
 
-    let last_committed = BlockReference::new_test(0, 0);
+    let last_committed: Option<(RoundNumber, Authority)> = None;
     let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
     assert!(sequence.is_empty());
+}
+
+/// Once a Skip is yielded, the next `try_commit` call seeded with that skip's slot must
+/// not re-yield it. Otherwise `committed_leaders_total{commit_type=*-skip}` would inflate
+/// on every tick that rederives the same trailing skip from the (unchanged) DAG.
+#[test]
+#[tracing_test::traced_test]
+fn trailing_skip_not_re_yielded() {
+    let committee = committee(4);
+    let leader_elector = LeaderElector::new(committee.len());
+    let wave_length = 3;
+
+    let (mut storage, _) =
+        Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
+
+    // Build the same DAG as `direct_skip` so the only decision is one Skip.
+    let leader_round_1 = wave_length;
+    let references_1 = build_dag(&committee, &mut storage, None, leader_round_1);
+    let references_without_leader_1: Vec<_> = references_1
+        .into_iter()
+        .filter(|x| x.authority != leader_elector.elect_leader(leader_round_1))
+        .collect();
+    let decision_round_1 = 2 * wave_length - 1;
+    build_dag(
+        &committee,
+        &mut storage,
+        Some(references_without_leader_1),
+        decision_round_1,
+    );
+
+    let mut committer = Committer::new(
+        committee.clone(),
+        storage.block_reader().clone(),
+        Protocol {
+            strong_quorum: 2 * committee.total_stake() / 3 + 1,
+            weak_quorum: 2 * committee.total_stake() / 3 + 1,
+            wave_length: 3,
+            leader_count: NonZeroUsize::new(1).unwrap(),
+            pipeline: false,
+            leader_wait: false,
+            require_crypto: false,
+        },
+    );
+
+    let first = committer.try_commit(None).collect::<Vec<_>>();
+    assert!(
+        matches!(
+            first.last(),
+            Some(LeaderStatus::DirectSkip(..) | LeaderStatus::IndirectSkip(..)),
+        ),
+        "test precondition: last decision must be a Skip, got {first:?}",
+    );
+
+    let seed = first
+        .last()
+        .map(|status| (status.round(), status.authority()));
+    let second = committer.try_commit(seed).collect::<Vec<_>>();
+    assert!(second.is_empty(), "trailing skip re-yielded: {second:?}");
 }

@@ -25,8 +25,14 @@ pub trait DagConsensus: Send + 'static {
 
     /// Decide leaders. Returns an ordered sequence of
     /// decided leaders. Idempotent for the same DAG
-    /// state.
-    fn try_commit(&mut self, last_decided: BlockReference) -> impl Iterator<Item = LeaderStatus>;
+    /// state. `last_decided` is the slot
+    /// `(round, authority)` of the most recently consumed
+    /// decision — the caller's cursor. `None` means "no
+    /// decision consumed yet".
+    fn try_commit(
+        &mut self,
+        last_decided: Option<(RoundNumber, Authority)>,
+    ) -> impl Iterator<Item = LeaderStatus>;
 
     /// Return the leaders for a given round. The syncer
     /// may give those leaders extra time for liveness.

@@ -19,18 +19,16 @@ use self::{
 };
 use crate::{
     authority::Authority,
-    block::{Block, BlockReference, RoundNumber, transaction::Transaction},
+    block::{Block, BlockReference, GENESIS_ROUND, RoundNumber, transaction::Transaction},
     block_store::{CommitData, OwnBlockData},
-    committee::Committee,
-    committee::Stake,
-    consensus::{CommittedSubDag, DagConsensus},
+    committee::{Committee, Stake},
+    consensus::{CommittedSubDag, DagConsensus, LeaderStatus},
     context::Ctx,
     crypto::{CryptoEngine, CryptoVerifier},
     data::Data,
     metrics::Metrics,
     state::RecoveredState,
-    storage::BlockReader,
-    storage::Storage,
+    storage::{BlockReader, Storage},
     wal::{WalPosition, WalSyncer},
 };
 
@@ -42,7 +40,7 @@ pub struct Core<C: Ctx, D: DagConsensus> {
     authority: Authority,
     threshold_clock: ThresholdClockAggregator,
     pub(crate) committee: Arc<Committee>,
-    last_commit_leader: BlockReference,
+    last_decided: Option<(RoundNumber, Authority)>,
     storage: Storage,
     pub metrics: Arc<Metrics>,
     fsync: bool,
@@ -124,7 +122,8 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
             authority,
             threshold_clock,
             committee,
-            last_commit_leader: last_committed_leader.unwrap_or_default(),
+            last_decided: last_committed_leader
+                .map(|leader_ref| (leader_ref.round(), leader_ref.authority)),
             storage,
             metrics,
             fsync,
@@ -295,28 +294,30 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
 
     pub fn try_commit(&mut self) -> Vec<Data<Block>> {
         let metrics = &self.metrics;
+        let mut latest = self.last_decided;
         let sequence: Vec<_> = self
             .committer
-            .try_commit(self.last_commit_leader)
-            .inspect(|leader| metrics.inc_decided_leaders(leader))
-            .filter_map(|leader| leader.into_decided_block())
+            .try_commit(self.last_decided)
+            .inspect(|leader| {
+                metrics.inc_decided_leaders(leader);
+                latest = Some((leader.round(), leader.authority()));
+            })
+            .filter_map(LeaderStatus::into_decided_block)
             .collect();
-
-        if let Some(last) = sequence.last() {
-            self.last_commit_leader = *last.reference();
-        }
-
+        self.last_decided = latest;
         sequence
     }
 
     pub fn cleanup(&self) {
         const RETAIN_BELOW_COMMIT_ROUNDS: RoundNumber = 100;
 
-        self.storage.block_reader().cleanup(
-            self.last_commit_leader
-                .round()
-                .saturating_sub(RETAIN_BELOW_COMMIT_ROUNDS),
-        );
+        let last_decided_round = self
+            .last_decided
+            .map(|(round, _)| round)
+            .unwrap_or(GENESIS_ROUND);
+        self.storage
+            .block_reader()
+            .cleanup(last_decided_round.saturating_sub(RETAIN_BELOW_COMMIT_ROUNDS));
 
         self.block_handler.cleanup();
     }
@@ -331,9 +332,13 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
 
         // Leader round check. The floor of 1 keeps `leader_round = quorum_round - 1`
         // positive at startup; the committer itself filters genesis (round 0) out of
-        // its output sequence. In steady state `last_commit_leader.round()` dominates
-        // the max.
-        if quorum_round > self.last_commit_leader.round().max(1) {
+        // its output sequence. In steady state the last decided leader's round
+        // dominates the max.
+        let last_decided_round = self
+            .last_decided
+            .map(|(round, _)| round)
+            .unwrap_or(GENESIS_ROUND);
+        if quorum_round > last_decided_round.max(1) {
             let leader_round = quorum_round - 1;
             let filter = |a: &Authority| connected_authorities.contains(a);
             match self.committer.get_leaders(leader_round) {
