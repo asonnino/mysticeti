@@ -3,16 +3,59 @@
 
 use std::{io::IsTerminal, time::Duration};
 
-use dag::metrics::AggregateMetrics;
+use dag::metrics::{AggregateMetrics, Outcome, RunResult};
 use eyre::{Result, eyre};
 use indicatif::{ProgressBar, ProgressStyle};
-use simulator::{SimulationConfig, SimulationResults, SimulationRunner};
+use simulator::{SimulationConfig, SimulationRunner};
 
 use crate::{
     banner::BannerPrinter,
-    commands::simulate::Outcome,
     table::{self, ConfigRow, ReplicaRow, SuiteRow},
 };
+
+/// Display helpers for the plain [`Outcome`] enum. Kept as an extension trait in the
+/// renderer rather than inherent methods on the domain type; migrates into `terminal/`
+/// along with the rest of the renderer in #61.
+pub trait OutcomeDisplay {
+    /// Single-character glyph, no colour. Usable standalone (e.g. inside a table cell).
+    fn glyph(&self) -> &'static str;
+    /// Fully-formatted badge line. When `color=true`, wraps the glyph + prose in ANSI
+    /// colour escapes; when `false`, returns `"LABEL: prose"`.
+    fn badge(&self, color: bool) -> String;
+}
+
+impl OutcomeDisplay for Outcome {
+    fn glyph(&self) -> &'static str {
+        match self {
+            Outcome::Pass => "✓",
+            Outcome::NoProgress => "⚠",
+            Outcome::Diverged => "✗",
+        }
+    }
+
+    fn badge(&self, color: bool) -> String {
+        let prose = match self {
+            Outcome::Pass => "Commits consistent across all replicas",
+            Outcome::NoProgress => "Safe but no leader was committed",
+            Outcome::Diverged => "Commits DIVERGED across replicas",
+        };
+        if color {
+            let color_code = match self {
+                Outcome::Pass => GREEN,
+                Outcome::NoProgress => YELLOW,
+                Outcome::Diverged => RED,
+            };
+            format!("{color_code}{glyph} {prose}{RESET}", glyph = self.glyph())
+        } else {
+            let label = match self {
+                Outcome::Pass => "PASS",
+                Outcome::NoProgress => "WARN",
+                Outcome::Diverged => "FAIL",
+            };
+            format!("{label}: {prose}")
+        }
+    }
+}
 
 pub const BLUE_FOREGROUND: &str = "\x1b[34m";
 pub const BLUE_BACKGROUND: &str = "\x1b[44m";
@@ -73,25 +116,26 @@ impl Reporter {
     }
 
     /// Execute one simulation: spinner → run → badge → per-replica
-    /// report. Returns the outcome, the suite-level row, and the raw
-    /// `SimulationResults` so the caller can both track suite-wide
-    /// aggregates and emit structured results to a file.
+    /// report. Returns the outcome, the suite-level row, and the
+    /// `RunResult` so the caller can both track suite-wide aggregates
+    /// and emit structured results to a file.
     pub async fn run(
         &self,
         config: SimulationConfig,
-    ) -> Result<(Outcome, SuiteRow, SimulationResults)> {
+    ) -> Result<(Outcome, SuiteRow, RunResult<SimulationConfig>)> {
         let run_name = config.name.clone().unwrap_or_else(|| "unnamed".into());
         let committee_size = config.committee_size;
         let duration_secs = config.duration_secs;
 
         let spinner = self.start_spinner();
-        let results = tokio::task::spawn_blocking(move || SimulationRunner::new(config).run())
+        let result = tokio::task::spawn_blocking(move || SimulationRunner::new(config).run())
             .await
             .map_err(|error| eyre!("Simulation task panicked: {error}"))?;
         self.finish_spinner(spinner);
 
-        let outcome = Outcome::from(&results);
-        self.render_run(&results, duration_secs, outcome);
+        let outcome = result.outcome;
+        let commit_counts = result.commit_count_per_replica();
+        self.render_run(&result, duration_secs, outcome, &commit_counts);
         println!();
 
         let suite_row = SuiteRow::new(
@@ -99,25 +143,32 @@ impl Reporter {
             committee_size,
             duration_secs,
             outcome,
-            &results.commit_counts(),
+            &commit_counts,
         );
-        Ok((outcome, suite_row, results))
+        Ok((outcome, suite_row, result))
     }
 
-    fn render_run(&self, results: &SimulationResults, duration_secs: u64, outcome: Outcome) {
+    fn render_run(
+        &self,
+        result: &RunResult<SimulationConfig>,
+        duration_secs: u64,
+        outcome: Outcome,
+        commit_counts: &[usize],
+    ) {
         self.run_badge(outcome);
 
-        let rows = ReplicaRow::for_results(results, duration_secs);
+        let rows = ReplicaRow::for_result(result, duration_secs);
 
         // Collapse to a single-line summary in the happy path when every
         // replica committed the same leaders and nothing is noteworthy.
-        let aggregate = AggregateMetrics::new(&results.metrics);
-        if outcome != Outcome::Diverged
-            && results.uniform_commits()
-            && !aggregate.any_missing_blocks()
-        {
+        let uniform_commits = commit_counts
+            .first()
+            .map(|first| commit_counts.iter().all(|c| c == first))
+            .unwrap_or(true);
+        let aggregate = AggregateMetrics::new(&result.metrics);
+        if outcome != Outcome::Diverged && uniform_commits && !aggregate.any_missing_blocks() {
             let duration = Duration::from_secs(duration_secs);
-            let committed = results.commit_counts().first().copied().unwrap_or_default();
+            let committed = commit_counts.first().copied().unwrap_or_default();
             let rate = match aggregate.leader_commits_per_second(duration) {
                 Some(r) => format!("{r:.1} commits/s"),
                 None => "— commits/s".into(),
@@ -158,16 +209,7 @@ impl Reporter {
     }
 
     fn run_badge(&self, outcome: Outcome) {
-        if self.color {
-            println!(
-                "{color}{glyph} {message}{RESET}",
-                color = outcome.color(),
-                glyph = outcome.glyph(),
-                message = outcome.message(),
-            );
-        } else {
-            println!("{outcome}");
-        }
+        println!("{}", outcome.badge(self.color));
     }
 
     fn run_summary_line(&self, headline: &str, committed: usize, rate: &str) {

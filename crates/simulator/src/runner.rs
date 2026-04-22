@@ -6,12 +6,11 @@ use std::path::{Path, PathBuf};
 use consensus::committer::Committer;
 use dag::{
     authority::Authority,
-    block::BlockReference,
     committee::Committee,
     config::{ConfigError, ImportExport},
     context::Ctx,
     core::syncer::Syncer,
-    metrics::{Metrics, MetricsSnapshot},
+    metrics::{Metrics, RunResult},
 };
 use rand::{SeedableRng, rngs::StdRng};
 use replica::{
@@ -27,44 +26,6 @@ use crate::{
     network::SimulatedNetwork,
     tracing::SimulatorTracing,
 };
-
-pub struct SimulationResults {
-    pub committed_leaders: Vec<Vec<BlockReference>>,
-    pub metrics: Vec<MetricsSnapshot>,
-    pub commits_consistent: bool,
-}
-
-impl SimulationResults {
-    /// Committed-leader count per replica, in authority order.
-    pub fn commit_counts(&self) -> Vec<usize> {
-        self.committed_leaders.iter().map(|v| v.len()).collect()
-    }
-
-    /// True when every replica committed the exact same number of leaders.
-    pub fn uniform_commits(&self) -> bool {
-        let counts = self.commit_counts();
-        counts
-            .first()
-            .map(|first| counts.iter().all(|c| c == first))
-            .unwrap_or(true)
-    }
-
-    fn check_consistency(committed: &[Vec<BlockReference>]) -> bool {
-        let empty: &[BlockReference] = &[];
-        let mut max_commit: &[BlockReference] = empty;
-        for commit in committed {
-            if commit.len() >= max_commit.len() {
-                if !commit.starts_with(max_commit) {
-                    return false;
-                }
-                max_commit = commit;
-            } else if !max_commit.starts_with(commit) {
-                return false;
-            }
-        }
-        true
-    }
-}
 
 pub struct SimulationRunner {
     config: SimulationConfig,
@@ -84,19 +45,18 @@ impl SimulationRunner {
         &self.config
     }
 
-    /// Run the simulation to completion and return results.
+    /// Run the simulation to completion and return the result.
     ///
     /// Executes inside a deterministic discrete-event simulator:
     /// all time is simulated, no real wall-clock time elapses.
-    pub fn run(self) -> SimulationResults {
+    pub fn run(self) -> RunResult<SimulationConfig> {
         let _guard = SimulatorTracing::new().setup().ok();
         let rng = StdRng::seed_from_u64(self.config.rng_seed);
         SimulatorExecutor::run(rng, async {
-            let duration = self.config.duration();
             let state = SimulationState::setup(self.config).await;
             state.apply_topology().await;
-            SimulatorContext::sleep(duration).await;
-            state.collect_results().await
+            SimulatorContext::sleep(state.config.duration()).await;
+            state.collect_result().await
         })
     }
 }
@@ -182,28 +142,19 @@ impl SimulationState {
         }
     }
 
-    async fn collect_results(self) -> SimulationResults {
-        let mut syncers: Vec<Syncer<SimulatorContext, Committer>> = Vec::new();
-        for replica in self.replicas {
-            syncers.push(replica.shutdown().await);
-        }
+    async fn collect_result(self) -> RunResult<SimulationConfig> {
+        let syncers: Vec<Syncer<SimulatorContext, Committer>> =
+            futures::future::join_all(self.replicas.into_iter().map(ReplicaHandle::shutdown)).await;
 
-        let committed_leaders: Vec<Vec<BlockReference>> = syncers
+        let (metrics, storages): (Vec<_>, Vec<&_>) = syncers
             .iter()
-            .map(|syncer| syncer.commit_handler().committed_leaders().to_vec())
-            .collect();
+            .map(|syncer| {
+                let core = syncer.core();
+                (core.metrics.collect(), core.storage())
+            })
+            .unzip();
 
-        let metrics: Vec<MetricsSnapshot> = syncers
-            .iter()
-            .map(|syncer| syncer.core().metrics.collect())
-            .collect();
-
-        let commits_consistent = SimulationResults::check_consistency(&committed_leaders);
-
-        SimulationResults {
-            committed_leaders,
-            metrics,
-            commits_consistent,
-        }
+        let duration = self.config.duration();
+        RunResult::collect(metrics, &storages, self.config, duration)
     }
 }
