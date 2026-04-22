@@ -21,6 +21,9 @@ use crate::{
 
 type PrefixHasher = Blake2b<U32>;
 
+/// One NDJSON line emitted by [`RunResult::collect_with_commit_log`]. The JSON
+/// shape comes from the [`serde::Serialize`] derive; field order here is the
+/// on-disk order.
 #[derive(Serialize)]
 struct CommitRecord<'a> {
     authority: Authority,
@@ -114,9 +117,13 @@ pub struct RunResult<C> {
 }
 
 impl<C> RunResult<C> {
-    /// Build a result from per-replica metrics and storages, running the consistency check
-    /// to derive `Outcome`. Storages are iterated once; no commit is retained.
-    pub fn new(
+    /// Gather per-replica metrics and storages into a single run summary, running the
+    /// consistency check to derive `Outcome`. Storages are iterated once; no commit is
+    /// retained in memory.
+    ///
+    /// Potentially heavy on long runs: each storage's WAL is streamed end-to-end to hash
+    /// every committed sub-dag.
+    pub fn collect(
         metrics: Vec<MetricsSnapshot>,
         storages: &[Storage],
         config: C,
@@ -131,11 +138,11 @@ impl<C> RunResult<C> {
         }
     }
 
-    /// Same as [`RunResult::new`], plus stream every committed sub-dag to `writer` as
+    /// Same as [`RunResult::collect`], plus stream every committed sub-dag to `writer` as
     /// newline-delimited JSON (one object per line, `{"authority":…, "commit":…}`). The
     /// writer is driven in a separate pass over each storage before the consistency check,
-    /// so memory stays bounded even for long runs.
-    pub fn new_with_commit_log<W: io::Write>(
+    /// so memory stays bounded — but the WAL is now scanned twice per replica.
+    pub fn collect_with_commit_log<W: io::Write>(
         metrics: Vec<MetricsSnapshot>,
         storages: &[Storage],
         config: C,
@@ -153,7 +160,7 @@ impl<C> RunResult<C> {
                 writeln!(writer)?;
             }
         }
-        Ok(Self::new(metrics, storages, config, duration))
+        Ok(Self::collect(metrics, storages, config, duration))
     }
 }
 
@@ -266,12 +273,12 @@ mod tests {
     }
 
     #[test]
-    fn run_result_new_classifies_consistent_run_as_pass() {
+    fn run_result_collect_classifies_consistent_run_as_pass() {
         let batch = CommitData::new_for_test(&[(0, 1), (1, 2), (2, 3)]);
         let (storages, snapshots) = build_storages_with_commits(3, &batch);
 
         let result: RunResult<()> =
-            RunResult::new(snapshots, &storages, (), Duration::from_secs(30));
+            RunResult::collect(snapshots, &storages, (), Duration::from_secs(30));
 
         assert_eq!(result.outcome, Outcome::Pass);
         assert_eq!(result.duration, Duration::from_secs(30));
@@ -279,20 +286,20 @@ mod tests {
     }
 
     #[test]
-    fn run_result_new_classifies_empty_run_as_no_progress() {
+    fn run_result_collect_classifies_empty_run_as_no_progress() {
         let (storages, snapshots) = build_storages_with_commits(2, &[]);
         let result: RunResult<()> =
-            RunResult::new(snapshots, &storages, (), Duration::from_secs(5));
+            RunResult::collect(snapshots, &storages, (), Duration::from_secs(5));
         assert_eq!(result.outcome, Outcome::NoProgress);
     }
 
     #[test]
-    fn run_result_new_with_commit_log_writes_one_ndjson_line_per_commit() {
+    fn run_result_collect_with_commit_log_writes_one_ndjson_line_per_commit() {
         let batch = CommitData::new_for_test(&[(0, 1), (1, 2), (2, 3)]);
         let (storages, snapshots) = build_storages_with_commits(2, &batch);
 
         let mut buffer = Vec::new();
-        let result: RunResult<()> = RunResult::new_with_commit_log(
+        let result: RunResult<()> = RunResult::collect_with_commit_log(
             snapshots,
             &storages,
             (),
@@ -320,9 +327,9 @@ mod tests {
         let (storages_b, snapshots_b) = build_storages_with_commits(3, &batch);
 
         let plain: RunResult<()> =
-            RunResult::new(snapshots_a, &storages_a, (), Duration::from_secs(1));
+            RunResult::collect(snapshots_a, &storages_a, (), Duration::from_secs(1));
         let mut sink = Vec::new();
-        let logged: RunResult<()> = RunResult::new_with_commit_log(
+        let logged: RunResult<()> = RunResult::collect_with_commit_log(
             snapshots_b,
             &storages_b,
             (),
