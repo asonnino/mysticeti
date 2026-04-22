@@ -106,6 +106,10 @@ impl BlockReader {
         self.inner.write()
     }
 
+    pub(super) fn wal_reader(&self) -> &WalReader {
+        &self.wal_reader
+    }
+
     pub(super) fn inc_block_store_entries(&self) {
         self.metrics.inc_block_store_entries();
     }
