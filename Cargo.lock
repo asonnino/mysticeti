@@ -757,6 +757,7 @@ dependencies = [
  "serde_yaml",
  "simulator",
  "tabled",
+ "tempfile",
  "terminal_size",
  "tokio",
  "tracing",

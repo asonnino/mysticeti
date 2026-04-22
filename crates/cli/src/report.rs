@@ -1,12 +1,13 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::path::Path;
+use std::{io::Write, path::Path};
 
 use dag::{authority::Authority, metrics::ReplicaStats};
-use eyre::{Result, bail};
+use eyre::{Result, WrapErr, bail};
 use serde::Serialize;
 use simulator::{SimulationConfig, SimulationResults};
+use tempfile::NamedTempFile;
 
 use crate::commands::simulate::Outcome;
 
@@ -88,12 +89,23 @@ impl Format {
     }
 }
 
+/// Write `reports` atomically: serialise, stream into a sibling temp file, then rename into
+/// place. A Ctrl-C or disk error mid-write leaves the destination either intact (previous
+/// content / absent) or fully updated — never half-written.
 pub fn write_reports(path: &Path, reports: &[SimulationReport]) -> Result<()> {
-    let bytes = match Format::from_path(path)? {
-        Format::Json => serde_json::to_vec_pretty(reports)?,
-        Format::Yaml => serde_yaml::to_string(reports)?.into_bytes(),
-    };
-    std::fs::write(path, bytes)
-        .map_err(|source| eyre::eyre!("writing {}: {source}", path.display()))?;
+    let format = Format::from_path(path)?;
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    std::fs::create_dir_all(parent).wrap_err_with(|| format!("creating {}", parent.display()))?;
+    let mut temp = NamedTempFile::new_in(parent)
+        .wrap_err_with(|| format!("creating temp file in {}", parent.display()))?;
+    match format {
+        Format::Json => serde_json::to_writer_pretty(&mut temp, reports)?,
+        Format::Yaml => temp.write_all(serde_yaml::to_string(reports)?.as_bytes())?,
+    }
+    temp.persist(path)
+        .map_err(|error| eyre::eyre!("writing {}: {}", path.display(), error.error))?;
     Ok(())
 }
