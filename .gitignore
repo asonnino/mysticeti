@@ -30,6 +30,8 @@ tarpaulin-report.html
 
 # Claude Code
 .claude/worktrees/
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
 
 # OS
 .DS_Store
