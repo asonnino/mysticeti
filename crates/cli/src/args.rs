@@ -66,6 +66,10 @@ pub enum Command {
         /// Print the default configuration to stdout and exit.
         #[arg(long, conflicts_with = "config_path")]
         dump_config: bool,
+        /// Write detailed per-run results to this file. Format is picked from the extension:
+        /// `.json`, `.yaml`, or `.yml`.
+        #[arg(long, value_name = "FILE", conflicts_with = "dump_config")]
+        results_file: Option<PathBuf>,
     },
 
     /// Deploy a local testbed of replicas on localhost.

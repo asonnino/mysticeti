@@ -73,9 +73,13 @@ impl Reporter {
     }
 
     /// Execute one simulation: spinner → run → badge → per-replica
-    /// report. Returns the outcome and the suite-level row so the
-    /// caller can track suite-wide aggregates.
-    pub async fn run(&self, config: SimulationConfig) -> Result<(Outcome, SuiteRow)> {
+    /// report. Returns the outcome, the suite-level row, and the raw
+    /// `SimulationResults` so the caller can both track suite-wide
+    /// aggregates and emit structured results to a file.
+    pub async fn run(
+        &self,
+        config: SimulationConfig,
+    ) -> Result<(Outcome, SuiteRow, SimulationResults)> {
         let run_name = config.name.clone().unwrap_or_else(|| "unnamed".into());
         let committee_size = config.committee_size;
         let duration_secs = config.duration_secs;
@@ -97,7 +101,7 @@ impl Reporter {
             outcome,
             &results.commit_counts(),
         );
-        Ok((outcome, suite_row))
+        Ok((outcome, suite_row, results))
     }
 
     fn render_run(&self, results: &SimulationResults, duration_secs: u64, outcome: Outcome) {

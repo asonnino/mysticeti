@@ -17,6 +17,8 @@ consensus.workspace = true
 replica.workspace = true
 simulator.workspace = true
 indicatif = "0.17"
+serde = { workspace = true }
+serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 tabled = "0.12.2"
 terminal_size = "0.4.4"

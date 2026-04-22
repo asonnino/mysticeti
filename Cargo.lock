@@ -752,6 +752,8 @@ dependencies = [
  "eyre",
  "indicatif",
  "replica",
+ "serde",
+ "serde_json",
  "serde_yaml",
  "simulator",
  "tabled",

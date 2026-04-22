@@ -3,10 +3,7 @@
 
 use dag::{
     authority::Authority,
-    metrics::{
-        BLOCK_SYNC_REQUESTS_SENT, LABEL_AUTHORITY, LABEL_WORKLOAD, LATENCY_S, LEADER_TIMEOUT_TOTAL,
-        MetricsSnapshot,
-    },
+    metrics::{MetricsSnapshot, ReplicaStats},
 };
 use simulator::{SimulationConfig, SimulationResults};
 use tabled::{Table, Tabled, settings::Style};
@@ -58,16 +55,8 @@ pub struct ReplicaRow {
     committed_leaders: usize,
     #[tabled(rename = "commits/s")]
     commits_per_sec: String,
-    #[tabled(rename = "p50 latency")]
-    p50_latency: String,
-    #[tabled(rename = "p90 latency")]
-    p90_latency: String,
-    #[tabled(rename = "leader timeouts")]
-    leader_timeouts: u64,
-    #[tabled(rename = "missing blocks")]
-    pub missing_blocks: i64,
-    #[tabled(rename = "sync requests sent")]
-    sync_requests_sent: u64,
+    #[tabled(inline)]
+    stats: ReplicaStats,
 }
 
 impl ReplicaRow {
@@ -89,7 +78,6 @@ impl ReplicaRow {
         duration_secs: u64,
         metrics: &MetricsSnapshot,
     ) -> Self {
-        let label = authority.to_string();
         // Per-replica rate pairs with the `committed_leaders` cell on the same row (both are
         // this replica's view of the committed chain): divide the row's own chain length by the
         // run duration rather than going back through a metric.
@@ -98,28 +86,11 @@ impl ReplicaRow {
         } else {
             format!("{:.1}", committed_leaders as f64 / duration_secs as f64)
         };
-        let latency_ms = |p: f64| {
-            metrics
-                .histogram_percentile(LATENCY_S, &[(LABEL_WORKLOAD, "shared")], p)
-                .map(|seconds| format!("{:.0} ms", seconds * 1000.0))
-                .unwrap_or_else(|| "—".into())
-        };
-        let p50_latency = latency_ms(0.5);
-        let p90_latency = latency_ms(0.9);
-        let leader_timeouts = metrics.metric(LEADER_TIMEOUT_TOTAL, &[]) as u64;
-        let missing_blocks = metrics.missing_blocks(authority);
-        let sync_requests_sent =
-            metrics.metric(BLOCK_SYNC_REQUESTS_SENT, &[(LABEL_AUTHORITY, &label)]) as u64;
-
         Self {
             replica: authority,
             committed_leaders,
             commits_per_sec,
-            p50_latency,
-            p90_latency,
-            leader_timeouts,
-            missing_blocks,
-            sync_requests_sent,
+            stats: metrics.replica_stats(authority),
         }
     }
 }

@@ -3,11 +3,12 @@
 
 use std::time::Duration;
 
-use prometheus::proto::MetricFamily;
+use prometheus::{Encoder, TextEncoder, proto::MetricFamily};
 
 use super::names::{
-    COMMIT_TYPE_DIRECT_COMMIT, COMMIT_TYPE_INDIRECT_COMMIT, COMMITTED_LEADERS_TOTAL,
-    LABEL_AUTHORITY, LABEL_COMMIT_TYPE, LABEL_WORKLOAD, LATENCY_S, MISSING_BLOCKS, WORKLOAD_SHARED,
+    BLOCK_SYNC_REQUESTS_SENT, COMMIT_TYPE_DIRECT_COMMIT, COMMIT_TYPE_INDIRECT_COMMIT,
+    COMMITTED_LEADERS_TOTAL, LABEL_AUTHORITY, LABEL_COMMIT_TYPE, LABEL_WORKLOAD, LATENCY_S,
+    LEADER_TIMEOUT_TOTAL, MISSING_BLOCKS, WORKLOAD_SHARED,
 };
 use crate::authority::Authority;
 
@@ -208,6 +209,36 @@ impl MetricsSnapshot {
         None
     }
 
+    /// Derived per-replica stats pulled in a single pass — shared by the terminal table
+    /// (`ReplicaRow`) and the structured results file (`SimulationReport`) so both read from
+    /// one definition.
+    pub fn replica_stats(&self, authority: Authority) -> ReplicaStats {
+        let label = authority.to_string();
+        let latency_ms = |p: f64| {
+            self.histogram_percentile(LATENCY_S, &[(LABEL_WORKLOAD, WORKLOAD_SHARED)], p)
+                .map(|seconds| seconds * 1000.0)
+        };
+        ReplicaStats {
+            p50_latency_ms: latency_ms(0.5),
+            p90_latency_ms: latency_ms(0.9),
+            leader_timeouts: self.metric(LEADER_TIMEOUT_TOTAL, &[]) as u64,
+            missing_blocks: self.missing_blocks(authority),
+            sync_requests_sent: self.metric(BLOCK_SYNC_REQUESTS_SENT, &[(LABEL_AUTHORITY, &label)])
+                as u64,
+        }
+    }
+
+    /// Render the snapshot in the Prometheus text exposition format — the same format every
+    /// Prometheus scrape endpoint emits, parseable by `promtool`, Prometheus itself, and most
+    /// TSDB ingesters.
+    pub fn to_prometheus_text(&self) -> String {
+        let mut buffer = Vec::new();
+        TextEncoder::new()
+            .encode(&self.families, &mut buffer)
+            .expect("TextEncoder writing to Vec cannot fail");
+        String::from_utf8(buffer).expect("prometheus text format is UTF-8")
+    }
+
     fn labels_match(metric: &prometheus::proto::Metric, expected: &[(&str, &str)]) -> bool {
         let actual = metric.get_label();
         actual.len() == expected.len()
@@ -216,6 +247,30 @@ impl MetricsSnapshot {
                     .iter()
                     .any(|l| l.get_name() == *key && l.get_value() == *value)
             })
+    }
+}
+
+/// Derived per-replica stats shared by the terminal table (`ReplicaRow` inlines this via
+/// `#[tabled(inline)]`) and the structured results file (`SimulationReport` embeds it). One
+/// definition, one derivation path.
+#[derive(Clone, Copy, Debug, serde::Serialize, tabled::Tabled)]
+pub struct ReplicaStats {
+    #[tabled(rename = "p50 latency", display_with = "fmt_latency_ms")]
+    pub p50_latency_ms: Option<f64>,
+    #[tabled(rename = "p90 latency", display_with = "fmt_latency_ms")]
+    pub p90_latency_ms: Option<f64>,
+    #[tabled(rename = "leader timeouts")]
+    pub leader_timeouts: u64,
+    #[tabled(rename = "missing blocks")]
+    pub missing_blocks: i64,
+    #[tabled(rename = "sync requests sent")]
+    pub sync_requests_sent: u64,
+}
+
+fn fmt_latency_ms(value: &Option<f64>) -> String {
+    match value {
+        Some(ms) => format!("{ms:.0} ms"),
+        None => "—".into(),
     }
 }
 
