@@ -3,12 +3,12 @@
 
 use dag::{
     authority::Authority,
-    metrics::{MetricsSnapshot, ReplicaStats},
+    metrics::{MetricsSnapshot, Outcome, ReplicaStats, RunResult},
 };
-use simulator::{SimulationConfig, SimulationResults};
+use simulator::SimulationConfig;
 use tabled::{Table, Tabled, settings::Style};
 
-use crate::commands::simulate::Outcome;
+use crate::reporter::OutcomeDisplay;
 
 /// Render any iterable of `Tabled` rows with the suite's
 /// standard rounded style. Single call site so the border
@@ -60,14 +60,15 @@ pub struct ReplicaRow {
 }
 
 impl ReplicaRow {
-    pub fn for_results(results: &SimulationResults, duration_secs: u64) -> Vec<Self> {
-        results
-            .committed_leaders
+    pub fn for_result<C>(result: &RunResult<C>, duration_secs: u64) -> Vec<Self> {
+        result
+            .metrics
             .iter()
-            .zip(results.metrics.iter())
             .enumerate()
-            .map(|(i, (leaders, metrics))| {
-                Self::new(Authority::from(i), leaders.len(), duration_secs, metrics)
+            .map(|(i, metrics)| {
+                let authority = Authority::from(i);
+                let committed_leaders = metrics.committed_leaders(authority) as usize;
+                Self::new(authority, committed_leaders, duration_secs, metrics)
             })
             .collect()
     }

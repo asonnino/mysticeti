@@ -375,6 +375,10 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
         self.storage.block_reader()
     }
 
+    pub fn storage(&self) -> &Storage {
+        &self.storage
+    }
+
     pub fn last_own_block(&self) -> &Data<Block> {
         &self.last_own_block.block
     }

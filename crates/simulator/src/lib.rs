@@ -15,5 +15,5 @@ pub use context::{SimulatorContext, SimulatorInstant};
 pub use event_simulator::{Scheduler, Simulator, SimulatorState};
 pub use executor::{JoinError, JoinHandle, SimulatorExecutor, Sleep};
 pub use network::SimulatedNetwork;
-pub use runner::{SimulationResults, SimulationRunner};
+pub use runner::SimulationRunner;
 pub use tracing::SimulatorTracing;

@@ -8,7 +8,7 @@
 //! computed at construction by a streaming consistency check over each storage's committed
 //! sub-dag sequence (no commit history retained in memory).
 
-use std::{io, time::Duration};
+use std::{borrow::Borrow, io, time::Duration};
 
 use blake2::Blake2b;
 use digest::{Digest, consts::U32};
@@ -123,13 +123,13 @@ impl<C> RunResult<C> {
     ///
     /// Potentially heavy on long runs: each storage's WAL is streamed end-to-end to hash
     /// every committed sub-dag.
-    pub fn collect(
+    pub fn collect<S: Borrow<Storage>>(
         metrics: Vec<MetricsSnapshot>,
-        storages: &[Storage],
+        storages: &[S],
         config: C,
         duration: Duration,
     ) -> Self {
-        let outcome = Outcome::from(storages.iter().map(Storage::iter_commits));
+        let outcome = Outcome::from(storages.iter().map(|s| s.borrow().iter_commits()));
         Self {
             metrics,
             outcome,
@@ -142,16 +142,16 @@ impl<C> RunResult<C> {
     /// newline-delimited JSON (one object per line, `{"authority":…, "commit":…}`). The
     /// writer is driven in a separate pass over each storage before the consistency check,
     /// so memory stays bounded — but the WAL is now scanned twice per replica.
-    pub fn collect_with_commit_log<W: io::Write>(
+    pub fn collect_with_commit_log<S: Borrow<Storage>, W: io::Write>(
         metrics: Vec<MetricsSnapshot>,
-        storages: &[Storage],
+        storages: &[S],
         config: C,
         duration: Duration,
         writer: &mut W,
     ) -> io::Result<Self> {
         for (index, storage) in storages.iter().enumerate() {
             let authority = Authority::from(index as u64);
-            for commit in storage.iter_commits() {
+            for commit in storage.borrow().iter_commits() {
                 let record = CommitRecord {
                     authority,
                     commit: &commit,
@@ -161,6 +161,17 @@ impl<C> RunResult<C> {
             }
         }
         Ok(Self::collect(metrics, storages, config, duration))
+    }
+
+    /// Per-replica count of committed leaders, in authority order. Derived from each
+    /// snapshot's `committed_leaders_total` counter (summed across all leader authorities),
+    /// so the values stay meaningful whether the result came from a sim, a local testbed,
+    /// or a future smoke test.
+    pub fn commit_count_per_replica(&self) -> Vec<usize> {
+        self.metrics
+            .iter()
+            .map(|snapshot| snapshot.total_committed_leaders() as usize)
+            .collect()
     }
 }
 
