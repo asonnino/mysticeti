@@ -33,12 +33,8 @@ pub const GLOBAL_IN_MEMORY_BLOCKS_BYTES: &str = "global_in_memory_blocks_bytes";
 // Label keys.
 pub const LABEL_AUTHORITY: &str = "authority";
 pub const LABEL_COMMIT_TYPE: &str = "commit_type";
-pub const LABEL_WORKLOAD: &str = "workload";
 pub const LABEL_FULFILLED: &str = "fulfilled";
 pub const LABEL_PROC: &str = "proc";
-
-// Well-known label values (extracted when used in more than one place).
-pub const WORKLOAD_SHARED: &str = "shared";
 
 // Values for the `commit_type` label on `committed_leaders_total`.
 pub const COMMIT_TYPE_DIRECT_COMMIT: &str = "direct-commit";
