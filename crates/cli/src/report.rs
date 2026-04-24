@@ -5,7 +5,7 @@ use std::path::Path;
 
 use dag::{
     authority::Authority,
-    metrics::{LEADER_TIMEOUT_TOTAL, Outcome, RunResult},
+    metrics::{Outcome, RunResult},
 };
 use eyre::{Result, WrapErr, bail};
 use serde::Serialize;
@@ -52,7 +52,7 @@ impl SimulationReport {
                     commits_per_sec,
                     p50_latency_ms: metrics.latency_percentile_ms(0.5),
                     p90_latency_ms: metrics.latency_percentile_ms(0.9),
-                    leader_timeouts: metrics.metric(LEADER_TIMEOUT_TOTAL, &[]) as u64,
+                    leader_timeouts: metrics.leader_timeouts(),
                     metrics: metrics.to_prometheus_text(),
                 }
             })
