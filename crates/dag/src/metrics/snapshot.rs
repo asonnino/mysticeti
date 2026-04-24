@@ -7,7 +7,7 @@ use prometheus::{Encoder, TextEncoder, proto::MetricFamily};
 
 use super::names::{
     COMMIT_TYPE_DIRECT_COMMIT, COMMIT_TYPE_INDIRECT_COMMIT, COMMITTED_LEADERS_TOTAL,
-    LABEL_AUTHORITY, LABEL_COMMIT_TYPE, LATENCY_S, LEADER_TIMEOUT_TOTAL, MISSING_BLOCKS,
+    LABEL_AUTHORITY, LABEL_COMMIT_TYPE, LATENCY_S, MISSING_BLOCKS,
 };
 use crate::authority::Authority;
 
@@ -199,17 +199,6 @@ impl MetricsSnapshot {
             .map(|seconds| seconds * 1000.0)
     }
 
-    /// Derived per-replica stats pulled in a single pass — shared by the terminal table
-    /// (`ReplicaRow`) and the structured results file (`SimulationReport`) so both read from
-    /// one definition.
-    pub fn replica_stats(&self) -> ReplicaStats {
-        ReplicaStats {
-            p50_latency_ms: self.latency_percentile_ms(0.5),
-            p90_latency_ms: self.latency_percentile_ms(0.9),
-            leader_timeouts: self.metric(LEADER_TIMEOUT_TOTAL, &[]) as u64,
-        }
-    }
-
     /// Render the snapshot in the Prometheus text exposition format — the same format every
     /// Prometheus scrape endpoint emits, parseable by `promtool`, Prometheus itself, and most
     /// TSDB ingesters.
@@ -229,26 +218,6 @@ impl MetricsSnapshot {
                     .iter()
                     .any(|l| l.get_name() == *key && l.get_value() == *value)
             })
-    }
-}
-
-/// Derived per-replica stats shared by the terminal table (`ReplicaRow` inlines this via
-/// `#[tabled(inline)]`) and the structured results file (`SimulationReport` embeds it). One
-/// definition, one derivation path.
-#[derive(Clone, Copy, Debug, serde::Serialize, tabled::Tabled)]
-pub struct ReplicaStats {
-    #[tabled(rename = "p50 latency", display_with = "fmt_latency_ms")]
-    pub p50_latency_ms: Option<f64>,
-    #[tabled(rename = "p90 latency", display_with = "fmt_latency_ms")]
-    pub p90_latency_ms: Option<f64>,
-    #[tabled(rename = "leader timeouts")]
-    pub leader_timeouts: u64,
-}
-
-fn fmt_latency_ms(value: &Option<f64>) -> String {
-    match value {
-        Some(ms) => format!("{ms:.0} ms"),
-        None => "—".into(),
     }
 }
 
