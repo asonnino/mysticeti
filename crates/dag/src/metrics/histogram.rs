@@ -335,12 +335,27 @@ mod test {
         }
         reporter.clear_receive_all();
         reporter.report();
-        let snapshot = crate::metrics::MetricsSnapshot::from_families(registry.gather());
-        assert_eq!(snapshot.metric("test_histogram", &[("v", "p50")]), 51.0);
-        assert_eq!(snapshot.metric("test_histogram", &[("v", "p90")]), 91.0);
-        assert_eq!(snapshot.metric("test_histogram", &[("v", "p99")]), 100.0);
-        assert_eq!(snapshot.metric("test_histogram", &[("v", "sum")]), 5050.0);
-        assert_eq!(snapshot.metric("test_histogram", &[("v", "count")]), 100.0);
+        let snapshot = crate::metrics::MetricsSnapshot::new(registry.gather());
+        assert_eq!(
+            snapshot.scalar_value("test_histogram", &[("v", "p50")]),
+            51.0
+        );
+        assert_eq!(
+            snapshot.scalar_value("test_histogram", &[("v", "p90")]),
+            91.0
+        );
+        assert_eq!(
+            snapshot.scalar_value("test_histogram", &[("v", "p99")]),
+            100.0
+        );
+        assert_eq!(
+            snapshot.scalar_value("test_histogram", &[("v", "sum")]),
+            5050.0
+        );
+        assert_eq!(
+            snapshot.scalar_value("test_histogram", &[("v", "count")]),
+            100.0
+        );
     }
 
     #[test]
@@ -353,17 +368,17 @@ mod test {
         }
         reporter.clear_receive_all();
         reporter.report();
-        let snapshot = crate::metrics::MetricsSnapshot::from_families(registry.gather());
-        let p50_after_first = snapshot.metric("empty_report_histogram", &[("v", "p50")]);
+        let snapshot = crate::metrics::MetricsSnapshot::new(registry.gather());
+        let p50_after_first = snapshot.scalar_value("empty_report_histogram", &[("v", "p50")]);
         assert!(p50_after_first > 0.0);
 
         // Second window: no new observations → empty → report early-returns
         reporter.clear_receive_all();
         reporter.report();
-        let snapshot = crate::metrics::MetricsSnapshot::from_families(registry.gather());
+        let snapshot = crate::metrics::MetricsSnapshot::new(registry.gather());
         // Gauges retain stale values (not zeroed)
         assert_eq!(
-            snapshot.metric("empty_report_histogram", &[("v", "p50")]),
+            snapshot.scalar_value("empty_report_histogram", &[("v", "p50")]),
             p50_after_first
         );
     }
@@ -378,8 +393,11 @@ mod test {
         }
         reporter.clear_receive_all();
         reporter.report();
-        let snapshot = crate::metrics::MetricsSnapshot::from_families(registry.gather());
-        assert_eq!(snapshot.metric("windowed_histogram", &[("v", "p50")]), 20.0);
+        let snapshot = crate::metrics::MetricsSnapshot::new(registry.gather());
+        assert_eq!(
+            snapshot.scalar_value("windowed_histogram", &[("v", "p50")]),
+            20.0
+        );
 
         // Window 2: completely different values
         for v in [100, 200, 300] {
@@ -387,9 +405,9 @@ mod test {
         }
         reporter.clear_receive_all();
         reporter.report();
-        let snapshot = crate::metrics::MetricsSnapshot::from_families(registry.gather());
+        let snapshot = crate::metrics::MetricsSnapshot::new(registry.gather());
         assert_eq!(
-            snapshot.metric("windowed_histogram", &[("v", "p50")]),
+            snapshot.scalar_value("windowed_histogram", &[("v", "p50")]),
             200.0
         );
     }
@@ -409,15 +427,15 @@ mod test {
         }
         reporter.clear_receive_all();
         reporter.report();
-        let snapshot = crate::metrics::MetricsSnapshot::from_families(registry.gather());
+        let snapshot = crate::metrics::MetricsSnapshot::new(registry.gather());
         // Alice p50: index = 10*500/1000 = 5 → value 6
         assert_eq!(
-            snapshot.metric("per_peer_histogram", &[("peer", "alice"), ("v", "p50")]),
+            snapshot.scalar_value("per_peer_histogram", &[("peer", "alice"), ("v", "p50")]),
             6.0
         );
         // Bob p50: index = 10*500/1000 = 5 → value 96
         assert_eq!(
-            snapshot.metric("per_peer_histogram", &[("peer", "bob"), ("v", "p50")]),
+            snapshot.scalar_value("per_peer_histogram", &[("peer", "bob"), ("v", "p50")]),
             96.0
         );
     }

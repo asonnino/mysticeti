@@ -230,7 +230,7 @@ impl Metrics {
             .as_ref()
             .expect("collect() is only available on test metrics");
         self.precise.flush();
-        MetricsSnapshot::from_families(registry.gather())
+        MetricsSnapshot::new(registry.gather())
     }
 
     /// Abort the background reporter and drop all observers.
@@ -276,8 +276,8 @@ mod test {
         metrics.inc_block_store_entries();
         metrics.inc_submitted_transactions(100);
         let snapshot = metrics.collect();
-        assert_eq!(snapshot.metric("block_store_entries", &[]), 2.0);
-        assert_eq!(snapshot.metric("submitted_transactions", &[]), 100.0);
+        assert_eq!(snapshot.scalar_value("block_store_entries", &[]), 2.0);
+        assert_eq!(snapshot.scalar_value("submitted_transactions", &[]), 100.0);
     }
 
     #[test]
@@ -303,7 +303,7 @@ mod test {
         let authority_a = a.to_string();
         let authority_b = b.to_string();
         assert_eq!(
-            snapshot.metric(
+            snapshot.scalar_value(
                 COMMITTED_LEADERS_TOTAL,
                 &[
                     (LABEL_AUTHORITY, &authority_a),
@@ -313,7 +313,7 @@ mod test {
             2.0
         );
         assert_eq!(
-            snapshot.metric(
+            snapshot.scalar_value(
                 COMMITTED_LEADERS_TOTAL,
                 &[
                     (LABEL_AUTHORITY, &authority_b),
@@ -322,9 +322,12 @@ mod test {
             ),
             1.0
         );
-        assert_eq!(snapshot.missing_blocks(a), 3);
         assert_eq!(
-            snapshot.metric(
+            snapshot.scalar_value("missing_blocks", &[(LABEL_AUTHORITY, &authority_a)]),
+            3.0
+        );
+        assert_eq!(
+            snapshot.scalar_value(
                 "block_sync_requests_sent",
                 &[(LABEL_AUTHORITY, &authority_a)]
             ),
@@ -339,7 +342,7 @@ mod test {
             metrics.observe_transaction_committed_latency(Duration::from_micros(i));
         }
         let snapshot = metrics.collect();
-        let p50 = snapshot.metric("transaction_committed_latency", &[("v", "p50")]);
+        let p50 = snapshot.scalar_value("transaction_committed_latency", &[("v", "p50")]);
         assert!(p50 > 0.0, "p50 should be populated after flush");
     }
 
@@ -348,7 +351,7 @@ mod test {
         let metrics = Metrics::new_for_test(4);
         metrics.set_wal_mappings(42);
         let snapshot = metrics.collect();
-        assert_eq!(snapshot.metric("wal_mappings", &[]), 42.0);
+        assert_eq!(snapshot.scalar_value("wal_mappings", &[]), 42.0);
     }
 
     #[test]
