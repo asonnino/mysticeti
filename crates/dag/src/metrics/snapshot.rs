@@ -34,22 +34,20 @@ impl MetricsSnapshot {
 
     /// Total committed leaders observed by this replica. Skipped leaders are excluded.
     pub fn total_committed_leaders(&self) -> u64 {
+        let Some(family) = self.find_family(COMMITTED_LEADERS_TOTAL) else {
+            return 0;
+        };
         let mut total = 0.0;
-        for family in &self.families {
-            if family.get_name() != COMMITTED_LEADERS_TOTAL {
-                continue;
-            }
-            for metric in family.get_metric() {
-                let is_commit = metric.get_label().iter().any(|l| {
-                    l.get_name() == LABEL_COMMIT_TYPE
-                        && matches!(
-                            l.get_value(),
-                            COMMIT_TYPE_DIRECT_COMMIT | COMMIT_TYPE_INDIRECT_COMMIT,
-                        )
-                });
-                if is_commit && metric.has_counter() {
-                    total += metric.get_counter().get_value();
-                }
+        for metric in family.get_metric() {
+            let is_commit = metric.get_label().iter().any(|l| {
+                l.get_name() == LABEL_COMMIT_TYPE
+                    && matches!(
+                        l.get_value(),
+                        COMMIT_TYPE_DIRECT_COMMIT | COMMIT_TYPE_INDIRECT_COMMIT,
+                    )
+            });
+            if is_commit && metric.has_counter() {
+                total += metric.get_counter().get_value();
             }
         }
         total as u64
@@ -71,28 +69,26 @@ impl MetricsSnapshot {
     /// tests; the public API intentionally stays domain-named rather than exposing a generic
     /// probe.
     pub(super) fn scalar_value(&self, name: &str, label_values: &[(&str, &str)]) -> f64 {
-        for family in &self.families {
-            if family.get_name() != name {
+        let Some(family) = self.find_family(name) else {
+            return 0.0;
+        };
+        for metric in family.get_metric() {
+            let actual = metric.get_label();
+            let labels_match = actual.len() == label_values.len()
+                && label_values.iter().all(|(key, value)| {
+                    actual
+                        .iter()
+                        .any(|l| l.get_name() == *key && l.get_value() == *value)
+                });
+            if !labels_match {
                 continue;
             }
-            for metric in family.get_metric() {
-                let actual = metric.get_label();
-                let labels_match = actual.len() == label_values.len()
-                    && label_values.iter().all(|(key, value)| {
-                        actual
-                            .iter()
-                            .any(|l| l.get_name() == *key && l.get_value() == *value)
-                    });
-                if !labels_match {
-                    continue;
-                }
-                if metric.has_counter() {
-                    return metric.get_counter().get_value();
-                } else if metric.has_gauge() {
-                    return metric.get_gauge().get_value();
-                } else if metric.has_untyped() {
-                    return metric.get_untyped().get_value();
-                }
+            if metric.has_counter() {
+                return metric.get_counter().get_value();
+            } else if metric.has_gauge() {
+                return metric.get_gauge().get_value();
+            } else if metric.has_untyped() {
+                return metric.get_untyped().get_value();
             }
         }
         0.0
@@ -105,57 +101,53 @@ impl MetricsSnapshot {
     /// previous finite upper bound so the result stays plottable.
     pub(super) fn histogram_percentile(&self, name: &str, p: f64) -> Option<f64> {
         let p = p.clamp(0.0, 1.0);
-        for family in &self.families {
-            if family.get_name() != name {
+        let family = self.find_family(name)?;
+        for metric in family.get_metric() {
+            if !metric.has_histogram() {
                 continue;
             }
-            for metric in family.get_metric() {
-                if !metric.has_histogram() {
-                    continue;
-                }
-                let histogram = metric.get_histogram();
-                let total = histogram.get_sample_count();
-                if total == 0 {
-                    return None;
-                }
-                let buckets = histogram.get_bucket();
-                if buckets.is_empty() {
-                    return None;
-                }
-                let target = p * total as f64;
-                let mut prev_bound = 0.0_f64;
-                let mut prev_count = 0_u64;
-                let mut last_finite_bound = 0.0_f64;
-                for bucket in buckets {
-                    let upper = bucket.get_upper_bound();
-                    let count = bucket.get_cumulative_count();
-                    if count as f64 >= target {
-                        let high = if upper.is_finite() {
-                            upper
-                        } else {
-                            last_finite_bound
-                        };
-                        if count == prev_count {
-                            return Some(prev_bound);
-                        }
-                        let fraction = (target - prev_count as f64) / (count - prev_count) as f64;
-                        return Some(prev_bound + fraction * (high - prev_bound));
-                    }
-                    if upper.is_finite() {
-                        last_finite_bound = upper;
-                    }
-                    prev_bound = if upper.is_finite() { upper } else { prev_bound };
-                    prev_count = count;
-                }
-                // The `+Inf` bucket's cumulative_count should always equal total, so the
-                // `count >= target` branch must fire before falling out of the loop. If we
-                // still get here the metric data is malformed — log and treat as unavailable
-                // rather than panic in the reporting path.
-                tracing::error!(
-                    "malformed histogram {name:?}: cumulative_count never reaches sample_count"
-                );
+            let histogram = metric.get_histogram();
+            let total = histogram.get_sample_count();
+            if total == 0 {
                 return None;
             }
+            let buckets = histogram.get_bucket();
+            if buckets.is_empty() {
+                return None;
+            }
+            let target = p * total as f64;
+            let mut prev_bound = 0.0_f64;
+            let mut prev_count = 0_u64;
+            let mut last_finite_bound = 0.0_f64;
+            for bucket in buckets {
+                let upper = bucket.get_upper_bound();
+                let count = bucket.get_cumulative_count();
+                if count as f64 >= target {
+                    let high = if upper.is_finite() {
+                        upper
+                    } else {
+                        last_finite_bound
+                    };
+                    if count == prev_count {
+                        return Some(prev_bound);
+                    }
+                    let fraction = (target - prev_count as f64) / (count - prev_count) as f64;
+                    return Some(prev_bound + fraction * (high - prev_bound));
+                }
+                if upper.is_finite() {
+                    last_finite_bound = upper;
+                }
+                prev_bound = if upper.is_finite() { upper } else { prev_bound };
+                prev_count = count;
+            }
+            // The `+Inf` bucket's cumulative_count should always equal total, so the
+            // `count >= target` branch must fire before falling out of the loop. If we
+            // still get here the metric data is malformed — log and treat as unavailable
+            // rather than panic in the reporting path.
+            tracing::error!(
+                "malformed histogram {name:?}: cumulative_count never reaches sample_count"
+            );
+            return None;
         }
         None
     }
@@ -164,19 +156,19 @@ impl MetricsSnapshot {
     /// matching histogram is found (distinct from a present histogram
     /// with zero observations, which returns `Some((0.0, 0))`).
     pub fn histogram_sum_and_count(&self, name: &str) -> Option<(f64, u64)> {
-        for family in &self.families {
-            if family.get_name() != name {
+        let family = self.find_family(name)?;
+        for metric in family.get_metric() {
+            if !metric.has_histogram() {
                 continue;
             }
-            for metric in family.get_metric() {
-                if !metric.has_histogram() {
-                    continue;
-                }
-                let histogram = metric.get_histogram();
-                return Some((histogram.get_sample_sum(), histogram.get_sample_count()));
-            }
+            let histogram = metric.get_histogram();
+            return Some((histogram.get_sample_sum(), histogram.get_sample_count()));
         }
         None
+    }
+
+    fn find_family(&self, name: &str) -> Option<&MetricFamily> {
+        self.families.iter().find(|f| f.get_name() == name)
     }
 }
 
