@@ -22,7 +22,7 @@ pub use self::names::{
     LEADER_TIMEOUT_TOTAL, SyncRequestFulfilled,
 };
 pub use self::result::{Outcome, RunResult};
-pub use self::snapshot::{MetricsSnapshot, ReplicaStats};
+pub use self::snapshot::MetricsSnapshot;
 pub use self::timers::{OwnedUtilizationTimer, UtilizationTimer};
 use self::{
     coarse::CoarseMetrics,

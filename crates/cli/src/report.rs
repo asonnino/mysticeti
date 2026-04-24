@@ -5,7 +5,7 @@ use std::path::Path;
 
 use dag::{
     authority::Authority,
-    metrics::{Outcome, ReplicaStats, RunResult},
+    metrics::{LEADER_TIMEOUT_TOTAL, Outcome, RunResult},
 };
 use eyre::{Result, WrapErr, bail};
 use serde::Serialize;
@@ -25,8 +25,9 @@ pub struct ReplicaReport {
     pub authority: Authority,
     pub commits: usize,
     pub commits_per_sec: Option<f64>,
-    #[serde(flatten)]
-    pub stats: ReplicaStats,
+    pub p50_latency_ms: Option<f64>,
+    pub p90_latency_ms: Option<f64>,
+    pub leader_timeouts: u64,
     /// Full per-replica metrics in the Prometheus text exposition format — every counter,
     /// gauge, and histogram bucket the run emitted. Parseable by `promtool`, Prometheus, and
     /// most TSDB ingesters.
@@ -49,7 +50,9 @@ impl SimulationReport {
                     authority: Authority::from(index),
                     commits,
                     commits_per_sec,
-                    stats: metrics.replica_stats(),
+                    p50_latency_ms: metrics.latency_percentile_ms(0.5),
+                    p90_latency_ms: metrics.latency_percentile_ms(0.9),
+                    leader_timeouts: metrics.metric(LEADER_TIMEOUT_TOTAL, &[]) as u64,
                     metrics: metrics.to_prometheus_text(),
                 }
             })
