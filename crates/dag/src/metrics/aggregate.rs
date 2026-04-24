@@ -33,12 +33,12 @@ impl<'a> AggregateMetrics<'a> {
         let per_replica: Vec<f64> = self
             .snapshots
             .iter()
-            .filter_map(|s| s.histogram_percentile(LATENCY_S, p))
+            .filter_map(|s| s.latency_percentile_ms(p))
             .collect();
         if per_replica.is_empty() {
             None
         } else {
-            Some(per_replica.iter().sum::<f64>() / per_replica.len() as f64 * 1000.0)
+            Some(per_replica.iter().sum::<f64>() / per_replica.len() as f64)
         }
     }
 

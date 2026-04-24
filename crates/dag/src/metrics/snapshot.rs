@@ -192,17 +192,20 @@ impl MetricsSnapshot {
         None
     }
 
+    /// Percentile `p` (in `0.0..=1.0`) of this replica's committed-transaction latency
+    /// histogram, in milliseconds. Returns `None` when the histogram is absent or empty.
+    pub fn latency_percentile_ms(&self, p: f64) -> Option<f64> {
+        self.histogram_percentile(LATENCY_S, p)
+            .map(|seconds| seconds * 1000.0)
+    }
+
     /// Derived per-replica stats pulled in a single pass — shared by the terminal table
     /// (`ReplicaRow`) and the structured results file (`SimulationReport`) so both read from
     /// one definition.
     pub fn replica_stats(&self) -> ReplicaStats {
-        let latency_ms = |p: f64| {
-            self.histogram_percentile(LATENCY_S, p)
-                .map(|seconds| seconds * 1000.0)
-        };
         ReplicaStats {
-            p50_latency_ms: latency_ms(0.5),
-            p90_latency_ms: latency_ms(0.9),
+            p50_latency_ms: self.latency_percentile_ms(0.5),
+            p90_latency_ms: self.latency_percentile_ms(0.9),
             leader_timeouts: self.metric(LEADER_TIMEOUT_TOTAL, &[]) as u64,
         }
     }
