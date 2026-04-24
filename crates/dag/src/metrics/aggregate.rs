@@ -4,7 +4,6 @@
 use std::time::Duration;
 
 use super::{MetricsSnapshot, names::LATENCY_S};
-use crate::authority::Authority;
 
 /// Cross-replica aggregations over a slice of [`MetricsSnapshot`]s.
 /// Each snapshot is indexed by authority (position `i` = authority `i`),
@@ -42,19 +41,11 @@ impl<'a> AggregateMetrics<'a> {
         }
     }
 
-    /// True if any replica reports one or more missing blocks from any peer.
-    pub fn any_missing_blocks(&self) -> bool {
-        self.snapshots
-            .iter()
-            .enumerate()
-            .any(|(i, snapshot)| snapshot.missing_blocks(Authority::from(i)) > 0)
-    }
-
     /// Committed leaders per second, averaged across replicas. Each replica contributes
     /// its observed total committed-leader sequence length across all authorities
     /// (commits only). Returns `None` when `duration` is zero or nothing committed
     /// anywhere.
-    pub fn leader_commits_per_second(&self, duration: Duration) -> Option<f64> {
+    pub fn leader_committed_per_second(&self, duration: Duration) -> Option<f64> {
         if duration.is_zero() {
             return None;
         }
@@ -74,7 +65,7 @@ impl<'a> AggregateMetrics<'a> {
     /// Each replica's `latency_s` sample count equals the number of
     /// transactions it has observed committed. Returns `None` when no
     /// transactions committed or `duration` is zero.
-    pub fn committed_tps(&self, duration: Duration) -> Option<f64> {
+    pub fn transactions_committed_per_second(&self, duration: Duration) -> Option<f64> {
         if duration.is_zero() {
             return None;
         }

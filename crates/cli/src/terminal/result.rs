@@ -79,10 +79,10 @@ impl RunResultRender for RunResult<SimulationConfig> {
             .map(|first| commit_counts.iter().all(|c| c == first))
             .unwrap_or(true);
         let aggregate = AggregateMetrics::new(&self.metrics);
-        if outcome != Outcome::Diverged && uniform_commits && !aggregate.any_missing_blocks() {
+        if outcome != Outcome::Diverged && uniform_commits {
             let duration = Duration::from_secs(duration_secs);
             let committed = commit_counts.first().copied().unwrap_or_default();
-            let rate = match aggregate.leader_commits_per_second(duration) {
+            let rate = match aggregate.leader_committed_per_second(duration) {
                 Some(r) => format!("{r:.1} commits/s"),
                 None => "— commits/s".into(),
             };
@@ -91,7 +91,7 @@ impl RunResultRender for RunResult<SimulationConfig> {
             {
                 headline.push(format!("p50 {p50:.0} ms · p90 {p90:.0} ms"));
             }
-            if let Some(tps) = aggregate.committed_tps(duration) {
+            if let Some(tps) = aggregate.transactions_committed_per_second(duration) {
                 headline.push(format!("{tps:.0} TPS"));
             }
             let headline = headline.join(" · ");
