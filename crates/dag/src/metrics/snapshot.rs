@@ -7,8 +7,7 @@ use prometheus::{Encoder, TextEncoder, proto::MetricFamily};
 
 use super::names::{
     COMMIT_TYPE_DIRECT_COMMIT, COMMIT_TYPE_INDIRECT_COMMIT, COMMITTED_LEADERS_TOTAL,
-    LABEL_AUTHORITY, LABEL_COMMIT_TYPE, LABEL_WORKLOAD, LATENCY_S, LEADER_TIMEOUT_TOTAL,
-    MISSING_BLOCKS, WORKLOAD_SHARED,
+    LABEL_AUTHORITY, LABEL_COMMIT_TYPE, LATENCY_S, LEADER_TIMEOUT_TOTAL, MISSING_BLOCKS,
 };
 use crate::authority::Authority;
 
@@ -117,14 +116,14 @@ impl MetricsSnapshot {
     /// the upper bounds of adjacent buckets. Returns `None` when the histogram is absent or has
     /// zero observations. When the selected bucket is the `+Inf` terminal, falls back to the
     /// previous finite upper bound so the result stays plottable.
-    pub fn histogram_percentile(&self, name: &str, labels: &[(&str, &str)], p: f64) -> Option<f64> {
+    pub fn histogram_percentile(&self, name: &str, p: f64) -> Option<f64> {
         let p = p.clamp(0.0, 1.0);
         for family in &self.families {
             if family.get_name() != name {
                 continue;
             }
             for metric in family.get_metric() {
-                if !metric.has_histogram() || !Self::labels_match(metric, labels) {
+                if !metric.has_histogram() {
                     continue;
                 }
                 let histogram = metric.get_histogram();
@@ -177,13 +176,13 @@ impl MetricsSnapshot {
     /// Read a histogram's sample sum and count. Returns `None` when no
     /// matching histogram is found (distinct from a present histogram
     /// with zero observations, which returns `Some((0.0, 0))`).
-    pub fn histogram_stats(&self, name: &str, labels: &[(&str, &str)]) -> Option<(f64, u64)> {
+    pub fn histogram_sum_and_count(&self, name: &str) -> Option<(f64, u64)> {
         for family in &self.families {
             if family.get_name() != name {
                 continue;
             }
             for metric in family.get_metric() {
-                if !metric.has_histogram() || !Self::labels_match(metric, labels) {
+                if !metric.has_histogram() {
                     continue;
                 }
                 let histogram = metric.get_histogram();
@@ -198,7 +197,7 @@ impl MetricsSnapshot {
     /// one definition.
     pub fn replica_stats(&self) -> ReplicaStats {
         let latency_ms = |p: f64| {
-            self.histogram_percentile(LATENCY_S, &[(LABEL_WORKLOAD, WORKLOAD_SHARED)], p)
+            self.histogram_percentile(LATENCY_S, p)
                 .map(|seconds| seconds * 1000.0)
         };
         ReplicaStats {
@@ -358,23 +357,23 @@ mod test {
         }
         let snapshot = collect_snapshot(&registry);
         assert_eq!(
-            snapshot.histogram_percentile("demo_latency_s", &[], 0.0),
+            snapshot.histogram_percentile("demo_latency_s", 0.0),
             Some(0.0)
         );
         assert_eq!(
-            snapshot.histogram_percentile("demo_latency_s", &[], 0.5),
+            snapshot.histogram_percentile("demo_latency_s", 0.5),
             Some(0.5)
         );
         // p90 target = 360, lies in the fourth bucket between cumulative 300 and 400 → 0.75 +
         // 0.6 * 0.25 = 0.9.
         let p90 = snapshot
-            .histogram_percentile("demo_latency_s", &[], 0.9)
+            .histogram_percentile("demo_latency_s", 0.9)
             .unwrap();
         assert!((p90 - 0.9).abs() < 1e-9, "p90 = {p90}");
         // p100: prometheus crate adds an implicit +Inf bucket; fall back to the previous finite
         // edge.
         assert_eq!(
-            snapshot.histogram_percentile("demo_latency_s", &[], 1.0),
+            snapshot.histogram_percentile("demo_latency_s", 1.0),
             Some(1.0)
         );
     }
@@ -386,10 +385,7 @@ mod test {
             register_histogram_with_registry!("demo_empty_s", "help", vec![0.25, 0.5], registry)
                 .unwrap();
         let snapshot = collect_snapshot(&registry);
-        assert_eq!(
-            snapshot.histogram_percentile("demo_empty_s", &[], 0.5),
-            None
-        );
+        assert_eq!(snapshot.histogram_percentile("demo_empty_s", 0.5), None);
     }
 
     #[test]

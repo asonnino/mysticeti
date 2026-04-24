@@ -17,10 +17,9 @@ use tabled::{Table, Tabled};
 use tokio::time::Instant;
 
 pub use self::aggregate::AggregateMetrics;
-pub(crate) use self::names::WORKLOAD_SHARED;
 pub use self::names::{
-    BENCHMARK_DURATION, BLOCK_SYNC_REQUESTS_SENT, LABEL_AUTHORITY, LABEL_WORKLOAD, LATENCY_S,
-    LATENCY_SQUARED_S, LEADER_TIMEOUT_TOTAL, SyncRequestFulfilled,
+    BENCHMARK_DURATION, BLOCK_SYNC_REQUESTS_SENT, LABEL_AUTHORITY, LATENCY_S, LATENCY_SQUARED_S,
+    LEADER_TIMEOUT_TOTAL, SyncRequestFulfilled,
 };
 pub use self::result::{Outcome, RunResult};
 pub use self::snapshot::{MetricsSnapshot, ReplicaStats};
@@ -132,25 +131,16 @@ impl Metrics {
         self.precise.observe_proposed_block_vote_count(count);
     }
 
-    pub fn observe_latency_s(&self, workload: &str, value: f64) {
-        self.coarse
-            .latency_s
-            .with_label_values(&[workload])
-            .observe(value);
+    pub fn observe_latency_s(&self, value: f64) {
+        self.coarse.latency_s.observe(value);
     }
 
-    pub fn observe_latency_squared_s(&self, workload: &str, value: f64) {
-        self.coarse
-            .latency_squared_s
-            .with_label_values(&[workload])
-            .inc_by(value);
+    pub fn observe_latency_squared_s(&self, value: f64) {
+        self.coarse.latency_squared_s.inc_by(value);
     }
 
-    pub fn observe_inter_block_latency_s(&self, workload: &str, value: f64) {
-        self.coarse
-            .inter_block_latency_s
-            .with_label_values(&[workload])
-            .observe(value);
+    pub fn observe_inter_block_latency_s(&self, value: f64) {
+        self.coarse.inter_block_latency_s.observe(value);
     }
 
     /// Record a decided leader on `committed_leaders_total`. Silent no-op on
