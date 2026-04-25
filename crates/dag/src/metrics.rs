@@ -223,18 +223,16 @@ impl Metrics {
         }
     }
 
-    /// Flush precise metrics to Prometheus gauges (in test mode only — see below) and
-    /// return a snapshot of all gathered metrics.
+    /// Drain the precise-metric channels into Prometheus gauges and return a snapshot
+    /// of all gathered metrics. Always returns fresh data: in production mode this
+    /// asks the background reporter to flush and awaits its reply; in test mode it
+    /// flushes synchronously.
     ///
     /// Expensive: `Registry::gather()` allocates many small structs (one `MetricFamily`
     /// per metric, one `Metric` per series, plus label-pair storage), so it's well into
     /// "do not call in tight loops" territory — heartbeats and end-of-run pulls are fine.
-    ///
-    /// In production mode (`Metrics::new`) the precise reporter runs as a background
-    /// task that flushes periodically, so a snapshot here may lag by up to the
-    /// `report_interval` passed to the constructor.
-    pub fn collect(&self) -> MetricsSnapshot {
-        self.precise.flush();
+    pub async fn collect(&self) -> MetricsSnapshot {
+        self.precise.flush().await;
         MetricsSnapshot::new(self.registry.gather())
     }
 
@@ -274,13 +272,13 @@ mod test {
         LABEL_AUTHORITY, LABEL_COMMIT_TYPE,
     };
 
-    #[test]
-    fn new_for_test_collect_roundtrip() {
+    #[tokio::test]
+    async fn new_for_test_collect_roundtrip() {
         let metrics = Metrics::new_for_test(4);
         metrics.inc_block_store_entries();
         metrics.inc_block_store_entries();
         metrics.inc_submitted_transactions(100);
-        let snapshot = metrics.collect();
+        let snapshot = metrics.collect().await;
         assert_eq!(snapshot.scalar_value("block_store_entries", &[]), 2.0);
         assert_eq!(snapshot.scalar_value("submitted_transactions", &[]), 100.0);
     }
@@ -294,8 +292,8 @@ mod test {
         assert_eq!(metrics.benchmark_duration_secs(), 15);
     }
 
-    #[test]
-    fn labeled_metrics_roundtrip() {
+    #[tokio::test]
+    async fn labeled_metrics_roundtrip() {
         let a = Authority::from(0_usize);
         let b = Authority::from(1_usize);
         let metrics = Metrics::new_for_test(4);
@@ -304,7 +302,7 @@ mod test {
         metrics.inc_decided_leaders(&LeaderStatus::IndirectSkip(b, 1));
         metrics.set_missing_blocks(a, 3);
         metrics.inc_block_sync_requests_sent(a);
-        let snapshot = metrics.collect();
+        let snapshot = metrics.collect().await;
         let authority_a = a.to_string();
         let authority_b = b.to_string();
         assert_eq!(
@@ -340,33 +338,50 @@ mod test {
         );
     }
 
-    #[test]
-    fn observe_precise_metrics() {
+    #[tokio::test]
+    async fn observe_precise_metrics() {
         let metrics = Metrics::new_for_test(4);
         for i in 1..=100 {
             metrics.observe_transaction_committed_latency(Duration::from_micros(i));
         }
-        let snapshot = metrics.collect();
+        let snapshot = metrics.collect().await;
         let p50 = snapshot.scalar_value("transaction_committed_latency", &[("v", "p50")]);
         assert!(p50 > 0.0, "p50 should be populated after flush");
     }
 
-    #[test]
-    fn set_gauges_roundtrip() {
+    #[tokio::test]
+    async fn set_gauges_roundtrip() {
         let metrics = Metrics::new_for_test(4);
         metrics.set_wal_mappings(42);
-        let snapshot = metrics.collect();
+        let snapshot = metrics.collect().await;
         assert_eq!(snapshot.scalar_value("wal_mappings", &[]), 42.0);
     }
 
-    #[test]
-    fn production_collect_returns_snapshot_via_external_registry() {
-        let runtime = tokio::runtime::Runtime::new().unwrap();
-        let _guard = runtime.enter();
+    #[tokio::test]
+    async fn production_collect_returns_snapshot_via_external_registry() {
         let registry = prometheus::Registry::new();
         let metrics = Metrics::new(&registry, 4, None);
         metrics.set_wal_mappings(7);
-        let snapshot = metrics.collect();
+        let snapshot = metrics.collect().await;
         assert_eq!(snapshot.scalar_value("wal_mappings", &[]), 7.0);
+    }
+
+    /// The regression: in production mode `collect()` must drain the precise channels
+    /// into the Prometheus gauges *before* gathering, so percentiles are populated even
+    /// on the very first call. Before the foreground-flush refactor this test would
+    /// fail — the only flush path was the 60s background tick, which never fired.
+    #[tokio::test]
+    async fn production_collect_returns_fresh_precise_snapshot() {
+        let registry = prometheus::Registry::new();
+        let metrics = Metrics::new(&registry, 4, None);
+        for i in 1..=100 {
+            metrics.observe_transaction_committed_latency(Duration::from_micros(i));
+        }
+        let snapshot = metrics.collect().await;
+        let p50 = snapshot.scalar_value("transaction_committed_latency", &[("v", "p50")]);
+        assert!(
+            p50 > 0.0,
+            "production collect must drain precise channels synchronously"
+        );
     }
 }

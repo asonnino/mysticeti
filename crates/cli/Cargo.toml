@@ -12,6 +12,7 @@ path = "src/main.rs"
 clap = { workspace = true }
 color-eyre = { workspace = true }
 eyre = { workspace = true }
+futures = { workspace = true }
 dag.workspace = true
 consensus.workspace = true
 replica.workspace = true

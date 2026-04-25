@@ -4,11 +4,17 @@
 use std::{sync::Mutex, time::Duration};
 
 use prometheus::Registry;
+use tokio::sync::{mpsc, oneshot};
 
 use super::histogram::{self, HistogramObserver, HistogramReporter, VecHistogramReporter};
 use crate::authority::Authority;
 
 const DEFAULT_REPORT_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Capacity of the foreground → background flush-request channel. A small
+/// buffer is enough: each request carries its own oneshot reply, and multiple
+/// concurrent requesters serialise naturally on the receiver side.
+const FLUSH_CHANNEL_CAPACITY: usize = 4;
 
 /// Precise metrics with exact percentile computation.
 ///
@@ -28,11 +34,12 @@ impl PreciseMetrics {
         report_interval: Option<Duration>,
     ) -> Self {
         let (reporter, observers) = Self::create(registry, committee_size);
+        let (flush_tx, flush_rx) = mpsc::channel(FLUSH_CHANNEL_CAPACITY);
         let handle = tokio::runtime::Handle::current()
-            .spawn(reporter.run(report_interval.unwrap_or(DEFAULT_REPORT_INTERVAL)));
+            .spawn(reporter.run(report_interval.unwrap_or(DEFAULT_REPORT_INTERVAL), flush_rx));
         Self {
             observers,
-            state: ReporterState::Spawned(handle),
+            state: ReporterState::Spawned { handle, flush_tx },
         }
     }
 
@@ -104,19 +111,35 @@ impl PreciseMetrics {
         }
     }
 
-    /// Drain channels and write percentiles to Prometheus
-    /// gauges. Only works in test mode.
-    pub fn flush(&self) {
-        if let ReporterState::Test(mutex) = &self.state {
-            let mut r = mutex.lock().expect("reporter lock poisoned");
-            r.flush();
+    /// Drain channels and write percentiles to Prometheus gauges. In test mode
+    /// this locks the reporter and flushes synchronously; in production mode
+    /// it asks the background task to flush and waits for the reply, so the
+    /// caller is guaranteed to see fresh gauges on return. The hot observer
+    /// path is unaffected — only foreground callers (e.g. `Metrics::collect`)
+    /// pay the round-trip cost.
+    pub async fn flush(&self) {
+        match &self.state {
+            ReporterState::Test(mutex) => {
+                let mut r = mutex.lock().expect("reporter lock poisoned");
+                r.flush();
+            }
+            ReporterState::Spawned { flush_tx, .. } => {
+                let (reply_tx, reply_rx) = oneshot::channel();
+                // If `send` fails the background task is gone and the channel is
+                // closed; nothing left to flush. If the task is dropped between
+                // `send` and `reply_rx.await`, the receiver also returns Err —
+                // either way we just return without ceremony.
+                if flush_tx.send(reply_tx).await.is_ok() {
+                    let _ = reply_rx.await;
+                }
+            }
         }
     }
 
     /// Abort the background reporter task and drop all
     /// observers, preventing unbounded channel growth.
     pub fn shutdown(self) {
-        if let ReporterState::Spawned(handle) = self.state {
+        if let ReporterState::Spawned { handle, .. } = self.state {
             handle.abort();
         }
     }
@@ -132,7 +155,16 @@ struct Observers {
 }
 
 enum ReporterState {
-    Spawned(tokio::task::JoinHandle<()>),
+    /// Production: the reporter is owned by a background task that flushes
+    /// periodically. Foreground callers ask the task to flush by sending a
+    /// oneshot reply over `flush_tx` and awaiting the reply.
+    Spawned {
+        handle: tokio::task::JoinHandle<()>,
+        flush_tx: mpsc::Sender<oneshot::Sender<()>>,
+    },
+    /// Test: no background task. The reporter sits behind a mutex that the
+    /// foreground locks directly — no concurrent access in this mode, so the
+    /// lock is uncontended.
     Test(Box<Mutex<MetricsReporter>>),
 }
 
@@ -161,13 +193,27 @@ impl MetricsReporter {
         self.connection_latency.report();
     }
 
-    async fn run(mut self, report_interval: Duration) {
+    async fn run(
+        mut self,
+        report_interval: Duration,
+        mut flush_rx: mpsc::Receiver<oneshot::Sender<()>>,
+    ) {
         let mut interval = tokio::time::interval(report_interval);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         interval.tick().await; // first tick completes immediately
         loop {
-            interval.tick().await;
-            self.flush();
+            tokio::select! {
+                _ = interval.tick() => self.flush(),
+                request = flush_rx.recv() => match request {
+                    Some(reply) => {
+                        self.flush();
+                        // The caller may have given up; that's fine.
+                        let _ = reply.send(());
+                    }
+                    // All `Sender` clones dropped — `PreciseMetrics` is gone.
+                    None => break,
+                },
+            }
         }
     }
 }

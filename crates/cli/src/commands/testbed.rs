@@ -17,6 +17,7 @@ use dag::{
     metrics::{LATENCY_S, Metrics, MetricsSnapshot, RunKind, RunResult},
 };
 use eyre::{Context, Result, eyre};
+use futures::future;
 use replica::{
     builder::ReplicaBuilder,
     config::{LoadGeneratorConfig, PrivateReplicaConfig, PublicReplicaConfig, ReplicaParameters},
@@ -267,7 +268,7 @@ fn spawn_heartbeat(
             ticker.tick().await;
             let elapsed = started_at.elapsed();
             let snapshots: Vec<MetricsSnapshot> =
-                metrics_per_replica.iter().map(|m| m.collect()).collect();
+                future::join_all(metrics_per_replica.iter().map(|m| m.collect())).await;
             let line = format_heartbeat(elapsed, &snapshots);
             eprintln!("{line}");
         }
@@ -341,13 +342,15 @@ async fn collect_run_result(
     for handle in handles {
         syncers.push(handle.shutdown().await);
     }
-    let (snapshots, storages): (Vec<_>, Vec<&_>) = syncers
+    // `metrics.collect()` is async (it round-trips through the precise reporter to
+    // get fresh percentiles), so collect snapshots concurrently per replica. The
+    // storage borrows go in the same order; assemble the parallel arrays separately.
+    let snapshots: Vec<_> =
+        future::join_all(syncers.iter().map(|syncer| syncer.core().metrics.collect())).await;
+    let storages: Vec<&_> = syncers
         .iter()
-        .map(|syncer| {
-            let core = syncer.core();
-            (core.metrics.collect(), core.storage())
-        })
-        .unzip();
+        .map(|syncer| syncer.core().storage())
+        .collect();
 
     let mut dag_writer = if export_dag {
         let path = exporter.dag_path(1, 1, None)?;

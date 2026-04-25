@@ -750,6 +750,7 @@ dependencies = [
  "consensus",
  "dag",
  "eyre",
+ "futures",
  "indicatif",
  "replica",
  "serde",

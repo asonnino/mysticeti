@@ -15,6 +15,7 @@ use dag::{
     core::syncer::Syncer,
     metrics::{Metrics, RunKind, RunResult},
 };
+use futures::future;
 use rand::{SeedableRng, rngs::StdRng};
 use replica::{
     builder::{ReplicaBuilder, StorageKind},
@@ -165,15 +166,14 @@ impl SimulationState {
 
     async fn collect_result(self) -> io::Result<RunResult<SimulationConfig>> {
         let syncers: Vec<Syncer<SimulatorContext, Committer>> =
-            futures::future::join_all(self.replicas.into_iter().map(ReplicaHandle::shutdown)).await;
+            future::join_all(self.replicas.into_iter().map(ReplicaHandle::shutdown)).await;
 
-        let (metrics, storages): (Vec<_>, Vec<&_>) = syncers
-            .iter()
-            .map(|syncer| {
-                let core = syncer.core();
-                (core.metrics.collect(), core.storage())
-            })
-            .unzip();
+        // `metrics.collect()` is async (round-trips through the precise reporter for
+        // fresh percentiles), so collect per-replica snapshots concurrently and pair
+        // the storage borrows separately.
+        let metrics: Vec<_> =
+            future::join_all(syncers.iter().map(|s| s.core().metrics.collect())).await;
+        let storages: Vec<&_> = syncers.iter().map(|s| s.core().storage()).collect();
 
         let duration = self.config.duration();
         let mut writer = self.dag_writer;

@@ -293,7 +293,7 @@ mod tests {
         storage::{Storage, block_store::CommitData},
     };
 
-    fn build_storages_with_commits(
+    async fn build_storages_with_commits(
         replica_count: usize,
         batch: &[CommitData],
     ) -> (Vec<Storage>, Vec<crate::metrics::MetricsSnapshot>) {
@@ -305,7 +305,7 @@ mod tests {
             let (mut storage, _) =
                 Storage::new_for_tests(Authority::from(index as u64), metrics.clone(), &committee);
             storage.write_commits(batch);
-            snapshots.push(metrics.collect());
+            snapshots.push(metrics.collect().await);
             storages.push(storage);
         }
         (storages, snapshots)
@@ -389,10 +389,10 @@ mod tests {
         assert_eq!(Outcome::from(streams), Outcome::Pass);
     }
 
-    #[test]
-    fn run_result_collect_classifies_consistent_run_as_pass() {
+    #[tokio::test]
+    async fn run_result_collect_classifies_consistent_run_as_pass() {
         let batch = CommitData::new_for_test(&[(0, 1), (1, 2), (2, 3)]);
-        let (storages, snapshots) = build_storages_with_commits(3, &batch);
+        let (storages, snapshots) = build_storages_with_commits(3, &batch).await;
 
         let result: RunResult<()> = RunResult::builder(
             snapshots,
@@ -409,9 +409,9 @@ mod tests {
         assert_eq!(result.metrics.len(), 3);
     }
 
-    #[test]
-    fn run_result_collect_classifies_empty_run_as_no_progress() {
-        let (storages, snapshots) = build_storages_with_commits(2, &[]);
+    #[tokio::test]
+    async fn run_result_collect_classifies_empty_run_as_no_progress() {
+        let (storages, snapshots) = build_storages_with_commits(2, &[]).await;
         let result: RunResult<()> = RunResult::builder(
             snapshots,
             &storages,
@@ -424,10 +424,10 @@ mod tests {
         assert_eq!(result.outcome, Outcome::NoProgress);
     }
 
-    #[test]
-    fn run_result_collect_with_dag_log_writes_one_ndjson_line_per_commit() {
+    #[tokio::test]
+    async fn run_result_collect_with_dag_log_writes_one_ndjson_line_per_commit() {
         let batch = CommitData::new_for_test(&[(0, 1), (1, 2), (2, 3)]);
-        let (storages, snapshots) = build_storages_with_commits(2, &batch);
+        let (storages, snapshots) = build_storages_with_commits(2, &batch).await;
 
         let mut buffer = Vec::new();
         let result: RunResult<()> = RunResult::builder(
@@ -453,11 +453,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn run_result_constructors_agree_on_outcome() {
+    #[tokio::test]
+    async fn run_result_constructors_agree_on_outcome() {
         let batch = CommitData::new_for_test(&[(0, 1), (1, 2)]);
-        let (storages_a, snapshots_a) = build_storages_with_commits(3, &batch);
-        let (storages_b, snapshots_b) = build_storages_with_commits(3, &batch);
+        let (storages_a, snapshots_a) = build_storages_with_commits(3, &batch).await;
+        let (storages_b, snapshots_b) = build_storages_with_commits(3, &batch).await;
 
         let plain: RunResult<()> = RunResult::builder(
             snapshots_a,
