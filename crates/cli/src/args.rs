@@ -66,10 +66,16 @@ pub enum Command {
         /// Print the default configuration to stdout and exit.
         #[arg(long, conflicts_with = "config_path")]
         dump_config: bool,
-        /// Write detailed per-run results to this file. Format is picked from the extension:
-        /// `.json`, `.yaml`, or `.yml`.
-        #[arg(long, value_name = "FILE", conflicts_with = "dump_config")]
-        results_file: Option<PathBuf>,
+        /// Directory to collect tracing logs and per-run artefacts (`config.yaml`,
+        /// `meta.yaml`, `metrics.prom`). Multi-run suites get one subdirectory per run
+        /// (named after the run, or by index if unnamed).
+        #[arg(long, value_name = "DIR", conflicts_with = "dump_config")]
+        output_dir: Option<PathBuf>,
+        /// Also write each run's committed sub-DAG to `<output_dir>/<run>/dag.ndjson`
+        /// (one committed sub-DAG per line). Requires `--output-dir`. Off by default —
+        /// DAG dumps can be many GB.
+        #[arg(long, conflicts_with = "dump_config", requires = "output_dir")]
+        export_dag: bool,
     },
 
     /// Deploy a local testbed of replicas on localhost.

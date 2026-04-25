@@ -21,11 +21,11 @@ use crate::{
 
 type PrefixHasher = Blake2b<U32>;
 
-/// One NDJSON line emitted by [`RunResult::collect_with_commit_log`]. The JSON
+/// One NDJSON line emitted by [`RunResultBuilder::with_dag_log`]. The JSON
 /// shape comes from the [`serde::Serialize`] derive; field order here is the
 /// on-disk order.
 #[derive(Serialize)]
-struct CommitRecord<'a> {
+struct DagRecord<'a> {
     authority: Authority,
     commit: &'a CommitData,
 }
@@ -106,7 +106,7 @@ where
 /// Cross-replica summary of a single run: per-replica metrics, the derived outcome, the
 /// configuration that drove the run, and wall-clock duration.
 ///
-/// Generic over `C` so simulator, testbed, and future smoke-test configs all share this
+/// Generic over `C` so simulator, testbed, and smoke-test configs all share this
 /// type. `outcome` is precomputed at construction from a streaming consistency check; the
 /// commit history is never materialised in memory.
 pub struct RunResult<C> {
@@ -117,50 +117,22 @@ pub struct RunResult<C> {
 }
 
 impl<C> RunResult<C> {
-    /// Gather per-replica metrics and storages into a single run summary, running the
-    /// consistency check to derive `Outcome`. Storages are iterated once; no commit is
-    /// retained in memory.
-    ///
-    /// Potentially heavy on long runs: each storage's WAL is streamed end-to-end to hash
-    /// every committed sub-dag.
-    pub fn collect<S: Borrow<Storage>>(
+    /// Start configuring a run-result. Holds the inputs; pass optional knobs via
+    /// `with_*` methods, then call [`RunResultBuilder::collect`] to run the
+    /// consistency check and produce the `RunResult<C>`.
+    pub fn builder<S: Borrow<Storage>>(
         metrics: Vec<MetricsSnapshot>,
         storages: &[S],
         config: C,
         duration: Duration,
-    ) -> Self {
-        let outcome = Outcome::from(storages.iter().map(|s| s.borrow().iter_commits()));
-        Self {
+    ) -> RunResultBuilder<'_, C, S> {
+        RunResultBuilder {
             metrics,
-            outcome,
+            storages,
             config,
             duration,
+            dag_log: None,
         }
-    }
-
-    /// Same as [`RunResult::collect`], plus stream every committed sub-dag to `writer` as
-    /// newline-delimited JSON (one object per line, `{"authority":…, "commit":…}`). The
-    /// writer is driven in a separate pass over each storage before the consistency check,
-    /// so memory stays bounded — but the WAL is now scanned twice per replica.
-    pub fn collect_with_commit_log<S: Borrow<Storage>, W: io::Write>(
-        metrics: Vec<MetricsSnapshot>,
-        storages: &[S],
-        config: C,
-        duration: Duration,
-        writer: &mut W,
-    ) -> io::Result<Self> {
-        for (index, storage) in storages.iter().enumerate() {
-            let authority = Authority::from(index as u64);
-            for commit in storage.borrow().iter_commits() {
-                let record = CommitRecord {
-                    authority,
-                    commit: &commit,
-                };
-                serde_json::to_writer(&mut *writer, &record).map_err(io::Error::other)?;
-                writeln!(writer)?;
-            }
-        }
-        Ok(Self::collect(metrics, storages, config, duration))
     }
 
     /// Per-replica count of committed leaders, in authority order. Derived from each
@@ -172,6 +144,62 @@ impl<C> RunResult<C> {
             .iter()
             .map(|snapshot| snapshot.total_committed_leaders() as usize)
             .collect()
+    }
+}
+
+/// Builder for [`RunResult`]. Configure optional knobs (e.g. a DAG-log writer) then
+/// finalise via [`collect`](Self::collect), which runs the consistency check and
+/// produces the `RunResult<C>`.
+pub struct RunResultBuilder<'a, C, S: Borrow<Storage>> {
+    metrics: Vec<MetricsSnapshot>,
+    storages: &'a [S],
+    config: C,
+    duration: Duration,
+    dag_log: Option<&'a mut dyn io::Write>,
+}
+
+impl<'a, C, S: Borrow<Storage>> RunResultBuilder<'a, C, S> {
+    /// Stream every committed sub-DAG to `writer` as newline-delimited JSON (one
+    /// object per line, `{"authority":…, "commit":…}`). The writer is driven in a
+    /// separate pass over each storage before the consistency check, so memory stays
+    /// bounded — but the WAL is now scanned twice per replica.
+    pub fn with_dag_log(mut self, writer: &'a mut dyn io::Write) -> Self {
+        self.dag_log = Some(writer);
+        self
+    }
+
+    /// Run the consistency check and produce the `RunResult<C>`. Storages are streamed
+    /// once (or twice when `with_dag_log` is set); no commit is retained in memory.
+    ///
+    /// Potentially heavy on long runs: each storage's WAL is streamed end-to-end.
+    pub fn collect(self) -> io::Result<RunResult<C>> {
+        let RunResultBuilder {
+            metrics,
+            storages,
+            config,
+            duration,
+            dag_log,
+        } = self;
+        if let Some(writer) = dag_log {
+            for (index, storage) in storages.iter().enumerate() {
+                let authority = Authority::from(index as u64);
+                for commit in storage.borrow().iter_commits() {
+                    let record = DagRecord {
+                        authority,
+                        commit: &commit,
+                    };
+                    serde_json::to_writer(&mut *writer, &record).map_err(io::Error::other)?;
+                    writeln!(writer)?;
+                }
+            }
+        }
+        let outcome = Outcome::from(storages.iter().map(|s| s.borrow().iter_commits()));
+        Ok(RunResult {
+            metrics,
+            outcome,
+            config,
+            duration,
+        })
     }
 }
 
@@ -289,7 +317,9 @@ mod tests {
         let (storages, snapshots) = build_storages_with_commits(3, &batch);
 
         let result: RunResult<()> =
-            RunResult::collect(snapshots, &storages, (), Duration::from_secs(30));
+            RunResult::builder(snapshots, &storages, (), Duration::from_secs(30))
+                .collect()
+                .expect("collect");
 
         assert_eq!(result.outcome, Outcome::Pass);
         assert_eq!(result.duration, Duration::from_secs(30));
@@ -300,24 +330,23 @@ mod tests {
     fn run_result_collect_classifies_empty_run_as_no_progress() {
         let (storages, snapshots) = build_storages_with_commits(2, &[]);
         let result: RunResult<()> =
-            RunResult::collect(snapshots, &storages, (), Duration::from_secs(5));
+            RunResult::builder(snapshots, &storages, (), Duration::from_secs(5))
+                .collect()
+                .expect("collect");
         assert_eq!(result.outcome, Outcome::NoProgress);
     }
 
     #[test]
-    fn run_result_collect_with_commit_log_writes_one_ndjson_line_per_commit() {
+    fn run_result_collect_with_dag_log_writes_one_ndjson_line_per_commit() {
         let batch = CommitData::new_for_test(&[(0, 1), (1, 2), (2, 3)]);
         let (storages, snapshots) = build_storages_with_commits(2, &batch);
 
         let mut buffer = Vec::new();
-        let result: RunResult<()> = RunResult::collect_with_commit_log(
-            snapshots,
-            &storages,
-            (),
-            Duration::from_secs(10),
-            &mut buffer,
-        )
-        .expect("NDJSON write");
+        let result: RunResult<()> =
+            RunResult::builder(snapshots, &storages, (), Duration::from_secs(10))
+                .with_dag_log(&mut buffer)
+                .collect()
+                .expect("NDJSON write");
 
         assert_eq!(result.outcome, Outcome::Pass);
 
@@ -338,16 +367,15 @@ mod tests {
         let (storages_b, snapshots_b) = build_storages_with_commits(3, &batch);
 
         let plain: RunResult<()> =
-            RunResult::collect(snapshots_a, &storages_a, (), Duration::from_secs(1));
+            RunResult::builder(snapshots_a, &storages_a, (), Duration::from_secs(1))
+                .collect()
+                .expect("collect");
         let mut sink = Vec::new();
-        let logged: RunResult<()> = RunResult::collect_with_commit_log(
-            snapshots_b,
-            &storages_b,
-            (),
-            Duration::from_secs(1),
-            &mut sink,
-        )
-        .expect("NDJSON write");
+        let logged: RunResult<()> =
+            RunResult::builder(snapshots_b, &storages_b, (), Duration::from_secs(1))
+                .with_dag_log(&mut sink)
+                .collect()
+                .expect("collect");
 
         assert_eq!(plain.outcome, logged.outcome);
     }
