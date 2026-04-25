@@ -95,7 +95,7 @@ impl Terminal {
             .name
             .clone()
             .unwrap_or_else(|| "unnamed".into());
-        let commit_counts = result.commit_count_per_replica();
+        let commit_counts = result.leaders_committed_per_replica();
         self.suite_rows.push(SuiteRow::new(
             &run_name,
             result.config.committee_size,

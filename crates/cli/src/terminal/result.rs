@@ -6,9 +6,7 @@
 //! run results in one file. Adding a new run kind (e.g. testbed in #64) means another
 //! `impl RunResultRender` alongside the sim one.
 
-use std::time::Duration;
-
-use dag::metrics::{AggregateMetrics, Outcome, RunResult};
+use dag::metrics::{Outcome, RunResult};
 use simulator::SimulationConfig;
 
 use super::table::{self, ReplicaRow};
@@ -65,8 +63,7 @@ pub trait RunResultRender {
 impl RunResultRender for RunResult<SimulationConfig> {
     fn render(&self, color: bool) -> String {
         let outcome = self.outcome;
-        let duration_secs = self.config.duration_secs;
-        let commit_counts = self.commit_count_per_replica();
+        let commit_counts = self.leaders_committed_per_replica();
 
         let mut out = outcome.badge(color);
         out.push('\n');
@@ -78,20 +75,17 @@ impl RunResultRender for RunResult<SimulationConfig> {
             .first()
             .map(|first| commit_counts.iter().all(|c| c == first))
             .unwrap_or(true);
-        let aggregate = AggregateMetrics::new(&self.metrics);
         if outcome != Outcome::Diverged && uniform_commits {
-            let duration = Duration::from_secs(duration_secs);
             let committed = commit_counts.first().copied().unwrap_or_default();
-            let rate = match aggregate.leader_committed_per_second(duration) {
+            let rate = match self.leaders_committed_per_second() {
                 Some(r) => format!("{r:.1} commits/s"),
                 None => "— commits/s".into(),
             };
             let mut headline = Vec::new();
-            if let (Some(p50), Some(p90)) = (aggregate.p50_latency_ms(), aggregate.p90_latency_ms())
-            {
+            if let (Some(p50), Some(p90)) = (self.p50_latency_ms(), self.p90_latency_ms()) {
                 headline.push(format!("p50 {p50:.0} ms · p90 {p90:.0} ms"));
             }
-            if let Some(tps) = aggregate.transactions_committed_per_second(duration) {
+            if let Some(tps) = self.transactions_committed_per_second() {
                 headline.push(format!("{tps:.0} TPS"));
             }
             let headline = headline.join(" · ");
