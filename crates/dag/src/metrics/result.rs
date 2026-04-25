@@ -14,9 +14,9 @@ use blake2::Blake2b;
 use digest::{Digest, consts::U32};
 use serde::Serialize;
 
+use super::{MetricsSnapshot, names::LATENCY_S};
 use crate::{
-    authority::Authority, crypto::CryptoHash, metrics::MetricsSnapshot, storage::Storage,
-    storage::block_store::CommitData,
+    authority::Authority, crypto::CryptoHash, storage::Storage, storage::block_store::CommitData,
 };
 
 type PrefixHasher = Blake2b<U32>;
@@ -135,15 +135,76 @@ impl<C> RunResult<C> {
         }
     }
 
+    /// 50th-percentile end-to-end transaction latency (ms), averaged across replicas.
+    pub fn p50_latency_ms(&self) -> Option<f64> {
+        self.latency_percentile_ms(0.5)
+    }
+
+    /// 90th-percentile end-to-end transaction latency (ms), averaged across replicas.
+    pub fn p90_latency_ms(&self) -> Option<f64> {
+        self.latency_percentile_ms(0.9)
+    }
+
+    fn latency_percentile_ms(&self, p: f64) -> Option<f64> {
+        let per_replica: Vec<f64> = self
+            .metrics
+            .iter()
+            .filter_map(|s| s.latency_percentile_ms(p))
+            .collect();
+        if per_replica.is_empty() {
+            None
+        } else {
+            Some(per_replica.iter().sum::<f64>() / per_replica.len() as f64)
+        }
+    }
+
     /// Per-replica count of committed leaders, in authority order. Derived from each
     /// snapshot's `committed_leaders_total` counter (summed across all leader authorities),
     /// so the values stay meaningful whether the result came from a sim, a local testbed,
     /// or a future smoke test.
-    pub fn commit_count_per_replica(&self) -> Vec<usize> {
+    pub fn leaders_committed_per_replica(&self) -> Vec<usize> {
         self.metrics
             .iter()
             .map(|snapshot| snapshot.total_committed_leaders() as usize)
             .collect()
+    }
+
+    /// Mean committed-leader rate (leaders/s) across replicas. `None` when `duration` is
+    /// zero or no replica committed anything.
+    pub fn leaders_committed_per_second(&self) -> Option<f64> {
+        if self.duration.is_zero() {
+            return None;
+        }
+        let totals: Vec<u64> = self
+            .metrics
+            .iter()
+            .map(MetricsSnapshot::total_committed_leaders)
+            .collect();
+        if totals.is_empty() {
+            return None;
+        }
+        let mean = totals.iter().sum::<u64>() as f64 / totals.len() as f64;
+        (mean > 0.0).then(|| mean / self.duration.as_secs_f64())
+    }
+
+    /// Mean committed-transaction rate (TPS) across replicas. Each replica's `latency_s`
+    /// histogram sample-count equals the count of committed transactions it observed.
+    /// `None` when no transactions committed or `duration` is zero.
+    pub fn transactions_committed_per_second(&self) -> Option<f64> {
+        if self.duration.is_zero() {
+            return None;
+        }
+        let counts: Vec<u64> = self
+            .metrics
+            .iter()
+            .filter_map(|s| s.histogram_sum_and_count(LATENCY_S))
+            .map(|(_, count)| count)
+            .collect();
+        if counts.is_empty() {
+            return None;
+        }
+        let mean = counts.iter().sum::<u64>() as f64 / counts.len() as f64;
+        (mean > 0.0).then(|| mean / self.duration.as_secs_f64())
     }
 }
 

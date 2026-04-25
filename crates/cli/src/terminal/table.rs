@@ -93,7 +93,7 @@ impl ReplicaRow {
         result
             .metrics
             .iter()
-            .zip(result.commit_count_per_replica())
+            .zip(result.leaders_committed_per_replica())
             .enumerate()
             .map(|(index, (metrics, committed_leaders))| {
                 Self::new(
