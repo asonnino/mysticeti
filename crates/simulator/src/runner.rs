@@ -13,7 +13,7 @@ use dag::{
     config::{ConfigError, ImportExport},
     context::Ctx,
     core::syncer::Syncer,
-    metrics::{Metrics, RunResult},
+    metrics::{Metrics, RunKind, RunResult},
 };
 use rand::{SeedableRng, rngs::StdRng};
 use replica::{
@@ -177,7 +177,13 @@ impl SimulationState {
 
         let duration = self.config.duration();
         let mut writer = self.dag_writer;
-        let mut builder = RunResult::builder(metrics, &storages, self.config, duration);
+        let mut builder = RunResult::builder(
+            metrics,
+            &storages,
+            self.config,
+            duration,
+            RunKind::Simulation,
+        );
         if let Some(w) = &mut writer {
             builder = builder.with_dag_log(&mut **w);
         }

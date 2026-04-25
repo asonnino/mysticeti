@@ -61,11 +61,21 @@ async fn main() -> Result<()> {
             committee_size,
             replica_parameters_path,
             load_generator_config_path,
+            duration,
+            perpetual,
+            heartbeat_interval,
+            output_dir,
+            export_dag,
         } => {
             commands::testbed::local_testbed(
                 committee_size,
                 replica_parameters_path,
                 load_generator_config_path,
+                duration,
+                perpetual,
+                heartbeat_interval,
+                output_dir,
+                export_dag,
                 args.log_level,
                 args.log_file,
             )
