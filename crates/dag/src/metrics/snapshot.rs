@@ -1,16 +1,12 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::time::Duration;
-
 use prometheus::{Encoder, TextEncoder, proto::MetricFamily};
 
 use super::names::{
     COMMIT_TYPE_DIRECT_COMMIT, COMMIT_TYPE_INDIRECT_COMMIT, COMMITTED_LEADERS_TOTAL,
-    LABEL_AUTHORITY, LABEL_COMMIT_TYPE, LABEL_WORKLOAD, LATENCY_S, LEADER_TIMEOUT_TOTAL,
-    MISSING_BLOCKS, WORKLOAD_SHARED,
+    LABEL_COMMIT_TYPE, LATENCY_S, LEADER_TIMEOUT_TOTAL,
 };
-use crate::authority::Authority;
 
 /// A point-in-time snapshot of all metrics from a Prometheus
 /// registry. Test-only — no production cost.
@@ -20,208 +16,41 @@ pub struct MetricsSnapshot {
 }
 
 impl MetricsSnapshot {
-    pub(super) fn from_families(families: Vec<MetricFamily>) -> Self {
+    pub(super) fn new(families: Vec<MetricFamily>) -> Self {
         Self { families }
     }
 
-    /// Read a metric by name and optional label key-value pairs.
-    pub fn metric(&self, name: &str, label_values: &[(&str, &str)]) -> f64 {
-        for family in &self.families {
-            if family.get_name() != name {
-                continue;
-            }
-            for metric in family.get_metric() {
-                if !Self::labels_match(metric, label_values) {
-                    continue;
-                }
-                if metric.has_counter() {
-                    return metric.get_counter().get_value();
-                } else if metric.has_gauge() {
-                    return metric.get_gauge().get_value();
-                } else if metric.has_untyped() {
-                    return metric.get_untyped().get_value();
-                }
-            }
-        }
-        0.0
+    /// Number of leader timeouts observed by this replica.
+    pub fn leader_timeouts(&self) -> u64 {
+        self.scalar_value(LEADER_TIMEOUT_TOTAL, &[]) as u64
     }
 
-    /// Mean of all observations in a histogram, in the histogram's
-    /// native unit. Returns `None` when the histogram is absent or
-    /// has zero observations.
-    pub fn histogram_mean(&self, name: &str, labels: &[(&str, &str)]) -> Option<f64> {
-        let (sum, count) = self.histogram_stats(name, labels)?;
-        (count > 0).then(|| sum / count as f64)
-    }
-
-    /// Mean end-to-end transaction latency (ms) observed by this
-    /// replica. Returns `None` when no committed transaction reached
-    /// `update_metrics`.
-    pub fn mean_latency_ms(&self) -> Option<f64> {
-        self.histogram_mean(LATENCY_S, &[(LABEL_WORKLOAD, WORKLOAD_SHARED)])
+    /// Percentile `p` (in `0.0..=1.0`) of this replica's committed-transaction latency
+    /// histogram, in milliseconds. Returns `None` when the histogram is absent or empty.
+    pub fn latency_percentile_ms(&self, p: f64) -> Option<f64> {
+        self.histogram_percentile(LATENCY_S, p)
             .map(|seconds| seconds * 1000.0)
     }
 
-    /// Number of blocks this replica knows it's still missing from the given peer authority.
-    pub fn missing_blocks(&self, authority: Authority) -> i64 {
-        let label = authority.to_string();
-        self.metric(MISSING_BLOCKS, &[(LABEL_AUTHORITY, &label)]) as i64
-    }
-
-    /// Total leaders *committed* by `authority` — the commit rows of `committed_leaders_total`
-    /// (the `direct-commit` and `indirect-commit` `commit_type` labels). Skipped leaders are
-    /// excluded.
-    pub fn committed_leaders(&self, authority: Authority) -> u64 {
-        let label = authority.to_string();
-        let direct = self.metric(
-            COMMITTED_LEADERS_TOTAL,
-            &[
-                (LABEL_AUTHORITY, &label),
-                (LABEL_COMMIT_TYPE, COMMIT_TYPE_DIRECT_COMMIT),
-            ],
-        );
-        let indirect = self.metric(
-            COMMITTED_LEADERS_TOTAL,
-            &[
-                (LABEL_AUTHORITY, &label),
-                (LABEL_COMMIT_TYPE, COMMIT_TYPE_INDIRECT_COMMIT),
-            ],
-        );
-        (direct + indirect) as u64
-    }
-
-    /// Committed leaders per second observed by this replica. Returns `None` when `duration` is
-    /// zero or nothing committed.
-    pub fn leader_commits_per_second(
-        &self,
-        authority: Authority,
-        duration: Duration,
-    ) -> Option<f64> {
-        if duration.is_zero() {
-            return None;
-        }
-        let count = self.committed_leaders(authority);
-        (count > 0).then(|| count as f64 / duration.as_secs_f64())
-    }
-
-    /// Total committed leaders observed by this replica. Skipped leaders are excluded, same
-    /// rule as [`committed_leaders`].
+    /// Total committed leaders observed by this replica. Skipped leaders are excluded.
     pub fn total_committed_leaders(&self) -> u64 {
+        let Some(family) = self.find_family(COMMITTED_LEADERS_TOTAL) else {
+            return 0;
+        };
         let mut total = 0.0;
-        for family in &self.families {
-            if family.get_name() != COMMITTED_LEADERS_TOTAL {
-                continue;
-            }
-            for metric in family.get_metric() {
-                let is_commit = metric.get_label().iter().any(|l| {
-                    l.get_name() == LABEL_COMMIT_TYPE
-                        && matches!(
-                            l.get_value(),
-                            COMMIT_TYPE_DIRECT_COMMIT | COMMIT_TYPE_INDIRECT_COMMIT,
-                        )
-                });
-                if is_commit && metric.has_counter() {
-                    total += metric.get_counter().get_value();
-                }
+        for metric in family.get_metric() {
+            let is_commit = metric.get_label().iter().any(|l| {
+                l.get_name() == LABEL_COMMIT_TYPE
+                    && matches!(
+                        l.get_value(),
+                        COMMIT_TYPE_DIRECT_COMMIT | COMMIT_TYPE_INDIRECT_COMMIT,
+                    )
+            });
+            if is_commit && metric.has_counter() {
+                total += metric.get_counter().get_value();
             }
         }
         total as u64
-    }
-
-    /// Percentile `p` (clamped to `[0, 1]`) of a histogram's observations, in the histogram's
-    /// native unit. Uses the Prometheus `histogram_quantile` idiom: linear interpolation between
-    /// the upper bounds of adjacent buckets. Returns `None` when the histogram is absent or has
-    /// zero observations. When the selected bucket is the `+Inf` terminal, falls back to the
-    /// previous finite upper bound so the result stays plottable.
-    pub fn histogram_percentile(&self, name: &str, labels: &[(&str, &str)], p: f64) -> Option<f64> {
-        let p = p.clamp(0.0, 1.0);
-        for family in &self.families {
-            if family.get_name() != name {
-                continue;
-            }
-            for metric in family.get_metric() {
-                if !metric.has_histogram() || !Self::labels_match(metric, labels) {
-                    continue;
-                }
-                let histogram = metric.get_histogram();
-                let total = histogram.get_sample_count();
-                if total == 0 {
-                    return None;
-                }
-                let buckets = histogram.get_bucket();
-                if buckets.is_empty() {
-                    return None;
-                }
-                let target = p * total as f64;
-                let mut prev_bound = 0.0_f64;
-                let mut prev_count = 0_u64;
-                let mut last_finite_bound = 0.0_f64;
-                for bucket in buckets {
-                    let upper = bucket.get_upper_bound();
-                    let count = bucket.get_cumulative_count();
-                    if count as f64 >= target {
-                        let high = if upper.is_finite() {
-                            upper
-                        } else {
-                            last_finite_bound
-                        };
-                        if count == prev_count {
-                            return Some(prev_bound);
-                        }
-                        let fraction = (target - prev_count as f64) / (count - prev_count) as f64;
-                        return Some(prev_bound + fraction * (high - prev_bound));
-                    }
-                    if upper.is_finite() {
-                        last_finite_bound = upper;
-                    }
-                    prev_bound = if upper.is_finite() { upper } else { prev_bound };
-                    prev_count = count;
-                }
-                // The `+Inf` bucket's cumulative_count should always equal total, so the
-                // `count >= target` branch must fire before falling out of the loop. If we
-                // still get here the metric data is malformed — log and treat as unavailable
-                // rather than panic in the reporting path.
-                tracing::error!(
-                    "malformed histogram {name:?}: cumulative_count never reaches sample_count"
-                );
-                return None;
-            }
-        }
-        None
-    }
-
-    /// Read a histogram's sample sum and count. Returns `None` when no
-    /// matching histogram is found (distinct from a present histogram
-    /// with zero observations, which returns `Some((0.0, 0))`).
-    pub fn histogram_stats(&self, name: &str, labels: &[(&str, &str)]) -> Option<(f64, u64)> {
-        for family in &self.families {
-            if family.get_name() != name {
-                continue;
-            }
-            for metric in family.get_metric() {
-                if !metric.has_histogram() || !Self::labels_match(metric, labels) {
-                    continue;
-                }
-                let histogram = metric.get_histogram();
-                return Some((histogram.get_sample_sum(), histogram.get_sample_count()));
-            }
-        }
-        None
-    }
-
-    /// Derived per-replica stats pulled in a single pass — shared by the terminal table
-    /// (`ReplicaRow`) and the structured results file (`SimulationReport`) so both read from
-    /// one definition.
-    pub fn replica_stats(&self) -> ReplicaStats {
-        let latency_ms = |p: f64| {
-            self.histogram_percentile(LATENCY_S, &[(LABEL_WORKLOAD, WORKLOAD_SHARED)], p)
-                .map(|seconds| seconds * 1000.0)
-        };
-        ReplicaStats {
-            p50_latency_ms: latency_ms(0.5),
-            p90_latency_ms: latency_ms(0.9),
-            leader_timeouts: self.metric(LEADER_TIMEOUT_TOTAL, &[]) as u64,
-        }
     }
 
     /// Render the snapshot in the Prometheus text exposition format — the same format every
@@ -235,34 +64,111 @@ impl MetricsSnapshot {
         String::from_utf8(buffer).expect("prometheus text format is UTF-8")
     }
 
-    fn labels_match(metric: &prometheus::proto::Metric, expected: &[(&str, &str)]) -> bool {
-        let actual = metric.get_label();
-        actual.len() == expected.len()
-            && expected.iter().all(|(key, value)| {
-                actual
-                    .iter()
-                    .any(|l| l.get_name() == *key && l.get_value() == *value)
-            })
+    /// Read a single scalar value (counter / gauge / untyped) by name + exact label match.
+    /// Internal building block for domain-named accessors (`leader_timeouts`, …) and for
+    /// tests; the public API intentionally stays domain-named rather than exposing a generic
+    /// probe.
+    pub(super) fn scalar_value(&self, name: &str, label_values: &[(&str, &str)]) -> f64 {
+        let Some(family) = self.find_family(name) else {
+            return 0.0;
+        };
+        for metric in family.get_metric() {
+            let actual = metric.get_label();
+            let labels_match = actual.len() == label_values.len()
+                && label_values.iter().all(|(key, value)| {
+                    actual
+                        .iter()
+                        .any(|l| l.get_name() == *key && l.get_value() == *value)
+                });
+            if !labels_match {
+                continue;
+            }
+            if metric.has_counter() {
+                return metric.get_counter().get_value();
+            } else if metric.has_gauge() {
+                return metric.get_gauge().get_value();
+            } else if metric.has_untyped() {
+                return metric.get_untyped().get_value();
+            }
+        }
+        0.0
     }
-}
 
-/// Derived per-replica stats shared by the terminal table (`ReplicaRow` inlines this via
-/// `#[tabled(inline)]`) and the structured results file (`SimulationReport` embeds it). One
-/// definition, one derivation path.
-#[derive(Clone, Copy, Debug, serde::Serialize, tabled::Tabled)]
-pub struct ReplicaStats {
-    #[tabled(rename = "p50 latency", display_with = "fmt_latency_ms")]
-    pub p50_latency_ms: Option<f64>,
-    #[tabled(rename = "p90 latency", display_with = "fmt_latency_ms")]
-    pub p90_latency_ms: Option<f64>,
-    #[tabled(rename = "leader timeouts")]
-    pub leader_timeouts: u64,
-}
+    /// Percentile `p` (clamped to `[0, 1]`) of a histogram's observations, in the histogram's
+    /// native unit. Uses the Prometheus `histogram_quantile` idiom: linear interpolation between
+    /// the upper bounds of adjacent buckets. Returns `None` when the histogram is absent or has
+    /// zero observations. When the selected bucket is the `+Inf` terminal, falls back to the
+    /// previous finite upper bound so the result stays plottable.
+    pub(super) fn histogram_percentile(&self, name: &str, p: f64) -> Option<f64> {
+        let p = p.clamp(0.0, 1.0);
+        let family = self.find_family(name)?;
+        for metric in family.get_metric() {
+            if !metric.has_histogram() {
+                continue;
+            }
+            let histogram = metric.get_histogram();
+            let total = histogram.get_sample_count();
+            if total == 0 {
+                return None;
+            }
+            let buckets = histogram.get_bucket();
+            if buckets.is_empty() {
+                return None;
+            }
+            let target = p * total as f64;
+            let mut prev_bound = 0.0_f64;
+            let mut prev_count = 0_u64;
+            let mut last_finite_bound = 0.0_f64;
+            for bucket in buckets {
+                let upper = bucket.get_upper_bound();
+                let count = bucket.get_cumulative_count();
+                if count as f64 >= target {
+                    let high = if upper.is_finite() {
+                        upper
+                    } else {
+                        last_finite_bound
+                    };
+                    if count == prev_count {
+                        return Some(prev_bound);
+                    }
+                    let fraction = (target - prev_count as f64) / (count - prev_count) as f64;
+                    return Some(prev_bound + fraction * (high - prev_bound));
+                }
+                if upper.is_finite() {
+                    last_finite_bound = upper;
+                }
+                prev_bound = if upper.is_finite() { upper } else { prev_bound };
+                prev_count = count;
+            }
+            // The `+Inf` bucket's cumulative_count should always equal total, so the
+            // `count >= target` branch must fire before falling out of the loop. If we
+            // still get here the metric data is malformed — log and treat as unavailable
+            // rather than panic in the reporting path.
+            tracing::error!(
+                "malformed histogram {name:?}: cumulative_count never reaches sample_count"
+            );
+            return None;
+        }
+        None
+    }
 
-fn fmt_latency_ms(value: &Option<f64>) -> String {
-    match value {
-        Some(ms) => format!("{ms:.0} ms"),
-        None => "—".into(),
+    /// Read a histogram's sample sum and count. Returns `None` when no
+    /// matching histogram is found (distinct from a present histogram
+    /// with zero observations, which returns `Some((0.0, 0))`).
+    pub fn histogram_sum_and_count(&self, name: &str) -> Option<(f64, u64)> {
+        let family = self.find_family(name)?;
+        for metric in family.get_metric() {
+            if !metric.has_histogram() {
+                continue;
+            }
+            let histogram = metric.get_histogram();
+            return Some((histogram.get_sample_sum(), histogram.get_sample_count()));
+        }
+        None
+    }
+
+    fn find_family(&self, name: &str) -> Option<&MetricFamily> {
+        self.families.iter().find(|f| f.get_name() == name)
     }
 }
 
@@ -280,7 +186,7 @@ mod test {
     };
 
     fn collect_snapshot(registry: &Registry) -> MetricsSnapshot {
-        MetricsSnapshot::from_families(registry.gather())
+        MetricsSnapshot::new(registry.gather())
     }
 
     #[test]
@@ -290,7 +196,7 @@ mod test {
             register_int_counter_with_registry!("test_counter", "help", registry).unwrap();
         counter.inc_by(5);
         let snapshot = collect_snapshot(&registry);
-        assert_eq!(snapshot.metric("test_counter", &[]), 5.0);
+        assert_eq!(snapshot.scalar_value("test_counter", &[]), 5.0);
     }
 
     #[test]
@@ -299,7 +205,7 @@ mod test {
         let gauge = register_int_gauge_with_registry!("test_gauge", "help", registry).unwrap();
         gauge.set(42);
         let snapshot = collect_snapshot(&registry);
-        assert_eq!(snapshot.metric("test_gauge", &[]), 42.0);
+        assert_eq!(snapshot.scalar_value("test_gauge", &[]), 42.0);
     }
 
     #[test]
@@ -311,16 +217,25 @@ mod test {
         counter_vec.with_label_values(&["GET"]).inc_by(3);
         counter_vec.with_label_values(&["POST"]).inc_by(7);
         let snapshot = collect_snapshot(&registry);
-        assert_eq!(snapshot.metric("request_total", &[("method", "GET")]), 3.0);
-        assert_eq!(snapshot.metric("request_total", &[("method", "POST")]), 7.0);
-        assert_eq!(snapshot.metric("request_total", &[("method", "PUT")]), 0.0);
+        assert_eq!(
+            snapshot.scalar_value("request_total", &[("method", "GET")]),
+            3.0
+        );
+        assert_eq!(
+            snapshot.scalar_value("request_total", &[("method", "POST")]),
+            7.0
+        );
+        assert_eq!(
+            snapshot.scalar_value("request_total", &[("method", "PUT")]),
+            0.0
+        );
     }
 
     #[test]
     fn not_found_returns_zero() {
         let registry = Registry::new();
         let snapshot = collect_snapshot(&registry);
-        assert_eq!(snapshot.metric("nonexistent", &[]), 0.0);
+        assert_eq!(snapshot.scalar_value("nonexistent", &[]), 0.0);
     }
 
     #[test]
@@ -328,8 +243,7 @@ mod test {
         // Drives `committed_leaders_total` directly so the test doesn't need a `Data<Block>` to
         // construct `LeaderStatus::DirectCommit`. Label values here must match the wire strings
         // that `Metrics::inc_decided_leaders` writes.
-        let authority = Authority::from(0_usize);
-        let authority_label = authority.to_string();
+        let authority = Authority::from(0_usize).to_string();
         let registry = Registry::new();
         let counter = register_int_counter_vec_with_registry!(
             "committed_leaders_total",
@@ -339,19 +253,19 @@ mod test {
         )
         .unwrap();
         counter
-            .with_label_values(&[&authority_label, COMMIT_TYPE_DIRECT_COMMIT])
+            .with_label_values(&[&authority, COMMIT_TYPE_DIRECT_COMMIT])
             .inc();
         counter
-            .with_label_values(&[&authority_label, COMMIT_TYPE_INDIRECT_COMMIT])
+            .with_label_values(&[&authority, COMMIT_TYPE_INDIRECT_COMMIT])
             .inc();
         counter
-            .with_label_values(&[&authority_label, COMMIT_TYPE_DIRECT_SKIP])
+            .with_label_values(&[&authority, COMMIT_TYPE_DIRECT_SKIP])
             .inc();
         counter
-            .with_label_values(&[&authority_label, COMMIT_TYPE_INDIRECT_SKIP])
+            .with_label_values(&[&authority, COMMIT_TYPE_INDIRECT_SKIP])
             .inc();
         let snapshot = collect_snapshot(&registry);
-        assert_eq!(snapshot.committed_leaders(authority), 2);
+        assert_eq!(snapshot.total_committed_leaders(), 2);
     }
 
     #[test]
@@ -374,23 +288,23 @@ mod test {
         }
         let snapshot = collect_snapshot(&registry);
         assert_eq!(
-            snapshot.histogram_percentile("demo_latency_s", &[], 0.0),
+            snapshot.histogram_percentile("demo_latency_s", 0.0),
             Some(0.0)
         );
         assert_eq!(
-            snapshot.histogram_percentile("demo_latency_s", &[], 0.5),
+            snapshot.histogram_percentile("demo_latency_s", 0.5),
             Some(0.5)
         );
         // p90 target = 360, lies in the fourth bucket between cumulative 300 and 400 → 0.75 +
         // 0.6 * 0.25 = 0.9.
         let p90 = snapshot
-            .histogram_percentile("demo_latency_s", &[], 0.9)
+            .histogram_percentile("demo_latency_s", 0.9)
             .unwrap();
         assert!((p90 - 0.9).abs() < 1e-9, "p90 = {p90}");
         // p100: prometheus crate adds an implicit +Inf bucket; fall back to the previous finite
         // edge.
         assert_eq!(
-            snapshot.histogram_percentile("demo_latency_s", &[], 1.0),
+            snapshot.histogram_percentile("demo_latency_s", 1.0),
             Some(1.0)
         );
     }
@@ -402,10 +316,7 @@ mod test {
             register_histogram_with_registry!("demo_empty_s", "help", vec![0.25, 0.5], registry)
                 .unwrap();
         let snapshot = collect_snapshot(&registry);
-        assert_eq!(
-            snapshot.histogram_percentile("demo_empty_s", &[], 0.5),
-            None
-        );
+        assert_eq!(snapshot.histogram_percentile("demo_empty_s", 0.5), None);
     }
 
     #[test]
@@ -417,12 +328,12 @@ mod test {
         counter_vec.with_label_values(&["x", "y"]).inc();
         let snapshot = collect_snapshot(&registry);
         // Only one label when metric has two → mismatch
-        assert_eq!(snapshot.metric("label_test", &[("a", "x")]), 0.0);
+        assert_eq!(snapshot.scalar_value("label_test", &[("a", "x")]), 0.0);
         // No labels → mismatch
-        assert_eq!(snapshot.metric("label_test", &[]), 0.0);
+        assert_eq!(snapshot.scalar_value("label_test", &[]), 0.0);
         // Correct labels → match
         assert_eq!(
-            snapshot.metric("label_test", &[("a", "x"), ("b", "y")]),
+            snapshot.scalar_value("label_test", &[("a", "x"), ("b", "y")]),
             1.0
         );
     }

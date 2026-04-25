@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use prometheus::{
-    CounterVec, HistogramVec, IntCounter, IntCounterVec, IntGauge, IntGaugeVec, Registry,
-    register_counter_vec_with_registry, register_histogram_vec_with_registry,
+    Counter, Histogram, IntCounter, IntCounterVec, IntGauge, IntGaugeVec, Registry,
+    register_counter_with_registry, register_histogram_with_registry,
     register_int_counter_vec_with_registry, register_int_counter_with_registry,
     register_int_gauge_vec_with_registry, register_int_gauge_with_registry,
 };
@@ -13,9 +13,8 @@ use super::names::{
     BLOCK_STORE_LOADED_BLOCKS, BLOCK_STORE_UNLOADED_BLOCKS, BLOCK_SYNC_REQUESTS_RECEIVED,
     BLOCK_SYNC_REQUESTS_SENT, COMMITTED_LEADERS_TOTAL, CORE_LOCK_DEQUEUED, CORE_LOCK_ENQUEUED,
     CORE_LOCK_UTIL, GLOBAL_IN_MEMORY_BLOCKS, GLOBAL_IN_MEMORY_BLOCKS_BYTES, INTER_BLOCK_LATENCY_S,
-    LABEL_AUTHORITY, LABEL_COMMIT_TYPE, LABEL_FULFILLED, LABEL_PROC, LABEL_WORKLOAD, LATENCY_S,
-    LATENCY_SQUARED_S, LEADER_TIMEOUT_TOTAL, MISSING_BLOCKS, SUBMITTED_TRANSACTIONS,
-    UTILIZATION_TIMER, WAL_MAPPINGS,
+    LABEL_AUTHORITY, LABEL_COMMIT_TYPE, LABEL_FULFILLED, LABEL_PROC, LATENCY_S, LATENCY_SQUARED_S,
+    LEADER_TIMEOUT_TOTAL, MISSING_BLOCKS, SUBMITTED_TRANSACTIONS, UTILIZATION_TIMER, WAL_MAPPINGS,
 };
 
 const LATENCY_SEC_BUCKETS: &[f64] = &[
@@ -24,11 +23,11 @@ const LATENCY_SEC_BUCKETS: &[f64] = &[
 
 pub(super) struct CoarseMetrics {
     pub benchmark_duration: IntCounter,
-    pub latency_s: HistogramVec,
-    pub latency_squared_s: CounterVec,
+    pub latency_s: Histogram,
+    pub latency_squared_s: Counter,
     pub committed_leaders_total: IntCounterVec,
     pub leader_timeout_total: IntCounter,
-    pub inter_block_latency_s: HistogramVec,
+    pub inter_block_latency_s: Histogram,
 
     pub block_store_unloaded_blocks: IntCounter,
     pub block_store_loaded_blocks: IntCounter,
@@ -60,18 +59,16 @@ impl CoarseMetrics {
                 registry,
             )
             .unwrap(),
-            latency_s: register_histogram_vec_with_registry!(
+            latency_s: register_histogram_with_registry!(
                 LATENCY_S,
-                "End-to-end latency of a workload (s)",
-                &[LABEL_WORKLOAD],
+                "End-to-end transaction commit latency (s)",
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry,
             )
             .unwrap(),
-            latency_squared_s: register_counter_vec_with_registry!(
+            latency_squared_s: register_counter_with_registry!(
                 LATENCY_SQUARED_S,
-                "Square of end-to-end latency (s)",
-                &[LABEL_WORKLOAD],
+                "Square of end-to-end transaction commit latency (s)",
                 registry,
             )
             .unwrap(),
@@ -82,10 +79,9 @@ impl CoarseMetrics {
                 registry,
             )
             .unwrap(),
-            inter_block_latency_s: register_histogram_vec_with_registry!(
+            inter_block_latency_s: register_histogram_with_registry!(
                 INTER_BLOCK_LATENCY_S,
                 "Inter-block latency (s)",
-                &[LABEL_WORKLOAD],
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry,
             )

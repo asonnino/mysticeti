@@ -14,7 +14,7 @@ use crate::{
     authority::Authority,
     block::{Block, BlockReference, RoundNumber},
     consensus::CommittedSubDag,
-    crypto::BlockDigest,
+    crypto::{BlockDigest, CryptoHash},
     data::Data,
     wal::{Tag, WalPosition, WalWriter},
 };
@@ -288,6 +288,7 @@ impl OwnBlockData {
 }
 
 #[derive(Serialize, Deserialize)]
+#[cfg_attr(test, derive(Clone))]
 pub struct CommitData {
     pub leader: BlockReference,
     // All committed blocks, including the leader
@@ -300,6 +301,32 @@ impl From<&CommittedSubDag> for CommitData {
         Self {
             leader: value.anchor,
             sub_dag,
+        }
+    }
+}
+
+impl CommitData {
+    /// Build a sequence of [`CommitData`] for tests. Each leader at `(authority, round)`
+    /// becomes a `CommitData` whose `sub_dag` is a single-element vector containing the
+    /// leader itself — enough for tests that only care about commit ordering or identity.
+    #[cfg(any(test, feature = "test-utils"))]
+    pub fn new_for_test(leaders: &[(u64, u64)]) -> Vec<Self> {
+        leaders
+            .iter()
+            .map(|(authority, round)| Self {
+                leader: BlockReference::new_test(*authority, *round),
+                sub_dag: vec![BlockReference::new_test(*authority, *round)],
+            })
+            .collect()
+    }
+}
+
+impl CryptoHash for CommitData {
+    fn crypto_hash(&self, state: &mut impl digest::Digest) {
+        self.leader.crypto_hash(state);
+        (self.sub_dag.len() as u64).crypto_hash(state);
+        for reference in &self.sub_dag {
+            reference.crypto_hash(state);
         }
     }
 }
