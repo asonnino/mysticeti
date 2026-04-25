@@ -3,8 +3,8 @@
 
 // Single source of truth for Prometheus metric names and label identifiers used by this crate.
 // Producers (`CoarseMetrics::new`, observation setters) and consumers (`MetricsSnapshot`,
-// `AggregateMetrics`) both reference these constants so a rename is a one-line diff and typos
-// become compile errors.
+// `RunResult`) both reference these constants so a rename is a one-line diff and typos become
+// compile errors.
 
 // Metric names.
 pub const BENCHMARK_DURATION: &str = "benchmark_duration";
@@ -33,12 +33,8 @@ pub const GLOBAL_IN_MEMORY_BLOCKS_BYTES: &str = "global_in_memory_blocks_bytes";
 // Label keys.
 pub const LABEL_AUTHORITY: &str = "authority";
 pub const LABEL_COMMIT_TYPE: &str = "commit_type";
-pub const LABEL_WORKLOAD: &str = "workload";
 pub const LABEL_FULFILLED: &str = "fulfilled";
 pub const LABEL_PROC: &str = "proc";
-
-// Well-known label values (extracted when used in more than one place).
-pub const WORKLOAD_SHARED: &str = "shared";
 
 // Values for the `commit_type` label on `committed_leaders_total`.
 pub const COMMIT_TYPE_DIRECT_COMMIT: &str = "direct-commit";

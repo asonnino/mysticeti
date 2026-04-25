@@ -1,32 +1,48 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{fmt, path::PathBuf};
+use std::{fs::File, io::BufWriter, path::PathBuf};
 
-use dag::config::ImportExport;
-use eyre::{Result, bail};
-use simulator::{SimulationConfig, SimulationMode, SimulationResults, SimulatorTracing};
+use dag::{config::ImportExport, metrics::Outcome};
+use eyre::{Context, Result, bail};
+use simulator::{SimulationConfig, SimulationMode, SimulationRunner, SimulatorTracing};
 use tracing_subscriber::filter::LevelFilter;
 
 use crate::{
-    report::{self, SimulationReport},
-    reporter::{GREEN, RED, Reporter, YELLOW},
+    args::SimulateArgs,
+    exporter::Exporter,
+    terminal::{BannerPrinter, Terminal},
 };
 
 pub async fn simulate(
-    config_path: Option<PathBuf>,
-    dump_config: bool,
-    results_file: Option<PathBuf>,
+    args: SimulateArgs,
     log_level: Option<LevelFilter>,
     log_file: Option<PathBuf>,
 ) -> Result<()> {
+    let SimulateArgs {
+        config_path,
+        dump_config,
+        output_dir,
+        export_dag,
+    } = args;
+
     // Print default config to stdout and exit.
     if dump_config {
         println!("{}", SimulationConfig::default().to_yaml());
         return Ok(());
     }
 
-    let mut tracing = SimulatorTracing::new().with_log_file(log_file);
+    // Build the exporter up-front so output-dir creation, tracing-log path, and per-run
+    // subdir lifecycles all flow through one owner.
+    let exporter = output_dir.map(Exporter::new).transpose()?;
+
+    // Tracing-log destination, by precedence: --output-dir wins, --log-file is the
+    // fallback, otherwise stderr (kept clean by the default warn-only filter).
+    let log_path = exporter
+        .as_ref()
+        .map(Exporter::tracing_log_path)
+        .or(log_file);
+    let mut tracing = SimulatorTracing::new().with_log_file(log_path);
     if let Some(level) = log_level {
         tracing = tracing.with_filter(level.to_string());
     }
@@ -47,111 +63,47 @@ pub async fn simulate(
         bail!("simulation suite is empty");
     }
 
-    let reporter = Reporter::new();
-    reporter.banner(
-        "Uncertified DAG",
-        &[
-            ("Mode", "Simulator"),
-            ("Simulations", &configs.len().to_string()),
-        ],
-    );
-
     let total = configs.len();
-    let mut suite_rows = Vec::with_capacity(total);
-    let mut reports: Vec<SimulationReport> = if results_file.is_some() {
-        Vec::with_capacity(total)
-    } else {
-        Vec::new()
-    };
+    BannerPrinter::new(
+        "Uncertified DAG",
+        &[("Mode", "Simulator"), ("Simulations", &total.to_string())],
+    )
+    .print();
+
+    let mut terminal = Terminal::new(total);
     let mut diverged = 0;
+
     for (index, config) in configs.into_iter().enumerate() {
-        reporter.config_summary(index + 1, total, &config);
-        let config_for_report = results_file.is_some().then(|| config.clone());
-        let (outcome, suite_row, results) = reporter.run(config).await?;
-        if outcome == Outcome::Diverged {
+        terminal.start_run(index + 1, &config);
+
+        let name = config.name.clone();
+        let mut runner = SimulationRunner::new(config);
+
+        if export_dag && let Some(exporter) = &exporter {
+            let path = exporter.dag_path(index + 1, total, name.as_deref())?;
+            let file = File::create(&path)
+                .wrap_err_with(|| format!("creating DAG log {}", path.display()))?;
+            runner = runner.with_dag_writer(BufWriter::new(file));
+        }
+
+        let result = tokio::task::spawn_blocking(move || runner.run())
+            .await
+            .map_err(|error| eyre::eyre!("Simulation task panicked: {error}"))??;
+
+        terminal.stop_run(&result);
+
+        if result.outcome == Outcome::Diverged {
             diverged += 1;
         }
-        suite_rows.push(suite_row);
-        if let Some(config_snapshot) = config_for_report {
-            reports.push(SimulationReport::new(config_snapshot, &results, outcome));
+        if let Some(exporter) = &exporter {
+            exporter.write_to(&result, index + 1, total, name.as_deref())?;
         }
     }
 
-    if total > 1 {
-        reporter.suite_summary(&suite_rows);
-    }
-
-    if let Some(path) = results_file {
-        report::write_reports(&path, &reports)?;
-        tracing::info!("Wrote detailed results to {}", path.display());
-    }
+    terminal.finish();
 
     if diverged > 0 {
         bail!("{diverged} of {total} simulation(s) diverged");
     }
     Ok(())
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Outcome {
-    /// Safety held and at least one leader was committed somewhere.
-    Pass,
-    /// Safety held but no replica committed a single leader.
-    /// Expected under unrecoverable partitions (star, symmetric split).
-    NoProgress,
-    /// Safety violated: commit histories disagree.
-    Diverged,
-}
-
-impl From<&SimulationResults> for Outcome {
-    fn from(results: &SimulationResults) -> Self {
-        if !results.commits_consistent {
-            return Self::Diverged;
-        }
-        if results.commit_counts().iter().all(|c| *c == 0) {
-            return Self::NoProgress;
-        }
-        Self::Pass
-    }
-}
-
-impl Outcome {
-    pub fn glyph(&self) -> &'static str {
-        match self {
-            Self::Pass => "✓",
-            Self::NoProgress => "⚠",
-            Self::Diverged => "✗",
-        }
-    }
-
-    pub fn message(&self) -> &'static str {
-        match self {
-            Self::Pass => "Commits consistent across all replicas",
-            Self::NoProgress => "Safe but no leader was committed",
-            Self::Diverged => "Commits DIVERGED across replicas",
-        }
-    }
-
-    pub fn color(&self) -> &'static str {
-        match self {
-            Self::Pass => GREEN,
-            Self::NoProgress => YELLOW,
-            Self::Diverged => RED,
-        }
-    }
-
-    fn label(&self) -> &'static str {
-        match self {
-            Self::Pass => "PASS",
-            Self::NoProgress => "WARN",
-            Self::Diverged => "FAIL",
-        }
-    }
-}
-
-impl fmt::Display for Outcome {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.label(), self.message())
-    }
 }

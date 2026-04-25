@@ -1,61 +1,99 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Glue between the `local-testbed` CLI subcommand and
+//! [`replica::testbed::LocalTestbedRunner`]. Owns: argument parsing,
+//! banner, exporter wiring, tracing setup, the duration / perpetual wait
+//! loop, Ctrl-C handling, live progress line, and result rendering. The
+//! runner owns: replica spawn loop, prometheus servers, load generators,
+//! shutdown + `RunResult` collection.
+
 use std::{
-    fs,
-    net::{IpAddr, Ipv4Addr},
+    fs::File,
+    io::BufWriter,
     path::PathBuf,
+    time::{Duration, Instant},
 };
 
-use dag::{authority::Authority, config::ImportExport, context::TokioCtx};
-use eyre::{Context, Result};
+use dag::{config::ImportExport, metrics::Outcome};
+use eyre::{Context, Result, bail};
 use replica::{
-    builder::ReplicaBuilder,
-    config::{LoadGeneratorConfig, PrivateReplicaConfig, PublicReplicaConfig, ReplicaParameters},
-    prometheus::{MetricsRegistry, PrometheusServer},
+    config::{LoadGeneratorConfig, ReplicaParameters},
+    testbed::{LocalTestbedRunner, TestbedConfig},
 };
+use tokio::{signal, time};
 use tracing_subscriber::filter::LevelFilter;
 
-use crate::{banner, tracing::ReplicaTracing};
+use crate::{
+    args::LocalTestbedArgs,
+    exporter::Exporter,
+    terminal::{self, BannerPrinter, RunResultRender, stderr_supports_color},
+    tracing::ReplicaTracing,
+};
 
 pub async fn local_testbed(
-    committee_size: usize,
-    replica_parameters_path: Option<PathBuf>,
-    load_generator_config_path: Option<PathBuf>,
+    args: LocalTestbedArgs,
     log_level: Option<LevelFilter>,
     log_file: Option<PathBuf>,
 ) -> Result<()> {
+    let LocalTestbedArgs {
+        committee_size,
+        replica_parameters_path,
+        load_generator_config_path,
+        duration,
+        perpetual,
+        heartbeat_interval,
+        output_dir,
+        export_dag,
+    } = args;
+
+    let exporter = output_dir.map(Exporter::new).transpose()?;
+
+    let log_path = exporter
+        .as_ref()
+        .map(Exporter::tracing_log_path)
+        .or(log_file);
     let _guard = match log_level {
         Some(level) => ReplicaTracing::new(level),
-        None => ReplicaTracing::new(LevelFilter::DEBUG),
+        None => ReplicaTracing::default(),
     }
-    .with_log_file(log_file)
+    .with_log_file(log_path)
     .setup()?;
 
-    // Load optional parameter overrides; fall back to defaults.
     let replica_parameters = match replica_parameters_path {
         Some(path) => {
             tracing::info!("Loading replica parameters from {}", path.display());
             ReplicaParameters::load(&path)?
         }
-        None => ReplicaParameters::default(),
+        None => {
+            tracing::info!("Using default replica parameters");
+            ReplicaParameters::default()
+        }
     };
-    let load_generator_config = match load_generator_config_path {
+    let load_generator = match load_generator_config_path {
         Some(path) => {
             tracing::info!("Loading load generator config from {}", path.display());
             LoadGeneratorConfig::load(&path)?
         }
-        None => LoadGeneratorConfig::default(),
+        None => {
+            tracing::info!("Using default load generator config");
+            LoadGeneratorConfig::default()
+        }
     };
 
-    // Print the startup banner.
+    let mode_str = if perpetual {
+        "Perpetual".to_string()
+    } else {
+        format!("Duration {duration}s")
+    };
     let nodes = committee_size.to_string();
-    let tx_size = load_generator_config.transaction_size.to_string();
-    let load_str = load_generator_config.load.to_string();
-    banner::BannerPrinter::new(
+    let tx_size = load_generator.transaction_size.to_string();
+    let load_str = load_generator.load.to_string();
+    BannerPrinter::new(
         "Mysticeti",
         &[
             ("Mode", "Local Testbed"),
+            ("Run", &mode_str),
             ("Nodes", &nodes),
             ("Tx size", &tx_size),
             ("Load", &load_str),
@@ -63,70 +101,88 @@ pub async fn local_testbed(
     )
     .print();
 
-    // Generate a localhost public config with the chosen parameters.
-    let ips = vec![IpAddr::V4(Ipv4Addr::LOCALHOST); committee_size];
-    let public_config =
-        PublicReplicaConfig::new_for_benchmarks(ips).with_parameters(replica_parameters);
-
-    // Prepare a clean working directory for the replicas' WAL files.
-    let working_dir = PathBuf::from("local-testbed");
-    match fs::remove_dir_all(&working_dir) {
-        Ok(_) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => {
-            return Err(e).wrap_err(format!(
-                "Failed to remove directory '{}'",
-                working_dir.display()
-            ));
-        }
-    }
-    let private_configs = PrivateReplicaConfig::new_for_benchmarks(&working_dir, committee_size);
-    for private_config in &private_configs {
-        fs::create_dir_all(&private_config.storage_path).wrap_err(format!(
-            "Failed to create directory '{}'",
-            private_config.storage_path.display()
-        ))?;
-    }
+    let testbed_config = TestbedConfig {
+        committee_size,
+        replica_parameters,
+        load_generator,
+    };
 
     tracing::info!("Starting local testbed with {committee_size} replicas");
 
-    // Spin up each replica: run it, start its load generator, expose its metrics.
-    // Each replica gets its own registry and metrics server on a distinct port.
-    let mut handles = Vec::with_capacity(committee_size);
-    let mut metrics_servers = Vec::with_capacity(committee_size);
-    let mut load_generators = Vec::with_capacity(committee_size);
-    for (i, private_config) in private_configs.into_iter().enumerate() {
-        let authority = Authority::from(i);
-        let metrics_address = public_config
-            .metrics_address(authority)
-            .expect("metrics address must exist");
-        let registry = MetricsRegistry::new();
-        let mut handle = ReplicaBuilder::new(authority, public_config.clone(), private_config)
-            .with_registry(registry.clone())
-            .build()
-            .run::<TokioCtx>()
-            .await?;
-        load_generators.push(handle.start_load_generator(load_generator_config.clone()));
-        metrics_servers.push(
-            PrometheusServer::new(metrics_address, &registry)
-                .bind_all_interfaces()
-                .start()
-                .await?,
-        );
-        handles.push(handle);
+    let mut runner = LocalTestbedRunner::new(testbed_config);
+    if export_dag && let Some(exporter) = &exporter {
+        // (1, 1, None) = "run 1 of 1, unnamed": the per-run subdir collapses to
+        // `output_dir` itself for single-run invocations.
+        let path = exporter.dag_path(1, 1, None)?;
+        let file =
+            File::create(&path).wrap_err_with(|| format!("creating DAG log {}", path.display()))?;
+        runner = runner.with_dag_writer(BufWriter::new(file));
     }
 
-    tracing::info!("All {committee_size} replicas running. Press Ctrl-C to stop.");
+    let handle = runner.run().await?;
+    let metrics = handle.metrics().to_vec();
+    let started_at = Instant::now();
 
-    // Block until the user interrupts, then tear everything down.
-    tokio::signal::ctrl_c()
-        .await
-        .wrap_err("Failed to listen for Ctrl-C")?;
+    // Drive the wait policy: duration (timer-driven) or perpetual (Ctrl-C-driven,
+    // with a periodic progress line in between). Both branches end with
+    // `handle.stop().await` to cancel + collect.
+    if perpetual {
+        tracing::info!(
+            "Perpetual mode; press Ctrl-C to stop (heartbeat every {heartbeat_interval}s)."
+        );
+        let mut ticker = time::interval(Duration::from_secs(heartbeat_interval));
+        // The first tick fires immediately; skip it so the first progress line lands
+        // at `interval` instead of zero.
+        ticker.tick().await;
+        loop {
+            tokio::select! {
+                biased;
+                _ = signal::ctrl_c() => break,
+                _ = ticker.tick() => {
+                    let snapshots = metrics.iter().map(|m| m.collect()).collect::<Vec<_>>();
+                    terminal::print_progress(started_at.elapsed(), &snapshots);
+                }
+            }
+        }
+    } else {
+        // Duration mode: Ctrl-C aborts without a summary, matching what users expect
+        // from a fixed-duration run. We return immediately without stopping the
+        // handle — the runner task is killed when the tokio runtime drops at
+        // process exit.
+        tokio::select! {
+            biased;
+            _ = signal::ctrl_c() => {
+                eprintln!("Ctrl-C received; aborting without summary.");
+                return Ok(());
+            }
+            _ = time::sleep(Duration::from_secs(duration)) => {}
+        }
+    }
 
-    tracing::info!("Shutting down...");
-    drop(handles);
-    drop(metrics_servers);
-    drop(load_generators);
+    // Collection. Perpetual mode lets the user bail out of a slow WAL scan with a
+    // second Ctrl-C; duration-mode collection always runs to completion (the user
+    // asked for a result).
+    let result = if perpetual {
+        tokio::select! {
+            biased;
+            _ = signal::ctrl_c() => {
+                eprintln!("Second Ctrl-C; aborting collection.");
+                return Ok(());
+            }
+            r = handle.stop() => r?,
+        }
+    } else {
+        handle.stop().await?
+    };
 
+    println!();
+    println!("{}", result.render(stderr_supports_color()));
+
+    if let Some(exporter) = &exporter {
+        exporter.write_to(&result, 1, 1, None)?;
+    }
+    if result.outcome == Outcome::Diverged {
+        bail!("local testbed run diverged");
+    }
     Ok(())
 }

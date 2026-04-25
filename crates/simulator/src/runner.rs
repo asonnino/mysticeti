@@ -1,17 +1,19 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::path::{Path, PathBuf};
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 
 use consensus::committer::Committer;
 use dag::{
     authority::Authority,
-    block::BlockReference,
     committee::Committee,
     config::{ConfigError, ImportExport},
     context::Ctx,
     core::syncer::Syncer,
-    metrics::{Metrics, MetricsSnapshot},
+    metrics::{Metrics, RunKind, RunResult},
 };
 use rand::{SeedableRng, rngs::StdRng};
 use replica::{
@@ -28,51 +30,17 @@ use crate::{
     tracing::SimulatorTracing,
 };
 
-pub struct SimulationResults {
-    pub committed_leaders: Vec<Vec<BlockReference>>,
-    pub metrics: Vec<MetricsSnapshot>,
-    pub commits_consistent: bool,
-}
-
-impl SimulationResults {
-    /// Committed-leader count per replica, in authority order.
-    pub fn commit_counts(&self) -> Vec<usize> {
-        self.committed_leaders.iter().map(|v| v.len()).collect()
-    }
-
-    /// True when every replica committed the exact same number of leaders.
-    pub fn uniform_commits(&self) -> bool {
-        let counts = self.commit_counts();
-        counts
-            .first()
-            .map(|first| counts.iter().all(|c| c == first))
-            .unwrap_or(true)
-    }
-
-    fn check_consistency(committed: &[Vec<BlockReference>]) -> bool {
-        let empty: &[BlockReference] = &[];
-        let mut max_commit: &[BlockReference] = empty;
-        for commit in committed {
-            if commit.len() >= max_commit.len() {
-                if !commit.starts_with(max_commit) {
-                    return false;
-                }
-                max_commit = commit;
-            } else if !max_commit.starts_with(commit) {
-                return false;
-            }
-        }
-        true
-    }
-}
-
 pub struct SimulationRunner {
     config: SimulationConfig,
+    dag_writer: Option<Box<dyn io::Write + Send + Sync + 'static>>,
 }
 
 impl SimulationRunner {
     pub fn new(config: SimulationConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            dag_writer: None,
+        }
     }
 
     pub fn from_yaml(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
@@ -84,19 +52,26 @@ impl SimulationRunner {
         &self.config
     }
 
-    /// Run the simulation to completion and return results.
+    /// Stream each committed sub-dag to `writer` as newline-delimited JSON during the
+    /// end-of-run storage scan. Memory stays O(replicas) regardless of commit count.
+    pub fn with_dag_writer<W: io::Write + Send + Sync + 'static>(mut self, writer: W) -> Self {
+        self.dag_writer = Some(Box::new(writer));
+        self
+    }
+
+    /// Run the simulation to completion and return the result.
     ///
     /// Executes inside a deterministic discrete-event simulator:
     /// all time is simulated, no real wall-clock time elapses.
-    pub fn run(self) -> SimulationResults {
+    pub fn run(self) -> io::Result<RunResult<SimulationConfig>> {
         let _guard = SimulatorTracing::new().setup().ok();
         let rng = StdRng::seed_from_u64(self.config.rng_seed);
-        SimulatorExecutor::run(rng, async {
-            let duration = self.config.duration();
-            let state = SimulationState::setup(self.config).await;
+        let Self { config, dag_writer } = self;
+        SimulatorExecutor::run(rng, async move {
+            let state = SimulationState::setup(config, dag_writer).await;
             state.apply_topology().await;
-            SimulatorContext::sleep(duration).await;
-            state.collect_results().await
+            SimulatorContext::sleep(state.config.duration()).await;
+            state.collect_result().await
         })
     }
 }
@@ -105,13 +80,18 @@ struct SimulationState {
     config: SimulationConfig,
     network: SimulatedNetwork,
     replicas: Vec<ReplicaHandle<SimulatorContext>>,
+    /// When set, each committed sub-dag is streamed through this writer at end-of-run.
+    dag_writer: Option<Box<dyn io::Write + Send + Sync + 'static>>,
     /// JoinHandles for any load generators we started, so they stay alive for the duration
     /// of the simulation.
     _load_generators: Vec<JoinHandle<()>>,
 }
 
 impl SimulationState {
-    async fn setup(config: SimulationConfig) -> Self {
+    async fn setup(
+        config: SimulationConfig,
+        dag_writer: Option<Box<dyn io::Write + Send + Sync + 'static>>,
+    ) -> Self {
         let committee_size = config.committee_size;
         let committee = Committee::new_test(vec![1; committee_size]);
 
@@ -151,6 +131,7 @@ impl SimulationState {
             config,
             network,
             replicas,
+            dag_writer,
             _load_generators: load_generators,
         }
     }
@@ -182,28 +163,37 @@ impl SimulationState {
         }
     }
 
-    async fn collect_results(self) -> SimulationResults {
-        let mut syncers: Vec<Syncer<SimulatorContext, Committer>> = Vec::new();
-        for replica in self.replicas {
-            syncers.push(replica.shutdown().await);
-        }
+    async fn collect_result(self) -> io::Result<RunResult<SimulationConfig>> {
+        let syncers: Vec<Syncer<SimulatorContext, Committer>> =
+            futures::future::join_all(self.replicas.into_iter().map(ReplicaHandle::shutdown)).await;
 
-        let committed_leaders: Vec<Vec<BlockReference>> = syncers
+        let (metrics, storages): (Vec<_>, Vec<&_>) = syncers
             .iter()
-            .map(|syncer| syncer.commit_handler().committed_leaders().to_vec())
-            .collect();
+            .map(|syncer| {
+                let core = syncer.core();
+                (core.metrics.collect(), core.storage())
+            })
+            .unzip();
 
-        let metrics: Vec<MetricsSnapshot> = syncers
-            .iter()
-            .map(|syncer| syncer.core().metrics.collect())
-            .collect();
-
-        let commits_consistent = SimulationResults::check_consistency(&committed_leaders);
-
-        SimulationResults {
-            committed_leaders,
+        let duration = self.config.duration();
+        let mut writer = self.dag_writer;
+        let mut builder = RunResult::builder(
             metrics,
-            commits_consistent,
+            &storages,
+            self.config,
+            duration,
+            RunKind::Simulation,
+        );
+        if let Some(w) = &mut writer {
+            builder = builder.with_dag_log(&mut **w);
         }
+        let result = builder.collect()?;
+        // Flush before drop: BufWriter's `Drop` flushes silently, swallowing errors. The
+        // DAG log is the only artefact written mid-run, so a flush failure here should
+        // surface to the caller.
+        if let Some(mut w) = writer {
+            w.flush()?;
+        }
+        Ok(result)
     }
 }

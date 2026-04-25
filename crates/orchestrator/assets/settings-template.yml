@@ -1,4 +1,3 @@
----
 testbed_id: "${USER}-mysticeti"
 cloud_provider: aws
 token_file: "/Users/${USER}/.aws/credentials"
