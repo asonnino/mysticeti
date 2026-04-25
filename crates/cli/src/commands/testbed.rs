@@ -14,7 +14,7 @@ use dag::{
     authority::Authority,
     config::ImportExport,
     context::TokioCtx,
-    metrics::{AggregateMetrics, Metrics, MetricsSnapshot, RunKind, RunResult},
+    metrics::{LATENCY_S, Metrics, MetricsSnapshot, RunKind, RunResult},
 };
 use eyre::{Context, Result, eyre};
 use replica::{
@@ -268,18 +268,26 @@ fn spawn_heartbeat(
             let elapsed = started_at.elapsed();
             let snapshots: Vec<MetricsSnapshot> =
                 metrics_per_replica.iter().map(|m| m.collect()).collect();
-            let aggregate = AggregateMetrics::new(&snapshots);
-            let line = format_heartbeat(elapsed, &snapshots, &aggregate);
+            let line = format_heartbeat(elapsed, &snapshots);
             eprintln!("{line}");
         }
     })
 }
 
-fn format_heartbeat(
-    elapsed: Duration,
-    snapshots: &[MetricsSnapshot],
-    aggregate: &AggregateMetrics<'_>,
-) -> String {
+/// Average a per-replica value, ignoring replicas where the extractor returns `None`.
+fn mean_per_replica<F>(snapshots: &[MetricsSnapshot], extract: F) -> Option<f64>
+where
+    F: Fn(&MetricsSnapshot) -> Option<f64>,
+{
+    let values: Vec<f64> = snapshots.iter().filter_map(extract).collect();
+    if values.is_empty() {
+        None
+    } else {
+        Some(values.iter().sum::<f64>() / values.len() as f64)
+    }
+}
+
+fn format_heartbeat(elapsed: Duration, snapshots: &[MetricsSnapshot]) -> String {
     let elapsed_secs = elapsed.as_secs();
     let max_committed = snapshots
         .iter()
@@ -290,13 +298,31 @@ fn format_heartbeat(
         format!("[t={elapsed_secs}s]"),
         format!("committed={max_committed}"),
     ];
-    if let Some(rate) = aggregate.leader_committed_per_second(elapsed) {
-        parts.push(format!("{rate:.1} commits/s"));
+    let elapsed_secs_f = elapsed.as_secs_f64();
+    if elapsed_secs_f > 0.0 && !snapshots.is_empty() {
+        let mean_committed = snapshots
+            .iter()
+            .map(|s| s.total_committed_leaders())
+            .sum::<u64>() as f64
+            / snapshots.len() as f64;
+        if mean_committed > 0.0 {
+            parts.push(format!("{:.1} commits/s", mean_committed / elapsed_secs_f));
+        }
+        let tx_counts: Vec<u64> = snapshots
+            .iter()
+            .filter_map(|s| s.histogram_sum_and_count(LATENCY_S))
+            .map(|(_, count)| count)
+            .collect();
+        if !tx_counts.is_empty() {
+            let mean_tx = tx_counts.iter().sum::<u64>() as f64 / tx_counts.len() as f64;
+            if mean_tx > 0.0 {
+                parts.push(format!("{:.0} tx/s", mean_tx / elapsed_secs_f));
+            }
+        }
     }
-    if let Some(tps) = aggregate.transactions_committed_per_second(elapsed) {
-        parts.push(format!("{tps:.0} tx/s"));
-    }
-    if let (Some(p50), Some(p90)) = (aggregate.p50_latency_ms(), aggregate.p90_latency_ms()) {
+    let p50 = mean_per_replica(snapshots, |s| s.latency_percentile_ms(0.5));
+    let p90 = mean_per_replica(snapshots, |s| s.latency_percentile_ms(0.9));
+    if let (Some(p50), Some(p90)) = (p50, p90) {
         parts.push(format!("p50 {p50:.0} ms · p90 {p90:.0} ms"));
     }
     parts.join(" · ")
