@@ -3,12 +3,12 @@
 
 use dag::{
     authority::Authority,
-    metrics::{MetricsSnapshot, ReplicaStats},
+    metrics::{MetricsSnapshot, Outcome, RunResult},
 };
-use simulator::{SimulationConfig, SimulationResults};
+use simulator::SimulationConfig;
 use tabled::{Table, Tabled, settings::Style};
 
-use crate::commands::simulate::Outcome;
+use super::result::OutcomeDisplay;
 
 /// Render any iterable of `Tabled` rows with the suite's
 /// standard rounded style. Single call site so the border
@@ -26,6 +26,13 @@ pub struct ConfigRow {
 }
 
 impl ConfigRow {
+    fn new(parameter: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            parameter: parameter.into(),
+            value: value.into(),
+        }
+    }
+
     pub fn for_config(config: &SimulationConfig) -> Vec<Self> {
         vec![
             Self::new("Committee size", config.committee_size.to_string()),
@@ -38,13 +45,6 @@ impl ConfigRow {
             Self::new("RNG seed", config.rng_seed.to_string()),
         ]
     }
-
-    fn new(parameter: impl Into<String>, value: impl Into<String>) -> Self {
-        Self {
-            parameter: parameter.into(),
-            value: value.into(),
-        }
-    }
 }
 
 #[derive(Tabled)]
@@ -55,23 +55,15 @@ pub struct ReplicaRow {
     committed_leaders: usize,
     #[tabled(rename = "commits/s")]
     commits_per_sec: String,
-    #[tabled(inline)]
-    stats: ReplicaStats,
+    #[tabled(rename = "p50 latency", display_with = "fmt_latency_ms")]
+    p50_latency_ms: Option<f64>,
+    #[tabled(rename = "p90 latency", display_with = "fmt_latency_ms")]
+    p90_latency_ms: Option<f64>,
+    #[tabled(rename = "leader timeouts")]
+    leader_timeouts: u64,
 }
 
 impl ReplicaRow {
-    pub fn for_results(results: &SimulationResults, duration_secs: u64) -> Vec<Self> {
-        results
-            .committed_leaders
-            .iter()
-            .zip(results.metrics.iter())
-            .enumerate()
-            .map(|(i, (leaders, metrics))| {
-                Self::new(Authority::from(i), leaders.len(), duration_secs, metrics)
-            })
-            .collect()
-    }
-
     fn new(
         authority: Authority,
         committed_leaders: usize,
@@ -90,8 +82,28 @@ impl ReplicaRow {
             replica: authority,
             committed_leaders,
             commits_per_sec,
-            stats: metrics.replica_stats(),
+            p50_latency_ms: metrics.latency_percentile_ms(0.5),
+            p90_latency_ms: metrics.latency_percentile_ms(0.9),
+            leader_timeouts: metrics.leader_timeouts(),
         }
+    }
+
+    pub fn for_result<C>(result: &RunResult<C>) -> Vec<Self> {
+        let duration_secs = result.duration.as_secs();
+        result
+            .metrics
+            .iter()
+            .zip(result.leaders_committed_per_replica())
+            .enumerate()
+            .map(|(index, (metrics, committed_leaders))| {
+                Self::new(
+                    Authority::from(index),
+                    committed_leaders,
+                    duration_secs,
+                    metrics,
+                )
+            })
+            .collect()
     }
 }
 
@@ -132,5 +144,12 @@ impl SuiteRow {
             consistency,
             committed_leaders,
         }
+    }
+}
+
+fn fmt_latency_ms(value: &Option<f64>) -> String {
+    match value {
+        Some(ms) => format!("{ms:.0} ms"),
+        None => "—".into(),
     }
 }

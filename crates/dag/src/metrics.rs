@@ -1,11 +1,11 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-mod aggregate;
 mod coarse;
 mod histogram;
 mod names;
 mod precise;
+mod result;
 mod snapshot;
 mod timers;
 
@@ -15,13 +15,12 @@ use ::prometheus::Registry;
 use tabled::{Table, Tabled};
 use tokio::time::Instant;
 
-pub use self::aggregate::AggregateMetrics;
-pub(crate) use self::names::WORKLOAD_SHARED;
 pub use self::names::{
-    BENCHMARK_DURATION, BLOCK_SYNC_REQUESTS_SENT, LABEL_AUTHORITY, LABEL_WORKLOAD, LATENCY_S,
-    LATENCY_SQUARED_S, LEADER_TIMEOUT_TOTAL, SyncRequestFulfilled,
+    BENCHMARK_DURATION, BLOCK_SYNC_REQUESTS_SENT, LABEL_AUTHORITY, LATENCY_S, LATENCY_SQUARED_S,
+    LEADER_TIMEOUT_TOTAL, SyncRequestFulfilled,
 };
-pub use self::snapshot::{MetricsSnapshot, ReplicaStats};
+pub use self::result::{Outcome, RunKind, RunResult};
+pub use self::snapshot::MetricsSnapshot;
 pub use self::timers::{OwnedUtilizationTimer, UtilizationTimer};
 use self::{
     coarse::CoarseMetrics,
@@ -36,11 +35,14 @@ use crate::{authority::Authority, consensus::LeaderStatus};
 pub struct Metrics {
     coarse: CoarseMetrics,
     precise: PreciseMetrics,
-    registry: Option<Registry>,
+    registry: Registry,
 }
 
 impl Metrics {
-    /// Create metrics and start the background reporter.
+    /// Create metrics and start the background reporter. The registry clone is retained
+    /// so [`Metrics::collect`] can produce a snapshot at any time (heartbeats during a
+    /// run, final summary at shutdown). The precise metrics are flushed periodically by
+    /// the background reporter, so a snapshot may lag by up to `report_interval`.
     pub fn new(
         registry: &Registry,
         committee_size: usize,
@@ -51,12 +53,13 @@ impl Metrics {
         Arc::new(Self {
             coarse,
             precise,
-            registry: None, // Not needed in production
+            registry: registry.clone(),
         })
     }
 
-    /// Create metrics for tests. The registry is stored internally
-    /// and drained on-demand via [`Metrics::collect`].
+    /// Create metrics for tests. Owns a private registry; [`Metrics::collect`] flushes
+    /// the precise channels synchronously before gathering, so snapshots are always
+    /// up-to-date.
     pub fn new_for_test(committee_size: usize) -> Arc<Self> {
         let registry = Registry::new();
         let coarse = CoarseMetrics::new(&registry);
@@ -64,7 +67,7 @@ impl Metrics {
         Arc::new(Self {
             coarse,
             precise,
-            registry: Some(registry),
+            registry,
         })
     }
 }
@@ -130,25 +133,16 @@ impl Metrics {
         self.precise.observe_proposed_block_vote_count(count);
     }
 
-    pub fn observe_latency_s(&self, workload: &str, value: f64) {
-        self.coarse
-            .latency_s
-            .with_label_values(&[workload])
-            .observe(value);
+    pub fn observe_latency_s(&self, value: f64) {
+        self.coarse.latency_s.observe(value);
     }
 
-    pub fn observe_latency_squared_s(&self, workload: &str, value: f64) {
-        self.coarse
-            .latency_squared_s
-            .with_label_values(&[workload])
-            .inc_by(value);
+    pub fn observe_latency_squared_s(&self, value: f64) {
+        self.coarse.latency_squared_s.inc_by(value);
     }
 
-    pub fn observe_inter_block_latency_s(&self, workload: &str, value: f64) {
-        self.coarse
-            .inter_block_latency_s
-            .with_label_values(&[workload])
-            .observe(value);
+    pub fn observe_inter_block_latency_s(&self, value: f64) {
+        self.coarse.inter_block_latency_s.observe(value);
     }
 
     /// Record a decided leader on `committed_leaders_total`. Silent no-op on
@@ -229,16 +223,19 @@ impl Metrics {
         }
     }
 
-    /// Flush precise metrics to Prometheus gauges and return
-    /// a snapshot of all metrics. Only works in test mode —
-    /// panics if called on production metrics.
+    /// Flush precise metrics to Prometheus gauges (in test mode only — see below) and
+    /// return a snapshot of all gathered metrics.
+    ///
+    /// Expensive: `Registry::gather()` allocates many small structs (one `MetricFamily`
+    /// per metric, one `Metric` per series, plus label-pair storage), so it's well into
+    /// "do not call when performance are critical" territory.
+    ///
+    /// In normal running mode (`Metrics::new`) the precise reporter runs as a background
+    /// task that flushes periodically, so a snapshot here may lag by up to the
+    /// `report_interval` passed to the constructor.
     pub fn collect(&self) -> MetricsSnapshot {
-        let registry = self
-            .registry
-            .as_ref()
-            .expect("collect() is only available on test metrics");
         self.precise.flush();
-        MetricsSnapshot::from_families(registry.gather())
+        MetricsSnapshot::new(self.registry.gather())
     }
 
     /// Abort the background reporter and drop all observers.
@@ -284,8 +281,8 @@ mod test {
         metrics.inc_block_store_entries();
         metrics.inc_submitted_transactions(100);
         let snapshot = metrics.collect();
-        assert_eq!(snapshot.metric("block_store_entries", &[]), 2.0);
-        assert_eq!(snapshot.metric("submitted_transactions", &[]), 100.0);
+        assert_eq!(snapshot.scalar_value("block_store_entries", &[]), 2.0);
+        assert_eq!(snapshot.scalar_value("submitted_transactions", &[]), 100.0);
     }
 
     #[test]
@@ -311,7 +308,7 @@ mod test {
         let authority_a = a.to_string();
         let authority_b = b.to_string();
         assert_eq!(
-            snapshot.metric(
+            snapshot.scalar_value(
                 COMMITTED_LEADERS_TOTAL,
                 &[
                     (LABEL_AUTHORITY, &authority_a),
@@ -321,7 +318,7 @@ mod test {
             2.0
         );
         assert_eq!(
-            snapshot.metric(
+            snapshot.scalar_value(
                 COMMITTED_LEADERS_TOTAL,
                 &[
                     (LABEL_AUTHORITY, &authority_b),
@@ -330,9 +327,12 @@ mod test {
             ),
             1.0
         );
-        assert_eq!(snapshot.missing_blocks(a), 3);
         assert_eq!(
-            snapshot.metric(
+            snapshot.scalar_value("missing_blocks", &[(LABEL_AUTHORITY, &authority_a)]),
+            3.0
+        );
+        assert_eq!(
+            snapshot.scalar_value(
                 "block_sync_requests_sent",
                 &[(LABEL_AUTHORITY, &authority_a)]
             ),
@@ -347,7 +347,7 @@ mod test {
             metrics.observe_transaction_committed_latency(Duration::from_micros(i));
         }
         let snapshot = metrics.collect();
-        let p50 = snapshot.metric("transaction_committed_latency", &[("v", "p50")]);
+        let p50 = snapshot.scalar_value("transaction_committed_latency", &[("v", "p50")]);
         assert!(p50 > 0.0, "p50 should be populated after flush");
     }
 
@@ -356,16 +356,17 @@ mod test {
         let metrics = Metrics::new_for_test(4);
         metrics.set_wal_mappings(42);
         let snapshot = metrics.collect();
-        assert_eq!(snapshot.metric("wal_mappings", &[]), 42.0);
+        assert_eq!(snapshot.scalar_value("wal_mappings", &[]), 42.0);
     }
 
     #[test]
-    #[should_panic(expected = "collect() is only available on test metrics")]
-    fn collect_panics_without_registry() {
+    fn production_collect_returns_snapshot_via_external_registry() {
         let runtime = tokio::runtime::Runtime::new().unwrap();
         let _guard = runtime.enter();
         let registry = prometheus::Registry::new();
         let metrics = Metrics::new(&registry, 4, None);
-        metrics.collect();
+        metrics.set_wal_mappings(7);
+        let snapshot = metrics.collect();
+        assert_eq!(snapshot.scalar_value("wal_mappings", &[]), 7.0);
     }
 }

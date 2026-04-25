@@ -760,6 +760,7 @@ dependencies = [
  "tempfile",
  "terminal_size",
  "tokio",
+ "tokio-util",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
@@ -981,6 +982,7 @@ dependencies = [
  "reqwest",
  "seahash",
  "serde",
+ "serde_json",
  "serde_yaml",
  "tabled",
  "tempfile",
@@ -2618,6 +2620,7 @@ dependencies = [
  "serde_yaml",
  "tempfile",
  "tokio",
+ "tokio-util",
  "tracing",
 ]
 
