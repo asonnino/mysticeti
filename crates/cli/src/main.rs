@@ -44,12 +44,14 @@ async fn main() -> Result<()> {
         Command::Simulate {
             config_path,
             dump_config,
-            results_file,
+            output_dir,
+            export_dag,
         } => {
             commands::simulate::simulate(
-                config_path,
                 dump_config,
-                results_file,
+                config_path,
+                output_dir,
+                export_dag,
                 args.log_level,
                 args.log_file,
             )
