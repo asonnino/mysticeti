@@ -19,7 +19,7 @@ pub use self::names::{
     BENCHMARK_DURATION, BLOCK_SYNC_REQUESTS_SENT, LABEL_AUTHORITY, LATENCY_S, LATENCY_SQUARED_S,
     LEADER_TIMEOUT_TOTAL, SyncRequestFulfilled,
 };
-pub use self::result::{Outcome, RunResult};
+pub use self::result::{Outcome, RunKind, RunResult};
 pub use self::snapshot::MetricsSnapshot;
 pub use self::timers::{OwnedUtilizationTimer, UtilizationTimer};
 use self::{
@@ -35,11 +35,14 @@ use crate::{authority::Authority, consensus::LeaderStatus};
 pub struct Metrics {
     coarse: CoarseMetrics,
     precise: PreciseMetrics,
-    registry: Option<Registry>,
+    registry: Registry,
 }
 
 impl Metrics {
-    /// Create metrics and start the background reporter.
+    /// Create metrics and start the background reporter. The registry clone is retained
+    /// so [`Metrics::collect`] can produce a snapshot at any time (heartbeats during a
+    /// run, final summary at shutdown). The precise metrics are flushed periodically by
+    /// the background reporter, so a snapshot may lag by up to `report_interval`.
     pub fn new(
         registry: &Registry,
         committee_size: usize,
@@ -50,12 +53,13 @@ impl Metrics {
         Arc::new(Self {
             coarse,
             precise,
-            registry: None, // Not needed in production
+            registry: registry.clone(),
         })
     }
 
-    /// Create metrics for tests. The registry is stored internally
-    /// and drained on-demand via [`Metrics::collect`].
+    /// Create metrics for tests. Owns a private registry; [`Metrics::collect`] flushes
+    /// the precise channels synchronously before gathering, so snapshots are always
+    /// up-to-date.
     pub fn new_for_test(committee_size: usize) -> Arc<Self> {
         let registry = Registry::new();
         let coarse = CoarseMetrics::new(&registry);
@@ -63,7 +67,7 @@ impl Metrics {
         Arc::new(Self {
             coarse,
             precise,
-            registry: Some(registry),
+            registry,
         })
     }
 }
@@ -219,16 +223,19 @@ impl Metrics {
         }
     }
 
-    /// Flush precise metrics to Prometheus gauges and return
-    /// a snapshot of all metrics. Only works in test mode —
-    /// panics if called on production metrics.
+    /// Flush precise metrics to Prometheus gauges (in test mode only — see below) and
+    /// return a snapshot of all gathered metrics.
+    ///
+    /// Expensive: `Registry::gather()` allocates many small structs (one `MetricFamily`
+    /// per metric, one `Metric` per series, plus label-pair storage), so it's well into
+    /// "do not call in tight loops" territory — heartbeats and end-of-run pulls are fine.
+    ///
+    /// In production mode (`Metrics::new`) the precise reporter runs as a background
+    /// task that flushes periodically, so a snapshot here may lag by up to the
+    /// `report_interval` passed to the constructor.
     pub fn collect(&self) -> MetricsSnapshot {
-        let registry = self
-            .registry
-            .as_ref()
-            .expect("collect() is only available on test metrics");
         self.precise.flush();
-        MetricsSnapshot::new(registry.gather())
+        MetricsSnapshot::new(self.registry.gather())
     }
 
     /// Abort the background reporter and drop all observers.
@@ -353,12 +360,13 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "collect() is only available on test metrics")]
-    fn collect_panics_without_registry() {
+    fn production_collect_returns_snapshot_via_external_registry() {
         let runtime = tokio::runtime::Runtime::new().unwrap();
         let _guard = runtime.enter();
         let registry = prometheus::Registry::new();
         let metrics = Metrics::new(&registry, 4, None);
-        metrics.collect();
+        metrics.set_wal_mappings(7);
+        let snapshot = metrics.collect();
+        assert_eq!(snapshot.scalar_value("wal_mappings", &[]), 7.0);
     }
 }

@@ -30,6 +30,17 @@ struct DagRecord<'a> {
     commit: &'a CommitData,
 }
 
+/// What kind of run produced a [`RunResult`]. Echoed into `meta.yaml` by the
+/// exporter; downstream tooling uses it to keep simulator and testbed runs apart.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RunKind {
+    /// Discrete-event simulator run.
+    Simulation,
+    /// Single-process local testbed run.
+    Testbed,
+}
+
 /// Verdict on a single run, derived from the committed-leader sequences across replicas.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -114,6 +125,7 @@ pub struct RunResult<C> {
     pub outcome: Outcome,
     pub config: C,
     pub duration: Duration,
+    pub kind: RunKind,
 }
 
 impl<C> RunResult<C> {
@@ -125,12 +137,14 @@ impl<C> RunResult<C> {
         storages: &[S],
         config: C,
         duration: Duration,
+        kind: RunKind,
     ) -> RunResultBuilder<'_, C, S> {
         RunResultBuilder {
             metrics,
             storages,
             config,
             duration,
+            kind,
             dag_log: None,
         }
     }
@@ -216,6 +230,7 @@ pub struct RunResultBuilder<'a, C, S: Borrow<Storage>> {
     storages: &'a [S],
     config: C,
     duration: Duration,
+    kind: RunKind,
     dag_log: Option<&'a mut dyn io::Write>,
 }
 
@@ -239,6 +254,7 @@ impl<'a, C, S: Borrow<Storage>> RunResultBuilder<'a, C, S> {
             storages,
             config,
             duration,
+            kind,
             dag_log,
         } = self;
         if let Some(writer) = dag_log {
@@ -260,6 +276,7 @@ impl<'a, C, S: Borrow<Storage>> RunResultBuilder<'a, C, S> {
             outcome,
             config,
             duration,
+            kind,
         })
     }
 }
@@ -272,7 +289,7 @@ mod tests {
         authority::Authority,
         block::BlockReference,
         committee::Committee,
-        metrics::{Metrics, Outcome, RunResult},
+        metrics::{Metrics, Outcome, RunKind, RunResult},
         storage::{Storage, block_store::CommitData},
     };
 
@@ -377,10 +394,15 @@ mod tests {
         let batch = CommitData::new_for_test(&[(0, 1), (1, 2), (2, 3)]);
         let (storages, snapshots) = build_storages_with_commits(3, &batch);
 
-        let result: RunResult<()> =
-            RunResult::builder(snapshots, &storages, (), Duration::from_secs(30))
-                .collect()
-                .expect("collect");
+        let result: RunResult<()> = RunResult::builder(
+            snapshots,
+            &storages,
+            (),
+            Duration::from_secs(30),
+            RunKind::Simulation,
+        )
+        .collect()
+        .expect("collect");
 
         assert_eq!(result.outcome, Outcome::Pass);
         assert_eq!(result.duration, Duration::from_secs(30));
@@ -390,10 +412,15 @@ mod tests {
     #[test]
     fn run_result_collect_classifies_empty_run_as_no_progress() {
         let (storages, snapshots) = build_storages_with_commits(2, &[]);
-        let result: RunResult<()> =
-            RunResult::builder(snapshots, &storages, (), Duration::from_secs(5))
-                .collect()
-                .expect("collect");
+        let result: RunResult<()> = RunResult::builder(
+            snapshots,
+            &storages,
+            (),
+            Duration::from_secs(5),
+            RunKind::Simulation,
+        )
+        .collect()
+        .expect("collect");
         assert_eq!(result.outcome, Outcome::NoProgress);
     }
 
@@ -403,11 +430,16 @@ mod tests {
         let (storages, snapshots) = build_storages_with_commits(2, &batch);
 
         let mut buffer = Vec::new();
-        let result: RunResult<()> =
-            RunResult::builder(snapshots, &storages, (), Duration::from_secs(10))
-                .with_dag_log(&mut buffer)
-                .collect()
-                .expect("NDJSON write");
+        let result: RunResult<()> = RunResult::builder(
+            snapshots,
+            &storages,
+            (),
+            Duration::from_secs(10),
+            RunKind::Simulation,
+        )
+        .with_dag_log(&mut buffer)
+        .collect()
+        .expect("NDJSON write");
 
         assert_eq!(result.outcome, Outcome::Pass);
 
@@ -427,16 +459,26 @@ mod tests {
         let (storages_a, snapshots_a) = build_storages_with_commits(3, &batch);
         let (storages_b, snapshots_b) = build_storages_with_commits(3, &batch);
 
-        let plain: RunResult<()> =
-            RunResult::builder(snapshots_a, &storages_a, (), Duration::from_secs(1))
-                .collect()
-                .expect("collect");
+        let plain: RunResult<()> = RunResult::builder(
+            snapshots_a,
+            &storages_a,
+            (),
+            Duration::from_secs(1),
+            RunKind::Simulation,
+        )
+        .collect()
+        .expect("collect");
         let mut sink = Vec::new();
-        let logged: RunResult<()> =
-            RunResult::builder(snapshots_b, &storages_b, (), Duration::from_secs(1))
-                .with_dag_log(&mut sink)
-                .collect()
-                .expect("collect");
+        let logged: RunResult<()> = RunResult::builder(
+            snapshots_b,
+            &storages_b,
+            (),
+            Duration::from_secs(1),
+            RunKind::Simulation,
+        )
+        .with_dag_log(&mut sink)
+        .collect()
+        .expect("collect");
 
         assert_eq!(plain.outcome, logged.outcome);
     }
