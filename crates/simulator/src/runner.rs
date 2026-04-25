@@ -187,6 +187,13 @@ impl SimulationState {
         if let Some(w) = &mut writer {
             builder = builder.with_dag_log(&mut **w);
         }
-        builder.collect()
+        let result = builder.collect()?;
+        // Flush before drop: BufWriter's `Drop` flushes silently, swallowing errors. The
+        // DAG log is the only artefact written mid-run, so a flush failure here should
+        // surface to the caller.
+        if let Some(mut w) = writer {
+            w.flush()?;
+        }
+        Ok(result)
     }
 }

@@ -3,11 +3,9 @@
 
 //! Display extension traits for dag's run-result types. The domain types stay plain;
 //! everything presentation-shaped lives here and co-locates the renderer's knowledge of
-//! run results in one file. Adding a new run kind (e.g. testbed in #64) means another
-//! `impl RunResultRender` alongside the sim one.
+//! run results in one file.
 
 use dag::metrics::{Outcome, RunResult};
-use simulator::SimulationConfig;
 
 use super::table::{self, ReplicaRow};
 use super::{GREEN, RED, RESET, YELLOW};
@@ -60,7 +58,7 @@ pub trait RunResultRender {
     fn render(&self, color: bool) -> String;
 }
 
-impl RunResultRender for RunResult<SimulationConfig> {
+impl<C> RunResultRender for RunResult<C> {
     fn render(&self, color: bool) -> String {
         let outcome = self.outcome;
         let commit_counts = self.leaders_committed_per_replica();
@@ -68,9 +66,6 @@ impl RunResultRender for RunResult<SimulationConfig> {
         let mut out = outcome.badge(color);
         out.push('\n');
 
-        // Collapse to a one-line summary when every replica committed identically and
-        // nothing else is noteworthy (sim-only pattern; testbed shutdowns aren't
-        // synchronised so counts almost never align there).
         let uniform_commits = commit_counts
             .first()
             .map(|first| commit_counts.iter().all(|c| c == first))

@@ -7,14 +7,17 @@
 pub mod banner;
 mod result;
 mod spinner;
+mod status;
 pub mod table;
+
+pub use self::status::print_progress;
 
 use std::io::IsTerminal;
 
 use dag::metrics::RunResult;
 use simulator::SimulationConfig;
 
-use self::result::RunResultRender;
+pub use self::result::RunResultRender;
 use self::spinner::Spinner;
 use self::table::{ConfigRow, SuiteRow};
 

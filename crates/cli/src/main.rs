@@ -11,75 +11,17 @@ use eyre::Result;
 #[tokio::main]
 async fn main() -> Result<()> {
     color_eyre::install()?;
+
     let args = Args::parse();
+    let log_level = args.log_level;
+    let log_file = args.log_file;
 
     match args.command {
-        Command::TestGenesis {
-            ips,
-            working_directory,
-            replica_parameters_path,
-        } => commands::genesis::test_genesis(
-            ips,
-            working_directory,
-            replica_parameters_path,
-            args.log_level,
-            args.log_file,
-        )?,
-        Command::Run {
-            authority,
-            public_config_path,
-            private_config_path,
-            load_generator_config_path,
-        } => {
-            commands::run::run(
-                authority,
-                public_config_path,
-                private_config_path,
-                load_generator_config_path,
-                args.log_level,
-                args.log_file,
-            )
-            .await?
-        }
-        Command::Simulate {
-            config_path,
-            dump_config,
-            output_dir,
-            export_dag,
-        } => {
-            commands::simulate::simulate(
-                dump_config,
-                config_path,
-                output_dir,
-                export_dag,
-                args.log_level,
-                args.log_file,
-            )
-            .await?
-        }
-        Command::LocalTestbed {
-            committee_size,
-            replica_parameters_path,
-            load_generator_config_path,
-            duration,
-            perpetual,
-            heartbeat_interval,
-            output_dir,
-            export_dag,
-        } => {
-            commands::testbed::local_testbed(
-                committee_size,
-                replica_parameters_path,
-                load_generator_config_path,
-                duration,
-                perpetual,
-                heartbeat_interval,
-                output_dir,
-                export_dag,
-                args.log_level,
-                args.log_file,
-            )
-            .await?
+        Command::TestGenesis(sub) => commands::genesis::test_genesis(sub, log_level, log_file)?,
+        Command::Run(sub) => commands::run::run(sub, log_level, log_file).await?,
+        Command::Simulate(sub) => commands::simulate::simulate(sub, log_level, log_file).await?,
+        Command::LocalTestbed(sub) => {
+            commands::testbed::local_testbed(sub, log_level, log_file).await?
         }
         Command::PrintBanner => {
             terminal::BannerPrinter::new("Mysticeti", &[("Mode", "Preview")]).print();
