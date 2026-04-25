@@ -1,24 +1,21 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use dag::{authority::Authority, config::ImportExport, context::TokioCtx};
+use std::path::PathBuf;
+
+use dag::{config::ImportExport, context::TokioCtx};
 use eyre::{Result, eyre};
 use replica::{
     builder::ReplicaBuilder,
     config::{LoadGeneratorConfig, PrivateReplicaConfig, PublicReplicaConfig},
     prometheus::{MetricsRegistry, PrometheusServer},
 };
-use std::path::PathBuf;
-
 use tracing_subscriber::filter::LevelFilter;
 
-use crate::tracing::ReplicaTracing;
+use crate::{args::RunArgs, tracing::ReplicaTracing};
 
 pub async fn run(
-    authority: Authority,
-    public_config_path: String,
-    private_config_path: String,
-    load_generator_config_path: Option<String>,
+    args: RunArgs,
     log_level: Option<LevelFilter>,
     log_file: Option<PathBuf>,
 ) -> Result<()> {
@@ -28,6 +25,13 @@ pub async fn run(
     }
     .with_log_file(log_file)
     .setup()?;
+
+    let RunArgs {
+        authority,
+        public_config_path,
+        private_config_path,
+        load_generator_config_path,
+    } = args;
     tracing::info!("Starting replica {authority}");
 
     // Load configuration from YAML.

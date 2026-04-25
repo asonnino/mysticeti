@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{fs, net::IpAddr, path::PathBuf};
+use std::{fs, path::PathBuf};
 
 use dag::{authority::Authority, config::ImportExport};
 use eyre::{Context, Result};
@@ -9,12 +9,10 @@ use tracing_subscriber::filter::LevelFilter;
 
 use replica::config::{PrivateReplicaConfig, PublicReplicaConfig, ReplicaParameters};
 
-use crate::tracing::ReplicaTracing;
+use crate::{args::TestGenesisArgs, tracing::ReplicaTracing};
 
 pub fn test_genesis(
-    ips: Vec<IpAddr>,
-    working_directory: PathBuf,
-    replica_parameters_path: Option<PathBuf>,
+    args: TestGenesisArgs,
     log_level: Option<LevelFilter>,
     log_file: Option<PathBuf>,
 ) -> Result<()> {
@@ -25,6 +23,11 @@ pub fn test_genesis(
     .with_log_file(log_file)
     .setup()?;
 
+    let TestGenesisArgs {
+        ips,
+        working_directory,
+        replica_parameters_path,
+    } = args;
     let committee_size = ips.len();
     tracing::info!("Generating test genesis for {committee_size} replicas");
 

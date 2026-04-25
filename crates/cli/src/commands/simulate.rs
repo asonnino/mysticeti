@@ -4,23 +4,28 @@
 use std::{fs::File, io::BufWriter, path::PathBuf};
 
 use dag::{config::ImportExport, metrics::Outcome};
-use eyre::{Result, bail};
+use eyre::{Context, Result, bail};
 use simulator::{SimulationConfig, SimulationMode, SimulationRunner, SimulatorTracing};
 use tracing_subscriber::filter::LevelFilter;
 
 use crate::{
+    args::SimulateArgs,
     exporter::Exporter,
     terminal::{BannerPrinter, Terminal},
 };
 
 pub async fn simulate(
-    dump_config: bool,
-    config_path: Option<PathBuf>,
-    output_dir: Option<PathBuf>,
-    export_dag: bool,
+    args: SimulateArgs,
     log_level: Option<LevelFilter>,
     log_file: Option<PathBuf>,
 ) -> Result<()> {
+    let SimulateArgs {
+        config_path,
+        dump_config,
+        output_dir,
+        export_dag,
+    } = args;
+
     // Print default config to stdout and exit.
     if dump_config {
         println!("{}", SimulationConfig::default().to_yaml());
@@ -76,8 +81,9 @@ pub async fn simulate(
 
         if export_dag && let Some(exporter) = &exporter {
             let path = exporter.dag_path(index + 1, total, name.as_deref())?;
-            let writer = BufWriter::new(File::create(&path)?);
-            runner = runner.with_dag_writer(writer);
+            let file = File::create(&path)
+                .wrap_err_with(|| format!("creating DAG log {}", path.display()))?;
+            runner = runner.with_dag_writer(BufWriter::new(file));
         }
 
         let result = tokio::task::spawn_blocking(move || runner.run())

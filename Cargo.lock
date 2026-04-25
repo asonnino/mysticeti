@@ -760,6 +760,7 @@ dependencies = [
  "tempfile",
  "terminal_size",
  "tokio",
+ "tokio-util",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
@@ -2619,6 +2620,7 @@ dependencies = [
  "serde_yaml",
  "tempfile",
  "tokio",
+ "tokio-util",
  "tracing",
 ]
 

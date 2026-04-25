@@ -228,9 +228,9 @@ impl Metrics {
     ///
     /// Expensive: `Registry::gather()` allocates many small structs (one `MetricFamily`
     /// per metric, one `Metric` per series, plus label-pair storage), so it's well into
-    /// "do not call in tight loops" territory — heartbeats and end-of-run pulls are fine.
+    /// "do not call when performance are critical" territory.
     ///
-    /// In production mode (`Metrics::new`) the precise reporter runs as a background
+    /// In normal running mode (`Metrics::new`) the precise reporter runs as a background
     /// task that flushes periodically, so a snapshot here may lag by up to the
     /// `report_interval` passed to the constructor.
     pub fn collect(&self) -> MetricsSnapshot {
