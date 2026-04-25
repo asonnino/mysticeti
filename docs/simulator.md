@@ -90,26 +90,27 @@ A suite's final exit code is non-zero if any simulation `Diverged`.
 
 ## Saving Detailed Results
 
-`--results-file <path>` writes a machine-readable report per simulation. The output format is
-inferred from the extension (`.json`, `.yaml`, or `.yml`). For a suite, the file contains one
-`SimulationReport` per simulation, in run order.
-
-Each report contains:
-
-- The full `SimulationConfig` that produced the run (including any defaults filled in).
-- The `Outcome` and a `commits_consistent` flag.
-- `duration_secs` of the run.
-- Per-replica entries with `authority`, `committed_leaders` (formatted `"A<round>"`, e.g. `"A17"`),
-  `commits`, `commits_per_sec`, aggregated `ReplicaStats`, and the full per-replica metrics as a
-  Prometheus text-exposition string. The Prometheus blob is parseable by `promtool`, Prometheus
-  itself, and most TSDB ingesters — so a simulation can be post-hoc dropped into the same tooling
-  used for real runs.
+Pass `--output-dir <DIR>` and the simulator drops a fixed set of artefacts on disk for each run.
+The directory is created if it doesn't exist.
 
 ```bash
 cargo run --release --bin replica -- simulate \
     --config-path crates/simulator/examples/suite.yaml \
-    --results-file suite-results.json
+    --output-dir results/
 ```
+
+For a single-run invocation the artefacts land directly in `<output-dir>/`. For a suite, each
+simulation gets its own subdirectory named after the run (`name` field, sanitised) or by 1-based
+index when unnamed. Files are written atomically (`NamedTempFile` + `persist`), so a mid-write crash
+leaves each file either intact or absent — never half-written.
+
+| File | Contents |
+| --- | --- |
+| `<output-dir>/tracing.log` | Suite-wide tracing log (one log for the whole invocation). |
+| `<run>/config.yaml` | The full `SimulationConfig` that produced the run, including any defaults filled in. |
+| `<run>/meta.yaml` | `{ outcome, duration_secs, kind: simulation, timestamp_unix }`. |
+| `<run>/metrics.prom` | Per-replica Prometheus text exposition; each replica's block is preceded by `# replica: N`. Parseable by `promtool`, Prometheus, and most TSDB ingesters. |
+| `<run>/dag.ndjson` | *(opt-in via `--export-dag`)* every committed sub-DAG, one JSON object per line. Can be many GB; off by default. |
 
 ## Programmatic Use
 
@@ -118,6 +119,7 @@ The simulator is also usable as a library, which is how the integration tests in
 minimal example:
 
 ```rust
+use dag::metrics::Outcome;
 use simulator::{NetworkTopology, SimulationConfig, SimulationRunner};
 
 #[test]
@@ -129,14 +131,16 @@ fn one_down_still_commits() {
         ..Default::default()
     };
 
-    let results = SimulationRunner::new(config).run();
+    let result = SimulationRunner::new(config).run().expect("simulation");
 
-    assert!(results.commits_consistent);
-    assert!(!results.committed_leaders.is_empty());
+    assert_eq!(result.outcome, Outcome::Pass);
+    assert!(result.commit_count_per_replica().iter().all(|&c| c > 0));
 }
 ```
 
-`SimulationRunner::run` returns a `SimulationResults` with per-replica committed leaders,
-per-replica `MetricsSnapshot`s, and the `commits_consistent` flag. `SimulationRunner::from_yaml`
-loads a `SimulationConfig` from disk, useful when test cases share configuration with the CLI.
-Because every run is deterministic in the `rng_seed`, these tests are reproducible across machines.
+`SimulationRunner::run` returns a `RunResult<SimulationConfig>` carrying per-replica
+`MetricsSnapshot`s, the derived `Outcome`, and the original config.
+`SimulationRunner::from_yaml` loads a `SimulationConfig` from disk, useful when test cases share
+configuration with the CLI. To stream every committed sub-DAG to disk during the run, chain
+`.with_dag_writer(writer)` on the runner before calling `run()`. Because every run is deterministic
+in the `rng_seed`, these tests are reproducible across machines.
