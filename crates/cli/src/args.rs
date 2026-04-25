@@ -92,6 +92,31 @@ pub enum Command {
         /// Path to custom load generator config (YAML). Uses defaults if omitted.
         #[arg(long, value_name = "FILE")]
         load_generator_config_path: Option<PathBuf>,
+        /// Run for this many seconds, then collect results and shut down. Ignored if
+        /// `--perpetual` is set.
+        #[arg(
+            long,
+            value_name = "SECS",
+            default_value_t = 20,
+            conflicts_with = "perpetual"
+        )]
+        duration: u64,
+        /// Run forever; collect results and shut down on Ctrl-C. Sending Ctrl-C twice
+        /// aborts immediately without a summary.
+        #[arg(long, conflicts_with = "duration")]
+        perpetual: bool,
+        /// Heartbeat cadence, in seconds, used in `--perpetual` mode to print live
+        /// aggregated stats to stderr. No effect under `--duration`.
+        #[arg(long, value_name = "SECS", default_value_t = 5)]
+        heartbeat_interval: u64,
+        /// Directory for tracing logs, replica WALs, and run artefacts (`config.yaml`,
+        /// `meta.yaml`, `metrics.prom`). Wiped clean at the start of every run.
+        #[arg(long, value_name = "DIR", default_value = "local-testbed")]
+        output_dir: PathBuf,
+        /// Also write the committed sub-DAG to `<output_dir>/dag.ndjson` (one committed
+        /// sub-DAG per line). Off by default — DAG dumps can be many GB.
+        #[arg(long)]
+        export_dag: bool,
     },
 
     /// Print the startup banner and exit.

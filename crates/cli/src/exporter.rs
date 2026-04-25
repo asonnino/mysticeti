@@ -32,7 +32,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use dag::metrics::{Outcome, RunResult};
+use dag::metrics::{Outcome, RunKind, RunResult};
 use eyre::{Result, WrapErr};
 use serde::Serialize;
 use tempfile::NamedTempFile;
@@ -119,7 +119,7 @@ impl Exporter {
         let meta = Meta {
             outcome: result.outcome,
             duration_secs: result.duration.as_secs(),
-            kind: "simulation",
+            kind: result.kind,
             timestamp_unix: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map(|d| d.as_secs())
@@ -167,7 +167,7 @@ impl Exporter {
 struct Meta {
     outcome: Outcome,
     duration_secs: u64,
-    kind: &'static str,
+    kind: RunKind,
     /// Unix epoch seconds at the time of export. Downstream consumers render as RFC3339
     /// on their end (e.g. Python `datetime.fromtimestamp(ts, tz=timezone.utc)`).
     timestamp_unix: u64,
