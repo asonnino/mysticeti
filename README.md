@@ -31,8 +31,10 @@ $ cd mysticeti
 $ cargo run --release --bin replica -- local-testbed
 ```
 
-The first build may take a few minutes. Each replica exposes Prometheus metrics on its own local
-port; press `Ctrl-C` to stop the testbed.
+The first build may take a few minutes. The testbed runs for 20 seconds, prints a per-replica
+summary, and writes the run's configuration, Prometheus metrics, and tracing log to
+`local-testbed/`. Pass `--duration <SECS>` to change the run length, or `--perpetual` to keep it
+running until `Ctrl-C` (and print the summary on exit).
 
 ## Next Steps
 
