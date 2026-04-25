@@ -13,7 +13,7 @@ use simulator::{NetworkTopology, SimulationConfig, SimulationMode, SimulationRun
 fn full_mesh() {
     let config = SimulationConfig::default();
     let runner = SimulationRunner::new(config);
-    let results = runner.run();
+    let results = runner.run().unwrap();
 
     assert_ne!(results.outcome, Outcome::Diverged);
     assert!(!results.metrics.is_empty());
@@ -27,7 +27,7 @@ fn one_down() {
         ..Default::default()
     };
     let runner = SimulationRunner::new(config);
-    let results = runner.run();
+    let results = runner.run().unwrap();
 
     assert_ne!(results.outcome, Outcome::Diverged);
 }
@@ -76,7 +76,7 @@ fn star_topology() {
         ..Default::default()
     };
     let runner = SimulationRunner::new(config);
-    let results = runner.run();
+    let results = runner.run().unwrap();
 
     assert_ne!(results.outcome, Outcome::Diverged);
 }
@@ -89,7 +89,7 @@ fn small_committee() {
         ..Default::default()
     };
     let runner = SimulationRunner::new(config);
-    let results = runner.run();
+    let results = runner.run().unwrap();
 
     assert_ne!(results.outcome, Outcome::Diverged);
 }
@@ -108,7 +108,7 @@ fn custom_node_parameters() {
         ..Default::default()
     };
     let runner = SimulationRunner::new(config);
-    let results = runner.run();
+    let results = runner.run().unwrap();
 
     assert_ne!(results.outcome, Outcome::Diverged);
 }
@@ -117,7 +117,7 @@ fn custom_node_parameters() {
 fn from_example_config() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/single.yaml");
     let runner = SimulationRunner::from_yaml(&path).unwrap();
-    let results = runner.run();
+    let results = runner.run().unwrap();
 
     assert_ne!(results.outcome, Outcome::Diverged);
 }
@@ -163,7 +163,7 @@ fn network_partition() {
         ..Default::default()
     };
     let runner = SimulationRunner::new(config);
-    let results = runner.run();
+    let results = runner.run().unwrap();
 
     assert_ne!(results.outcome, Outcome::Diverged);
 }

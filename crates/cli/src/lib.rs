@@ -3,6 +3,6 @@
 
 pub mod args;
 pub mod commands;
-pub mod report;
+pub mod exporter;
 pub mod terminal;
 pub mod tracing;
