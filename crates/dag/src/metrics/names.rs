@@ -3,8 +3,8 @@
 
 // Single source of truth for Prometheus metric names and label identifiers used by this crate.
 // Producers (`CoarseMetrics::new`, observation setters) and consumers (`MetricsSnapshot`,
-// `AggregateMetrics`) both reference these constants so a rename is a one-line diff and typos
-// become compile errors.
+// `RunResult`) both reference these constants so a rename is a one-line diff and typos become
+// compile errors.
 
 // Metric names.
 pub const BENCHMARK_DURATION: &str = "benchmark_duration";
