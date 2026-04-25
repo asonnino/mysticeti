@@ -24,9 +24,8 @@ jobs:
             --repo https://github.com/editorconfig-checker/editorconfig-checker.python \
             --repo https://github.com/google/yamlfmt \
             --repo https://github.com/crate-ci/typos
-
       - run: pre-commit run --all-files
-      - uses: peter-evans/create-pull-request@5e914681df9dc83aa4e4905692ca88beb2f9e91f # pin@v7.0.5
+      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # pin@v8.1.1
         if: ${{ success() }}
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -34,7 +33,7 @@ jobs:
           title: "chore: update pre-commit hooks"
           commit-message: "chore: update pre-commit hooks"
           body: Update pre-commit hooks to latest version.
-      - uses: peter-evans/create-pull-request@5e914681df9dc83aa4e4905692ca88beb2f9e91f # pin@v7.0.5
+      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # pin@v8.1.1
         if: ${{ failure() }}
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
