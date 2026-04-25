@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Glue between the `local-testbed` CLI subcommand and
-//! [`replica::local_testbed::LocalTestbedRunner`]. Owns: argument parsing,
+//! [`replica::testbed::LocalTestbedRunner`]. Owns: argument parsing,
 //! banner, exporter wiring, tracing setup, the duration / perpetual wait
 //! loop, Ctrl-C handling, live progress line, and result rendering. The
 //! runner owns: replica spawn loop, prometheus servers, load generators,
