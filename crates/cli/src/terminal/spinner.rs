@@ -39,4 +39,18 @@ impl Spinner {
         self.bar.disable_steady_tick();
         self.bar.finish_and_clear();
     }
+
+    /// Run `f` while the spinner stays alive: indicatif clears the bar, runs the
+    /// closure, then redraws — heartbeat output never fights the spinner for the
+    /// line, and the elapsed timer keeps ticking monotonically.
+    pub fn suspend<F: FnOnce() -> R, R>(&self, f: F) -> R {
+        self.bar.suspend(f)
+    }
+}
+
+impl Drop for Spinner {
+    fn drop(&mut self) {
+        self.bar.disable_steady_tick();
+        self.bar.finish_and_clear();
+    }
 }

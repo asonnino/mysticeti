@@ -13,7 +13,7 @@ use std::{io::IsTerminal, time::Duration};
 
 use dag::metrics::{MetricsSnapshot, RunResult};
 
-pub use self::render::{ConfigRender, MetricsSnapshotsRender, RunResultRender};
+pub(crate) use self::render::{ConfigRender, MetricsSnapshotsRender, RunResultRender};
 use self::spinner::Spinner;
 use self::table::SuiteRow;
 
@@ -46,7 +46,7 @@ pub struct Terminal {
 }
 
 impl Terminal {
-    pub fn new(total: usize) -> Self {
+    pub(crate) fn new(total: usize) -> Self {
         let color = stderr_supports_color();
         Self {
             color,
@@ -56,11 +56,10 @@ impl Terminal {
         }
     }
 
-    /// Print the per-run heading + config table and start the spinner. Skips
-    /// heading and table when the config opts out (no name and an empty
-    /// [`ConfigRender::config_rows`]), e.g. local-testbed whose banner already
-    /// lists the run knobs.
-    pub fn print_config<C: ConfigRender>(&mut self, index: usize, config: &C) {
+    /// Print the per-run heading and config table, then start the spinner.
+    /// The heading is omitted when there is only one run with no config name;
+    /// the table is omitted when [`ConfigRender::config_rows`] is empty.
+    pub(crate) fn print_config<C: ConfigRender>(&mut self, index: usize, config: &C) {
         let heading = match (self.total > 1, config.name()) {
             (true, Some(name)) => Some(format!(
                 "Simulation [{index}/{total}]: {name}",
@@ -89,18 +88,17 @@ impl Terminal {
         self.spinner.start();
     }
 
-    /// Print the live progress line on stderr. Stops the spinner around the
-    /// heartbeat so they don't fight for the same line, then restarts it —
-    /// perpetual-style callers can call this on a ticker without bookkeeping.
-    pub fn print_status(&mut self, elapsed: Duration, snapshots: &[MetricsSnapshot]) {
-        self.spinner.stop();
-        eprintln!("{}", snapshots.render(elapsed));
-        self.spinner.start();
+    /// Print the live progress line on stderr without disturbing the spinner —
+    /// the bar is suspended around the write, so its elapsed timer stays
+    /// monotonic across heartbeats.
+    pub(crate) fn print_status(&mut self, elapsed: Duration, snapshots: &[MetricsSnapshot]) {
+        self.spinner
+            .suspend(|| eprintln!("{}", snapshots.render(elapsed)));
     }
 
     /// Stop the spinner, print the per-result block (badge + per-replica table or
     /// happy-path headline), and record the suite row for later aggregate display.
-    pub fn print_results<C: ConfigRender>(&mut self, result: &RunResult<C>) {
+    pub(crate) fn print_results<C: ConfigRender>(&mut self, result: &RunResult<C>) {
         self.spinner.stop();
         println!("{}", result.render(self.color));
         println!();
@@ -122,7 +120,7 @@ impl Terminal {
 
     /// Print the suite summary when more than one run was recorded; no-op for
     /// single-run commands.
-    pub fn print_summary(&self) {
+    pub(crate) fn print_summary(&self) {
         if self.total <= 1 {
             return;
         }
