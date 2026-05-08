@@ -5,21 +5,17 @@
 //! tabled-driven display code lives here.
 
 pub mod banner;
-mod result;
+mod render;
 mod spinner;
-mod status;
 pub mod table;
 
-pub use self::status::print_progress;
+use std::{io::IsTerminal, time::Duration};
 
-use std::io::IsTerminal;
+use dag::metrics::{MetricsSnapshot, RunResult};
 
-use dag::metrics::RunResult;
-use simulator::SimulationConfig;
-
-pub use self::result::RunResultRender;
+pub(crate) use self::render::{ConfigRender, MetricsSnapshotsRender, RunResultRender};
 use self::spinner::Spinner;
-use self::table::{ConfigRow, SuiteRow};
+use self::table::SuiteRow;
 
 pub use self::banner::BannerPrinter;
 
@@ -40,28 +36,31 @@ pub fn stderr_supports_color() -> bool {
     std::io::stderr().is_terminal()
 }
 
-/// Stateful renderer for one command invocation. Owns the suite-row history and the
-/// active spinner across the start/stop bracket of each simulation.
+/// Stateful renderer for one command invocation. Owns the suite-row history and a
+/// long-lived spinner that the print methods toggle on and off.
 pub struct Terminal {
     color: bool,
     total: usize,
     suite_rows: Vec<SuiteRow>,
-    spinner: Option<Spinner>,
+    spinner: Spinner,
 }
 
 impl Terminal {
-    pub fn new(total: usize) -> Self {
+    pub(crate) fn new(total: usize) -> Self {
+        let color = stderr_supports_color();
         Self {
-            color: stderr_supports_color(),
+            color,
             total,
             suite_rows: Vec::with_capacity(total),
-            spinner: None,
+            spinner: Spinner::new(color),
         }
     }
 
-    /// Begin a run: print the per-run heading + config table and arm the spinner.
-    pub fn start_run(&mut self, index: usize, config: &SimulationConfig) {
-        let heading = match (self.total > 1, config.name.as_deref()) {
+    /// Print the per-run heading and config table, then start the spinner.
+    /// The heading is omitted when there is only one run with no config name;
+    /// the table is omitted when [`ConfigRender::config_rows`] is empty.
+    pub(crate) fn print_config<C: ConfigRender>(&mut self, index: usize, config: &C) {
+        let heading = match (self.total > 1, config.name()) {
             (true, Some(name)) => Some(format!(
                 "Simulation [{index}/{total}]: {name}",
                 total = self.total
@@ -71,7 +70,10 @@ impl Terminal {
             (false, None) => None,
         };
 
-        println!();
+        let rows = config.config_rows();
+        if heading.is_some() || !rows.is_empty() {
+            println!();
+        }
         if let Some(heading) = heading {
             if self.color {
                 println!("{BOLD}{heading}{RESET}");
@@ -79,37 +81,46 @@ impl Terminal {
                 println!("{heading}");
             }
         }
-        println!("{}", table::render(ConfigRow::for_config(config)));
+        if !rows.is_empty() {
+            println!("{}", table::render(rows));
+        }
 
-        self.spinner = Some(Spinner::new(self.color));
+        self.spinner.start();
     }
 
-    /// End a run: stop the spinner, render the per-replica output, and record the
-    /// suite row for later aggregate display.
-    pub fn stop_run(&mut self, result: &RunResult<SimulationConfig>) {
-        if let Some(spinner) = self.spinner.take() {
-            spinner.finish();
-        }
+    /// Print the live progress line on stderr without disturbing the spinner —
+    /// the bar is suspended around the write, so its elapsed timer stays
+    /// monotonic across heartbeats.
+    pub(crate) fn print_status(&mut self, elapsed: Duration, snapshots: &[MetricsSnapshot]) {
+        self.spinner
+            .suspend(|| eprintln!("{}", snapshots.render(elapsed)));
+    }
+
+    /// Stop the spinner, print the per-result block (badge + per-replica table or
+    /// happy-path headline), and record the suite row for later aggregate display.
+    pub(crate) fn print_results<C: ConfigRender>(&mut self, result: &RunResult<C>) {
+        self.spinner.stop();
         println!("{}", result.render(self.color));
         println!();
 
         let run_name = result
             .config
-            .name
-            .clone()
+            .name()
+            .map(str::to_owned)
             .unwrap_or_else(|| "unnamed".into());
         let commit_counts = result.leaders_committed_per_replica();
         self.suite_rows.push(SuiteRow::new(
             &run_name,
-            result.config.committee_size,
-            result.config.duration_secs,
+            result.config.committee_size(),
+            result.duration.as_secs(),
             result.outcome,
             &commit_counts,
         ));
     }
 
-    /// End the command: print the suite summary when more than one simulation ran.
-    pub fn finish(&self) {
+    /// Print the suite summary when more than one run was recorded; no-op for
+    /// single-run commands.
+    pub(crate) fn print_summary(&self) {
         if self.total <= 1 {
             return;
         }

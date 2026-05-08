@@ -16,6 +16,7 @@ dag.workspace = true
 consensus.workspace = true
 replica.workspace = true
 simulator.workspace = true
+humantime = "2.1"
 indicatif = "0.17"
 serde = { workspace = true }
 serde_json = { workspace = true }

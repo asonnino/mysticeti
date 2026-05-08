@@ -5,10 +5,9 @@ use dag::{
     authority::Authority,
     metrics::{MetricsSnapshot, Outcome, RunResult},
 };
-use simulator::SimulationConfig;
 use tabled::{Table, Tabled, settings::Style};
 
-use super::result::OutcomeDisplay;
+use super::render::OutcomeDisplay;
 
 /// Render any iterable of `Tabled` rows with the suite's
 /// standard rounded style. Single call site so the border
@@ -26,24 +25,11 @@ pub struct ConfigRow {
 }
 
 impl ConfigRow {
-    fn new(parameter: impl Into<String>, value: impl Into<String>) -> Self {
+    pub(super) fn new(parameter: impl Into<String>, value: impl Into<String>) -> Self {
         Self {
             parameter: parameter.into(),
             value: value.into(),
         }
-    }
-
-    pub fn for_config(config: &SimulationConfig) -> Vec<Self> {
-        vec![
-            Self::new("Committee size", config.committee_size.to_string()),
-            Self::new("Topology", config.topology.to_string()),
-            Self::new("Duration", format!("{}s", config.duration_secs)),
-            Self::new(
-                "Latency range",
-                format!("{}-{} ms", config.latency_min_ms, config.latency_max_ms),
-            ),
-            Self::new("RNG seed", config.rng_seed.to_string()),
-        ]
     }
 }
 
