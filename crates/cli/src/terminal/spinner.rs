@@ -5,30 +5,38 @@ use std::time::Duration;
 
 use indicatif::{ProgressBar, ProgressStyle};
 
-/// Indeterminate progress spinner. Constructor is always safe to call; when stderr isn't
-/// a colour terminal the spinner emits nothing and `finish` is a no-op.
+/// Long-lived indeterminate progress spinner. Construct once per [`super::Terminal`],
+/// then [`Self::start`] / [`Self::stop`] around regions where the run is "still
+/// working" with no other output. On a non-colour terminal the bar is
+/// [`ProgressBar::hidden`] so every method is a silent no-op.
 pub struct Spinner {
-    inner: Option<ProgressBar>,
+    bar: ProgressBar,
 }
 
 impl Spinner {
     pub fn new(color: bool) -> Self {
-        if !color {
-            return Self { inner: None };
-        }
-        println!();
-        let bar = ProgressBar::new_spinner();
-        bar.set_style(
-            ProgressStyle::with_template(" {spinner} Simulating… {elapsed}")
-                .unwrap_or_else(|_| ProgressStyle::default_spinner()),
-        );
-        bar.enable_steady_tick(Duration::from_millis(100));
-        Self { inner: Some(bar) }
+        let bar = if color {
+            let bar = ProgressBar::new_spinner();
+            bar.set_style(
+                ProgressStyle::with_template(" {spinner} Running… {elapsed}")
+                    .unwrap_or_else(|_| ProgressStyle::default_spinner()),
+            );
+            bar
+        } else {
+            ProgressBar::hidden()
+        };
+        Self { bar }
     }
 
-    pub fn finish(self) {
-        if let Some(bar) = self.inner {
-            bar.finish_and_clear();
-        }
+    /// Begin spinning (or reset the elapsed timer if already running).
+    pub fn start(&self) {
+        self.bar.reset();
+        self.bar.enable_steady_tick(Duration::from_millis(100));
+    }
+
+    /// Stop spinning and clear the line. Idempotent.
+    pub fn stop(&self) {
+        self.bar.disable_steady_tick();
+        self.bar.finish_and_clear();
     }
 }

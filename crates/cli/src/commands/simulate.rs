@@ -74,7 +74,7 @@ pub async fn simulate(
     let mut diverged = 0;
 
     for (index, config) in configs.into_iter().enumerate() {
-        terminal.start_run(index + 1, &config);
+        terminal.print_config(index + 1, &config);
 
         let name = config.name.clone();
         let mut runner = SimulationRunner::new(config);
@@ -90,7 +90,7 @@ pub async fn simulate(
             .await
             .map_err(|error| eyre::eyre!("Simulation task panicked: {error}"))??;
 
-        terminal.stop_run(&result);
+        terminal.print_results(&result);
 
         if result.outcome == Outcome::Diverged {
             diverged += 1;
@@ -100,7 +100,7 @@ pub async fn simulate(
         }
     }
 
-    terminal.finish();
+    terminal.print_summary();
 
     if diverged > 0 {
         bail!("{diverged} of {total} simulation(s) diverged");

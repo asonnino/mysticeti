@@ -27,7 +27,7 @@ use tracing_subscriber::filter::LevelFilter;
 use crate::{
     args::LocalTestbedArgs,
     exporter::Exporter,
-    terminal::{self, BannerPrinter, RunResultRender, stderr_supports_color},
+    terminal::{BannerPrinter, Terminal},
     tracing::ReplicaTracing,
 };
 
@@ -109,6 +109,9 @@ pub async fn local_testbed(
 
     tracing::info!("Starting local testbed with {committee_size} replicas");
 
+    let mut terminal = Terminal::new(1);
+    terminal.print_config(1, &testbed_config);
+
     let mut runner = LocalTestbedRunner::new(testbed_config);
     if export_dag && let Some(exporter) = &exporter {
         // (1, 1, None) = "run 1 of 1, unnamed": the per-run subdir collapses to
@@ -140,7 +143,7 @@ pub async fn local_testbed(
                 _ = signal::ctrl_c() => break,
                 _ = ticker.tick() => {
                     let snapshots = metrics.iter().map(|m| m.collect()).collect::<Vec<_>>();
-                    terminal::print_progress(started_at.elapsed(), &snapshots);
+                    terminal.print_status(started_at.elapsed(), &snapshots);
                 }
             }
         }
@@ -175,8 +178,8 @@ pub async fn local_testbed(
         handle.stop().await?
     };
 
-    println!();
-    println!("{}", result.render(stderr_supports_color()));
+    terminal.print_results(&result);
+    terminal.print_summary();
 
     if let Some(exporter) = &exporter {
         exporter.write_to(&result, 1, 1, None)?;
