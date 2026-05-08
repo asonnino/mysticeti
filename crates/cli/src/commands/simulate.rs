@@ -1,10 +1,11 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{fs::File, io::BufWriter, path::PathBuf};
+use std::path::PathBuf;
 
-use dag::{config::ImportExport, metrics::Outcome};
-use eyre::{Context, Result, bail};
+use dag::config::ImportExport;
+use eyre::{Result, bail};
+use replica::result::Outcome;
 use simulator::{SimulationConfig, SimulationMode, SimulationRunner, SimulatorTracing};
 use tracing_subscriber::filter::LevelFilter;
 
@@ -77,14 +78,7 @@ pub async fn simulate(
         terminal.print_config(index + 1, &config);
 
         let name = config.name.clone();
-        let mut runner = SimulationRunner::new(config);
-
-        if export_dag && let Some(exporter) = &exporter {
-            let path = exporter.dag_path(index + 1, total, name.as_deref())?;
-            let file = File::create(&path)
-                .wrap_err_with(|| format!("creating DAG log {}", path.display()))?;
-            runner = runner.with_dag_writer(BufWriter::new(file));
-        }
+        let runner = SimulationRunner::new(config);
 
         let result = tokio::task::spawn_blocking(move || runner.run())
             .await
@@ -96,7 +90,10 @@ pub async fn simulate(
             diverged += 1;
         }
         if let Some(exporter) = &exporter {
-            exporter.write_to(&result, index + 1, total, name.as_deref())?;
+            if export_dag {
+                exporter.write_commit_log(&result.storages, index + 1, total, name.as_deref())?;
+            }
+            exporter.write_run_result(&result, index + 1, total, name.as_deref())?;
         }
     }
 

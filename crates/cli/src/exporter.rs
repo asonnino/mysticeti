@@ -16,8 +16,8 @@
 //!   Prometheus text exposition; consumers can `promtool check metrics` per
 //!   file or merge them into their analysis layer.
 //! - `<output_dir>/<run>/`[`DAG_FILE`] — opt-in committed sub-DAG dump (one JSON
-//!   line per commit). Written **during** the run by `SimulationRunner::with_dag_writer`,
-//!   not by the exporter; the exporter only resolves the per-run path.
+//!   line per commit, `{"authority": …, "commit": …}`). Written by
+//!   [`Exporter::write_commit_log`] from the storages embedded in [`RunResult`].
 //!
 //! `<run>` is the per-run subdirectory: in single-run invocations it collapses to
 //! `output_dir` itself; in multi-run suites it's the run's `name` (sanitised) or its
@@ -36,9 +36,10 @@ use std::{
 
 use dag::{
     authority::Authority,
-    metrics::{Outcome, RunKind, RunResult},
+    storage::{CommitData, Storage},
 };
 use eyre::{Result, WrapErr};
+use replica::result::{Outcome, RunKind, RunResult};
 use serde::Serialize;
 use tempfile::NamedTempFile;
 
@@ -57,6 +58,13 @@ struct Meta {
     /// Unix epoch seconds at the time of export. Downstream consumers render as RFC3339
     /// on their end (e.g. Python `datetime.fromtimestamp(ts, tz=timezone.utc)`).
     timestamp_unix: u64,
+}
+
+/// One NDJSON line of [`DAG_FILE`]. Field order here is the on-disk order.
+#[derive(Serialize)]
+struct DagRecord<'a> {
+    authority: Authority,
+    commit: &'a CommitData,
 }
 
 pub struct Exporter {
@@ -124,7 +132,7 @@ impl Exporter {
     /// Write `config.yaml`, `meta.yaml`, and one `metrics-{authority}.prom`
     /// per replica into the per-run dir resolved via
     /// [`create_run_dir`](Self::create_run_dir).
-    pub fn write_to<C: Serialize>(
+    pub fn write_run_result<C: Serialize>(
         &self,
         result: &RunResult<C>,
         index: usize,
@@ -161,6 +169,33 @@ impl Exporter {
             })?;
         }
         Ok(())
+    }
+
+    /// Stream every committed sub-DAG to `<output_dir>/<run>/dag.ndjson`, one
+    /// `{"authority": …, "commit": …}` line per commit. Storages are scanned end-to-end
+    /// — potentially heavy on long runs, hence opt-in via `--export-dag` at the CLI.
+    pub fn write_commit_log(
+        &self,
+        storages: &[Storage],
+        index: usize,
+        total: usize,
+        name: Option<&str>,
+    ) -> Result<()> {
+        let dir = self.create_run_dir(index, total, name)?;
+        Self::write_atomic(&dir, DAG_FILE, |writer| {
+            for (i, storage) in storages.iter().enumerate() {
+                let authority = Authority::from(i);
+                for commit in storage.iter_commits() {
+                    let record = DagRecord {
+                        authority,
+                        commit: &commit,
+                    };
+                    serde_json::to_writer(&mut *writer, &record).map_err(std::io::Error::other)?;
+                    writeln!(writer)?;
+                }
+            }
+            Ok(())
+        })
     }
 
     /// Stage `write` into a `NamedTempFile` in `dir`, then atomically rename to

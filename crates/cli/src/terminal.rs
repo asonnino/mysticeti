@@ -11,9 +11,10 @@ pub mod table;
 
 use std::{io::IsTerminal, time::Duration};
 
-use dag::metrics::{MetricsSnapshot, RunResult};
+use dag::metrics::SnapshotAggregate;
+use replica::result::RunResult;
 
-pub(crate) use self::render::{ConfigRender, MetricsSnapshotsRender, RunResultRender};
+pub(crate) use self::render::{AggregateRender, ConfigRender, RunResultRender};
 use self::spinner::Spinner;
 use self::table::SuiteRow;
 
@@ -91,9 +92,9 @@ impl Terminal {
     /// Print the live progress line on stderr without disturbing the spinner —
     /// the bar is suspended around the write, so its elapsed timer stays
     /// monotonic across heartbeats.
-    pub(crate) fn print_status(&mut self, elapsed: Duration, snapshots: &[MetricsSnapshot]) {
+    pub(crate) fn print_status(&mut self, elapsed: Duration, aggregate: &SnapshotAggregate<'_>) {
         self.spinner
-            .suspend(|| eprintln!("{}", snapshots.render(elapsed)));
+            .suspend(|| eprintln!("{}", aggregate.render(elapsed)));
     }
 
     /// Stop the spinner, print the per-result block (badge + per-replica table or
@@ -108,7 +109,7 @@ impl Terminal {
             .name()
             .map(str::to_owned)
             .unwrap_or_else(|| "unnamed".into());
-        let commit_counts = result.leaders_committed_per_replica();
+        let commit_counts = SnapshotAggregate::new(&result.metrics).committed_leaders_per_replica();
         self.suite_rows.push(SuiteRow::new(
             &run_name,
             result.config.committee_size(),

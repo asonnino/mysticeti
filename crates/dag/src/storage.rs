@@ -13,11 +13,11 @@ use crate::{
 };
 
 use self::{
-    block_store::{CommitData, OwnBlockData, WAL_ENTRY_BLOCK, WAL_ENTRY_COMMIT, WAL_ENTRY_PAYLOAD},
+    block_store::{OwnBlockData, WAL_ENTRY_BLOCK, WAL_ENTRY_COMMIT, WAL_ENTRY_PAYLOAD},
     wal::{WalWriter, open_file_for_wal, walf},
 };
 
-pub use self::block_store::BlockReader;
+pub use self::block_store::{BlockReader, CommitData};
 pub use self::state::RecoveredState;
 pub use self::wal::{WalPosition, WalSyncer};
 
@@ -59,7 +59,7 @@ impl Storage {
             .expect("Failed to write statements to wal")
     }
 
-    pub(crate) fn write_commits(&mut self, commits: &[CommitData]) {
+    pub fn write_commits(&mut self, commits: &[CommitData]) {
         let serialized = bincode::serialize(commits).expect("Commits serialization failed");
         self.wal_writer
             .write(WAL_ENTRY_COMMIT, &serialized)

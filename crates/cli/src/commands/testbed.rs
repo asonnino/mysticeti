@@ -9,14 +9,13 @@
 //! shutdown + `RunResult` collection.
 
 use std::{
-    fs::File,
-    io::BufWriter,
     path::PathBuf,
     time::{Duration, Instant},
 };
 
-use dag::{config::ImportExport, metrics::Outcome};
-use eyre::{Context, Result, bail};
+use dag::{config::ImportExport, metrics::SnapshotAggregate};
+use eyre::{Result, bail};
+use replica::result::Outcome;
 use replica::{
     config::{LoadGeneratorConfig, ReplicaParameters},
     testbed::{LocalTestbedRunner, TestbedConfig},
@@ -112,16 +111,7 @@ pub async fn local_testbed(
     let mut terminal = Terminal::new(1);
     terminal.print_config(1, &testbed_config);
 
-    let mut runner = LocalTestbedRunner::new(testbed_config);
-    if export_dag && let Some(exporter) = &exporter {
-        // (1, 1, None) = "run 1 of 1, unnamed": the per-run subdir collapses to
-        // `output_dir` itself for single-run invocations.
-        let path = exporter.dag_path(1, 1, None)?;
-        let file =
-            File::create(&path).wrap_err_with(|| format!("creating DAG log {}", path.display()))?;
-        runner = runner.with_dag_writer(BufWriter::new(file));
-    }
-
+    let runner = LocalTestbedRunner::new(testbed_config);
     let handle = runner.run().await?;
     let metrics = handle.metrics().to_vec();
     let started_at = Instant::now();
@@ -143,7 +133,8 @@ pub async fn local_testbed(
                 _ = signal::ctrl_c() => break,
                 _ = ticker.tick() => {
                     let snapshots = metrics.iter().map(|m| m.collect()).collect::<Vec<_>>();
-                    terminal.print_status(started_at.elapsed(), &snapshots);
+                    let aggregate = SnapshotAggregate::new(&snapshots);
+                    terminal.print_status(started_at.elapsed(), &aggregate);
                 }
             }
         }
@@ -182,7 +173,12 @@ pub async fn local_testbed(
     terminal.print_summary();
 
     if let Some(exporter) = &exporter {
-        exporter.write_to(&result, 1, 1, None)?;
+        // (1, 1, None) = "run 1 of 1, unnamed": the per-run subdir collapses to
+        // `output_dir` itself for single-run invocations.
+        if export_dag {
+            exporter.write_commit_log(&result.storages, 1, 1, None)?;
+        }
+        exporter.write_run_result(&result, 1, 1, None)?;
     }
     if result.outcome == Outcome::Diverged {
         bail!("local testbed run diverged");

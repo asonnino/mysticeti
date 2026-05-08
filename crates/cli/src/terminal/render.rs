@@ -8,7 +8,8 @@
 
 use std::time::Duration;
 
-use dag::metrics::{LATENCY_S, MetricsSnapshot, Outcome, RunResult};
+use dag::metrics::SnapshotAggregate;
+use replica::result::{Outcome, RunResult};
 use replica::testbed::TestbedConfig;
 use simulator::SimulationConfig;
 
@@ -124,7 +125,8 @@ pub trait RunResultRender {
 impl<C> RunResultRender for RunResult<C> {
     fn render(&self, color: bool) -> String {
         let outcome = self.outcome;
-        let commit_counts = self.leaders_committed_per_replica();
+        let aggregate = SnapshotAggregate::new(&self.metrics);
+        let commit_counts = aggregate.committed_leaders_per_replica();
 
         let mut out = outcome.badge(color);
         out.push('\n');
@@ -135,15 +137,18 @@ impl<C> RunResultRender for RunResult<C> {
             .unwrap_or(true);
         if outcome != Outcome::Diverged && uniform_commits {
             let committed = commit_counts.first().copied().unwrap_or_default();
-            let rate = match self.leaders_committed_per_second() {
-                Some(r) => format!("{r:.1} commits/s"),
+            let rate = match aggregate.committed_leaders_per_second(self.duration) {
+                Some(rate) => format!("{rate:.1} commits/s"),
                 None => "— commits/s".into(),
             };
             let mut headline = Vec::new();
-            if let (Some(p50), Some(p90)) = (self.p50_latency_ms(), self.p90_latency_ms()) {
+            if let (Some(p50), Some(p90)) = (
+                aggregate.mean_latency_percentile_ms(0.5),
+                aggregate.mean_latency_percentile_ms(0.9),
+            ) {
                 headline.push(format!("p50 {p50:.0} ms · p90 {p90:.0} ms"));
             }
-            if let Some(tps) = self.transactions_committed_per_second() {
+            if let Some(tps) = aggregate.transactions_per_second(self.duration) {
                 headline.push(format!("{tps:.0} TPS"));
             }
             let headline = headline.join(" · ");
@@ -153,74 +158,42 @@ impl<C> RunResultRender for RunResult<C> {
                 out.push_str(&format!("  {headline} ({committed} commits, {rate})"));
             }
         } else {
-            out.push_str(&table::render(ReplicaRow::for_result(self)));
+            out.push_str(&table::render(ReplicaRow::iter_for_result(self)));
         }
         out
     }
 }
 
-/// Live one-line aggregate of the running replicas, e.g.
+/// Live one-line render of an aggregate, e.g.
 /// `[t=Ns] · committed=N · X.X commits/s · Y tx/s · p50 N ms · p90 N ms`.
-/// Sub-fields are omitted when no replica produced data yet (e.g. before the
-/// load generator's `initial_delay` has elapsed and the latency histogram is
+/// Sub-fields are omitted when the underlying aggregator returns `None` (e.g. before
+/// the load generator's `initial_delay` has elapsed and the latency histogram is
 /// still empty).
-pub trait MetricsSnapshotsRender {
+pub trait AggregateRender {
     fn render(&self, elapsed: Duration) -> String;
 }
 
-impl MetricsSnapshotsRender for [MetricsSnapshot] {
+impl AggregateRender for SnapshotAggregate<'_> {
     fn render(&self, elapsed: Duration) -> String {
-        let elapsed_secs = elapsed.as_secs();
-        let max_committed = self
-            .iter()
-            .map(|s| s.total_committed_leaders())
-            .max()
-            .unwrap_or(0);
         let mut parts = vec![
-            format!("[t={elapsed_secs}s]"),
-            format!("committed={max_committed}"),
+            format!("[t={}s]", elapsed.as_secs()),
+            format!("committed={}", self.max_committed_leaders()),
         ];
         let elapsed_secs_f = elapsed.as_secs_f64();
-        if elapsed_secs_f > 0.0 && !self.is_empty() {
-            let mean_committed = self
-                .iter()
-                .map(|s| s.total_committed_leaders())
-                .sum::<u64>() as f64
-                / self.len() as f64;
-            if mean_committed > 0.0 {
-                parts.push(format!("{:.1} commits/s", mean_committed / elapsed_secs_f));
+        if elapsed_secs_f > 0.0 {
+            if let Some(mean) = self.mean_committed_leaders() {
+                parts.push(format!("{:.1} commits/s", mean / elapsed_secs_f));
             }
-            let tx_counts: Vec<u64> = self
-                .iter()
-                .filter_map(|s| s.histogram_sum_and_count(LATENCY_S))
-                .map(|(_, count)| count)
-                .collect();
-            if !tx_counts.is_empty() {
-                let mean_tx = tx_counts.iter().sum::<u64>() as f64 / tx_counts.len() as f64;
-                if mean_tx > 0.0 {
-                    parts.push(format!("{:.0} tx/s", mean_tx / elapsed_secs_f));
-                }
+            if let Some(mean) = self.mean_committed_transactions() {
+                parts.push(format!("{:.0} tx/s", mean / elapsed_secs_f));
             }
         }
-        let p50 = mean_per_replica(self, |s| s.latency_percentile_ms(0.5));
-        let p90 = mean_per_replica(self, |s| s.latency_percentile_ms(0.9));
-        if let (Some(p50), Some(p90)) = (p50, p90) {
+        if let (Some(p50), Some(p90)) = (
+            self.mean_latency_percentile_ms(0.5),
+            self.mean_latency_percentile_ms(0.9),
+        ) {
             parts.push(format!("p50 {p50:.0} ms · p90 {p90:.0} ms"));
         }
         parts.join(" · ")
-    }
-}
-
-/// Average a per-replica value, ignoring replicas where the extractor returns
-/// `None` (e.g. histograms that haven't seen a sample yet).
-fn mean_per_replica<F>(snapshots: &[MetricsSnapshot], extract: F) -> Option<f64>
-where
-    F: Fn(&MetricsSnapshot) -> Option<f64>,
-{
-    let values: Vec<f64> = snapshots.iter().filter_map(extract).collect();
-    if values.is_empty() {
-        None
-    } else {
-        Some(values.iter().sum::<f64>() / values.len() as f64)
     }
 }

@@ -3,8 +3,9 @@
 
 use dag::{
     authority::Authority,
-    metrics::{MetricsSnapshot, Outcome, RunResult},
+    metrics::{MetricsSnapshot, SnapshotAggregate},
 };
+use replica::result::{Outcome, RunResult};
 use tabled::{Table, Tabled, settings::Style};
 
 use super::render::OutcomeDisplay;
@@ -74,14 +75,16 @@ impl ReplicaRow {
         }
     }
 
-    pub fn for_result<C>(result: &RunResult<C>) -> Vec<Self> {
+    pub fn iter_for_result<C>(result: &RunResult<C>) -> impl Iterator<Item = Self> + '_ {
         let duration_secs = result.duration.as_secs();
+        let committed_leaders =
+            SnapshotAggregate::new(&result.metrics).committed_leaders_per_replica();
         result
             .metrics
             .iter()
-            .zip(result.leaders_committed_per_replica())
+            .zip(committed_leaders)
             .enumerate()
-            .map(|(index, (metrics, committed_leaders))| {
+            .map(move |(index, (metrics, committed_leaders))| {
                 Self::new(
                     Authority::from(index),
                     committed_leaders,
@@ -89,7 +92,6 @@ impl ReplicaRow {
                     metrics,
                 )
             })
-            .collect()
     }
 }
 
