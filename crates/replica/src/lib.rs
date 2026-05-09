@@ -6,4 +6,5 @@ pub mod config;
 pub mod generator;
 pub mod prometheus;
 pub mod replica;
+pub mod result;
 pub mod testbed;

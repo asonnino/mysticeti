@@ -29,7 +29,7 @@ impl<const N: usize> AsBytes for [u8; N] {
 
 /// Feeds a value into a running [`Digest`] for cryptographic hashing. Primitive integers use
 /// big-endian encoding; [`AsBytes`] types feed their raw bytes directly.
-pub(crate) trait CryptoHash {
+pub trait CryptoHash {
     fn crypto_hash(&self, state: &mut impl Digest);
 }
 

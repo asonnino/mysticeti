@@ -2609,8 +2609,10 @@ name = "replica"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "blake2",
  "consensus",
  "dag",
+ "digest 0.10.7",
  "eyre",
  "humantime-serde",
  "minibytes",

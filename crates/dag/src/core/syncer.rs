@@ -8,6 +8,7 @@ use tokio::sync::Notify;
 
 use super::{Core, block_handler::CommitHandler};
 use crate::consensus::DagConsensus;
+use crate::storage::Storage;
 use crate::{
     authority::Authority,
     block::{Block, RoundNumber},
@@ -126,6 +127,11 @@ impl<C: Ctx, D: DagConsensus> Syncer<C, D> {
 
     pub fn core(&self) -> &Core<C, D> {
         &self.core
+    }
+
+    /// Consume the syncer and yield the owned [`Storage`] — see [`Core::into_storage`].
+    pub fn into_storage(self) -> Storage {
+        self.core.into_storage()
     }
 
     pub fn connect_authority(&mut self, authority: Authority) {

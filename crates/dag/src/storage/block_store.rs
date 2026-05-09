@@ -288,7 +288,7 @@ impl OwnBlockData {
 }
 
 #[derive(Serialize, Deserialize)]
-#[cfg_attr(test, derive(Clone))]
+#[cfg_attr(any(test, feature = "test-utils"), derive(Clone))]
 pub struct CommitData {
     pub leader: BlockReference,
     // All committed blocks, including the leader

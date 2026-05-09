@@ -379,6 +379,13 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
         &self.storage
     }
 
+    /// Consume the core and yield the owned [`Storage`]. Used at run shutdown so the
+    /// storage can outlive the core (and the rest of its dropped state) — the run-result
+    /// pipeline wants to keep storages alive until the exporter is done with them.
+    pub fn into_storage(self) -> Storage {
+        self.storage
+    }
+
     pub fn last_own_block(&self) -> &Data<Block> {
         &self.last_own_block.block
     }

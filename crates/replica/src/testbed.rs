@@ -19,16 +19,14 @@
 //! triggers (Ctrl-C, oneshot, etc.) `select!` against `stop()` accordingly.
 
 use std::{
-    io,
     net::{IpAddr, Ipv4Addr},
     sync::Arc,
     time::Instant,
 };
 
 use dag::{
-    authority::Authority,
-    context::TokioCtx,
-    metrics::{Metrics, RunKind, RunResult},
+    authority::Authority, context::TokioCtx, core::syncer::Syncer, metrics::Metrics,
+    storage::Storage,
 };
 use eyre::{Result, WrapErr};
 use serde::{Deserialize, Serialize};
@@ -40,6 +38,7 @@ use crate::{
     config::{LoadGeneratorConfig, PrivateReplicaConfig, PublicReplicaConfig, ReplicaParameters},
     prometheus::{MetricsRegistry, PrometheusServer},
     replica::ReplicaHandle,
+    result::{RunKind, RunResult},
 };
 
 /// Full configuration for a local-testbed run. Embedded in the resulting
@@ -52,28 +51,16 @@ pub struct TestbedConfig {
     pub load_generator: LoadGeneratorConfig,
 }
 
-/// Builder for a local-testbed run. Holds the configuration and any optional
-/// knobs (e.g. a DAG-log writer); consume via [`Self::run`] to bring replicas
-/// online and obtain a [`LocalTestbedHandle`].
+/// Builder for a local-testbed run. Holds the configuration; consume via [`Self::run`]
+/// to bring replicas online and obtain a [`LocalTestbedHandle`]. The committed sub-DAG
+/// dump (`dag.ndjson`) is opt-in at the exporter layer rather than wired through here.
 pub struct LocalTestbedRunner {
     config: TestbedConfig,
-    dag_writer: Option<Box<dyn io::Write + Send + Sync + 'static>>,
 }
 
 impl LocalTestbedRunner {
     pub fn new(config: TestbedConfig) -> Self {
-        Self {
-            config,
-            dag_writer: None,
-        }
-    }
-
-    /// Stream every committed sub-DAG to `writer` as newline-delimited JSON
-    /// during the post-run storage scan. Memory stays `O(replicas)` regardless
-    /// of commit count.
-    pub fn with_dag_writer<W: io::Write + Send + Sync + 'static>(mut self, writer: W) -> Self {
-        self.dag_writer = Some(Box::new(writer));
-        self
+        Self { config }
     }
 
     pub fn config(&self) -> &TestbedConfig {
@@ -135,9 +122,8 @@ impl LocalTestbedHandle {
     }
 }
 
-/// Live state of a running testbed: replica handles, prometheus / load-gen
-/// background tasks held alive by the leading-underscore fields, and the
-/// optional DAG-log writer carried into [`Self::collect_result`].
+/// Live state of a running testbed: replica handles plus the prometheus /
+/// load-gen background tasks held alive by the leading-underscore fields.
 struct LocalTestbedState {
     config: TestbedConfig,
     handles: Vec<ReplicaHandle<TokioCtx>>,
@@ -148,7 +134,6 @@ struct LocalTestbedState {
     _metrics_servers: Vec<JoinHandle<()>>,
     _load_generators: Vec<JoinHandle<()>>,
     started_at: Instant,
-    dag_writer: Option<Box<dyn io::Write + Send + Sync + 'static>>,
 }
 
 impl LocalTestbedState {
@@ -161,7 +146,7 @@ impl LocalTestbedState {
     }
 
     async fn setup(runner: LocalTestbedRunner) -> Result<Self> {
-        let LocalTestbedRunner { config, dag_writer } = runner;
+        let LocalTestbedRunner { config } = runner;
         let committee_size = config.committee_size;
 
         let ips = vec![IpAddr::V4(Ipv4Addr::LOCALHOST); committee_size];
@@ -213,7 +198,6 @@ impl LocalTestbedState {
             _metrics_servers: metrics_servers,
             _load_generators: load_generators,
             started_at: Instant::now(),
-            dag_writer,
         })
     }
 
@@ -223,37 +207,25 @@ impl LocalTestbedState {
     async fn collect_result(self) -> Result<RunResult<TestbedConfig>> {
         let elapsed = self.started_at.elapsed();
         let Self {
-            config,
-            handles,
-            dag_writer,
-            ..
+            config, handles, ..
         } = self;
 
         let mut syncers = Vec::with_capacity(handles.len());
         for handle in handles {
             syncers.push(handle.shutdown().await);
         }
-        let (snapshots, storages): (Vec<_>, Vec<&_>) = syncers
+        let snapshots: Vec<_> = syncers
             .iter()
-            .map(|syncer| {
-                let core = syncer.core();
-                (core.metrics.collect(), core.storage())
-            })
-            .unzip();
+            .map(|syncer| syncer.core().metrics.collect())
+            .collect();
+        let storages: Vec<Storage> = syncers.into_iter().map(Syncer::into_storage).collect();
 
-        let mut writer = dag_writer;
-        let mut builder =
-            RunResult::builder(snapshots, &storages, config, elapsed, RunKind::Testbed);
-        if let Some(w) = &mut writer {
-            builder = builder.with_dag_log(&mut **w);
-        }
-        let result = builder.collect()?;
-        // Flush before drop: BufWriter's `Drop` flushes silently, swallowing errors. The
-        // DAG log is the only artefact the runner writes mid-run, so a flush failure here
-        // should surface to the caller.
-        if let Some(mut w) = writer {
-            w.flush().wrap_err("flushing DAG log")?;
-        }
-        Ok(result)
+        Ok(RunResult::new(
+            snapshots,
+            storages,
+            config,
+            elapsed,
+            RunKind::Testbed,
+        ))
     }
 }

@@ -1,11 +1,11 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+mod aggregate;
 mod coarse;
 mod histogram;
 mod names;
 mod precise;
-mod result;
 mod snapshot;
 mod timers;
 
@@ -15,11 +15,11 @@ use ::prometheus::Registry;
 use tabled::{Table, Tabled};
 use tokio::time::Instant;
 
+pub use self::aggregate::SnapshotAggregate;
 pub use self::names::{
     BENCHMARK_DURATION, BLOCK_SYNC_REQUESTS_SENT, LABEL_AUTHORITY, LATENCY_S, LATENCY_SQUARED_S,
     LEADER_TIMEOUT_TOTAL, SyncRequestFulfilled,
 };
-pub use self::result::{Outcome, RunKind, RunResult};
 pub use self::snapshot::MetricsSnapshot;
 pub use self::timers::{OwnedUtilizationTimer, UtilizationTimer};
 use self::{

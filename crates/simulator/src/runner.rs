@@ -13,13 +13,15 @@ use dag::{
     config::{ConfigError, ImportExport},
     context::Ctx,
     core::syncer::Syncer,
-    metrics::{Metrics, RunKind, RunResult},
+    metrics::Metrics,
+    storage::Storage,
 };
 use rand::{SeedableRng, rngs::StdRng};
 use replica::{
     builder::{ReplicaBuilder, StorageKind},
     config::{PrivateReplicaConfig, PublicReplicaConfig},
     replica::ReplicaHandle,
+    result::{RunKind, RunResult},
 };
 
 use crate::{
@@ -32,15 +34,11 @@ use crate::{
 
 pub struct SimulationRunner {
     config: SimulationConfig,
-    dag_writer: Option<Box<dyn io::Write + Send + Sync + 'static>>,
 }
 
 impl SimulationRunner {
     pub fn new(config: SimulationConfig) -> Self {
-        Self {
-            config,
-            dag_writer: None,
-        }
+        Self { config }
     }
 
     pub fn from_yaml(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
@@ -52,13 +50,6 @@ impl SimulationRunner {
         &self.config
     }
 
-    /// Stream each committed sub-dag to `writer` as newline-delimited JSON during the
-    /// end-of-run storage scan. Memory stays O(replicas) regardless of commit count.
-    pub fn with_dag_writer<W: io::Write + Send + Sync + 'static>(mut self, writer: W) -> Self {
-        self.dag_writer = Some(Box::new(writer));
-        self
-    }
-
     /// Run the simulation to completion and return the result.
     ///
     /// Executes inside a deterministic discrete-event simulator:
@@ -66,9 +57,9 @@ impl SimulationRunner {
     pub fn run(self) -> io::Result<RunResult<SimulationConfig>> {
         let _guard = SimulatorTracing::new().setup().ok();
         let rng = StdRng::seed_from_u64(self.config.rng_seed);
-        let Self { config, dag_writer } = self;
+        let Self { config } = self;
         SimulatorExecutor::run(rng, async move {
-            let state = SimulationState::setup(config, dag_writer).await;
+            let state = SimulationState::setup(config).await;
             state.apply_topology().await;
             SimulatorContext::sleep(state.config.duration()).await;
             state.collect_result().await
@@ -80,18 +71,13 @@ struct SimulationState {
     config: SimulationConfig,
     network: SimulatedNetwork,
     replicas: Vec<ReplicaHandle<SimulatorContext>>,
-    /// When set, each committed sub-dag is streamed through this writer at end-of-run.
-    dag_writer: Option<Box<dyn io::Write + Send + Sync + 'static>>,
     /// JoinHandles for any load generators we started, so they stay alive for the duration
     /// of the simulation.
     _load_generators: Vec<JoinHandle<()>>,
 }
 
 impl SimulationState {
-    async fn setup(
-        config: SimulationConfig,
-        dag_writer: Option<Box<dyn io::Write + Send + Sync + 'static>>,
-    ) -> Self {
+    async fn setup(config: SimulationConfig) -> Self {
         let committee_size = config.committee_size;
         let committee = Committee::new_test(vec![1; committee_size]);
 
@@ -131,7 +117,6 @@ impl SimulationState {
             config,
             network,
             replicas,
-            dag_writer,
             _load_generators: load_generators,
         }
     }
@@ -164,36 +149,24 @@ impl SimulationState {
     }
 
     async fn collect_result(self) -> io::Result<RunResult<SimulationConfig>> {
+        let Self {
+            config, replicas, ..
+        } = self;
+        let duration = config.duration();
         let syncers: Vec<Syncer<SimulatorContext, Committer>> =
-            futures::future::join_all(self.replicas.into_iter().map(ReplicaHandle::shutdown)).await;
-
-        let (metrics, storages): (Vec<_>, Vec<&_>) = syncers
+            futures::future::join_all(replicas.into_iter().map(ReplicaHandle::shutdown)).await;
+        let metrics: Vec<_> = syncers
             .iter()
-            .map(|syncer| {
-                let core = syncer.core();
-                (core.metrics.collect(), core.storage())
-            })
-            .unzip();
+            .map(|syncer| syncer.core().metrics.collect())
+            .collect();
+        let storages: Vec<Storage> = syncers.into_iter().map(Syncer::into_storage).collect();
 
-        let duration = self.config.duration();
-        let mut writer = self.dag_writer;
-        let mut builder = RunResult::builder(
+        Ok(RunResult::new(
             metrics,
-            &storages,
-            self.config,
+            storages,
+            config,
             duration,
             RunKind::Simulation,
-        );
-        if let Some(w) = &mut writer {
-            builder = builder.with_dag_log(&mut **w);
-        }
-        let result = builder.collect()?;
-        // Flush before drop: BufWriter's `Drop` flushes silently, swallowing errors. The
-        // DAG log is the only artefact written mid-run, so a flush failure here should
-        // surface to the caller.
-        if let Some(mut w) = writer {
-            w.flush()?;
-        }
-        Ok(result)
+        ))
     }
 }

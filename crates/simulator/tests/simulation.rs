@@ -4,9 +4,10 @@
 use std::{num::NonZeroUsize, path::PathBuf};
 
 use consensus::protocol::ConsensusProtocol;
-use dag::{config::ImportExport, metrics::Outcome};
+use dag::config::ImportExport;
 use indoc::indoc;
 use replica::config::ReplicaParameters;
+use replica::result::Outcome;
 use simulator::{NetworkTopology, SimulationConfig, SimulationMode, SimulationRunner};
 
 #[test]

@@ -23,7 +23,7 @@ use crate::{
 
 pub use self::digest::{BLOCK_DIGEST_SIZE, BlockDigest};
 pub use self::hash::AsBytes;
-pub(crate) use self::hash::CryptoHash;
+pub use self::hash::CryptoHash;
 pub use self::sign::{PublicKey, SIGNATURE_SIZE, SignatureBytes, Signer};
 
 /// Signing-side crypto held by [`Core`](crate::core::Core).
