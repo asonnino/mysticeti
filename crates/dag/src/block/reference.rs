@@ -33,8 +33,11 @@ pub struct BlockReference {
 }
 
 impl BlockReference {
-    /// Create a test reference. For round 0, computes a real genesis digest;
-    /// for other rounds, uses a synthetic digest encoding `(round, authority)`.
+    /// Create a test reference. For round 0, returns the digest produced by
+    /// [`Block::genesis`]; for other rounds, returns a synthetic digest encoding
+    /// `(round, authority)`.
+    ///
+    /// [`Block::genesis`]: super::Block::genesis
     #[cfg(any(test, feature = "test-utils"))]
     pub fn new_test(authority: u64, round: RoundNumber) -> Self {
         let authority = Authority::new(authority);
