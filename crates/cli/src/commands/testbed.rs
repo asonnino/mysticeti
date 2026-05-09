@@ -52,12 +52,15 @@ pub async fn local_testbed(
         .as_ref()
         .map(Exporter::tracing_log_path)
         .or(log_file);
-    let _guard = match log_level {
-        Some(level) => ReplicaTracing::new(level),
-        None => ReplicaTracing::default(),
-    }
-    .with_log_file(log_path)
-    .setup()?;
+    // When logs go to stderr, default to WARN so info chatter does not interleave
+    // with the banner/heartbeat/summary; when going to a file, keep INFO.
+    let default_level = if log_path.is_some() {
+        LevelFilter::INFO
+    } else {
+        LevelFilter::WARN
+    };
+    let level = log_level.unwrap_or(default_level);
+    let _guard = ReplicaTracing::new(level).with_log_file(log_path).setup()?;
 
     let replica_parameters = match replica_parameters_path {
         Some(path) => {
