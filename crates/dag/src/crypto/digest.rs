@@ -65,9 +65,20 @@ impl BlockDigest {
         Self(hasher.finalize().into())
     }
 
-    /// Returns an all-zeros digest, used as a placeholder when crypto is disabled.
-    pub fn dummy() -> Self {
-        Self([0u8; BLOCK_DIGEST_SIZE])
+    /// A digest that encodes `(round, author)` in its first 8 bytes, with the remaining
+    /// 24 bytes zeroed. Used by [`Block::genesis`], the [`CryptoEngine::disabled`] paths,
+    /// and the test helpers — anywhere a real Blake2b digest is not produced. Keeps the
+    /// `Hash` impl on [`BlockReference`] (which keys off the first 8 bytes) well-distributed.
+    /// Two blocks at the same `(round, author)` still collide, which matches their
+    /// indistinguishability under disabled crypto.
+    ///
+    /// [`Block::genesis`]: crate::block::Block::genesis
+    /// [`CryptoEngine::disabled`]: super::CryptoEngine::disabled
+    pub fn synthetic(round: RoundNumber, author: Authority) -> Self {
+        let mut bytes = [0u8; BLOCK_DIGEST_SIZE];
+        let mixed = round.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ author.as_u64();
+        bytes[..8].copy_from_slice(&mixed.to_be_bytes());
+        Self(bytes)
     }
 }
 

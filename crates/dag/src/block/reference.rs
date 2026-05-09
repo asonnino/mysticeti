@@ -32,19 +32,9 @@ pub struct BlockReference {
     pub digest: BlockDigest,
 }
 
-impl Default for BlockReference {
-    fn default() -> Self {
-        Self {
-            authority: Authority::default(),
-            round: 0,
-            digest: BlockDigest::dummy(),
-        }
-    }
-}
-
 impl BlockReference {
     /// Create a test reference. For round 0, computes a real genesis digest;
-    /// for other rounds, uses a default (zero) digest.
+    /// for other rounds, uses a synthetic digest encoding `(round, authority)`.
     #[cfg(any(test, feature = "test-utils"))]
     pub fn new_test(authority: u64, round: RoundNumber) -> Self {
         let authority = Authority::new(authority);
@@ -54,7 +44,7 @@ impl BlockReference {
             Self {
                 authority,
                 round,
-                digest: BlockDigest::dummy(),
+                digest: BlockDigest::synthetic(round, authority),
             }
         }
     }
