@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Per-replica aggregations over a slice of [`MetricsSnapshot`]. The single home for
-//! "average / max / per-replica" reductions; both [`super::RunResult`] (final summary)
-//! and the live-heartbeat renderer in the cli crate go through here so the same numbers
+//! "average / max / per-replica" reductions; both the runner-level run-result type and
+//! the live-heartbeat renderer in the cli crate go through here so the same numbers
 //! drive both views.
 
 use std::time::Duration;
@@ -62,16 +62,15 @@ impl<'a> SnapshotAggregate<'a> {
     /// transactions it observed). `None` when no replica has logged any transactions
     /// yet — typically before the load generator's `initial_delay` has elapsed.
     pub fn mean_committed_transactions(&self) -> Option<f64> {
-        let counts: Vec<u64> = self
+        let (sum, count) = self
             .snapshots
             .iter()
             .filter_map(|s| s.histogram_sum_and_count(LATENCY_S))
-            .map(|(_, count)| count)
-            .collect();
-        if counts.is_empty() {
+            .fold((0u64, 0usize), |(sum, count), (_, c)| (sum + c, count + 1));
+        if count == 0 {
             return None;
         }
-        let mean = counts.iter().sum::<u64>() as f64 / counts.len() as f64;
+        let mean = sum as f64 / count as f64;
         (mean > 0.0).then_some(mean)
     }
 
@@ -79,16 +78,12 @@ impl<'a> SnapshotAggregate<'a> {
     /// produced enough histogram samples to compute it. `None` when no replica has
     /// any samples.
     pub fn mean_latency_percentile_ms(&self, p: f64) -> Option<f64> {
-        let values: Vec<f64> = self
+        let (sum, count) = self
             .snapshots
             .iter()
             .filter_map(|s| s.latency_percentile_ms(p))
-            .collect();
-        if values.is_empty() {
-            None
-        } else {
-            Some(values.iter().sum::<f64>() / values.len() as f64)
-        }
+            .fold((0.0f64, 0usize), |(sum, count), v| (sum + v, count + 1));
+        (count > 0).then(|| sum / count as f64)
     }
 
     /// Mean committed-leader rate (leaders/s) across replicas over `duration`.
