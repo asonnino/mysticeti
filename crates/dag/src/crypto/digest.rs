@@ -29,6 +29,12 @@ use super::sign::SignatureBytes;
 /// Length of a block digest in bytes (Blake2b-256).
 pub const BLOCK_DIGEST_SIZE: usize = 32;
 
+/// 64-bit golden-ratio constant (`floor(2^64 / phi)`, odd). Used as a multiplier in
+/// [`BlockDigest::synthetic`] to diffuse `round` across all 8 bytes before XOR-ing
+/// in `authority`, so both dimensions contribute entropy to every byte of the bucket
+/// prefix consumed by `BlockReference::Hash`.
+const GOLDEN_RATIO_MIXER: u64 = 0x9E37_79B9_7F4A_7C15;
+
 /// A 32-byte Blake2b-256 hash that uniquely identifies a block.
 #[derive(Clone, Copy, Eq, Ord, PartialOrd, PartialEq, Hash)]
 pub struct BlockDigest([u8; BLOCK_DIGEST_SIZE]);
@@ -65,9 +71,20 @@ impl BlockDigest {
         Self(hasher.finalize().into())
     }
 
-    /// Returns an all-zeros digest, used as a placeholder when crypto is disabled.
-    pub fn dummy() -> Self {
-        Self([0u8; BLOCK_DIGEST_SIZE])
+    /// A digest that encodes `(round, authority)` in its first 8 bytes, with the remaining
+    /// 24 bytes zeroed. Used by [`Block::genesis`], the [`CryptoEngine::disabled`] paths,
+    /// and the test helpers — anywhere a real Blake2b digest is not produced. Keeps the
+    /// `Hash` impl on [`BlockReference`] (which keys off the first 8 bytes) well-distributed.
+    /// Two blocks at the same `(round, authority)` still collide, which matches their
+    /// indistinguishability under disabled crypto.
+    ///
+    /// [`Block::genesis`]: crate::block::Block::genesis
+    /// [`CryptoEngine::disabled`]: super::CryptoEngine::disabled
+    pub(crate) fn synthetic(round: RoundNumber, authority: Authority) -> Self {
+        let mut bytes = [0u8; BLOCK_DIGEST_SIZE];
+        let mixed = round.wrapping_mul(GOLDEN_RATIO_MIXER) ^ authority.as_u64();
+        bytes[..8].copy_from_slice(&mixed.to_be_bytes());
+        Self(bytes)
     }
 }
 

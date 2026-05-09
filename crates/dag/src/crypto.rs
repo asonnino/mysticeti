@@ -81,7 +81,10 @@ impl CryptoEngine {
         timestamp_ns: u64,
     ) -> (SignatureBytes, BlockDigest) {
         if !self.enabled {
-            return (SignatureBytes::dummy(), BlockDigest::dummy());
+            return (
+                SignatureBytes::dummy(),
+                BlockDigest::synthetic(round, authority),
+            );
         }
         let content_hash = BlockDigest::new(authority, round, includes, transactions, timestamp_ns);
         let signature = self.signer.sign(content_hash.as_ref());
@@ -100,7 +103,7 @@ impl CryptoVerifier {
     /// produce the content hash, verifies the signature against it, then derives the full digest.
     pub fn verify(&self, public_key: &PublicKey, block: &Block) -> eyre::Result<BlockDigest> {
         if !self.enabled {
-            return Ok(BlockDigest::dummy());
+            return Ok(BlockDigest::synthetic(block.round(), block.author()));
         }
         let digest = BlockDigest::new(
             block.author(),

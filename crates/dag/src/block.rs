@@ -75,14 +75,14 @@ pub struct Block {
 }
 
 impl Block {
-    /// Create the genesis block for an authority (round 0, no includes, no transactions, dummy
-    /// digest and default signature).
+    /// Create the genesis block for an authority (round 0, no includes, no transactions,
+    /// synthetic digest and default signature).
     pub fn genesis(authority: Authority) -> Data<Self> {
         Data::new(Self {
             reference: BlockReference {
                 authority,
                 round: GENESIS_ROUND,
-                digest: BlockDigest::dummy(),
+                digest: BlockDigest::synthetic(GENESIS_ROUND, authority),
             },
             includes: vec![],
             transactions: vec![],
@@ -116,7 +116,8 @@ impl Block {
         }
     }
 
-    /// Test-only constructor with dummy digest, no transactions, and no signature.
+    /// Test-only constructor with a synthetic digest (encoding `(round, authority)`),
+    /// no transactions, and no signature.
     #[cfg(any(test, feature = "test-utils"))]
     pub fn new_for_test(
         authority: Authority,
@@ -127,7 +128,7 @@ impl Block {
             reference: BlockReference {
                 authority,
                 round,
-                digest: BlockDigest::dummy(),
+                digest: BlockDigest::synthetic(round, authority),
             },
             includes,
             transactions: vec![],
