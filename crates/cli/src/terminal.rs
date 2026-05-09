@@ -84,6 +84,7 @@ impl Terminal {
         }
         if !rows.is_empty() {
             println!("{}", table::render(rows));
+            println!();
         }
 
         self.spinner.start();
