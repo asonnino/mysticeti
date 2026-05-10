@@ -15,8 +15,6 @@ use simulator::SimulationConfig;
 
 use std::fmt::Write as _;
 
-use unicode_width::UnicodeWidthStr;
-
 use super::table::{self, ReplicaRow};
 use super::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 
@@ -32,20 +30,12 @@ pub trait ConfigRender {
 
     /// Render `config_rows` in the banner's border-less key/value style.
     fn render(&self, color: bool) -> String {
-        let rows = self.config_rows();
-        let key_width = rows.iter().map(|(key, _)| key.width()).max().unwrap_or(0);
-
         let mut out = String::new();
-        for (key, value) in &rows {
-            let pad = key_width - key.width();
+        for (key, value) in self.config_rows() {
             if color {
-                let _ = writeln!(
-                    out,
-                    "{DIM}{key}:{}{RESET} {BOLD}{value}{RESET}",
-                    " ".repeat(pad),
-                );
+                let _ = writeln!(out, "{DIM}{key}:{RESET} {BOLD}{value}{RESET}");
             } else {
-                let _ = writeln!(out, "  {key}:{} {value}", " ".repeat(pad));
+                let _ = writeln!(out, "{key}: {value}");
             }
         }
         out
