@@ -30,9 +30,9 @@ replica_parameters:
   # Consensus protocol variant. Options:
   #   mysticeti                            { leader_count }
   #   odontoceti                           { leader_count }
-  #   mahiMahi                             { leader_count, wave_length: 4 | 5 }
-  #   cordialMinersPartiallySynchronous
-  #   cordialMinersAsynchronous
+  #   mahi-mahi                            { leader_count, wave_length: 4 | 5 }
+  #   cordial-miners-partially-synchronous
+  #   cordial-miners-asynchronous
   consensus:
     protocol: mysticeti
     leader_count: 2

@@ -34,7 +34,7 @@ pub async fn simulate(
     }
 
     // Build the exporter up-front so output-dir creation, tracing-log path, and per-run
-    // subdir lifecycles all flow through one owner.
+    // subdir life cycles all flow through one owner.
     let exporter = output_dir.map(Exporter::new).transpose()?;
 
     // Tracing-log destination, by precedence: --output-dir wins, --log-file is the
@@ -76,6 +76,9 @@ pub async fn simulate(
 
     for (index, config) in configs.into_iter().enumerate() {
         terminal.print_config(index + 1, &config);
+        // Indeterminate spinner: the simulator runs in `spawn_blocking`, so we
+        // can't drive a determinate bar's position from this async context.
+        terminal.start_progress_animation(None, "Running…");
 
         let name = config.name.clone();
         let runner = SimulationRunner::new(config);

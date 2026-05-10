@@ -68,6 +68,6 @@
   duration_secs: 30
   replica_parameters:
     consensus:
-      protocol: mahiMahi
+      protocol: mahi-mahi
       leader_count: 2
       wave_length: 4

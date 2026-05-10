@@ -9,7 +9,9 @@
 //! shutdown + `RunResult` collection.
 
 use std::{
+    future::{self, Future},
     path::PathBuf,
+    pin::Pin,
     time::{Duration, Instant},
 };
 
@@ -79,26 +81,23 @@ pub async fn local_testbed(
         }
         None => {
             tracing::info!("Using default load generator config");
-            LoadGeneratorConfig::default()
+            LoadGeneratorConfig::new_for_test()
         }
     };
 
-    let mode_str = if perpetual {
-        "Perpetual".to_string()
-    } else {
-        format!("Duration {duration}s")
-    };
-    let nodes = committee_size.to_string();
-    let tx_size = load_generator.transaction_size.to_string();
-    let load_str = load_generator.load.to_string();
     BannerPrinter::new(
-        "Mysticeti",
+        &replica_parameters.consensus,
         &[
             ("Mode", "Local Testbed"),
-            ("Run", &mode_str),
-            ("Nodes", &nodes),
-            ("Tx size", &tx_size),
-            ("Load", &load_str),
+            ("Replicas", &committee_size.to_string()),
+            (
+                "Tx size",
+                &format!("{} bytes", load_generator.transaction_size),
+            ),
+            (
+                "Load",
+                &format!("{} tx/s", load_generator.load * committee_size),
+            ),
         ],
     )
     .print();
@@ -109,69 +108,65 @@ pub async fn local_testbed(
         load_generator,
     };
 
-    tracing::info!("Starting local testbed with {committee_size} replicas");
+    if perpetual {
+        eprintln!("Perpetual mode; press Ctrl-C to stop (heartbeat every {heartbeat_interval}s).");
+        eprintln!();
+    } else {
+        eprintln!("Running for {duration} seconds…");
+    }
 
     let mut terminal = Terminal::new(1);
+    let run_duration = (!perpetual).then(|| Duration::from_secs(duration));
     terminal.print_config(1, &testbed_config);
+    terminal.start_progress_animation(run_duration, "Running…");
 
     let runner = LocalTestbedRunner::new(testbed_config);
     let handle = runner.run().await?;
     let metrics = handle.metrics().to_vec();
     let started_at = Instant::now();
-
-    // Drive the wait policy: duration (timer-driven) or perpetual (Ctrl-C-driven,
-    // with a periodic progress line in between). Both branches end with
-    // `handle.stop().await` to cancel + collect.
-    if perpetual {
-        tracing::info!(
-            "Perpetual mode; press Ctrl-C to stop (heartbeat every {heartbeat_interval}s)."
-        );
-        let mut ticker = time::interval(Duration::from_secs(heartbeat_interval));
-        // The first tick fires immediately; skip it so the first progress line lands
-        // at `interval` instead of zero.
-        ticker.tick().await;
-        loop {
-            tokio::select! {
-                biased;
-                _ = signal::ctrl_c() => break,
-                _ = ticker.tick() => {
-                    let snapshots = metrics.iter().map(|m| m.collect()).collect::<Vec<_>>();
-                    let aggregate = SnapshotAggregate::new(&snapshots);
-                    terminal.print_status(started_at.elapsed(), &aggregate);
-                }
-            }
-        }
+    let mut deadline: Pin<Box<dyn Future<Output = ()> + Send>> = if perpetual {
+        Box::pin(future::pending())
     } else {
-        // Duration mode: Ctrl-C aborts without a summary, matching what users expect
-        // from a fixed-duration run. We return immediately without stopping the
-        // handle — the runner task is killed when the tokio runtime drops at
-        // process exit.
+        Box::pin(time::sleep(Duration::from_secs(duration)))
+    };
+
+    tracing::info!("Starting local testbed with {committee_size} replicas");
+    let mut heartbeat = time::interval(Duration::from_secs(heartbeat_interval));
+    heartbeat.tick().await; // First tick completes immediately
+    let mut progress = time::interval(Duration::from_secs(1));
+    progress.tick().await; // First tick completes immediately
+    loop {
         tokio::select! {
             biased;
-            _ = signal::ctrl_c() => {
-                eprintln!("Ctrl-C received; aborting without summary.");
-                return Ok(());
-            }
-            _ = time::sleep(Duration::from_secs(duration)) => {}
+            _ = signal::ctrl_c() => break,
+            _ = deadline.as_mut() => break,
+            _ = progress.tick() => terminal.print_status(started_at.elapsed(), None),
+            _ = heartbeat.tick() => {
+                let snapshots = metrics.iter().map(|m| m.collect()).collect::<Vec<_>>();
+                let statistics = Some(&SnapshotAggregate::new(&snapshots));
+                terminal.print_status(started_at.elapsed(), statistics);
+            },
         }
     }
 
-    // Collection. Perpetual mode lets the user bail out of a slow WAL scan with a
-    // second Ctrl-C; duration-mode collection always runs to completion (the user
-    // asked for a result).
-    let result = if perpetual {
-        tokio::select! {
-            biased;
-            _ = signal::ctrl_c() => {
-                eprintln!("Second Ctrl-C; aborting collection.");
-                return Ok(());
-            }
-            r = handle.stop() => r?,
+    // Results collection: stop the determinate bar cleanly before the prints
+    // (otherwise eprintln fights for the line with the bar), then swap to a
+    // spinner so the visual doesn't keep advancing past the run's deadline
+    // while WAL scans drag on.
+    terminal.stop_progress_animation();
+    terminal.start_progress_animation(None, "Collecting results…");
+
+    let result = tokio::select! {
+        biased;
+        _ = signal::ctrl_c() => {
+            eprintln!(" Ctrl-C received during collection; aborting.");
+            return Ok(());
         }
-    } else {
-        handle.stop().await?
+        r = handle.stop() => r?,
     };
 
+    terminal.stop_progress_animation();
+    eprintln!();
     terminal.print_results(&result);
     terminal.print_summary();
 

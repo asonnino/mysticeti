@@ -28,13 +28,40 @@ To boot a local testbed of 4 replicas with a built-in load generator on your mac
 ```
 $ git clone https://github.com/asonnino/mysticeti.git
 $ cd mysticeti
-$ cargo run --release --bin replica -- local-testbed
+$ cargo run local-testbed
 ```
 
-The first build may take a few minutes. The testbed runs for 20 seconds, prints a per-replica
-summary, and writes the run's configuration, Prometheus metrics, and tracing log to
-`local-testbed/`. Pass `--duration <SECS>` to change the run length, or `--perpetual` to keep it
-running until `Ctrl-C` (and print the summary on exit).
+The testbed runs for 20 seconds by default and prints a per-replica summary on exit. Pass
+`--duration <SECS>` to change the run length, or `--perpetual` to keep it running until `Ctrl-C`
+(and print the summary on exit). Pass `--output-dir <DIR>` to also write the run's configuration,
+Prometheus metrics, and tracing log under `<DIR>`.
+
+```text
+┌                                                                                       ┐
+│                                                                                       │
+│ Mysticeti (2 leaders/round)                                                           │
+│ Mode: Local Testbed                                                                   │
+│ Replicas: 4                                                                           │
+│ Tx size: 32 bytes                                                                     │
+│ Load: 40 tx/s                                                                         │
+│                                                                                       │
+└                                                                                       ┘
+
+Running for 20 seconds…
+[t=   5s] · committed= 10k · commits/s=  2k · tx/s=  40 · p50=  50ms · p90=  90ms
+[t=  10s] · committed= 20k · commits/s=  2k · tx/s=  40 · p50=  50ms · p90=  90ms
+[t=  15s] · committed= 31k · commits/s=  2k · tx/s=  40 · p50=  50ms · p90=  90ms
+
+✓ Commits consistent across all replicas
+╭─────────┬───────────────────┬───────────┬──────┬─────────────┬─────────────┬──────────╮
+│ replica │ committed leaders │ commits/s │ tx/s │ p50 latency │ p90 latency │ timeouts │
+├─────────┼───────────────────┼───────────┼──────┼─────────────┼─────────────┼──────────┤
+│ A       │ 41794             │ 2090.5    │ 40   │ 50 ms       │ 90 ms       │ 1        │
+│ B       │ 41794             │ 2090.5    │ 40   │ 50 ms       │ 90 ms       │ 1        │
+│ C       │ 41796             │ 2090.6    │ 40   │ 50 ms       │ 90 ms       │ 1        │
+│ D       │ 41796             │ 2090.6    │ 40   │ 50 ms       │ 90 ms       │ 1        │
+╰─────────┴───────────────────┴───────────┴──────┴─────────────┴─────────────┴──────────╯
+```
 
 ## Next Steps
 

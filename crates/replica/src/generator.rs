@@ -146,7 +146,7 @@ impl TransactionGenerator {
                 )
                 .await
             {
-                tracing::warn!("Transaction channel closed, stopping generator");
+                tracing::info!("Transaction channel closed, stopping generator");
                 return;
             }
 

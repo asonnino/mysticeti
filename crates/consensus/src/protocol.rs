@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{num::NonZeroUsize, time::Duration};
+use std::{fmt, num::NonZeroUsize, time::Duration};
 
 use dag::{block::RoundNumber, committee::Stake};
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
@@ -12,7 +12,7 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 /// that are fixed by the protocol (wave length, pipelining, quorum
 /// thresholds) are derived in `to_protocol`.
 #[derive(Serialize, Deserialize, Clone)]
-#[serde(tag = "protocol", rename_all = "camelCase")]
+#[serde(tag = "protocol", rename_all = "kebab-case")]
 pub enum ConsensusProtocol {
     CordialMinersPartiallySynchronous,
     CordialMinersAsynchronous,
@@ -52,6 +52,31 @@ impl Default for ConsensusProtocol {
     fn default() -> Self {
         Self::Mysticeti {
             leader_count: default_leader_count(),
+        }
+    }
+}
+
+impl fmt::Display for ConsensusProtocol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::CordialMinersPartiallySynchronous => {
+                write!(f, "Cordial Miners (PS)")
+            }
+            Self::CordialMinersAsynchronous => write!(f, "Cordial Miners (Async)"),
+            Self::Mysticeti { leader_count } => {
+                write!(f, "Mysticeti ({} leaders/round)", leader_count)
+            }
+            Self::Odontoceti { leader_count } => {
+                write!(f, "Odontoceti ({} leaders/round)", leader_count)
+            }
+            Self::MahiMahi {
+                leader_count,
+                wave_length,
+            } => write!(
+                f,
+                "Mahi-Mahi ({} leaders/round, wave length {})",
+                leader_count, wave_length
+            ),
         }
     }
 }

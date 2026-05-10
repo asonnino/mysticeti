@@ -5,8 +5,8 @@
 //! tabled-driven display code lives here.
 
 pub mod banner;
+mod progress;
 mod render;
-mod spinner;
 pub mod table;
 
 use std::{io::IsTerminal, time::Duration};
@@ -14,8 +14,8 @@ use std::{io::IsTerminal, time::Duration};
 use dag::metrics::SnapshotAggregate;
 use replica::result::RunResult;
 
+use self::progress::Progress;
 pub(crate) use self::render::{AggregateRender, ConfigRender, RunResultRender};
-use self::spinner::Spinner;
 use self::table::SuiteRow;
 
 pub use self::banner::BannerPrinter;
@@ -38,12 +38,12 @@ pub fn stderr_supports_color() -> bool {
 }
 
 /// Stateful renderer for one command invocation. Owns the suite-row history and a
-/// long-lived spinner that the print methods toggle on and off.
+/// long-lived progress indicator that the print methods toggle on and off.
 pub struct Terminal {
     color: bool,
     total: usize,
     suite_rows: Vec<SuiteRow>,
-    spinner: Spinner,
+    progress: Progress,
 }
 
 impl Terminal {
@@ -53,13 +53,14 @@ impl Terminal {
             color,
             total,
             suite_rows: Vec::with_capacity(total),
-            spinner: Spinner::new(color),
+            progress: Progress::new(color),
         }
     }
 
-    /// Print the per-run heading and config table, then start the spinner.
-    /// The heading is omitted when there is only one run with no config name;
-    /// the table is omitted when [`ConfigRender::config_rows`] is empty.
+    /// Print the per-run heading and config table. The heading is omitted when
+    /// there is only one run with no config name; the table is omitted when
+    /// [`ConfigRender::config_rows`] is empty. Callers start the progress
+    /// indicator separately via [`Self::start_progress_animation`].
     pub(crate) fn print_config<C: ConfigRender>(&mut self, index: usize, config: &C) {
         let heading = match (self.total > 1, config.name()) {
             (true, Some(name)) => Some(format!(
@@ -83,25 +84,28 @@ impl Terminal {
             }
         }
         if !rows.is_empty() {
-            println!("{}", table::render(rows));
-            println!();
+            println!("{}", config.render(self.color));
         }
-
-        self.spinner.start();
     }
 
-    /// Print the live progress line on stderr without disturbing the spinner —
-    /// the bar is suspended around the write, so its elapsed timer stays
-    /// monotonic across heartbeats.
-    pub(crate) fn print_status(&mut self, elapsed: Duration, aggregate: &SnapshotAggregate<'_>) {
-        self.spinner
-            .suspend(|| eprintln!("{}", aggregate.render(elapsed)));
+    /// Advance the bar and optionally print the live progress line on stderr.
+    pub(crate) fn print_status(
+        &mut self,
+        elapsed: Duration,
+        aggregate: Option<&SnapshotAggregate<'_>>,
+    ) {
+        if let Some(aggregate) = aggregate {
+            self.progress
+                .suspend(|| eprintln!("{}", aggregate.render(elapsed)));
+        }
+        self.progress.set_elapsed(elapsed);
     }
 
-    /// Stop the spinner, print the per-result block (badge + per-replica table or
-    /// happy-path headline), and record the suite row for later aggregate display.
+    /// Stop the progress indicator, print the per-result block (badge + per-replica
+    /// table or happy-path headline), and record the suite row for later aggregate
+    /// display.
     pub(crate) fn print_results<C: ConfigRender>(&mut self, result: &RunResult<C>) {
-        self.spinner.stop();
+        self.stop_progress_animation();
         println!("{}", result.render(self.color));
         println!();
 
@@ -133,5 +137,19 @@ impl Terminal {
             println!("Suite summary");
         }
         println!("{}", table::render(self.suite_rows.iter().cloned()));
+    }
+
+    /// Switch the progress indicator to an indeterminate spinner with a custom
+    /// label. Useful for follow-on phases (e.g. result collection) that come
+    /// after a determinate run and have no known duration.
+    pub(crate) fn start_progress_animation(&mut self, duration: Option<Duration>, label: &str) {
+        self.progress.start(duration, label);
+    }
+
+    /// Tear down the active progress indicator and clear its line. Use this
+    /// before any plain `eprintln!` calls so the bar doesn't fight for the
+    /// line with the printed text.
+    pub(crate) fn stop_progress_animation(&mut self) {
+        self.progress.stop();
     }
 }

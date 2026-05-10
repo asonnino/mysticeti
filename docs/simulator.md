@@ -21,19 +21,19 @@ The entry point is the `simulate` subcommand of the `replica` binary. With no ar
 single simulation with the built-in defaults (committee of 10, 20 s, full mesh, Mysticeti):
 
 ```bash
-cargo run --release --bin replica -- simulate
+cargo run --release simulate
 ```
 
 To dump the built-in defaults as an annotated YAML starting point:
 
 ```bash
-cargo run --bin replica -- simulate --dump-config > my-sim.yaml
+cargo run simulate --dump-config > my-sim.yaml
 ```
 
 To run a custom config:
 
 ```bash
-cargo run --release --bin replica -- simulate --config-path my-sim.yaml
+cargo run --release simulate --config-path my-sim.yaml
 ```
 
 A single YAML file can hold either one simulation (a mapping) or a suite of simulations (a top-level
@@ -49,16 +49,16 @@ sweeps committee size, latency, topology, and protocol variant.
 
 All fields are optional and fall back to the defaults shown.
 
-| Field | Default | Description |
-| --- | --- | --- |
-| `name` | *(unset)* | Optional label shown in logs and the suite summary table. |
-| `committee_size` | `10` | Number of replicas. Stake is uniform. |
-| `latency_min_ms` / `latency_max_ms` | `50` / `100` | Inclusive range for per-message link latency, sampled uniformly for every delivery. |
-| `topology` | `fullMesh` | Network topology — see below. |
-| `duration_secs` | `20` | Simulated time for which to run the simulation. |
-| `rng_seed` | `0` | Seed for the deterministic RNG. Change this to get different per-run noise while keeping everything else fixed. |
-| `replica_parameters` | `ReplicaParameters::default()` | Same tunables as a real replica: DAG round timeout, max block size, consensus protocol, leader count. |
-| `load_generator` | `LoadGeneratorConfig::new_for_test()` | Built-in transaction generator (`load` tx/s, `transaction_size`, `initial_delay`). Set to `null` to run with empty blocks only. |
+| Field                               | Default                               | Description |
+| ----------------------------------- | ------------------------------------- | ----------- |
+| `name`                              | _(unset)_                             | Optional label shown in logs and the suite summary table. |
+| `committee_size`                    | `10`                                  | Number of replicas. Stake is uniform. |
+| `latency_min_ms` / `latency_max_ms` | `50` / `100`                          | Inclusive range for per-message link latency, sampled uniformly for every delivery. |
+| `topology`                          | `fullMesh`                            | Network topology — see below. |
+| `duration_secs`                     | `20`                                  | Simulated time for which to run the simulation. |
+| `rng_seed`                          | `0`                                   | Seed for the deterministic RNG. Change this to get different per-run noise while keeping everything else fixed. |
+| `replica_parameters`                | `ReplicaParameters::default()`        | Same tunables as a real replica: DAG round timeout, max block size, consensus protocol, leader count. |
+| `load_generator`                    | `LoadGeneratorConfig::new_for_test()` | Built-in transaction generator (`load` tx/s, `transaction_size`, `initial_delay`). `null` for empty blocks. |
 
 ## Network Topologies
 
@@ -80,11 +80,11 @@ are established once and held for the duration):
 Every run ends with one of three verdicts, classified by comparing the committed-leader sequences of
 every replica:
 
-| Outcome | Meaning |
-| --- | --- |
-| `Pass` | Every replica's committed prefix agrees with the others' and at least one replica committed a leader. |
+| Outcome      | Meaning                                                                                                                                                              |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Pass`       | Every replica's committed prefix agrees with the others' and at least one replica committed a leader.                                                                |
 | `NoProgress` | Every replica's commits are consistent but none committed a leader. Expected under unrecoverable partitions (e.g. a symmetric split, or `star` on a crashed centre). |
-| `Diverged` | At least two replicas disagree on a commit within their shared prefix. This is a safety violation and fails the run. |
+| `Diverged`   | At least two replicas disagree on a commit within their shared prefix. This is a safety violation and fails the run.                                                 |
 
 A suite's final exit code is non-zero if any simulation `Diverged`.
 
@@ -94,7 +94,7 @@ Pass `--output-dir <DIR>` and the simulator drops a fixed set of artefacts on di
 The directory is created if it doesn't exist.
 
 ```bash
-cargo run --release --bin replica -- simulate \
+cargo run --release simulate \
     --config-path crates/simulator/examples/suite.yaml \
     --output-dir results/
 ```
@@ -104,13 +104,13 @@ simulation gets its own subdirectory named after the run (`name` field, sanitise
 index when unnamed. Files are written atomically (`NamedTempFile` + `persist`), so a mid-write crash
 leaves each file either intact or absent — never half-written.
 
-| File | Contents |
-| --- | --- |
-| `<output-dir>/tracing.log` | Suite-wide tracing log (one log for the whole invocation). |
-| `<run>/config.yaml` | The full `SimulationConfig` that produced the run, including any defaults filled in. |
-| `<run>/meta.yaml` | `{ outcome, duration_secs, kind: simulation, timestamp_unix }`. |
-| `<run>/metrics.prom` | Per-replica Prometheus text exposition; each replica's block is preceded by `# replica: N`. Parseable by `promtool`, Prometheus, and most TSDB ingesters. |
-| `<run>/dag.ndjson` | *(opt-in via `--export-dag`)* every committed sub-DAG, one JSON object per line. Can be many GB; off by default. |
+| File                       | Contents                                                                                                                                                  |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<output-dir>/tracing.log` | Suite-wide tracing log (one log for the whole invocation).                                                                                                |
+| `<run>/config.yaml`        | The full `SimulationConfig` that produced the run, including any defaults filled in.                                                                      |
+| `<run>/meta.yaml`          | `{ outcome, duration_secs, kind: simulation, timestamp_unix }`.                                                                                           |
+| `<run>/metrics.prom`       | Per-replica Prometheus text exposition; each replica's block is preceded by `# replica: N`. Parseable by `promtool`, Prometheus, and most TSDB ingesters. |
+| `<run>/dag.ndjson`         | _(opt-in via `--export-dag`)_ every committed sub-DAG, one JSON object per line. Can be many GB; off by default.                                          |
 
 ## Programmatic Use
 
