@@ -31,6 +31,7 @@ replica_parameters:
   #   mysticeti                            { leader_count }
   #   odontoceti                           { leader_count }
   #   mahi-mahi                            { leader_count, wave_length: 4 | 5 }
+  #   nemo-nemo                            { leader_count }
   #   cordial-miners-partially-synchronous
   #   cordial-miners-asynchronous
   consensus:

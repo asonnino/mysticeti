@@ -4,7 +4,7 @@
 use std::{fmt, num::NonZeroUsize, time::Duration};
 
 use dag::{block::RoundNumber, committee::Stake};
-use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
+use serde::{Deserialize, Serialize};
 
 /// User-facing choice of consensus protocol variant.
 ///
@@ -17,41 +17,52 @@ pub enum ConsensusProtocol {
     CordialMinersPartiallySynchronous,
     CordialMinersAsynchronous,
     Mysticeti {
-        #[serde(default = "default_leader_count")]
+        #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
     },
     Odontoceti {
-        #[serde(default = "default_leader_count")]
+        #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
     },
     MahiMahi {
-        #[serde(default = "default_leader_count")]
+        #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
-        #[serde(deserialize_with = "deserialize_mahi_mahi_wave_length")]
+        #[serde(deserialize_with = "defaults::deserialize_mahi_mahi_wave_length")]
         wave_length: RoundNumber,
+    },
+    NemoNemo {
+        #[serde(default = "defaults::default_leader_count")]
+        leader_count: NonZeroUsize,
     },
 }
 
-fn default_leader_count() -> NonZeroUsize {
-    NonZeroUsize::new(2).unwrap()
-}
+mod defaults {
+    use std::num::NonZeroUsize;
 
-fn deserialize_mahi_mahi_wave_length<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<RoundNumber, D::Error> {
-    let value = RoundNumber::deserialize(deserializer)?;
-    if value != 4 && value != 5 {
-        return Err(D::Error::custom(format!(
-            "MahiMahi wave_length must be 4 or 5, got {value}"
-        )));
+    use dag::block::RoundNumber;
+    use serde::{Deserialize, Deserializer, de::Error as _};
+
+    pub fn default_leader_count() -> NonZeroUsize {
+        NonZeroUsize::new(2).unwrap()
     }
-    Ok(value)
+
+    pub fn deserialize_mahi_mahi_wave_length<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<RoundNumber, D::Error> {
+        let value = RoundNumber::deserialize(deserializer)?;
+        if value != 4 && value != 5 {
+            return Err(D::Error::custom(format!(
+                "MahiMahi wave_length must be 4 or 5, got {value}"
+            )));
+        }
+        Ok(value)
+    }
 }
 
 impl Default for ConsensusProtocol {
     fn default() -> Self {
         Self::Mysticeti {
-            leader_count: default_leader_count(),
+            leader_count: defaults::default_leader_count(),
         }
     }
 }
@@ -77,6 +88,9 @@ impl fmt::Display for ConsensusProtocol {
                 "Mahi-Mahi ({} leaders/round, wave length {})",
                 leader_count, wave_length
             ),
+            Self::NemoNemo { leader_count } => {
+                write!(f, "Nemo-Nemo ({} leaders/round)", leader_count)
+            }
         }
     }
 }
@@ -95,16 +109,19 @@ impl ConsensusProtocol {
                 leader_count,
                 wave_length,
             } => Protocol::mahi_mahi(total_stake, leader_count, wave_length),
+            Self::NemoNemo { leader_count } => Protocol::nemo_nemo(total_stake, leader_count),
         }
     }
 }
 
 /// Protocol-specific parameters for the consensus committer.
 pub struct Protocol {
-    /// The strong quorum threshold to directly commit a leader.
-    pub strong_quorum: Stake,
-    /// The weak quorum to indirectly commit a leader.
-    pub weak_quorum: Stake,
+    /// The quorum threshold to directly commit a leader.
+    pub direct_commit_quorum: Stake,
+    /// The quorum threshold to directly skip a leader.
+    pub direct_skip_quorum: Stake,
+    /// The quorum threshold to indirectly decide a leader.
+    pub indirect_decide_quorum: Stake,
     /// The number of rounds to commit a leader.
     pub wave_length: RoundNumber,
     /// The number of leaders per round.
@@ -125,8 +142,9 @@ impl Protocol {
     pub fn cordial_miners_partially_synchronous(total_stake: Stake) -> Self {
         let quorum = 2 * total_stake / 3 + 1;
         Self {
-            strong_quorum: quorum,
-            weak_quorum: quorum,
+            direct_commit_quorum: quorum,
+            direct_skip_quorum: total_stake,
+            indirect_decide_quorum: quorum,
             wave_length: 3,
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
@@ -142,8 +160,9 @@ impl Protocol {
     pub fn cordial_miners_asynchronous(total_stake: Stake) -> Self {
         let quorum = 2 * total_stake / 3 + 1;
         Self {
-            strong_quorum: quorum,
-            weak_quorum: quorum,
+            direct_commit_quorum: quorum,
+            direct_skip_quorum: total_stake,
+            indirect_decide_quorum: quorum,
             wave_length: 5,
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
@@ -159,8 +178,9 @@ impl Protocol {
     pub fn mysticeti(total_stake: Stake, leader_count: NonZeroUsize) -> Self {
         let quorum = 2 * total_stake / 3 + 1;
         Self {
-            strong_quorum: quorum,
-            weak_quorum: quorum,
+            direct_commit_quorum: quorum,
+            direct_skip_quorum: quorum,
+            indirect_decide_quorum: quorum,
             wave_length: 3,
             leader_count,
             pipeline: true,
@@ -174,9 +194,12 @@ impl Protocol {
     /// "BlueBottle: Fast and Robust Blockchains through Subsystem Specialization"
     /// <https://sonnino.com/papers/bluebottle.pdf>
     pub fn odontoceti(total_stake: Stake, leader_count: NonZeroUsize) -> Self {
+        let strong_quorum = 4 * total_stake / 5 + 1;
+        let weak_quorum = 2 * total_stake / 5 + 1;
         Self {
-            strong_quorum: 4 * total_stake / 5 + 1,
-            weak_quorum: 2 * total_stake / 5 + 1,
+            direct_commit_quorum: strong_quorum,
+            direct_skip_quorum: strong_quorum,
+            indirect_decide_quorum: weak_quorum,
             wave_length: 2,
             leader_count,
             pipeline: true,
@@ -200,13 +223,32 @@ impl Protocol {
         );
         let quorum = 2 * total_stake / 3 + 1;
         Self {
-            strong_quorum: quorum,
-            weak_quorum: quorum,
+            direct_commit_quorum: quorum,
+            direct_skip_quorum: quorum,
+            indirect_decide_quorum: quorum,
             wave_length,
             leader_count,
             pipeline: true,
             leader_wait: false,
             require_crypto: true,
+        }
+    }
+
+    /// Nemo-Nemo
+    ///
+    /// "Finding Nemo-Nemo: CFT DAG-based Consensus in the WAN"
+    /// <https://sonnino.com/papers/nemo-nemo.pdf>
+    pub fn nemo_nemo(total_stake: Stake, leader_count: NonZeroUsize) -> Self {
+        let quorum = total_stake / 2 + 1;
+        Self {
+            direct_commit_quorum: quorum,
+            direct_skip_quorum: total_stake,
+            indirect_decide_quorum: 1,
+            wave_length: 2,
+            leader_count,
+            pipeline: true,
+            leader_wait: true,
+            require_crypto: false,
         }
     }
 }

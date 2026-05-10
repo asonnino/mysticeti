@@ -31,8 +31,9 @@ pub(crate) struct BaseCommitter {
     committee: Arc<Committee>,
     block_reader: BlockReader,
     leader_elector: LeaderElector,
-    strong_quorum: Stake,
-    weak_quorum: Stake,
+    direct_commit_quorum: Stake,
+    direct_skip_quorum: Stake,
+    indirect_decide_quorum: Stake,
     wave_length: RoundNumber,
     leader_offset: RoundNumber,
     round_offset: RoundNumber,
@@ -51,8 +52,9 @@ impl BaseCommitter {
             committee,
             block_reader,
             leader_elector,
-            strong_quorum: protocol.strong_quorum,
-            weak_quorum: protocol.weak_quorum,
+            direct_commit_quorum: protocol.direct_commit_quorum,
+            direct_skip_quorum: protocol.direct_skip_quorum,
+            indirect_decide_quorum: protocol.indirect_decide_quorum,
             wave_length: protocol.wave_length,
             leader_offset,
             round_offset,
@@ -71,19 +73,19 @@ impl BaseCommitter {
         wave * self.wave_length + self.round_offset
     }
 
+    /// Return the decision round of the specified wave.
+    #[inline]
+    fn decision_round(&self, wave: WaveNumber) -> RoundNumber {
+        let leader_round = self.leader_round(wave);
+        leader_round + self.wave_length - 1
+    }
+
     /// Return the voting round of the specified wave.
     #[inline]
     fn voting_round(&self, wave: WaveNumber) -> RoundNumber {
         let leader_round = self.leader_round(wave);
         let decision_round = self.decision_round(wave);
         (leader_round + 1).max(decision_round - 1)
-    }
-
-    /// Return the decision round of the specified wave.
-    #[inline]
-    fn decision_round(&self, wave: WaveNumber) -> RoundNumber {
-        let wave_length = self.wave_length;
-        wave * wave_length + wave_length - 1 + self.round_offset
     }
 
     /// The leader-elect protocol is offset by `leader_offset` to ensure that different
@@ -146,6 +148,14 @@ impl BaseCommitter {
         leader_block: &Data<Block>,
         quorum: Stake,
     ) -> bool {
+        // When the certificate sits exactly one round above the leader (i.e.
+        // `wave_length == 2`), votes and certificates coincide on the same round:
+        // each decision-round block that directly supports the leader is itself a
+        // certificate.
+        if potential_certificate.round() == leader_block.round() + 1 {
+            return self.is_vote(potential_certificate, leader_block);
+        }
+
         let mut votes_stake_aggregator = StakeAggregator::new(quorum);
         for reference in potential_certificate.includes() {
             let potential_vote = self
@@ -189,7 +199,11 @@ impl BaseCommitter {
                 .iter()
                 .filter(|block| self.block_reader.linked(anchor, block))
                 .any(|potential_certificate| {
-                    self.is_certificate(potential_certificate, leader_block, self.weak_quorum)
+                    self.is_certificate(
+                        potential_certificate,
+                        leader_block,
+                        self.indirect_decide_quorum,
+                    )
                 })
         });
         let first = certified.next();
@@ -203,8 +217,8 @@ impl BaseCommitter {
         }
     }
 
-    /// Check whether the specified leader has enough blames (that is, 2f+1 non-votes) to be
-    /// directly skipped.
+    /// Check whether the specified leader has enough blames (`direct_skip_quorum` non-votes)
+    /// to be directly skipped.
     fn enough_leader_blame(
         &self,
         voting_round: RoundNumber,
@@ -213,7 +227,7 @@ impl BaseCommitter {
     ) -> bool {
         let voting_blocks = self.block_reader.get_blocks_by_round(voting_round);
 
-        let mut blame_stake_aggregator = StakeAggregator::new(self.strong_quorum);
+        let mut blame_stake_aggregator = StakeAggregator::new(self.direct_skip_quorum);
         for voting_block in &voting_blocks {
             let voter = voting_block.reference().authority;
             if self
@@ -232,8 +246,8 @@ impl BaseCommitter {
         false
     }
 
-    /// Check whether the specified leader has enough support (that is, 2f+1 certificates)
-    /// to be directly committed.
+    /// Check whether the specified leader has enough support (`direct_commit_quorum`
+    /// certificates) to be directly committed.
     fn enough_leader_support(
         &self,
         decision_round: RoundNumber,
@@ -241,10 +255,10 @@ impl BaseCommitter {
     ) -> bool {
         let decision_blocks = self.block_reader.get_blocks_by_round(decision_round);
 
-        let mut certificate_stake_aggregator = StakeAggregator::new(self.strong_quorum);
+        let mut certificate_stake_aggregator = StakeAggregator::new(self.direct_commit_quorum);
         for decision_block in &decision_blocks {
             let authority = decision_block.reference().authority;
-            if self.is_certificate(decision_block, leader_block, self.strong_quorum) {
+            if self.is_certificate(decision_block, leader_block, self.direct_commit_quorum) {
                 tracing::trace!(
                     "[{self}] {decision_block:?} is a certificate for leader {leader_block:?}"
                 );
@@ -306,15 +320,16 @@ impl BaseCommitter {
         let voting_round = self.voting_round(wave);
         let decision_round = self.decision_round(wave);
 
-        // Check whether the leader has enough blame. That is, whether there are 2f+1 non-votes
-        // for that leader (which ensure there will never be a certificate for that leader).
+        // Check whether the leader has enough blame. That is, whether there are
+        // `direct_skip_quorum` non-votes for that leader (which ensure there will never
+        // be a certificate for that leader).
         if self.enough_leader_blame(voting_round, leader, leader_round) {
             return LeaderStatus::DirectSkip(leader, leader_round);
         }
 
-        // Check whether the leader(s) has enough support. That is, whether there are 2f+1
-        // certificates over the leader. Note that there could be more than one leader block
-        // (created by Byzantine leaders).
+        // Check whether the leader(s) has enough support. That is, whether there are
+        // `direct_commit_quorum` certificates over the leader. Note that there could be
+        // more than one leader block (created by Byzantine leaders).
         let leader_blocks = self
             .block_reader
             .get_blocks_at_authority_round(leader, leader_round);
