@@ -176,10 +176,10 @@ impl AggregateRender for SnapshotAggregate<'_> {
             }
         }
         if let Some(p50) = self.mean_latency_percentile_ms(0.5) {
-            parts.push(format!("p50 ms={}", fixed_length_format(p50),));
+            parts.push(format!("p50={}ms", fixed_length_format(p50)));
         }
         if let Some(p90) = self.mean_latency_percentile_ms(0.9) {
-            parts.push(format!("p90 ms={}", fixed_length_format(p90),));
+            parts.push(format!("p90={}ms", fixed_length_format(p90)));
         }
         parts.join(" · ")
     }
@@ -199,7 +199,10 @@ fn fixed_length_format(value: f64) -> String {
     const UNITS: &[&str] = &["", "k", "M", "B", "T"];
     let mut scaled = value;
     let mut unit = 0;
-    while scaled >= 1000.0 && unit < UNITS.len() - 1 {
+    // Compare the rounded value against the 1000 threshold so values like
+    // 999.5 escalate to the next unit (1k, formatted as "1k") instead of
+    // rounding to "1000" and overflowing the 4-char field.
+    while scaled.round() >= 1000.0 && unit < UNITS.len() - 1 {
         scaled /= 1000.0;
         unit += 1;
     }

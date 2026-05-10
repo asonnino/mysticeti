@@ -9,7 +9,9 @@
 //! shutdown + `RunResult` collection.
 
 use std::{
+    future::{self, Future},
     path::PathBuf,
+    pin::Pin,
     time::{Duration, Instant},
 };
 
@@ -108,13 +110,13 @@ pub async fn local_testbed(
 
     // Drive the wait policy: duration (timer-driven) or perpetual (Ctrl-C-driven,
     // with a periodic progress line in between).
-    let deadline = if perpetual {
+    let mut deadline: Pin<Box<dyn Future<Output = ()> + Send>> = if perpetual {
         eprintln!("Perpetual mode; press Ctrl-C to stop (heartbeat every {heartbeat_interval}s).");
         eprintln!();
-        Duration::MAX
+        Box::pin(future::pending())
     } else {
         eprintln!("Running for {} seconds…", duration);
-        Duration::from_secs(duration)
+        Box::pin(time::sleep(Duration::from_secs(duration)))
     };
 
     let mut terminal = Terminal::new(1);
@@ -132,16 +134,12 @@ pub async fn local_testbed(
     heartbeat.tick().await; // First tick completes immediately
     let mut progress = time::interval(Duration::from_secs(1));
     progress.tick().await; // First tick completes immediately
-    let deadline = time::sleep(deadline);
-    tokio::pin!(deadline);
     loop {
         tokio::select! {
             biased;
             _ = signal::ctrl_c() => break,
-            () = &mut deadline => break,
-            _ = progress.tick() => {
-                terminal.print_status(started_at.elapsed(), None);
-            }
+            _ = deadline.as_mut() => break,
+            _ = progress.tick() => terminal.print_status(started_at.elapsed(), None),
             _ = heartbeat.tick() => {
                 let snapshots = metrics.iter().map(|m| m.collect()).collect::<Vec<_>>();
                 let statistics = Some(&SnapshotAggregate::new(&snapshots));
@@ -160,7 +158,7 @@ pub async fn local_testbed(
     let result = tokio::select! {
         biased;
         _ = signal::ctrl_c() => {
-            eprintln!(" Second Ctrl-C; aborting collection.");
+            eprintln!(" Ctrl-C received during collection; aborting.");
             return Ok(());
         }
         r = handle.stop() => r?,

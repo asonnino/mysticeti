@@ -76,7 +76,9 @@ pub async fn simulate(
 
     for (index, config) in configs.into_iter().enumerate() {
         terminal.print_config(index + 1, &config);
-        terminal.start_progress_animation(Some(config.duration()), "Running…");
+        // Indeterminate spinner: the simulator runs in `spawn_blocking`, so we
+        // can't drive a determinate bar's position from this async context.
+        terminal.start_progress_animation(None, "Running…");
 
         let name = config.name.clone();
         let runner = SimulationRunner::new(config);

@@ -57,10 +57,10 @@ impl Terminal {
         }
     }
 
-    /// Print the per-run heading and config table, then start the progress indicator.
-    /// `run_duration = Some(d)` renders a determinate bar; `None` falls back to a
-    /// spinner. The heading is omitted when there is only one run with no config
-    /// name; the table is omitted when [`ConfigRender::config_rows`] is empty.
+    /// Print the per-run heading and config table. The heading is omitted when
+    /// there is only one run with no config name; the table is omitted when
+    /// [`ConfigRender::config_rows`] is empty. Callers start the progress
+    /// indicator separately via [`Self::start_progress_animation`].
     pub(crate) fn print_config<C: ConfigRender>(&mut self, index: usize, config: &C) {
         let heading = match (self.total > 1, config.name()) {
             (true, Some(name)) => Some(format!(
