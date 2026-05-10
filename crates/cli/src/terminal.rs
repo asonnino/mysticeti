@@ -85,7 +85,6 @@ impl Terminal {
         }
         if !rows.is_empty() {
             println!("{}", config.render(self.color));
-            println!();
         }
     }
 
