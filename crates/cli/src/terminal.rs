@@ -107,7 +107,6 @@ impl Terminal {
     /// display.
     pub(crate) fn print_results<C: ConfigRender>(&mut self, result: &RunResult<C>) {
         self.stop_progress_animation();
-        println!();
         println!("{}", result.render(self.color));
         println!();
 

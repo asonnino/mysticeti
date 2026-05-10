@@ -165,6 +165,7 @@ pub async fn local_testbed(
     };
 
     terminal.stop_progress_animation();
+    eprintln!();
     terminal.print_results(&result);
     terminal.print_summary();
 

@@ -28,7 +28,7 @@ impl Animation {
     fn bar(total: Duration) -> Animation {
         // `max(1)` keeps a 0s configuration from producing an empty bar.
         let total_secs = total.as_secs().max(1);
-        let template = format!("{BOLD}[{{bar:30.bold.blue/blue}}] {{pos}}s / {total_secs}s{RESET}");
+        let template = format!("[{BOLD}{{bar:30.bold.blue/blue}}] {{pos}}s / {total_secs}s{RESET}");
         let bar = ProgressBar::new(total_secs);
         bar.set_style(
             ProgressStyle::with_template(&template)
