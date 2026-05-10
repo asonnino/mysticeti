@@ -108,16 +108,12 @@ pub async fn local_testbed(
         load_generator,
     };
 
-    // Drive the wait policy: duration (timer-driven) or perpetual (Ctrl-C-driven,
-    // with a periodic progress line in between).
-    let mut deadline: Pin<Box<dyn Future<Output = ()> + Send>> = if perpetual {
+    if perpetual {
         eprintln!("Perpetual mode; press Ctrl-C to stop (heartbeat every {heartbeat_interval}s).");
         eprintln!();
-        Box::pin(future::pending())
     } else {
-        eprintln!("Running for {} seconds…", duration);
-        Box::pin(time::sleep(Duration::from_secs(duration)))
-    };
+        eprintln!("Running for {duration} seconds…");
+    }
 
     let mut terminal = Terminal::new(1);
     let run_duration = (!perpetual).then(|| Duration::from_secs(duration));
@@ -128,8 +124,13 @@ pub async fn local_testbed(
     let handle = runner.run().await?;
     let metrics = handle.metrics().to_vec();
     let started_at = Instant::now();
-    tracing::info!("Starting local testbed with {committee_size} replicas");
+    let mut deadline: Pin<Box<dyn Future<Output = ()> + Send>> = if perpetual {
+        Box::pin(future::pending())
+    } else {
+        Box::pin(time::sleep(Duration::from_secs(duration)))
+    };
 
+    tracing::info!("Starting local testbed with {committee_size} replicas");
     let mut heartbeat = time::interval(Duration::from_secs(heartbeat_interval));
     heartbeat.tick().await; // First tick completes immediately
     let mut progress = time::interval(Duration::from_secs(1));
