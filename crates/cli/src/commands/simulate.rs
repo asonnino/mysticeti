@@ -34,7 +34,7 @@ pub async fn simulate(
     }
 
     // Build the exporter up-front so output-dir creation, tracing-log path, and per-run
-    // subdir lifecycles all flow through one owner.
+    // subdir life cycles all flow through one owner.
     let exporter = output_dir.map(Exporter::new).transpose()?;
 
     // Tracing-log destination, by precedence: --output-dir wins, --log-file is the
@@ -76,6 +76,7 @@ pub async fn simulate(
 
     for (index, config) in configs.into_iter().enumerate() {
         terminal.print_config(index + 1, &config);
+        terminal.start_progress_animation(Some(config.duration()), "Running…");
 
         let name = config.name.clone();
         let runner = SimulationRunner::new(config);
@@ -84,6 +85,7 @@ pub async fn simulate(
             .await
             .map_err(|error| eyre::eyre!("Simulation task panicked: {error}"))??;
 
+        terminal.stop_progress_animation();
         terminal.print_results(&result);
 
         if result.outcome == Outcome::Diverged {

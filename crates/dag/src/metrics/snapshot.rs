@@ -1,6 +1,8 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::time::Duration;
+
 use prometheus::{Encoder, TextEncoder, proto::MetricFamily};
 
 use super::names::{
@@ -32,6 +34,24 @@ impl MetricsSnapshot {
             .map(|seconds| seconds * 1000.0)
     }
 
+    /// Total committed transactions observed by this replica, taken from the
+    /// `latency_s` histogram sample-count (one observation per committed
+    /// transaction). `0` when the histogram is absent or empty.
+    pub fn total_committed_transactions(&self) -> u64 {
+        self.histogram_sum_and_count(LATENCY_S)
+            .map(|(_, count)| count)
+            .unwrap_or(0)
+    }
+
+    /// This replica's committed-transaction rate (TPS) over `duration`.
+    /// `None` when `duration` is zero.
+    pub fn transactions_per_second(&self, duration: Duration) -> Option<f64> {
+        if duration.is_zero() {
+            return None;
+        }
+        Some(self.total_committed_transactions() as f64 / duration.as_secs_f64())
+    }
+
     /// Total committed leaders observed by this replica. Skipped leaders are excluded.
     pub fn total_committed_leaders(&self) -> u64 {
         let Some(family) = self.find_family(COMMITTED_LEADERS_TOTAL) else {
@@ -51,6 +71,15 @@ impl MetricsSnapshot {
             }
         }
         total as u64
+    }
+
+    /// This replica's committed-leader rate (leaders/s) over `duration`.
+    /// `None` when `duration` is zero.
+    pub fn committed_leaders_per_second(&self, duration: Duration) -> Option<f64> {
+        if duration.is_zero() {
+            return None;
+        }
+        Some(self.total_committed_leaders() as f64 / duration.as_secs_f64())
     }
 
     /// Render the snapshot in the Prometheus text exposition format — the same format every

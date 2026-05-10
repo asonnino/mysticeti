@@ -1,6 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::fmt::Display;
 use terminal_size::terminal_size;
 use unicode_width::UnicodeWidthStr;
 
@@ -23,10 +24,10 @@ pub struct BannerPrinter {
 }
 
 impl BannerPrinter {
-    pub fn new(protocol: &str, info: &[(&str, &str)]) -> Self {
+    pub fn new<P: Display>(protocol: P, info: &[(&str, &str)]) -> Self {
         let width = terminal_size().map(|(w, _)| w.0 as usize).unwrap_or(80);
         let inner_width = width.saturating_sub(4);
-        let border_fill = "─".repeat(inner_width + 2);
+        let border_fill = " ".repeat(inner_width + 2);
 
         Self {
             protocol: protocol.to_string(),

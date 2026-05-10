@@ -121,8 +121,7 @@ pub struct LocalTestbedArgs {
     /// aborts immediately without a summary.
     #[arg(long, conflicts_with = "duration")]
     pub perpetual: bool,
-    /// Heartbeat cadence, in seconds, used in `--perpetual` mode to print live
-    /// aggregated stats to stderr. No effect under `--duration`.
+    /// Heartbeat cadence, in seconds, used to print live aggregated stats to stderr.
     #[arg(long, value_name = "SECS", default_value_t = 5)]
     pub heartbeat_interval: u64,
     /// Directory for tracing logs and run artefacts (`config.yaml`, `meta.yaml`,

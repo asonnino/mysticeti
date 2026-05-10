@@ -1,18 +1,15 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use dag::{
-    authority::Authority,
-    metrics::{MetricsSnapshot, SnapshotAggregate},
-};
-use replica::result::{Outcome, RunResult};
+use std::time::Duration;
+
+use dag::{authority::Authority, metrics::MetricsSnapshot};
+use replica::result::Outcome;
 use tabled::{Table, Tabled, settings::Style};
 
 use super::render::OutcomeDisplay;
 
-/// Render any iterable of `Tabled` rows with the suite's
-/// standard rounded style. Single call site so the border
-/// style can change in one place.
+/// Render any iterable of `Tabled` rows with the suite's standard rounded style.
 pub fn render<T: Tabled>(rows: impl IntoIterator<Item = T>) -> String {
     Table::new(rows).with(Style::rounded()).to_string()
 }
@@ -39,59 +36,41 @@ pub struct ReplicaRow {
     #[tabled(rename = "replica")]
     replica: Authority,
     #[tabled(rename = "committed leaders")]
-    committed_leaders: usize,
+    committed_leaders: u64,
     #[tabled(rename = "commits/s")]
-    commits_per_sec: String,
+    committed_leaders_per_second: String,
+    #[tabled(rename = "tx/s")]
+    tx_per_second: String,
     #[tabled(rename = "p50 latency", display_with = "fmt_latency_ms")]
     p50_latency_ms: Option<f64>,
     #[tabled(rename = "p90 latency", display_with = "fmt_latency_ms")]
     p90_latency_ms: Option<f64>,
-    #[tabled(rename = "leader timeouts")]
+    #[tabled(rename = "timeouts")]
     leader_timeouts: u64,
 }
 
 impl ReplicaRow {
-    fn new(
-        authority: Authority,
-        committed_leaders: usize,
-        duration_secs: u64,
-        metrics: &MetricsSnapshot,
-    ) -> Self {
-        // Per-replica rate pairs with the `committed_leaders` cell on the same row (both are
-        // this replica's view of the committed chain): divide the row's own chain length by the
-        // run duration rather than going back through a metric.
-        let commits_per_sec = if duration_secs == 0 {
-            "—".into()
-        } else {
-            format!("{:.1}", committed_leaders as f64 / duration_secs as f64)
+    pub(super) fn new(authority: Authority, duration: Duration, metrics: &MetricsSnapshot) -> Self {
+        let committed_leaders = metrics.total_committed_leaders();
+        let committed_leaders_per_second =
+            if let Some(rate) = metrics.committed_leaders_per_second(duration) {
+                format!("{rate:.1}")
+            } else {
+                "—".into()
+            };
+        let tx_per_second = match metrics.transactions_per_second(duration) {
+            Some(rate) => format!("{rate:.0}"),
+            None => "—".into(),
         };
         Self {
             replica: authority,
             committed_leaders,
-            commits_per_sec,
+            committed_leaders_per_second,
+            tx_per_second,
             p50_latency_ms: metrics.latency_percentile_ms(0.5),
             p90_latency_ms: metrics.latency_percentile_ms(0.9),
             leader_timeouts: metrics.leader_timeouts(),
         }
-    }
-
-    pub fn iter_for_result<C>(result: &RunResult<C>) -> impl Iterator<Item = Self> + '_ {
-        let duration_secs = result.duration.as_secs();
-        let committed_leaders =
-            SnapshotAggregate::new(&result.metrics).committed_leaders_per_replica();
-        result
-            .metrics
-            .iter()
-            .zip(committed_leaders)
-            .enumerate()
-            .map(move |(index, (metrics, committed_leaders))| {
-                Self::new(
-                    Authority::from(index),
-                    committed_leaders,
-                    duration_secs,
-                    metrics,
-                )
-            })
     }
 }
 

@@ -8,7 +8,7 @@
 
 use std::time::Duration;
 
-use dag::metrics::SnapshotAggregate;
+use dag::{authority::Authority, metrics::SnapshotAggregate};
 use replica::result::{Outcome, RunResult};
 use replica::testbed::TestbedConfig;
 use simulator::SimulationConfig;
@@ -37,6 +37,7 @@ impl ConfigRender for SimulationConfig {
 
     fn config_rows(&self) -> Vec<ConfigRow> {
         vec![
+            ConfigRow::new("Protocol", self.replica_parameters.consensus.to_string()),
             ConfigRow::new("Committee size", self.committee_size.to_string()),
             ConfigRow::new("Topology", self.topology.to_string()),
             ConfigRow::new("Duration", format!("{}s", self.duration_secs)),
@@ -59,18 +60,8 @@ impl ConfigRender for TestbedConfig {
     }
 
     fn config_rows(&self) -> Vec<ConfigRow> {
-        vec![
-            ConfigRow::new("Committee size", self.committee_size.to_string()),
-            ConfigRow::new(
-                "Tx size",
-                format!("{} B", self.load_generator.transaction_size),
-            ),
-            ConfigRow::new("Load", format!("{} tx/s", self.load_generator.load)),
-            ConfigRow::new(
-                "Initial delay",
-                humantime::format_duration(self.load_generator.initial_delay).to_string(),
-            ),
-        ]
+        // Configs are already printed in the banner.
+        vec![]
     }
 }
 
@@ -136,29 +127,16 @@ impl<C> RunResultRender for RunResult<C> {
             .map(|first| commit_counts.iter().all(|c| c == first))
             .unwrap_or(true);
         if outcome != Outcome::Diverged && uniform_commits {
-            let committed = commit_counts.first().copied().unwrap_or_default();
-            let rate = match aggregate.committed_leaders_per_second(self.duration) {
-                Some(rate) => format!("{rate:.1} commits/s"),
-                None => "— commits/s".into(),
-            };
-            let mut headline = Vec::new();
-            if let (Some(p50), Some(p90)) = (
-                aggregate.mean_latency_percentile_ms(0.5),
-                aggregate.mean_latency_percentile_ms(0.9),
-            ) {
-                headline.push(format!("p50 {p50:.0} ms · p90 {p90:.0} ms"));
-            }
-            if let Some(tps) = aggregate.transactions_per_second(self.duration) {
-                headline.push(format!("{tps:.0} TPS"));
-            }
-            let headline = headline.join(" · ");
-            if headline.is_empty() {
-                out.push_str(&format!("  {committed} commits, {rate}"));
-            } else {
-                out.push_str(&format!("  {headline} ({committed} commits, {rate})"));
-            }
+            out.push_str(&aggregate.render(self.duration));
         } else {
-            out.push_str(&table::render(ReplicaRow::iter_for_result(self)));
+            let rows = self
+                .metrics
+                .iter()
+                .enumerate()
+                .map(move |(index, metrics)| {
+                    ReplicaRow::new(Authority::from(index), self.duration, metrics)
+                });
+            out.push_str(&table::render(rows));
         }
         out
     }
@@ -176,24 +154,55 @@ pub trait AggregateRender {
 impl AggregateRender for SnapshotAggregate<'_> {
     fn render(&self, elapsed: Duration) -> String {
         let mut parts = vec![
-            format!("[t={}s]", elapsed.as_secs()),
-            format!("committed={}", self.max_committed_leaders()),
+            format!("[t={}s]", fixed_length_format(elapsed.as_secs() as f64)),
+            format!(
+                "committed={}",
+                fixed_length_format(self.max_committed_leaders() as f64),
+            ),
         ];
         let elapsed_secs_f = elapsed.as_secs_f64();
         if elapsed_secs_f > 0.0 {
             if let Some(mean) = self.mean_committed_leaders() {
-                parts.push(format!("{:.1} commits/s", mean / elapsed_secs_f));
+                parts.push(format!(
+                    "commits/s={}",
+                    fixed_length_format(mean / elapsed_secs_f),
+                ));
             }
             if let Some(mean) = self.mean_committed_transactions() {
-                parts.push(format!("{:.0} tx/s", mean / elapsed_secs_f));
+                parts.push(format!(
+                    "tx/s={}",
+                    fixed_length_format(mean / elapsed_secs_f),
+                ));
             }
         }
-        if let (Some(p50), Some(p90)) = (
-            self.mean_latency_percentile_ms(0.5),
-            self.mean_latency_percentile_ms(0.9),
-        ) {
-            parts.push(format!("p50 {p50:.0} ms · p90 {p90:.0} ms"));
+        if let Some(p50) = self.mean_latency_percentile_ms(0.5) {
+            parts.push(format!("p50 ms={}", fixed_length_format(p50),));
+        }
+        if let Some(p90) = self.mean_latency_percentile_ms(0.9) {
+            parts.push(format!("p90 ms={}", fixed_length_format(p90),));
         }
         parts.join(" · ")
     }
+}
+
+/// Format a non-negative number into a 4-character right-aligned string,
+/// using scale suffixes when the value reaches 1000:
+///
+/// * `0..1000`  → bare integer, space-padded (`"   9"`, `" 999"`).
+/// * `1k..1M`   → integer thousands + `k` (`"  1k"`, `"190k"`).
+/// * up to `T` (`10^12`) for the suffix sequence `["k", "M", "B", "T"]`
+///   (`B` for billion, not SI's `G`).
+///
+/// Used by live one-liner fields so they stay aligned across heartbeat
+/// refreshes regardless of magnitude.
+fn fixed_length_format(value: f64) -> String {
+    const UNITS: &[&str] = &["", "k", "M", "B", "T"];
+    let mut scaled = value;
+    let mut unit = 0;
+    while scaled >= 1000.0 && unit < UNITS.len() - 1 {
+        scaled /= 1000.0;
+        unit += 1;
+    }
+    let formatted = format!("{}{}", scaled.round() as u64, UNITS[unit]);
+    format!("{formatted:>4}")
 }
