@@ -9,6 +9,9 @@ members = [
   "crates/minibytes",
   "crates/simulator",
 ]
+# `cargo run` from the workspace root resolves to `cli`'s only bin (`replica`)
+# so users don't need `--bin replica`.
+default-members = ["crates/cli"]
 
 [workspace.package]
 edition = "2024"
