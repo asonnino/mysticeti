@@ -13,17 +13,47 @@ use replica::result::{Outcome, RunResult};
 use replica::testbed::TestbedConfig;
 use simulator::SimulationConfig;
 
-use super::table::{self, ConfigRow, ReplicaRow};
-use super::{GREEN, RED, RESET, YELLOW};
+use std::fmt::Write as _;
+
+use unicode_width::UnicodeWidthStr;
+
+use super::table::{self, ReplicaRow};
+use super::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 
 /// Adapter trait letting [`super::Terminal`] render any run config: the per-run
 /// heading uses [`Self::name`], the suite summary's `nodes` column uses
-/// [`Self::committee_size`], and the per-run config table renders
-/// [`Self::config_rows`] (empty means "no config table for this command").
+/// [`Self::committee_size`], and the per-run banner-style key/value list
+/// renders [`Self::config_rows`] (empty means "no config to print for this
+/// command").
 pub trait ConfigRender {
     fn name(&self) -> Option<&str>;
     fn committee_size(&self) -> usize;
-    fn config_rows(&self) -> Vec<ConfigRow>;
+    fn config_rows(&self) -> Vec<(String, String)>;
+
+    /// Render `config_rows` in the banner's border-less key/value style.
+    fn render(&self, color: bool) -> String {
+        let rows = self.config_rows();
+        let key_width = rows
+            .iter()
+            .map(|(key, _)| UnicodeWidthStr::width(key.as_str()))
+            .max()
+            .unwrap_or(0);
+
+        let mut out = String::new();
+        for (key, value) in &rows {
+            let pad = key_width - UnicodeWidthStr::width(key.as_str());
+            if color {
+                let _ = writeln!(
+                    out,
+                    "  {DIM}{key}:{}{RESET} {BOLD}{value}{RESET}",
+                    " ".repeat(pad),
+                );
+            } else {
+                let _ = writeln!(out, "  {key}:{} {value}", " ".repeat(pad));
+            }
+        }
+        out
+    }
 }
 
 impl ConfigRender for SimulationConfig {
@@ -35,17 +65,20 @@ impl ConfigRender for SimulationConfig {
         self.committee_size
     }
 
-    fn config_rows(&self) -> Vec<ConfigRow> {
+    fn config_rows(&self) -> Vec<(String, String)> {
         vec![
-            ConfigRow::new("Protocol", self.replica_parameters.consensus.to_string()),
-            ConfigRow::new("Committee size", self.committee_size.to_string()),
-            ConfigRow::new("Topology", self.topology.to_string()),
-            ConfigRow::new("Duration", format!("{}s", self.duration_secs)),
-            ConfigRow::new(
-                "Latency range",
+            (
+                "Protocol".into(),
+                self.replica_parameters.consensus.to_string(),
+            ),
+            ("Committee size".into(), self.committee_size.to_string()),
+            ("Topology".into(), self.topology.to_string()),
+            ("Duration".into(), format!("{}s", self.duration_secs)),
+            (
+                "Latency range".into(),
                 format!("{}-{} ms", self.latency_min_ms, self.latency_max_ms),
             ),
-            ConfigRow::new("RNG seed", self.rng_seed.to_string()),
+            ("RNG seed".into(), self.rng_seed.to_string()),
         ]
     }
 }
@@ -59,7 +92,7 @@ impl ConfigRender for TestbedConfig {
         self.committee_size
     }
 
-    fn config_rows(&self) -> Vec<ConfigRow> {
+    fn config_rows(&self) -> Vec<(String, String)> {
         // Configs are already printed in the banner.
         vec![]
     }

@@ -15,23 +15,6 @@ pub fn render<T: Tabled>(rows: impl IntoIterator<Item = T>) -> String {
 }
 
 #[derive(Tabled)]
-pub struct ConfigRow {
-    #[tabled(rename = "parameter")]
-    parameter: String,
-    #[tabled(rename = "value")]
-    value: String,
-}
-
-impl ConfigRow {
-    pub(super) fn new(parameter: impl Into<String>, value: impl Into<String>) -> Self {
-        Self {
-            parameter: parameter.into(),
-            value: value.into(),
-        }
-    }
-}
-
-#[derive(Tabled)]
 pub struct ReplicaRow {
     #[tabled(rename = "replica")]
     replica: Authority,

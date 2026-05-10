@@ -84,7 +84,7 @@ impl Terminal {
             }
         }
         if !rows.is_empty() {
-            println!("{}", table::render(rows));
+            println!("{}", config.render(self.color));
             println!();
         }
     }
