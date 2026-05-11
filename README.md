@@ -17,7 +17,7 @@ network and failure scenarios.
 
 This repository currently supports [Mysticeti](https://sonnino.com/papers/mysticeti.pdf),
 [Mahi-Mahi](https://sonnino.com/papers/mahi-mahi.pdf),
-[Odontoceti](https://sonnino.com/papers/bluebottle.pdf), [Cordial
+[Blue Bottle](https://sonnino.com/papers/bluebottle.pdf), [Cordial
 Miners](https://arxiv.org/abs/2205.09174) (both the partially synchronous and asynchronous
 variants), and [Nemo-Nemo](https://sonnino.com/papers/nemo-nemo.pdf).
 

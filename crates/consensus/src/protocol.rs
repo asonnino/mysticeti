@@ -20,7 +20,7 @@ pub enum ConsensusProtocol {
         #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
     },
-    Odontoceti {
+    BlueBottle {
         #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
     },
@@ -77,8 +77,8 @@ impl fmt::Display for ConsensusProtocol {
             Self::Mysticeti { leader_count } => {
                 write!(f, "Mysticeti ({} leaders/round)", leader_count)
             }
-            Self::Odontoceti { leader_count } => {
-                write!(f, "Odontoceti ({} leaders/round)", leader_count)
+            Self::BlueBottle { leader_count } => {
+                write!(f, "Blue Bottle ({} leaders/round)", leader_count)
             }
             Self::MahiMahi {
                 leader_count,
@@ -104,7 +104,7 @@ impl ConsensusProtocol {
             }
             Self::CordialMinersAsynchronous => Protocol::cordial_miners_asynchronous(total_stake),
             Self::Mysticeti { leader_count } => Protocol::mysticeti(total_stake, leader_count),
-            Self::Odontoceti { leader_count } => Protocol::odontoceti(total_stake, leader_count),
+            Self::BlueBottle { leader_count } => Protocol::blue_bottle(total_stake, leader_count),
             Self::MahiMahi {
                 leader_count,
                 wave_length,
@@ -189,11 +189,11 @@ impl Protocol {
         }
     }
 
-    /// Odontoceti
+    /// Blue Bottle
     ///
     /// "BlueBottle: Fast and Robust Blockchains through Subsystem Specialization"
     /// <https://sonnino.com/papers/bluebottle.pdf>
-    pub fn odontoceti(total_stake: Stake, leader_count: NonZeroUsize) -> Self {
+    pub fn blue_bottle(total_stake: Stake, leader_count: NonZeroUsize) -> Self {
         let strong_quorum = 4 * total_stake / 5 + 1;
         let weak_quorum = 2 * total_stake / 5 + 1;
         Self {
