@@ -71,3 +71,12 @@
       protocol: mahi-mahi
       leader_count: 2
       wave_length: 4
+# Protocol variant: nemo-nemo is crash-fault-tolerant (no Byzantine resilience),
+# so signature and hash checks are skipped.
+- name: nemo-nemo
+  committee_size: 7
+  duration_secs: 30
+  replica_parameters:
+    consensus:
+      protocol: nemo-nemo
+      leader_count: 2

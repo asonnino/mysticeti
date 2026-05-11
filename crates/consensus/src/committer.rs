@@ -19,7 +19,7 @@ use dag::{
 pub struct Committer {
     block_reader: BlockReader,
     base_committers: Vec<BaseCommitter>,
-    strong_quorum: Stake,
+    direct_commit_quorum: Stake,
     leader_wait: bool,
     /// Reusable buffer for commit decisions.
     leaders: VecDeque<LeaderStatus>,
@@ -51,7 +51,7 @@ impl Committer {
         Self {
             block_reader,
             base_committers,
-            strong_quorum: protocol.strong_quorum,
+            direct_commit_quorum: protocol.direct_commit_quorum,
             leader_wait: protocol.leader_wait,
             leaders: VecDeque::new(),
         }
@@ -116,7 +116,7 @@ impl Committer {
 
 impl DagConsensus for Committer {
     fn quorum_threshold(&self) -> Stake {
-        self.strong_quorum
+        self.direct_commit_quorum
     }
 
     fn try_commit(
