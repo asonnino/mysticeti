@@ -120,8 +120,8 @@ pub struct Protocol {
     pub direct_commit_quorum: Stake,
     /// The quorum threshold to directly skip a leader.
     pub direct_skip_quorum: Stake,
-    /// The quorum threshold to indirectly decide a leader.
-    pub indirect_decide_quorum: Stake,
+    /// The stake of anchor-linked support required to indirectly decide a leader.
+    pub anchor_link_size: Stake,
     /// The number of rounds to commit a leader.
     pub wave_length: RoundNumber,
     /// The number of leaders per round.
@@ -144,7 +144,7 @@ impl Protocol {
         Self {
             direct_commit_quorum: quorum,
             direct_skip_quorum: total_stake,
-            indirect_decide_quorum: quorum,
+            anchor_link_size: 1,
             wave_length: 3,
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
@@ -162,7 +162,7 @@ impl Protocol {
         Self {
             direct_commit_quorum: quorum,
             direct_skip_quorum: total_stake,
-            indirect_decide_quorum: quorum,
+            anchor_link_size: 1,
             wave_length: 5,
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
@@ -180,7 +180,7 @@ impl Protocol {
         Self {
             direct_commit_quorum: quorum,
             direct_skip_quorum: quorum,
-            indirect_decide_quorum: quorum,
+            anchor_link_size: 1,
             wave_length: 3,
             leader_count,
             pipeline: true,
@@ -199,7 +199,7 @@ impl Protocol {
         Self {
             direct_commit_quorum: strong_quorum,
             direct_skip_quorum: strong_quorum,
-            indirect_decide_quorum: weak_quorum,
+            anchor_link_size: weak_quorum,
             wave_length: 2,
             leader_count,
             pipeline: true,
@@ -225,7 +225,7 @@ impl Protocol {
         Self {
             direct_commit_quorum: quorum,
             direct_skip_quorum: quorum,
-            indirect_decide_quorum: quorum,
+            anchor_link_size: 1,
             wave_length,
             leader_count,
             pipeline: true,
@@ -243,7 +243,7 @@ impl Protocol {
         Self {
             direct_commit_quorum: quorum,
             direct_skip_quorum: total_stake,
-            indirect_decide_quorum: 1,
+            anchor_link_size: 1,
             wave_length: 2,
             leader_count,
             pipeline: true,

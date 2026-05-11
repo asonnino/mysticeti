@@ -30,7 +30,7 @@ fn direct_commit() {
         Protocol {
             direct_commit_quorum: 2 * committee.total_stake() / 3 + 1,
             direct_skip_quorum: 2 * committee.total_stake() / 3 + 1,
-            indirect_decide_quorum: 2 * committee.total_stake() / 3 + 1,
+            anchor_link_size: 1,
             wave_length: 3,
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
@@ -69,7 +69,7 @@ fn idempotence() {
         Protocol {
             direct_commit_quorum: 2 * committee.total_stake() / 3 + 1,
             direct_skip_quorum: 2 * committee.total_stake() / 3 + 1,
-            indirect_decide_quorum: 2 * committee.total_stake() / 3 + 1,
+            anchor_link_size: 1,
             wave_length: 3,
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
@@ -111,7 +111,7 @@ fn multiple_direct_commit() {
             Protocol {
                 direct_commit_quorum: 2 * committee.total_stake() / 3 + 1,
                 direct_skip_quorum: 2 * committee.total_stake() / 3 + 1,
-                indirect_decide_quorum: 2 * committee.total_stake() / 3 + 1,
+                anchor_link_size: 1,
                 wave_length: 3,
                 leader_count: NonZeroUsize::new(1).unwrap(),
                 pipeline: false,
@@ -158,7 +158,7 @@ fn direct_commit_late_call() {
         Protocol {
             direct_commit_quorum: 2 * committee.total_stake() / 3 + 1,
             direct_skip_quorum: 2 * committee.total_stake() / 3 + 1,
-            indirect_decide_quorum: 2 * committee.total_stake() / 3 + 1,
+            anchor_link_size: 1,
             wave_length: 3,
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
@@ -203,7 +203,7 @@ fn no_genesis_commit() {
             Protocol {
                 direct_commit_quorum: 2 * committee.total_stake() / 3 + 1,
                 direct_skip_quorum: 2 * committee.total_stake() / 3 + 1,
-                indirect_decide_quorum: 2 * committee.total_stake() / 3 + 1,
+                anchor_link_size: 1,
                 wave_length: 3,
                 leader_count: NonZeroUsize::new(1).unwrap(),
                 pipeline: false,
@@ -254,7 +254,7 @@ fn no_leader() {
         Protocol {
             direct_commit_quorum: 2 * committee.total_stake() / 3 + 1,
             direct_skip_quorum: 2 * committee.total_stake() / 3 + 1,
-            indirect_decide_quorum: 2 * committee.total_stake() / 3 + 1,
+            anchor_link_size: 1,
             wave_length: 3,
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
@@ -315,7 +315,7 @@ fn direct_skip() {
         Protocol {
             direct_commit_quorum: 2 * committee.total_stake() / 3 + 1,
             direct_skip_quorum: 2 * committee.total_stake() / 3 + 1,
-            indirect_decide_quorum: 2 * committee.total_stake() / 3 + 1,
+            anchor_link_size: 1,
             wave_length: 3,
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
@@ -425,7 +425,7 @@ fn indirect_commit() {
         Protocol {
             direct_commit_quorum: 2 * committee.total_stake() / 3 + 1,
             direct_skip_quorum: 2 * committee.total_stake() / 3 + 1,
-            indirect_decide_quorum: 2 * committee.total_stake() / 3 + 1,
+            anchor_link_size: 1,
             wave_length: 3,
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
@@ -503,7 +503,7 @@ fn indirect_skip() {
         Protocol {
             direct_commit_quorum: 2 * committee.total_stake() / 3 + 1,
             direct_skip_quorum: 2 * committee.total_stake() / 3 + 1,
-            indirect_decide_quorum: 2 * committee.total_stake() / 3 + 1,
+            anchor_link_size: 1,
             wave_length: 3,
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
@@ -597,7 +597,7 @@ fn undecided() {
         Protocol {
             direct_commit_quorum: 2 * committee.total_stake() / 3 + 1,
             direct_skip_quorum: 2 * committee.total_stake() / 3 + 1,
-            indirect_decide_quorum: 2 * committee.total_stake() / 3 + 1,
+            anchor_link_size: 1,
             wave_length: 3,
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
@@ -646,7 +646,7 @@ fn trailing_skip_not_re_yielded() {
         Protocol {
             direct_commit_quorum: 2 * committee.total_stake() / 3 + 1,
             direct_skip_quorum: 2 * committee.total_stake() / 3 + 1,
-            indirect_decide_quorum: 2 * committee.total_stake() / 3 + 1,
+            anchor_link_size: 1,
             wave_length: 3,
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
