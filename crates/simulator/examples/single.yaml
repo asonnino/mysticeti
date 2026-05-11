@@ -29,7 +29,7 @@ replica_parameters:
     fsync: false
   # Consensus protocol variant. Options:
   #   mysticeti                            { leader_count }
-  #   odontoceti                           { leader_count }
+  #   blue-bottle                          { leader_count }
   #   mahi-mahi                            { leader_count, wave_length: 4 | 5 }
   #   nemo-nemo                            { leader_count }
   #   cordial-miners-partially-synchronous

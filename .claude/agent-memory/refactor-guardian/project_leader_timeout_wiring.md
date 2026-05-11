@@ -15,7 +15,7 @@ Current state (post `config-cleanup`):
 - `Replica::run` / `SimulatedReplica::start` resolve via
   `round_timeout.unwrap_or_else(|| protocol.default_round_timeout())`.
 - `Protocol::default_round_timeout` returns `1s` when `leader_wait == true`
-  (Mysticeti, Odontoceti, CordialMinersPartiallySynchronous), `75ms` otherwise
+  (Mysticeti, BlueBottle, CordialMinersPartiallySynchronous), `75ms` otherwise
   (MahiMahi, CordialMinersAsynchronous).
 
 **Why:** Mysticeti's effective timeout remains 1s — identical to the historical
