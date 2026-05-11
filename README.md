@@ -2,7 +2,7 @@
   <img src="assets/banner.png" alt="Mysticeti" width="720" />
 </p>
 
-# Mysticeti
+# Uncertified DAG Consensus
 
 [![build
 status](https://img.shields.io/github/actions/workflow/status/asonnino/mysticeti/code.yaml?branch=main&logo=github&style=flat-square)](https://github.com/asonnino/mysticeti/actions)
