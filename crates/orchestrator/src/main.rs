@@ -3,18 +3,21 @@
 
 //! Orchestrator entry point.
 
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 
 use benchmark::BenchmarkParameters;
 use clap::Parser;
-use client::{ServerProviderClient, aws::AwsClient, vultr::VultrClient};
+use client::{Instance, ServerProviderClient, aws::AwsClient, vultr::VultrClient};
+use error::TestbedResult;
 use eyre::Context;
+use faults::CrashRecoverySchedule;
 use measurements::MeasurementsCollection;
 use orchestrator::Orchestrator;
-use protocol::ProtocolParameters;
+use protocol::{ProtocolCommands, ProtocolMetrics, ProtocolParameters};
 use settings::{CloudProvider, Settings};
 use ssh::SshConnectionManager;
 use testbed::Testbed;
+use tokio::time::{self, Instant};
 
 mod benchmark;
 mod client;
@@ -232,6 +235,18 @@ async fn run<C: ServerProviderClient>(
                 None => ClientParameters::default(),
             };
 
+            // Skip-flag side effects live in the caller now: warn the user, and
+            // pin `unknown_commit` to the repository before the orchestrator
+            // snapshots the settings.
+            let mut settings = settings;
+            if skip_testbed_update {
+                display::warn("Skipping testbed update! Use with care!");
+                settings.repository.set_unknown_commit();
+            }
+            if skip_testbed_configuration {
+                display::warn("Skipping testbed configuration! Use with care!");
+            }
+
             let set_of_benchmark_parameters = BenchmarkParameters::new_from_loads(
                 settings.clone(),
                 node_parameters,
@@ -240,22 +255,190 @@ async fn run<C: ServerProviderClient>(
                 loads,
             );
 
-            Orchestrator::new(
-                settings,
+            let orchestrator = Orchestrator::new(
+                settings.clone(),
                 instances,
                 setup_commands,
                 protocol_commands,
                 ssh_manager,
+            );
+
+            run_benchmarks(
+                &orchestrator,
+                &settings,
+                set_of_benchmark_parameters,
+                skip_testbed_update,
+                skip_testbed_configuration,
             )
-            .skip_testbed_update(skip_testbed_update)
-            .skip_testbed_configuration(skip_testbed_configuration)
-            .run_benchmarks(set_of_benchmark_parameters)
             .await
             .wrap_err("Failed to run benchmarks")?;
         }
 
         // Print a summary of the specified measurements collection.
-        Operation::Summarize { path } => MeasurementsCollection::load(path)?.display_summary(),
+        Operation::Summarize { path } => {
+            let collection = MeasurementsCollection::load(path)?;
+            display::newline();
+            print!("{}", collection.summary());
+            display::newline();
+        }
     }
     Ok(())
+}
+
+/// Drive the full benchmark sweep: prepare the testbed once, then run each
+/// configured load through the orchestrator's phased API while rendering every
+/// banner, action, and config row through [`display`]. The orchestrator never
+/// touches stdout — this function is where all human-visible output happens.
+async fn run_benchmarks<P: ProtocolCommands + ProtocolMetrics>(
+    orchestrator: &Orchestrator<P>,
+    settings: &Settings,
+    parameters_set: Vec<BenchmarkParameters>,
+    skip_testbed_update: bool,
+    skip_testbed_configuration: bool,
+) -> TestbedResult<()> {
+    display::header("Preparing testbed");
+    display::config("Commit", format!("'{}'", &settings.repository.commit));
+    display::newline();
+
+    orchestrator.cleanup(true).await?;
+
+    if !skip_testbed_update {
+        display::action("Installing dependencies on all machines");
+        orchestrator.install().await?;
+        display::done();
+
+        display::action("Updating all instances");
+        orchestrator.update().await?;
+        display::done();
+    }
+
+    let mut latest_committee_size = 0;
+    for (index, parameters) in parameters_set.into_iter().enumerate() {
+        let benchmark_number = index + 1;
+        display::header(format!("Starting benchmark {benchmark_number}"));
+        display::config("Node Parameters", &parameters.node_parameters);
+        display::config("Benchmark Parameters", &parameters);
+        display::newline();
+
+        orchestrator.cleanup(true).await?;
+
+        if let Some(monitoring) = orchestrator.start_monitoring(&parameters).await? {
+            display::action("Configuring monitoring instance");
+            display::done();
+            display::config("Grafana address", &monitoring.grafana_address);
+            display::newline();
+        }
+
+        if !skip_testbed_configuration && latest_committee_size != parameters.nodes {
+            let configure_report = orchestrator.configure(&parameters).await?;
+            display::config("Configuring instances", "");
+            for (node_index, address) in &configure_report.nodes {
+                display::config(format!("  - node {node_index}"), address);
+            }
+            for (client_index, address) in &configure_report.clients {
+                display::config(format!("  - client {client_index}"), address);
+            }
+            latest_committee_size = parameters.nodes;
+        }
+
+        display::action("\nDeploying replicas");
+        orchestrator.run_nodes(&parameters).await?;
+        display::done();
+        if parameters.settings.benchmark_duration.as_secs() == 0 {
+            return Ok(());
+        }
+
+        let clients_report = orchestrator.run_clients(&parameters).await?;
+        if clients_report.deployed {
+            display::action("Setting up load generators");
+        } else {
+            display::action("Skipping load generators deployment (load = 0)");
+        }
+        display::done();
+
+        let aggregator = run_benchmark_loop(orchestrator, settings, &parameters).await?;
+        display::newline();
+        print!("{}", aggregator.summary());
+        display::newline();
+
+        orchestrator.cleanup(false).await?;
+
+        if settings.log_processing {
+            let logs = orchestrator.download_logs(&parameters).await?;
+            if logs.node_panic {
+                display::error("Node(s) panicked!");
+            } else if logs.client_panic {
+                display::error("Client(s) panicked!");
+            } else if logs.node_errors != 0 || logs.client_errors != 0 {
+                display::newline();
+                display::warn(format!(
+                    "Logs contain errors (node: {}, client: {})",
+                    logs.node_errors, logs.client_errors,
+                ));
+            }
+        }
+    }
+
+    display::header("Benchmark completed");
+    Ok(())
+}
+
+/// Drive the metrics/fault tick loop for a single benchmark run. Owns the
+/// `tokio::select!`, the measurement accumulator, the fault schedule, and the
+/// per-tick disk save — all of which the orchestrator used to do internally.
+async fn run_benchmark_loop<P: ProtocolCommands + ProtocolMetrics>(
+    orchestrator: &Orchestrator<P>,
+    settings: &Settings,
+    parameters: &BenchmarkParameters,
+) -> TestbedResult<MeasurementsCollection> {
+    display::action(format!(
+        "Scraping metrics (at least {}s)",
+        settings.benchmark_duration.as_secs()
+    ));
+
+    let (_, nodes, _) = orchestrator.select_instances(parameters)?;
+    let mut killed_nodes: Vec<Instance> = Vec::new();
+    let mut aggregator = MeasurementsCollection::new(parameters.clone());
+    let mut schedule = CrashRecoverySchedule::new(parameters.settings.faults.clone(), nodes);
+
+    let mut metrics_interval = time::interval(settings.scrape_interval);
+    metrics_interval.tick().await; // The first tick returns immediately.
+    let mut faults_interval = time::interval(settings.faults.crash_interval());
+    faults_interval.tick().await; // The first tick returns immediately.
+
+    let results_path = settings
+        .results_dir
+        .join(format!("results-{}", settings.repository.commit));
+    fs::create_dir_all(&results_path).expect("Failed to create log directory");
+
+    let start = Instant::now();
+    loop {
+        tokio::select! {
+            now = metrics_interval.tick() => {
+                let elapsed = now.duration_since(start).as_secs_f64().ceil() as u64;
+                display::status(format!("{elapsed}s"));
+                orchestrator
+                    .scrape_once(parameters, &killed_nodes, &mut aggregator)
+                    .await?;
+                aggregator.save(&results_path);
+                if elapsed > parameters.settings.benchmark_duration.as_secs() {
+                    break;
+                }
+            },
+            _ = faults_interval.tick() => {
+                let action = orchestrator
+                    .apply_faults_step(parameters, &mut schedule)
+                    .await?;
+                killed_nodes.retain(|instance| !action.boot.contains(instance));
+                killed_nodes.extend(action.kill.iter().cloned());
+                if !action.kill.is_empty() || !action.boot.is_empty() {
+                    display::newline();
+                    display::config("Testbed update", action);
+                }
+            }
+        }
+    }
+
+    display::done();
+    Ok(aggregator)
 }

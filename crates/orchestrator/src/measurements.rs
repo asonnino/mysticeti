@@ -3,7 +3,7 @@
 
 use std::{
     collections::HashMap,
-    fmt::Debug,
+    fmt::{self, Debug, Display},
     fs,
     io::BufRead,
     path::{Path, PathBuf},
@@ -247,27 +247,43 @@ impl MeasurementsCollection {
         fs::write(file, json).unwrap();
     }
 
-    /// Display a summary of the measurements.
-    pub fn display_summary(&self) {
+    /// Return a [`Display`]-able rendering of the benchmark summary table.
+    /// The caller decides framing (leading/trailing newlines, where it gets
+    /// printed); the wrapper renders only the table itself.
+    pub fn summary(&self) -> MeasurementsSummary<'_> {
+        MeasurementsSummary { collection: self }
+    }
+}
+
+/// [`Display`] wrapper produced by [`MeasurementsCollection::summary`]. Renders
+/// the same prettytable as the legacy `display_summary` path, without framing
+/// newlines — those are the caller's concern.
+pub struct MeasurementsSummary<'a> {
+    collection: &'a MeasurementsCollection,
+}
+
+impl Display for MeasurementsSummary<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let collection = self.collection;
         let mut table = Table::new();
         table.set_format(display::default_table_format());
 
-        let duration = self.benchmark_duration();
+        let duration = collection.benchmark_duration();
 
         table.set_titles(row![bH2->"Benchmark Summary"]);
-        table.add_row(row![b->"Benchmark type:", self.parameters.node_parameters]);
+        table.add_row(row![b->"Benchmark type:", collection.parameters.node_parameters]);
         table.add_row(row![bH2->""]);
-        table.add_row(row![b->"Nodes:", self.parameters.nodes]);
-        table.add_row(row![b->"Faults:", self.parameters.settings.faults]);
-        table.add_row(row![b->"Load:", format!("{} tx/s", self.parameters.load)]);
+        table.add_row(row![b->"Nodes:", collection.parameters.nodes]);
+        table.add_row(row![b->"Faults:", collection.parameters.settings.faults]);
+        table.add_row(row![b->"Load:", format!("{} tx/s", collection.parameters.load)]);
         table.add_row(row![b->"Duration:", format!("{} s", duration.as_secs())]);
 
-        let mut labels: Vec<_> = self.labels().collect();
+        let mut labels: Vec<_> = collection.labels().collect();
         labels.sort();
         for label in labels {
-            let total_tps = self.aggregate_tps(label);
-            let average_latency = self.aggregate_average_latency(label);
-            let stdev_latency = self.max_stdev_latency(label);
+            let total_tps = collection.aggregate_tps(label);
+            let average_latency = collection.aggregate_average_latency(label);
+            let stdev_latency = collection.max_stdev_latency(label);
 
             table.add_row(row![bH2->""]);
             table.add_row(row![b->"Workload:", label]);
@@ -276,9 +292,7 @@ impl MeasurementsCollection {
             table.add_row(row![b->"Latency (stdev):", format!("{} ms", stdev_latency.as_millis())]);
         }
 
-        display::newline();
-        table.printstd();
-        display::newline();
+        write!(f, "{table}")
     }
 }
 
