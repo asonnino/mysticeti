@@ -3,38 +3,23 @@
 
 //! Orchestrator entry point.
 
-use benchmark::BenchmarkParameters;
 use clap::Parser;
-use client::{ServerProviderClient, aws::AwsClient, vultr::VultrClient};
-use collector::Collector;
-use error::TestbedResult;
 use eyre::Context;
-use faults::CrashRecoverySchedule;
-use orchestrator::Orchestrator;
-use protocol::{ProtocolCommands, ProtocolMetrics, ProtocolParameters};
-use settings::{CloudProvider, Settings};
-use ssh::SshConnectionManager;
-use testbed::Testbed;
+use orchestrator::{
+    ClientParameters, NodeParameters, Protocol,
+    benchmark::BenchmarkParameters,
+    client::{ServerProviderClient, aws::AwsClient, vultr::VultrClient},
+    collector::Collector,
+    display,
+    error::{self, TestbedResult},
+    faults::CrashRecoverySchedule,
+    orchestrator::{MonitoringReport, Orchestrator},
+    protocol::{ProtocolCommands, ProtocolMetrics, ProtocolParameters},
+    settings::{CloudProvider, Settings},
+    ssh::SshConnectionManager,
+    testbed::Testbed,
+};
 use tokio::time::{self, Instant};
-
-mod benchmark;
-mod client;
-mod collector;
-mod display;
-mod error;
-mod faults;
-mod logs;
-mod monitor;
-mod orchestrator;
-mod protocol;
-mod settings;
-mod ssh;
-mod testbed;
-
-/// NOTE: Link these types to the correct protocol.
-type Protocol = protocol::mysticeti::MysticetiProtocol;
-type NodeParameters = protocol::mysticeti::MysticetiNodeParameters;
-type ClientParameters = protocol::mysticeti::MysticetiClientParameters;
 
 /// The orchestrator command line options.
 #[derive(Parser, Debug)]
@@ -393,7 +378,7 @@ async fn run_benchmark_loop<P: ProtocolCommands + ProtocolMetrics>(
     orchestrator: &Orchestrator<P>,
     settings: &Settings,
     parameters: &BenchmarkParameters,
-    monitoring: Option<&orchestrator::MonitoringReport>,
+    monitoring: Option<&MonitoringReport>,
 ) -> TestbedResult<()> {
     // The banner copy depends on whether metrics will actually be collected:
     // without monitoring deployed there's no collector, so "Scraping metrics"

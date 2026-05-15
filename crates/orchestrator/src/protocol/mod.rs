@@ -8,6 +8,7 @@ use std::{
 
 use eyre::Context;
 use serde::{Serialize, de::DeserializeOwned};
+use std::future::Future;
 
 use crate::{benchmark::BenchmarkParameters, client::Instance, collector::MetricSpec};
 
@@ -38,13 +39,13 @@ pub trait ProtocolCommands {
 
     /// The command to generate the genesis and all configuration files. This command
     /// is run on each remote machine.
-    async fn genesis_command<'a, I>(
+    fn genesis_command<'a, I>(
         &self,
         instances: I,
         parameters: &BenchmarkParameters,
-    ) -> String
+    ) -> impl Future<Output = String> + Send
     where
-        I: Iterator<Item = &'a Instance>;
+        I: Iterator<Item = &'a Instance> + Send;
 
     /// The command to run a node. The function returns a vector of commands along with the
     /// associated instance on which to run the command.

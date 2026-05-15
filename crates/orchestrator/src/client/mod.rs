@@ -86,32 +86,49 @@ pub trait ServerProviderClient: Display {
     const USERNAME: &'static str;
 
     /// List all existing instances (regardless of their status).
-    async fn list_instances(&self) -> CloudProviderResult<Vec<Instance>>;
+    fn list_instances(&self) -> impl Future<Output = CloudProviderResult<Vec<Instance>>> + Send;
 
     /// Start the specified instances.
-    async fn start_instances<'a, I>(&self, instances: I) -> CloudProviderResult<()>
+    fn start_instances<'a, I>(
+        &self,
+        instances: I,
+    ) -> impl Future<Output = CloudProviderResult<()>> + Send
     where
         I: Iterator<Item = &'a Instance> + Send;
 
     /// Halt/Stop the specified instances. We may still be billed for stopped instances.
-    async fn stop_instances<'a, I>(&self, instance_ids: I) -> CloudProviderResult<()>
+    fn stop_instances<'a, I>(
+        &self,
+        instance_ids: I,
+    ) -> impl Future<Output = CloudProviderResult<()>> + Send
     where
         I: Iterator<Item = &'a Instance> + Send;
 
     /// Create an instance in a specific region.
-    async fn create_instance<S>(&self, region: S) -> CloudProviderResult<Instance>
+    fn create_instance<S>(
+        &self,
+        region: S,
+    ) -> impl Future<Output = CloudProviderResult<Instance>> + Send
     where
         S: Into<String> + Serialize + Send;
 
     /// Delete a specific instance. Calling this function ensures we are no longer billed for
     /// the specified instance.
-    async fn delete_instance(&self, instance: Instance) -> CloudProviderResult<()>;
+    fn delete_instance(
+        &self,
+        instance: Instance,
+    ) -> impl Future<Output = CloudProviderResult<()>> + Send;
 
     /// Authorize the provided ssh public key to access machines.
-    async fn register_ssh_public_key(&self, public_key: String) -> CloudProviderResult<()>;
+    fn register_ssh_public_key(
+        &self,
+        public_key: String,
+    ) -> impl Future<Output = CloudProviderResult<()>> + Send;
 
     /// Return provider-specific commands to setup the instance.
-    async fn instance_setup_commands(&self) -> CloudProviderResult<Vec<String>>;
+    fn instance_setup_commands(
+        &self,
+    ) -> impl Future<Output = CloudProviderResult<Vec<String>>> + Send;
 }
 
 #[cfg(test)]
