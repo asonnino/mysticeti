@@ -66,7 +66,7 @@ impl Collector {
     ) -> TestbedResult<Self> {
         let client: PrometheusClient = prometheus_address
             .try_into()
-            .map_err(|e| MonitorError::PrometheusError(e))?;
+            .map_err(MonitorError::PrometheusError)?;
         Ok(Self {
             client,
             metrics,
@@ -117,9 +117,5 @@ impl Collector {
         path.push(format!("measurements-{:?}.json", self.results.parameters));
         fs::write(&path, json)?;
         Ok(())
-    }
-
-    pub fn results(&self) -> &BenchmarkResults {
-        &self.results
     }
 }
