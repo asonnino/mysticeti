@@ -15,7 +15,6 @@ use crate::{
     error::{TestbedError, TestbedResult},
     faults::{CrashRecoveryAction, CrashRecoverySchedule},
     logs::{LogsAnalyzer, LogsReport},
-    measurements::{Measurement, MeasurementsCollection},
     monitor::Monitor,
     protocol::{ProtocolCommands, ProtocolMetrics},
     settings::Settings,
@@ -53,6 +52,10 @@ impl ConfigureReport {
 /// means monitoring is disabled in [`Settings`].
 pub struct MonitoringReport {
     pub grafana_address: String,
+    /// PromQL endpoint that consumers can hand to [`crate::collector::Collector`]
+    /// when they want lib-provided metric collection. Always populated when this
+    /// report is returned — the same monitoring instance hosts both servers.
+    pub prometheus_address: String,
 }
 
 /// Whether [`Orchestrator::run_clients`] actually deployed load generators.
@@ -341,6 +344,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
 
         Ok(Some(MonitoringReport {
             grafana_address: monitor.grafana_address(),
+            prometheus_address: monitor.prometheus_address(),
         }))
     }
 
@@ -417,36 +421,6 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
         self.ssh_manager.wait_for_success(commands).await;
 
         Ok(RunClientsReport::deployed())
-    }
-
-    /// Scrape Prometheus metrics from each non-killed load-generator instance
-    /// once and fold the result into `collection`. The caller passes the
-    /// currently-killed instances so the scrape skips them, and threads the
-    /// same `collection` across ticks to accumulate a time series.
-    pub async fn scrape_once(
-        &self,
-        parameters: &BenchmarkParameters,
-        killed: &[Instance],
-        collection: &mut MeasurementsCollection,
-    ) -> TestbedResult<()> {
-        let (clients, _, _) = self.select_instances(parameters)?;
-        let mut metrics_commands = self
-            .protocol_commands
-            .clients_metrics_command(clients, parameters);
-        metrics_commands.retain(|(instance, _)| !killed.contains(instance));
-
-        let stdio = self
-            .ssh_manager
-            .execute_per_instance(metrics_commands, CommandContext::default())
-            .await?;
-
-        for (scraper_id, (stdout, _stderr)) in stdio.iter().enumerate() {
-            for (label, measurement) in Measurement::from_prometheus::<P>(stdout) {
-                collection.add(scraper_id, label, measurement);
-            }
-        }
-
-        Ok(())
     }
 
     /// Advance the fault schedule by one step: query [`CrashRecoverySchedule`]

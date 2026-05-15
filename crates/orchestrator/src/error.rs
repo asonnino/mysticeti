@@ -76,6 +76,15 @@ pub enum MonitorError {
 
     #[error("Failed to start Grafana: {0}")]
     GrafanaError(String),
+
+    #[error("Prometheus query failed: {0}")]
+    PrometheusError(#[from] prometheus_http_query::Error),
+
+    #[error("Unexpected Prometheus response: instant query did not return a vector")]
+    UnexpectedPrometheusResponse,
+
+    #[error("Failed to write benchmark results: {0}")]
+    ResultsWriteError(#[from] std::io::Error),
 }
 
 pub type TestbedResult<T> = Result<T, TestbedError>;

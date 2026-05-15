@@ -19,14 +19,14 @@ glob = "0.3.1"
 dag.workspace = true
 replica.workspace = true
 prettytable-rs = "0.10"
-prometheus-parse = { git = "https://github.com/asonnino/prometheus-parser.git", rev = "75334db" }
+prometheus-http-query = "0.8"
 rand = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = "1.0.88"
 serde_with = "3.8.1"
 serde_yaml = { workspace = true }
-ssh2 = "0.9.4"                                                                                    # TODO: remove this dependency
+ssh2 = "0.9.4"                    # TODO: remove this dependency
 thiserror = { workspace = true }
 tokio = { workspace = true }
 
