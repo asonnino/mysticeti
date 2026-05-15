@@ -73,8 +73,8 @@ pub trait ProtocolCommands {
 pub trait ProtocolMetrics {
     /// Describe each metric and what kind of instrumentation backs it. The
     /// collector synthesises the right PromQL per `MetricKind`: `rate()` for
-    /// counters, raw name for gauges, `histogram_quantile(rate(_bucket))` for
-    /// histograms, raw PromQL for `Custom`.
+    /// counters, the raw name for gauges, and `histogram_quantile(rate(_bucket))`
+    /// for histograms.
     fn metrics(&self) -> Vec<MetricSpec>;
 
     /// The network path where the nodes expose prometheus metrics.

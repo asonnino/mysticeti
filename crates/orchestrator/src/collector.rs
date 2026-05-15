@@ -43,8 +43,14 @@ const HISTOGRAM_QUANTILES: &[f64] = &[0.5, 0.9, 0.99];
 /// this to synthesise the right PromQL expression — consumers describe what
 /// the metric *is*, not how to query it.
 pub enum MetricKind {
-    /// Cumulative monotonic counter. Synthesised as `rate(name[window])`.
+    /// Cumulative monotonic counter. Synthesised as `rate(name[window])`, so
+    /// samples are per-second rates rather than cumulative values.
     Counter,
+    /// Instantaneous value. Queried as the raw metric name. Used for metrics
+    /// where the cumulative-rate interpretation would be wrong — e.g. an
+    /// elapsed-seconds counter exposed as `benchmark_duration` where
+    /// `rate(benchmark_duration[1m]) ≈ 1.0` always.
+    Gauge,
     /// Histogram. Synthesised as `histogram_quantile(q, rate(name_bucket[window]))`
     /// for each `q` in [`HISTOGRAM_QUANTILES`]; samples land under
     /// `{name}.p50` / `{name}.p90` / `{name}.p99`.
@@ -124,6 +130,7 @@ impl Collector {
                     spec.name.clone(),
                     format!("rate({}[{}])", spec.name, RATE_WINDOW),
                 )),
+                MetricKind::Gauge => targets.push((spec.name.clone(), spec.name.clone())),
                 MetricKind::Histogram => {
                     for quantile in HISTOGRAM_QUANTILES {
                         let key = format!("{}.p{}", spec.name, (quantile * 100.0).round() as u32);

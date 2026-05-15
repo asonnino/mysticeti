@@ -190,8 +190,11 @@ impl ProtocolMetrics for MysticetiProtocol {
     fn metrics(&self) -> Vec<MetricSpec> {
         vec![
             MetricSpec {
+                // Exposed as a counter but represents elapsed seconds — querying
+                // `rate(benchmark_duration[1m])` always returns ~1.0, useless.
+                // The cumulative value is what aggregation actually needs.
                 name: dag::metrics::BENCHMARK_DURATION.into(),
-                kind: MetricKind::Counter,
+                kind: MetricKind::Gauge,
             },
             MetricSpec {
                 name: "latency_s".into(),

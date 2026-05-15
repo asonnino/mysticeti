@@ -120,13 +120,20 @@ impl<P> Orchestrator<P> {
                 .push_back(instance);
         }
 
-        // Select the instance to host the monitoring stack.
+        // Select the instance to host the monitoring stack. If monitoring is
+        // enabled but the first region has no active instance to spare, that's
+        // a capacity error — silently dropping monitoring would surprise the
+        // caller (who already saw the action banner and expects a Grafana URL).
         let mut monitoring_instance = None;
         if self.settings.monitoring {
             let region = &self.settings.regions[0];
-            monitoring_instance = instances_by_regions
-                .get_mut(region)
-                .map(|instances| instances.pop_front().unwrap().clone());
+            monitoring_instance = Some(
+                instances_by_regions
+                    .get_mut(region)
+                    .and_then(|instances| instances.pop_front())
+                    .ok_or(TestbedError::InsufficientCapacity(1))?
+                    .clone(),
+            );
         }
 
         // Select the instances to host exclusively load generators.
