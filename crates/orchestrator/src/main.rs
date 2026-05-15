@@ -358,10 +358,14 @@ async fn run_benchmarks<P: ProtocolCommands + ProtocolMetrics>(
 
         run_benchmark_loop(orchestrator, settings, &parameters, monitoring.as_ref()).await?;
 
+        display::action("Cleaning up testbed");
         orchestrator.cleanup(false).await?;
+        display::done();
 
         if settings.log_processing {
+            display::action("Downloading logs");
             let logs = orchestrator.download_logs(&parameters).await?;
+            display::done();
             if logs.node_panic {
                 display::error("Node(s) panicked!");
             } else if logs.client_panic {
@@ -429,7 +433,7 @@ async fn run_benchmark_loop<P: ProtocolCommands + ProtocolMetrics>(
     let results_path = settings
         .results_dir
         .join(format!("results-{}", settings.repository.commit));
-    std::fs::create_dir_all(&results_path).expect("Failed to create results directory");
+    std::fs::create_dir_all(&results_path).map_err(error::MonitorError::ResultsWriteError)?;
 
     let start = Instant::now();
     loop {
