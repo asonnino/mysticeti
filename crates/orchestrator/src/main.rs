@@ -3,15 +3,13 @@
 
 //! Orchestrator entry point.
 
-use std::{fs, path::PathBuf};
-
 use benchmark::BenchmarkParameters;
 use clap::Parser;
-use client::{Instance, ServerProviderClient, aws::AwsClient, vultr::VultrClient};
+use client::{ServerProviderClient, aws::AwsClient, vultr::VultrClient};
+use collector::Collector;
 use error::TestbedResult;
 use eyre::Context;
 use faults::CrashRecoverySchedule;
-use measurements::MeasurementsCollection;
 use orchestrator::Orchestrator;
 use protocol::{ProtocolCommands, ProtocolMetrics, ProtocolParameters};
 use settings::{CloudProvider, Settings};
@@ -21,11 +19,11 @@ use tokio::time::{self, Instant};
 
 mod benchmark;
 mod client;
+mod collector;
 mod display;
 mod error;
 mod faults;
 mod logs;
-mod measurements;
 mod monitor;
 mod orchestrator;
 mod protocol;
@@ -91,12 +89,6 @@ pub enum Operation {
         /// useful when debugging in some specific scenarios.
         #[clap(long, action, default_value_t = false, global = true)]
         skip_testbed_configuration: bool,
-    },
-    /// Print a summary of the specified measurements collection.
-    Summarize {
-        /// The path to the settings file.
-        #[clap(long, value_name = "FILE")]
-        path: PathBuf,
     },
 }
 
@@ -273,14 +265,6 @@ async fn run<C: ServerProviderClient>(
             .await
             .wrap_err("Failed to run benchmarks")?;
         }
-
-        // Print a summary of the specified measurements collection.
-        Operation::Summarize { path } => {
-            let collection = MeasurementsCollection::load(path)?;
-            display::newline();
-            print!("{}", collection.summary());
-            display::newline();
-        }
     }
     Ok(())
 }
@@ -333,7 +317,7 @@ async fn run_benchmarks<P: ProtocolCommands + ProtocolMetrics>(
         if settings.monitoring {
             display::done();
         }
-        if let Some(report) = monitoring {
+        if let Some(report) = &monitoring {
             display::config("Grafana address", &report.grafana_address);
             display::newline();
         }
@@ -365,10 +349,7 @@ async fn run_benchmarks<P: ProtocolCommands + ProtocolMetrics>(
         }
         display::done();
 
-        let aggregator = run_benchmark_loop(orchestrator, settings, &parameters).await?;
-        display::newline();
-        print!("{}", aggregator.summary());
-        display::newline();
+        run_benchmark_loop(orchestrator, settings, &parameters, monitoring.as_ref()).await?;
 
         orchestrator.cleanup(false).await?;
 
@@ -393,32 +374,40 @@ async fn run_benchmarks<P: ProtocolCommands + ProtocolMetrics>(
 }
 
 /// Drive the metrics/fault tick loop for a single benchmark run. Owns the
-/// `tokio::select!`, the measurement accumulator, the fault schedule, and the
-/// per-tick disk save — all of which the orchestrator used to do internally.
+/// `tokio::select!`, the fault schedule, and (when monitoring is deployed) a
+/// PromQL [`Collector`] that polls Prometheus on the metrics tick. The
+/// orchestrator never touches stdout or local files — that is all caller
+/// policy here.
 async fn run_benchmark_loop<P: ProtocolCommands + ProtocolMetrics>(
     orchestrator: &Orchestrator<P>,
     settings: &Settings,
     parameters: &BenchmarkParameters,
-) -> TestbedResult<MeasurementsCollection> {
+    monitoring: Option<&orchestrator::MonitoringReport>,
+) -> TestbedResult<()> {
     display::action(format!(
         "Scraping metrics (at least {}s)",
         settings.benchmark_duration.as_secs()
     ));
 
     let (_, nodes, _) = orchestrator.select_instances(parameters)?;
-    let mut killed_nodes: Vec<Instance> = Vec::new();
-    let mut aggregator = MeasurementsCollection::new(parameters.clone());
     let mut schedule = CrashRecoverySchedule::new(parameters.settings.faults.clone(), nodes);
+
+    let mut collector = monitoring
+        .map(|report| {
+            Collector::new(
+                &report.prometheus_address,
+                parameters.clone(),
+                Protocol::new(settings).metric_names(),
+            )
+        })
+        .transpose()?;
 
     let mut metrics_interval = time::interval(settings.scrape_interval);
     metrics_interval.tick().await; // The first tick returns immediately.
     let mut faults_interval = time::interval(settings.faults.crash_interval());
     faults_interval.tick().await; // The first tick returns immediately.
 
-    let results_path = settings
-        .results_dir
-        .join(format!("results-{}", settings.repository.commit));
-    fs::create_dir_all(&results_path).expect("Failed to create log directory");
+    let results_path = settings.results_dir.clone();
 
     let start = Instant::now();
     loop {
@@ -426,10 +415,10 @@ async fn run_benchmark_loop<P: ProtocolCommands + ProtocolMetrics>(
             now = metrics_interval.tick() => {
                 let elapsed = now.duration_since(start).as_secs_f64().ceil() as u64;
                 display::status(format!("{elapsed}s"));
-                orchestrator
-                    .scrape_once(parameters, &killed_nodes, &mut aggregator)
-                    .await?;
-                aggregator.save(&results_path);
+                if let Some(collector) = collector.as_mut() {
+                    collector.collect().await?;
+                    collector.save(&results_path)?;
+                }
                 if elapsed > parameters.settings.benchmark_duration.as_secs() {
                     break;
                 }
@@ -438,8 +427,6 @@ async fn run_benchmark_loop<P: ProtocolCommands + ProtocolMetrics>(
                 let action = orchestrator
                     .apply_faults_step(parameters, &mut schedule)
                     .await?;
-                killed_nodes.retain(|instance| !action.boot.contains(instance));
-                killed_nodes.extend(action.kill.iter().cloned());
                 if !action.kill.is_empty() || !action.boot.is_empty() {
                     display::newline();
                     display::config("Testbed update", action);
@@ -449,5 +436,5 @@ async fn run_benchmark_loop<P: ProtocolCommands + ProtocolMetrics>(
     }
 
     display::done();
-    Ok(aggregator)
+    Ok(())
 }

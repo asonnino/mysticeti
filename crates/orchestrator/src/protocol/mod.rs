@@ -83,6 +83,19 @@ pub trait ProtocolMetrics {
     /// finalized transactions.
     const LATENCY_SQUARED_SUM: &'static str;
 
+    /// The set of metric names the orchestrator should query from Prometheus.
+    /// Bridges to the richer `MetricSpec` API planned for #99; for now it's just
+    /// the five mandatory constants above.
+    fn metric_names(&self) -> Vec<String> {
+        vec![
+            Self::BENCHMARK_DURATION.into(),
+            Self::TOTAL_TRANSACTIONS.into(),
+            Self::LATENCY_BUCKETS.into(),
+            Self::LATENCY_SUM.into(),
+            Self::LATENCY_SQUARED_SUM.into(),
+        ]
+    }
+
     /// The network path where the nodes expose prometheus metrics.
     fn nodes_metrics_path<I>(
         &self,
@@ -129,51 +142,5 @@ pub trait ProtocolMetrics {
             .into_iter()
             .map(|(instance, path)| (instance, format!("curl {path}")))
             .collect()
-    }
-}
-
-#[cfg(test)]
-pub mod test_protocol_metrics {
-    use super::ProtocolMetrics;
-    use crate::{benchmark::BenchmarkParameters, client::Instance};
-
-    pub struct TestProtocolMetrics;
-
-    impl ProtocolMetrics for TestProtocolMetrics {
-        const BENCHMARK_DURATION: &'static str = "benchmark_duration";
-        const TOTAL_TRANSACTIONS: &'static str = "latency_s_count";
-        const LATENCY_BUCKETS: &'static str = "latency_s";
-        const LATENCY_SUM: &'static str = "latency_s_sum";
-        const LATENCY_SQUARED_SUM: &'static str = "latency_squared_s";
-
-        fn nodes_metrics_path<I>(
-            &self,
-            instances: I,
-            _parameters: &BenchmarkParameters,
-        ) -> Vec<(Instance, String)>
-        where
-            I: IntoIterator<Item = Instance>,
-        {
-            instances
-                .into_iter()
-                .enumerate()
-                .map(|(i, instance)| (instance, format!("localhost:{}/metrics", 8000 + i as u16)))
-                .collect()
-        }
-
-        fn clients_metrics_path<I>(
-            &self,
-            instances: I,
-            _parameters: &BenchmarkParameters,
-        ) -> Vec<(Instance, String)>
-        where
-            I: IntoIterator<Item = Instance>,
-        {
-            instances
-                .into_iter()
-                .enumerate()
-                .map(|(i, instance)| (instance, format!("localhost:{}/metrics", 9000 + i as u16)))
-                .collect()
-        }
     }
 }

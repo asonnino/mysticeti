@@ -70,15 +70,4 @@ impl<N: ProtocolParameters, C: ProtocolParameters> BenchmarkParametersGeneric<N,
             })
             .collect()
     }
-
-    #[cfg(test)]
-    pub fn new_for_tests() -> Self {
-        Self {
-            settings: Settings::new_for_test(),
-            node_parameters: N::default(),
-            client_parameters: C::default(),
-            nodes: 4,
-            load: 500,
-        }
-    }
 }
