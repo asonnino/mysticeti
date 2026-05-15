@@ -284,7 +284,9 @@ async fn run_benchmarks<P: ProtocolCommands + ProtocolMetrics>(
     display::config("Commit", format!("'{}'", &settings.repository.commit));
     display::newline();
 
+    display::action("Cleaning up testbed");
     orchestrator.cleanup(true).await?;
+    display::done();
 
     if !skip_testbed_update {
         display::action("Installing dependencies on all machines");
@@ -304,7 +306,9 @@ async fn run_benchmarks<P: ProtocolCommands + ProtocolMetrics>(
         display::config("Benchmark Parameters", &parameters);
         display::newline();
 
+        display::action("Cleaning up testbed");
         orchestrator.cleanup(true).await?;
+        display::done();
 
         // Emit the action banner before the slow SSH work so that long setup
         // times (or errors) aren't silent. The banner is gated on
@@ -323,8 +327,9 @@ async fn run_benchmarks<P: ProtocolCommands + ProtocolMetrics>(
         }
 
         if !skip_testbed_configuration && latest_committee_size != parameters.nodes {
+            display::action("Configuring instances");
             let configure_report = orchestrator.configure(&parameters).await?;
-            display::config("Configuring instances", "");
+            display::done();
             for (node_index, address) in &configure_report.nodes {
                 display::config(format!("  - node {node_index}"), address);
             }
@@ -341,12 +346,14 @@ async fn run_benchmarks<P: ProtocolCommands + ProtocolMetrics>(
             return Ok(());
         }
 
-        let clients_report = orchestrator.run_clients(&parameters).await?;
-        if clients_report.deployed {
-            display::action("Setting up load generators");
+        // Decide the banner from the input rather than the report so the user
+        // sees what's about to happen, not what already happened.
+        display::action(if parameters.load == 0 {
+            "Skipping load generators deployment (load = 0)"
         } else {
-            display::action("Skipping load generators deployment (load = 0)");
-        }
+            "Setting up load generators"
+        });
+        orchestrator.run_clients(&parameters).await?;
         display::done();
 
         run_benchmark_loop(orchestrator, settings, &parameters, monitoring.as_ref()).await?;
@@ -384,10 +391,20 @@ async fn run_benchmark_loop<P: ProtocolCommands + ProtocolMetrics>(
     parameters: &BenchmarkParameters,
     monitoring: Option<&orchestrator::MonitoringReport>,
 ) -> TestbedResult<()> {
-    display::action(format!(
-        "Scraping metrics (at least {}s)",
-        settings.benchmark_duration.as_secs()
-    ));
+    // The banner copy depends on whether metrics will actually be collected:
+    // without monitoring deployed there's no collector, so "Scraping metrics"
+    // would be misleading.
+    display::action(if monitoring.is_some() {
+        format!(
+            "Scraping metrics (at least {}s)",
+            settings.benchmark_duration.as_secs()
+        )
+    } else {
+        format!(
+            "Running benchmark (at least {}s)",
+            settings.benchmark_duration.as_secs()
+        )
+    });
 
     let (_, nodes, _) = orchestrator.select_instances(parameters)?;
     let mut schedule = CrashRecoverySchedule::new(parameters.settings.faults.clone(), nodes);

@@ -61,9 +61,13 @@ impl Collector {
     /// [`crate::orchestrator::MonitoringReport::prometheus_address`].
     pub fn new(
         prometheus_address: &str,
-        parameters: BenchmarkParameters,
+        mut parameters: BenchmarkParameters,
         metrics: Vec<String>,
     ) -> TestbedResult<Self> {
+        // The parameters end up serialised to disk via `save()`. Strip any
+        // access token from the repository URL before storing so credentials
+        // never leak into the results file.
+        parameters.settings.repository.remove_access_token();
         let client: PrometheusClient = prometheus_address
             .try_into()
             .map_err(MonitorError::PrometheusError)?;

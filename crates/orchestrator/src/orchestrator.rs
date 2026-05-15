@@ -58,24 +58,6 @@ pub struct MonitoringReport {
     pub prometheus_address: String,
 }
 
-/// Whether [`Orchestrator::run_clients`] actually deployed load generators.
-pub struct RunClientsReport {
-    pub deployed: bool,
-}
-
-impl RunClientsReport {
-    /// Load generators were deployed normally.
-    pub fn deployed() -> Self {
-        Self { deployed: true }
-    }
-
-    /// Load generators were skipped because `parameters.load == 0`. The caller
-    /// renders a different banner in that case.
-    pub fn skipped() -> Self {
-        Self { deployed: false }
-    }
-}
-
 /// An orchestrator to deploy nodes and run benchmarks on a testbed.
 pub struct Orchestrator<P> {
     /// The testbed's settings.
@@ -389,12 +371,9 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
     }
 
     /// Deploy the load generators.
-    pub async fn run_clients(
-        &self,
-        parameters: &BenchmarkParameters,
-    ) -> TestbedResult<RunClientsReport> {
+    pub async fn run_clients(&self, parameters: &BenchmarkParameters) -> TestbedResult<()> {
         if parameters.load == 0 {
-            return Ok(RunClientsReport::skipped());
+            return Ok(());
         }
 
         // Select the instances to run.
@@ -420,7 +399,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
             .clients_metrics_command(clients, parameters);
         self.ssh_manager.wait_for_success(commands).await;
 
-        Ok(RunClientsReport::deployed())
+        Ok(())
     }
 
     /// Advance the fault schedule by one step: query [`CrashRecoverySchedule`]
