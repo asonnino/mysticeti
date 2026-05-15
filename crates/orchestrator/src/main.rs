@@ -424,7 +424,12 @@ async fn run_benchmark_loop<P: ProtocolCommands + ProtocolMetrics>(
     let mut faults_interval = time::interval(settings.faults.crash_interval());
     faults_interval.tick().await; // The first tick returns immediately.
 
-    let results_path = settings.results_dir.clone();
+    // Per-commit subdirectory so that running the same benchmark parameters
+    // against different commits doesn't overwrite previous results.
+    let results_path = settings
+        .results_dir
+        .join(format!("results-{}", settings.repository.commit));
+    std::fs::create_dir_all(&results_path).expect("Failed to create results directory");
 
     let start = Instant::now();
     loop {
