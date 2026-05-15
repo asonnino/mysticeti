@@ -13,7 +13,12 @@ use replica::config::{LoadGeneratorConfig, PublicReplicaConfig, ReplicaParameter
 use serde::{Deserialize, Serialize};
 
 use super::{BINARY_PATH, ProtocolCommands, ProtocolMetrics, ProtocolParameters};
-use crate::{benchmark::BenchmarkParameters, client::Instance, settings::Settings};
+use crate::{
+    benchmark::BenchmarkParameters,
+    client::Instance,
+    collector::{MetricKind, MetricSpec},
+    settings::Settings,
+};
 
 const PUBLIC_REPLICA_CONFIG_FILENAME: &str = PublicReplicaConfig::DEFAULT_FILENAME;
 const LOAD_GENERATOR_CONFIG_FILENAME: &str = "load-generator-config.yaml";
@@ -182,11 +187,30 @@ impl ProtocolCommands for MysticetiProtocol {
 }
 
 impl ProtocolMetrics for MysticetiProtocol {
-    const BENCHMARK_DURATION: &'static str = dag::metrics::BENCHMARK_DURATION;
-    const TOTAL_TRANSACTIONS: &'static str = "latency_s_count";
-    const LATENCY_BUCKETS: &'static str = "latency_s";
-    const LATENCY_SUM: &'static str = "latency_s_sum";
-    const LATENCY_SQUARED_SUM: &'static str = dag::metrics::LATENCY_SQUARED_S;
+    fn metrics(&self) -> Vec<MetricSpec> {
+        vec![
+            MetricSpec {
+                name: dag::metrics::BENCHMARK_DURATION.into(),
+                kind: MetricKind::Counter,
+            },
+            MetricSpec {
+                name: "latency_s".into(),
+                kind: MetricKind::Histogram,
+            },
+            MetricSpec {
+                name: "latency_s_count".into(),
+                kind: MetricKind::Counter,
+            },
+            MetricSpec {
+                name: "latency_s_sum".into(),
+                kind: MetricKind::Counter,
+            },
+            MetricSpec {
+                name: dag::metrics::LATENCY_SQUARED_S.into(),
+                kind: MetricKind::Counter,
+            },
+        ]
+    }
 
     fn nodes_metrics_path<I>(
         &self,

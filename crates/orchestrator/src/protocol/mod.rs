@@ -9,7 +9,7 @@ use std::{
 use eyre::Context;
 use serde::{Serialize, de::DeserializeOwned};
 
-use crate::{benchmark::BenchmarkParameters, client::Instance};
+use crate::{benchmark::BenchmarkParameters, client::Instance, collector::MetricSpec};
 
 pub mod mysticeti;
 
@@ -67,34 +67,14 @@ pub trait ProtocolCommands {
         I: IntoIterator<Item = Instance>;
 }
 
-/// The names of the minimum metrics exposed by the protocol that are required to
-/// compute performance.
+/// The metrics exposed by the protocol that the orchestrator's collector
+/// should query from Prometheus.
 pub trait ProtocolMetrics {
-    /// The name of the metric reporting the total duration of the benchmark (in seconds).
-    const BENCHMARK_DURATION: &'static str;
-    /// The name of the metric reporting the total number of finalized transactions.
-    const TOTAL_TRANSACTIONS: &'static str;
-    /// The name of the metric reporting the latency buckets.
-    const LATENCY_BUCKETS: &'static str;
-    /// The name of the metric reporting the sum of the end-to-end latency of all finalized
-    /// transactions.
-    const LATENCY_SUM: &'static str;
-    /// The name of the metric reporting the square of the sum of the end-to-end latency of all
-    /// finalized transactions.
-    const LATENCY_SQUARED_SUM: &'static str;
-
-    /// The set of metric names the orchestrator should query from Prometheus.
-    /// Bridges to the richer `MetricSpec` API planned for #99; for now it's just
-    /// the five mandatory constants above.
-    fn metric_names(&self) -> Vec<String> {
-        vec![
-            Self::BENCHMARK_DURATION.into(),
-            Self::TOTAL_TRANSACTIONS.into(),
-            Self::LATENCY_BUCKETS.into(),
-            Self::LATENCY_SUM.into(),
-            Self::LATENCY_SQUARED_SUM.into(),
-        ]
-    }
+    /// Describe each metric and what kind of instrumentation backs it. The
+    /// collector synthesises the right PromQL per `MetricKind`: `rate()` for
+    /// counters, raw name for gauges, `histogram_quantile(rate(_bucket))` for
+    /// histograms, raw PromQL for `Custom`.
+    fn metrics(&self) -> Vec<MetricSpec>;
 
     /// The network path where the nodes expose prometheus metrics.
     fn nodes_metrics_path<I>(

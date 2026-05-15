@@ -29,6 +29,35 @@ use crate::{
     error::{MonitorError, MonitorResult, TestbedResult},
 };
 
+/// PromQL `rate()` window applied to [`MetricKind::Counter`] and histogram
+/// buckets. Sized at 4× the default [`crate::settings::Settings::scrape_interval`]
+/// (15s) so the rate is stable across a few scrapes.
+const RATE_WINDOW: &str = "1m";
+
+/// Quantiles synthesised for each [`MetricKind::Histogram`]. Each quantile
+/// fires one `histogram_quantile(q, rate(name_bucket[RATE_WINDOW]))` query and
+/// stores the results under `{name}.p{quantile*100}`.
+const HISTOGRAM_QUANTILES: &[f64] = &[0.5, 0.9, 0.99];
+
+/// What kind of Prometheus instrumentation backs a metric. The collector uses
+/// this to synthesise the right PromQL expression — consumers describe what
+/// the metric *is*, not how to query it.
+pub enum MetricKind {
+    /// Cumulative monotonic counter. Synthesised as `rate(name[window])`.
+    Counter,
+    /// Histogram. Synthesised as `histogram_quantile(q, rate(name_bucket[window]))`
+    /// for each `q` in [`HISTOGRAM_QUANTILES`]; samples land under
+    /// `{name}.p50` / `{name}.p90` / `{name}.p99`.
+    Histogram,
+}
+
+/// Consumer-facing metric description: what to query and where to store the
+/// result. Replaces the bridging `metric_names()` of #98.
+pub struct MetricSpec {
+    pub name: String,
+    pub kind: MetricKind,
+}
+
 /// One Prometheus sample: an instant query returns a vector of these, one per
 /// matching time series. `labels` is the full label map for that series; the
 /// consumer filters or groups by it (e.g. `labels["workload"] == "owned"`).
@@ -47,12 +76,13 @@ pub struct BenchmarkResults {
     pub samples: HashMap<String, Vec<Sample>>,
 }
 
-/// Issues instant PromQL queries against a deployed Prometheus instance and
+/// Issues PromQL queries against a deployed Prometheus instance and
 /// accumulates the resulting samples in a [`BenchmarkResults`] that the caller
-/// periodically persists with [`Collector::save`].
+/// periodically persists with [`Collector::save`]. The specific PromQL fired
+/// for each metric is derived from its [`MetricKind`].
 pub struct Collector {
     client: PrometheusClient,
-    metrics: Vec<String>,
+    metrics: Vec<MetricSpec>,
     results: BenchmarkResults,
 }
 
@@ -62,7 +92,7 @@ impl Collector {
     pub fn new(
         prometheus_address: &str,
         mut parameters: BenchmarkParameters,
-        metrics: Vec<String>,
+        metrics: Vec<MetricSpec>,
     ) -> TestbedResult<Self> {
         // The parameters end up serialised to disk via `save()`. Strip any
         // access token from the repository URL before storing so credentials
@@ -81,25 +111,46 @@ impl Collector {
         })
     }
 
-    /// Run one instant query per configured metric and append every returned
-    /// sample to the accumulator. Queries are fired in parallel; their order
-    /// in the response matches the order of `self.metrics`.
+    /// Synthesise PromQL per [`MetricKind`] and fire every query in parallel.
+    /// Histograms fan out to one query per [`HISTOGRAM_QUANTILES`] entry; the
+    /// returned samples land under `{name}.p{quantile*100}`. Everything else
+    /// stores under the spec's `name`.
     pub async fn collect(&mut self) -> MonitorResult<()> {
+        // (storage_key, promql) pairs for this tick.
+        let mut targets: Vec<(String, String)> = Vec::new();
+        for spec in &self.metrics {
+            match spec.kind {
+                MetricKind::Counter => targets.push((
+                    spec.name.clone(),
+                    format!("rate({}[{}])", spec.name, RATE_WINDOW),
+                )),
+                MetricKind::Histogram => {
+                    for quantile in HISTOGRAM_QUANTILES {
+                        let key = format!("{}.p{}", spec.name, (quantile * 100.0).round() as u32);
+                        let promql = format!(
+                            "histogram_quantile({}, rate({}_bucket[{}]))",
+                            quantile, spec.name, RATE_WINDOW
+                        );
+                        targets.push((key, promql));
+                    }
+                }
+            }
+        }
+
         let responses = try_join_all(
-            self.metrics
+            targets
                 .iter()
-                .map(|metric| self.client.query(metric).get()),
+                .map(|(_, promql)| self.client.query(promql).get()),
         )
         .await?;
 
-        for (metric_name, response) in self.metrics.iter().zip(&responses) {
+        for ((key, _), response) in targets.iter().zip(&responses) {
             let Data::Vector(vector) = response.data() else {
-                // The five mysticeti metrics are all instant-queryable scalars
-                // or histogram buckets; anything else is a Prometheus
-                // configuration error worth surfacing rather than swallowing.
+                // Instant queries always return Vector; anything else is a
+                // Prometheus configuration error worth surfacing.
                 return Err(MonitorError::UnexpectedPrometheusResponse);
             };
-            let entry = self.results.samples.entry(metric_name.clone()).or_default();
+            let entry = self.results.samples.entry(key.clone()).or_default();
             for element in vector {
                 entry.push(Sample {
                     timestamp: element.sample().timestamp(),
