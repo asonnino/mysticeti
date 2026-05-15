@@ -418,7 +418,7 @@ async fn run_benchmark_loop<P: ProtocolCommands + ProtocolMetrics>(
             Collector::new(
                 &report.prometheus_address,
                 parameters.clone(),
-                Protocol::new(settings).metric_names(),
+                Protocol::new(settings).metrics(),
             )
         })
         .transpose()?;
