@@ -322,10 +322,19 @@ async fn run_benchmarks<P: ProtocolCommands + ProtocolMetrics>(
 
         orchestrator.cleanup(true).await?;
 
-        if let Some(monitoring) = orchestrator.start_monitoring(&parameters).await? {
+        // Emit the action banner before the slow SSH work so that long setup
+        // times (or errors) aren't silent. The banner is gated on
+        // `settings.monitoring` rather than on `start_monitoring`'s return value
+        // because we need to commit to printing before awaiting the call.
+        if settings.monitoring {
             display::action("Configuring monitoring instance");
+        }
+        let monitoring = orchestrator.start_monitoring(&parameters).await?;
+        if settings.monitoring {
             display::done();
-            display::config("Grafana address", &monitoring.grafana_address);
+        }
+        if let Some(report) = monitoring {
+            display::config("Grafana address", &report.grafana_address);
             display::newline();
         }
 
