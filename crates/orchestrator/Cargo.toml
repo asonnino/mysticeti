@@ -15,14 +15,17 @@ futures = { workspace = true }
 glob = "0.3.1"
 dag.workspace = true
 replica.workspace = true
-prometheus-http-query = "0.8"
+prometheus-http-query = { version = "0.8", default-features = false, features = [
+  "rustls-tls",
+] }
 rand = { workspace = true }
 reqwest = { workspace = true }
+russh = "0.60"
+russh-sftp = "2.1"
 serde = { workspace = true }
 serde_json = "1.0.88"
 serde_with = "3.8.1"
 serde_yaml = { workspace = true }
-ssh2 = "0.9.4"                    # TODO: remove this dependency
 thiserror = { workspace = true }
 tokio = { workspace = true }
 

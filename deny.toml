@@ -28,6 +28,7 @@ allow = [
   "BSD-2-Clause",
   "BSD-3-Clause",
   "CC0-1.0",
+  "CDLA-Permissive-2.0",
   "ISC",
   "LicenseRef-ring",
   "MIT",
@@ -74,6 +75,10 @@ skip-tree = [
   { name = "tabled" },
   # ed25519-consensus 2.1 pulls old rand_core 0.6 + thiserror 1 via curve25519-dalek-ng.
   { name = "ed25519-consensus" },
+  # russh 0.60 pulls the RustCrypto release-candidate crypto crates (aes-gcm 0.11-rc,
+  # polyval 0.7, chacha20 0.10, rand 0.10, ...) while the rest of the workspace uses the
+  # stable line via aws-sdk. Nothing we can fix downstream until either side migrates.
+  { name = "russh" },
 ]
 
 # This section is considered when running `cargo deny check sources`.

@@ -90,6 +90,14 @@ impl<P> Orchestrator<P> {
             ssh_manager,
         }
     }
+
+    /// Borrow the protocol implementation the orchestrator is driving. Callers
+    /// that need protocol-specific data (e.g. metric names for the PromQL
+    /// collector) should ask the orchestrator rather than re-instantiating the
+    /// protocol from `Settings`, so a non-default `P` is honored.
+    pub fn protocol(&self) -> &P {
+        &self.protocol_commands
+    }
 }
 
 impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
@@ -448,7 +456,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
         // Download the clients log files.
         for (index, instance) in clients.iter().enumerate() {
             let connection = self.ssh_manager.connect(instance.ssh_address()).await?;
-            let client_log_content = connection.download("client.log")?;
+            let client_log_content = connection.download("client.log").await?;
 
             let client_log_file = [path.clone(), format!("client-{index}.log").into()]
                 .iter()
@@ -463,7 +471,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
 
         for (index, instance) in nodes.iter().enumerate() {
             let connection = self.ssh_manager.connect(instance.ssh_address()).await?;
-            let node_log_content = connection.download("node.log")?;
+            let node_log_content = connection.download("node.log").await?;
 
             let node_log_file = [path.clone(), format!("node-{index}.log").into()]
                 .iter()
