@@ -8,7 +8,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::client::Instance;
+use crate::provider::Instance;
 
 #[derive(Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub enum FaultsType {
@@ -177,7 +177,7 @@ mod faults_tests {
     use std::time::Duration;
 
     use super::{CrashRecoverySchedule, FaultsType};
-    use crate::client::Instance;
+    use crate::provider::Instance;
 
     #[test]
     fn crash_recovery_1_fault() {

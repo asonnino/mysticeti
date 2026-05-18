@@ -5,15 +5,21 @@ use std::fmt::{Debug, Display};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ClientParameters, NodeParameters, protocol::ProtocolParameters, settings::Settings};
+use crate::{
+    protocol::{Protocol, ProtocolParameters},
+    settings::Settings,
+};
 
-/// Shortcut avoiding to use the generic version of the benchmark parameters.
-pub type BenchmarkParameters = BenchmarkParametersGeneric<NodeParameters, ClientParameters>;
+/// Shorthand for the benchmark-parameters type carried by `Orchestrator<P>` and
+/// the protocol's `Monitor` helpers. Lifts noise out of method signatures
+/// without changing the underlying type.
+pub type Parameters<P> =
+    BenchmarkParameters<<P as Protocol>::NodeParameters, <P as Protocol>::ClientParameters>;
 
 /// The benchmark parameters for a run. These parameters are stored along with the performance data
 /// and should be used to reproduce the results.
 #[derive(Serialize, Deserialize, Clone)]
-pub struct BenchmarkParametersGeneric<N, C> {
+pub struct BenchmarkParameters<N, C> {
     /// The testbed settings.
     pub settings: Settings,
     /// The node's configuration parameters.
@@ -26,7 +32,7 @@ pub struct BenchmarkParametersGeneric<N, C> {
     pub load: usize,
 }
 
-impl<N: Debug, C: Debug> Debug for BenchmarkParametersGeneric<N, C> {
+impl<N: Debug, C: Debug> Debug for BenchmarkParameters<N, C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -40,7 +46,7 @@ impl<N: Debug, C: Debug> Debug for BenchmarkParametersGeneric<N, C> {
     }
 }
 
-impl<N, C> Display for BenchmarkParametersGeneric<N, C> {
+impl<N, C> Display for BenchmarkParameters<N, C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -50,7 +56,7 @@ impl<N, C> Display for BenchmarkParametersGeneric<N, C> {
     }
 }
 
-impl<N: ProtocolParameters, C: ProtocolParameters> BenchmarkParametersGeneric<N, C> {
+impl<N: ProtocolParameters, C: ProtocolParameters> BenchmarkParameters<N, C> {
     /// Make a new benchmark parameters.
     pub fn new_from_loads(
         settings: Settings,
@@ -69,16 +75,5 @@ impl<N: ProtocolParameters, C: ProtocolParameters> BenchmarkParametersGeneric<N,
                 load,
             })
             .collect()
-    }
-
-    #[cfg(test)]
-    pub fn new_for_tests() -> Self {
-        Self {
-            settings: Settings::new_for_test(),
-            node_parameters: N::default(),
-            client_parameters: C::default(),
-            nodes: 4,
-            load: 500,
-        }
     }
 }
