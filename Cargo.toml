@@ -27,7 +27,7 @@ minibytes = { path = "crates/minibytes", default-features = false }
 orchestrator = { path = "crates/orchestrator" }
 replica = { path = "crates/replica" }
 simulator = { path = "crates/simulator" }
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.6", features = ["derive"] }
 color-eyre = "0.6.2"
 eyre = "0.6.8"
 futures = "0.3.28"
@@ -42,7 +42,7 @@ serde_json = "1.0"
 serde_yaml = "0.9.33"
 tempfile = "3.6.0"
 thiserror = "2"
-tokio = { version = "1.28.1", features = [
+tokio = { version = "1.52.3", features = [
   "sync",
   "time",
   "rt",

@@ -14,7 +14,7 @@ eyre = { workspace = true }
 futures = { workspace = true }
 gettid = "0.1.2"
 hex = "0.4.3"
-libc = "0.2.146"
+libc = "0.2.186"
 memmap2 = { workspace = true }
 minibytes = { workspace = true, default-features = false, features = [
   "frommmap",
