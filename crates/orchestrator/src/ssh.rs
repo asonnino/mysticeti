@@ -18,7 +18,6 @@ use russh_sftp::client::SftpSession;
 use tokio::{task::JoinHandle, time::sleep};
 
 use crate::{
-    ensure,
     error::{SshError, SshResult},
     provider::Instance,
 };
@@ -413,29 +412,31 @@ impl SshConnection {
             let stderr = String::from_utf8_lossy(&stderr).into_owned();
 
             if let Some((signal, core_dumped)) = signal {
-                return Err(SshError::TerminatedBySignal {
+                error = Some(SshError::TerminatedBySignal {
                     address: self.address,
                     signal,
                     core_dumped,
                 });
+                continue;
             }
             let code = match exit_status {
                 Some(code) => code as i32,
                 None => {
-                    return Err(SshError::MissingExitStatus {
+                    error = Some(SshError::MissingExitStatus {
                         address: self.address,
                     });
+                    continue;
                 }
             };
 
-            ensure!(
-                code == 0,
-                SshError::NonZeroExitCode {
+            if code != 0 {
+                error = Some(SshError::NonZeroExitCode {
                     address: self.address,
                     code,
-                    message: stderr.clone()
-                }
-            );
+                    message: stderr,
+                });
+                continue;
+            }
 
             return Ok((stdout, stderr));
         }
