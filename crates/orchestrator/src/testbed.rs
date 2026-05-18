@@ -245,6 +245,7 @@ impl<C: ServerProviderClient> Testbed<C> {
                         instance.ssh_address(),
                         self.client.username(),
                         private_key_file,
+                        None,
                     )
                 });
             if try_join_all(futures).await.is_ok() {

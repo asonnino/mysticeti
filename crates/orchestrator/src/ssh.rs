@@ -2,15 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
-    io::Read,
     net::SocketAddr,
     path::{Path, PathBuf},
+    sync::Arc,
     time::Duration,
 };
 
 use futures::future::try_join_all;
-use ssh2::{Channel, Session};
-use tokio::{net::TcpStream, runtime::Handle, task::JoinHandle, time::sleep};
+use russh::{
+    ChannelMsg,
+    client::{self, Handle},
+    keys::{PrivateKeyWithHashAlg, PublicKey, load_secret_key},
+};
+use russh_sftp::client::SftpSession;
+use tokio::{task::JoinHandle, time::sleep};
 
 use crate::{
     ensure,
@@ -135,8 +140,15 @@ impl SshConnectionManager {
     pub async fn connect(&self, address: SocketAddr) -> SshResult<SshConnection> {
         let mut error = None;
         for _ in 0..self.retries + 1 {
-            match SshConnection::new(address, &self.username, self.private_key_file.clone()).await {
-                Ok(x) => return Ok(x.with_timeout(&self.timeout).with_retries(self.retries)),
+            match SshConnection::new(
+                address,
+                &self.username,
+                self.private_key_file.clone(),
+                self.timeout,
+            )
+            .await
+            {
+                Ok(x) => return Ok(x.with_retries(self.retries)),
                 Err(e) => error = Some(e),
             }
             sleep(Self::RETRY_DELAY).await;
@@ -197,11 +209,7 @@ impl SshConnectionManager {
 
                 tokio::spawn(async move {
                     let connection = ssh_manager.connect(instance.ssh_address()).await?;
-                    // SshConnection::execute is a blocking call, needs to go to blocking pool
-                    Handle::current()
-                        .spawn_blocking(move || connection.execute(context.apply(command)))
-                        .await
-                        .unwrap()
+                    connection.execute(context.apply(command)).await
                 })
             })
             .collect::<Vec<_>>()
@@ -268,10 +276,25 @@ impl SshConnectionManager {
     }
 }
 
+/// Accepts any server host key. This matches the previous `ssh2`-based behavior, which did
+/// not perform host-key verification. Real verification is tracked as a follow-up.
+struct AcceptAllHostKeys;
+
+impl client::Handler for AcceptAllHostKeys {
+    type Error = russh::Error;
+
+    async fn check_server_key(
+        &mut self,
+        _server_public_key: &PublicKey,
+    ) -> Result<bool, Self::Error> {
+        Ok(true)
+    }
+}
+
 /// Representation of an ssh connection.
 pub struct SshConnection {
-    /// The ssh session.
-    session: Session,
+    /// The russh client handle for this session.
+    handle: Handle<AcceptAllHostKeys>,
     /// The host address.
     address: SocketAddr,
     /// The number of retries before giving up to execute the command.
@@ -287,38 +310,42 @@ impl SshConnection {
         address: SocketAddr,
         username: &str,
         private_key_file: P,
+        timeout: Option<Duration>,
     ) -> SshResult<Self> {
-        let tcp = TcpStream::connect(address)
-            .await
-            .map_err(|error| SshError::ConnectionError { address, error })?;
+        let private_key = load_secret_key(private_key_file.as_ref(), None).map_err(|e| {
+            SshError::SessionError {
+                address,
+                source: e.into(),
+            }
+        })?;
 
-        let mut session =
-            Session::new().map_err(|error| SshError::SessionError { address, error })?;
-        session.set_timeout(Self::DEFAULT_TIMEOUT.as_millis() as u32);
-        session.set_tcp_stream(tcp);
-        session
-            .handshake()
-            .map_err(|error| SshError::SessionError { address, error })?;
-        session
-            .userauth_pubkey_file(username, None, private_key_file.as_ref(), None)
-            .map_err(|error| SshError::SessionError { address, error })?;
+        let config = Arc::new(client::Config {
+            inactivity_timeout: Some(timeout.unwrap_or(Self::DEFAULT_TIMEOUT)),
+            ..Default::default()
+        });
+
+        let mut handle = client::connect(config, address, AcceptAllHostKeys)
+            .await
+            .map_err(|source| SshError::SessionError { address, source })?;
+
+        let key = PrivateKeyWithHashAlg::new(Arc::new(private_key), None);
+        let authenticated = handle
+            .authenticate_publickey(username, key)
+            .await
+            .map_err(|source| SshError::SessionError { address, source })?;
+
+        if !authenticated.success() {
+            return Err(SshError::SessionError {
+                address,
+                source: russh::Error::NotAuthenticated,
+            });
+        }
 
         Ok(Self {
-            session,
+            handle,
             address,
             retries: 0,
         })
-    }
-
-    /// Set a timeout for the ssh connection. If no timeouts are specified, reset it to the
-    /// default value.
-    pub fn with_timeout(self, timeout: &Option<Duration>) -> Self {
-        let duration = match timeout {
-            Some(value) => value,
-            None => &Self::DEFAULT_TIMEOUT,
-        };
-        self.session.set_timeout(duration.as_millis() as u32);
-        self
     }
 
     /// Set the maximum number of times to retries to establish a connection and execute commands.
@@ -327,98 +354,122 @@ impl SshConnection {
         self
     }
 
-    /// Make a useful session error from the lower level error message.
-    fn make_session_error(&self, error: ssh2::Error) -> SshError {
+    /// Wrap a russh error with the connection's address.
+    fn session_error(&self, source: russh::Error) -> SshError {
         SshError::SessionError {
             address: self.address,
-            error,
+            source,
         }
     }
 
-    /// Make a useful connection error from the lower level error message.
-    fn make_connection_error(&self, error: std::io::Error) -> SshError {
-        SshError::ConnectionError {
+    /// Wrap an SFTP error with the connection's address.
+    fn sftp_error(&self, source: russh_sftp::client::error::Error) -> SshError {
+        SshError::SftpError {
             address: self.address,
-            error,
+            source,
         }
     }
 
-    /// Execute a ssh command on the remote machine.
-    pub fn execute(&self, command: String) -> SshResult<(String, String)> {
+    /// Execute an ssh command on the remote machine.
+    pub async fn execute(&self, command: String) -> SshResult<(String, String)> {
         let mut error = None;
         for _ in 0..self.retries + 1 {
-            let channel = match self.session.channel_session() {
-                Ok(x) => x,
+            let mut channel = match self.handle.channel_open_session().await {
+                Ok(c) => c,
                 Err(e) => {
-                    error = Some(self.make_session_error(e));
+                    error = Some(self.session_error(e));
                     continue;
                 }
             };
-            match self.execute_impl(channel, command.clone()) {
-                r @ Ok(..) => return r,
-                Err(e) => error = Some(e),
+
+            if let Err(e) = channel.exec(true, command.as_bytes()).await {
+                error = Some(self.session_error(e));
+                continue;
             }
+
+            let mut stdout = Vec::new();
+            let mut stderr = Vec::new();
+            let mut exit_status: Option<u32> = None;
+            let mut signal: Option<(String, bool)> = None;
+
+            // Drain channel messages until the remote side closes the channel. `wait` returns
+            // None when the channel is closed.
+            while let Some(msg) = channel.wait().await {
+                match msg {
+                    ChannelMsg::Data { data } => stdout.extend_from_slice(&data),
+                    // ext == 1 is SSH_EXTENDED_DATA_STDERR per RFC 4254.
+                    ChannelMsg::ExtendedData { data, ext: 1 } => stderr.extend_from_slice(&data),
+                    ChannelMsg::ExitStatus { exit_status: code } => exit_status = Some(code),
+                    ChannelMsg::ExitSignal {
+                        signal_name,
+                        core_dumped,
+                        ..
+                    } => signal = Some((format!("{signal_name:?}"), core_dumped)),
+                    _ => {}
+                }
+            }
+
+            let stdout = String::from_utf8_lossy(&stdout).into_owned();
+            let stderr = String::from_utf8_lossy(&stderr).into_owned();
+
+            if let Some((signal, core_dumped)) = signal {
+                return Err(SshError::TerminatedBySignal {
+                    address: self.address,
+                    signal,
+                    core_dumped,
+                });
+            }
+            let code = match exit_status {
+                Some(code) => code as i32,
+                None => {
+                    return Err(SshError::MissingExitStatus {
+                        address: self.address,
+                    });
+                }
+            };
+
+            ensure!(
+                code == 0,
+                SshError::NonZeroExitCode {
+                    address: self.address,
+                    code,
+                    message: stderr.clone()
+                }
+            );
+
+            return Ok((stdout, stderr));
         }
         Err(error.unwrap())
     }
 
-    /// Execute an ssh command on the remote machine and return both stdout and stderr.
-    fn execute_impl(&self, mut channel: Channel, command: String) -> SshResult<(String, String)> {
-        channel
-            .exec(&command)
-            .map_err(|e| self.make_session_error(e))?;
-
-        let mut stdout = String::new();
-        channel
-            .read_to_string(&mut stdout)
-            .map_err(|e| self.make_connection_error(e))?;
-
-        let mut stderr = String::new();
-        channel
-            .stderr()
-            .read_to_string(&mut stderr)
-            .map_err(|e| self.make_connection_error(e))?;
-
-        channel.close().map_err(|e| self.make_session_error(e))?;
-        channel
-            .wait_close()
-            .map_err(|e| self.make_session_error(e))?;
-
-        let exit_status = channel
-            .exit_status()
-            .map_err(|e| self.make_session_error(e))?;
-
-        ensure!(
-            exit_status == 0,
-            SshError::NonZeroExitCode {
-                address: self.address,
-                code: exit_status,
-                message: stderr.clone()
-            }
-        );
-
-        Ok((stdout, stderr))
-    }
-
-    /// Download a file from the remote machines through scp.
-    pub fn download<P: AsRef<Path>>(&self, path: P) -> SshResult<String> {
+    /// Download a file from the remote machine over SFTP.
+    pub async fn download<P: AsRef<Path>>(&self, path: P) -> SshResult<String> {
+        let path = path.as_ref();
         let mut error = None;
         for _ in 0..self.retries + 1 {
-            let (mut channel, _stats) = match self.session.scp_recv(path.as_ref()) {
-                Ok(x) => x,
+            let channel = match self.handle.channel_open_session().await {
+                Ok(c) => c,
                 Err(e) => {
-                    error = Some(self.make_session_error(e));
+                    error = Some(self.session_error(e));
+                    continue;
+                }
+            };
+            if let Err(e) = channel.request_subsystem(true, "sftp").await {
+                error = Some(self.session_error(e));
+                continue;
+            }
+
+            let sftp = match SftpSession::new(channel.into_stream()).await {
+                Ok(s) => s,
+                Err(e) => {
+                    error = Some(self.sftp_error(e));
                     continue;
                 }
             };
 
-            let mut content = String::new();
-            match channel
-                .read_to_string(&mut content)
-                .map_err(|e| self.make_connection_error(e))
-            {
-                Ok(..) => return Ok(content),
-                Err(e) => error = Some(e),
+            match sftp.read(path.to_string_lossy().as_ref()).await {
+                Ok(bytes) => return Ok(String::from_utf8_lossy(&bytes).into_owned()),
+                Err(e) => error = Some(self.sftp_error(e)),
             }
         }
         Err(error.unwrap())

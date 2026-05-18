@@ -448,7 +448,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
         // Download the clients log files.
         for (index, instance) in clients.iter().enumerate() {
             let connection = self.ssh_manager.connect(instance.ssh_address()).await?;
-            let client_log_content = connection.download("client.log")?;
+            let client_log_content = connection.download("client.log").await?;
 
             let client_log_file = [path.clone(), format!("client-{index}.log").into()]
                 .iter()
@@ -463,7 +463,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
 
         for (index, instance) in nodes.iter().enumerate() {
             let connection = self.ssh_manager.connect(instance.ssh_address()).await?;
-            let node_log_content = connection.download("node.log")?;
+            let node_log_content = connection.download("node.log").await?;
 
             let node_log_file = [path.clone(), format!("node-{index}.log").into()]
                 .iter()

@@ -47,16 +47,18 @@ pub type SshResult<T> = Result<T, SshError>;
 
 #[derive(thiserror::Error, Debug)]
 pub enum SshError {
-    #[error("Failed to create ssh session with {address}: {error}")]
+    #[error("Failed to create ssh session with {address}: {source}")]
     SessionError {
         address: SocketAddr,
-        error: ssh2::Error,
+        #[source]
+        source: russh::Error,
     },
 
-    #[error("Failed to connect to instance {address}: {error}")]
-    ConnectionError {
+    #[error("SFTP error on {address}: {source}")]
+    SftpError {
         address: SocketAddr,
-        error: std::io::Error,
+        #[source]
+        source: russh_sftp::client::error::Error,
     },
 
     #[error("Remote execution on {address} returned exit code ({code}): {message}")]
@@ -65,6 +67,16 @@ pub enum SshError {
         code: i32,
         message: String,
     },
+
+    #[error("Remote execution on {address} terminated by signal {signal:?}")]
+    TerminatedBySignal {
+        address: SocketAddr,
+        signal: String,
+        core_dumped: bool,
+    },
+
+    #[error("Remote execution on {address} did not report an exit status")]
+    MissingExitStatus { address: SocketAddr },
 }
 
 pub type MonitorResult<T> = Result<T, MonitorError>;
