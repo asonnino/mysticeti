@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::net::SocketAddr;
+use std::{net::SocketAddr, string::FromUtf8Error};
 
 #[macro_export(local_inner_macros)]
 macro_rules! ensure {
@@ -18,9 +18,6 @@ pub type SettingsResult<T> = Result<T, SettingsError>;
 pub enum SettingsError {
     #[error("Failed to read settings file '{file:?}': {message}")]
     InvalidSettings { file: String, message: String },
-
-    #[error("Failed to read token file '{file:?}': {message}")]
-    TokenFileError { file: String, message: String },
 
     #[error("Failed to read ssh public key file '{file:?}': {message}")]
     SshPublicKeyFileError { file: String, message: String },
@@ -41,22 +38,27 @@ pub enum CloudProviderError {
 
     #[error("SSH key \"{0}\" not found")]
     SshKeyNotFound(String),
+
+    #[error("Operation not supported by this provider: {0}")]
+    Unsupported(String),
 }
 
 pub type SshResult<T> = Result<T, SshError>;
 
 #[derive(thiserror::Error, Debug)]
 pub enum SshError {
-    #[error("Failed to create ssh session with {address}: {error}")]
+    #[error("Failed to create ssh session with {address}: {source}")]
     SessionError {
         address: SocketAddr,
-        error: ssh2::Error,
+        #[source]
+        source: russh::Error,
     },
 
-    #[error("Failed to connect to instance {address}: {error}")]
-    ConnectionError {
+    #[error("SFTP error on {address}: {source}")]
+    SftpError {
         address: SocketAddr,
-        error: std::io::Error,
+        #[source]
+        source: russh_sftp::client::error::Error,
     },
 
     #[error("Remote execution on {address} returned exit code ({code}): {message}")]
@@ -64,6 +66,23 @@ pub enum SshError {
         address: SocketAddr,
         code: i32,
         message: String,
+    },
+
+    #[error("Remote execution on {address} killed by {signal} (core_dumped: {core_dumped})")]
+    TerminatedBySignal {
+        address: SocketAddr,
+        signal: String,
+        core_dumped: bool,
+    },
+
+    #[error("Remote execution on {address} did not report an exit status")]
+    MissingExitStatus { address: SocketAddr },
+
+    #[error("Remote output from {address} was not valid UTF-8: {source}")]
+    InvalidUtf8 {
+        address: SocketAddr,
+        #[source]
+        source: FromUtf8Error,
     },
 }
 
@@ -76,6 +95,15 @@ pub enum MonitorError {
 
     #[error("Failed to start Grafana: {0}")]
     GrafanaError(String),
+
+    #[error("Prometheus query failed: {0}")]
+    PrometheusError(#[from] prometheus_http_query::Error),
+
+    #[error("Unexpected Prometheus response: instant query did not return a vector")]
+    UnexpectedPrometheusResponse,
+
+    #[error("Failed to write benchmark results: {0}")]
+    ResultsWriteError(#[from] std::io::Error),
 }
 
 pub type TestbedResult<T> = Result<T, TestbedError>;

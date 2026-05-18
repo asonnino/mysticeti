@@ -3,7 +3,15 @@
 
 use std::cmp::max;
 
-use crate::display;
+/// Snapshot of log-analysis state — the data callers need to render or react to
+/// a benchmark's log outcome. Produced by [`LogsAnalyzer::summarise`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LogsReport {
+    pub node_panic: bool,
+    pub client_panic: bool,
+    pub node_errors: usize,
+    pub client_errors: usize,
+}
 
 /// A simple log analyzer counting the number of errors and panics.
 #[derive(Default, PartialEq, Eq)]
@@ -51,18 +59,14 @@ impl LogsAnalyzer {
         self.client_panic = log.contains("panic");
     }
 
-    /// Print a summary of the errors.
-    pub fn print_summary(&self) {
-        if self.node_panic {
-            display::error("Node(s) panicked!");
-        } else if self.client_panic {
-            display::error("Client(s) panicked!");
-        } else if self.node_errors != 0 || self.client_errors != 0 {
-            display::newline();
-            display::warn(format!(
-                "Logs contain errors (node: {}, client: {})",
-                self.node_errors, self.client_errors
-            ));
+    /// Snapshot the analyser's state into a [`LogsReport`] — the data the
+    /// caller renders into a banner or reacts to programmatically.
+    pub fn summarise(&self) -> LogsReport {
+        LogsReport {
+            node_panic: self.node_panic,
+            client_panic: self.client_panic,
+            node_errors: self.node_errors,
+            client_errors: self.client_errors,
         }
     }
 }

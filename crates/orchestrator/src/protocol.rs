@@ -8,15 +8,14 @@ use std::{
 
 use eyre::Context;
 use serde::{Serialize, de::DeserializeOwned};
+use std::future::Future;
 
-use crate::{benchmark::BenchmarkParameters, client::Instance};
-
-pub mod mysticeti;
+use crate::{benchmark::BenchmarkParameters, collector::MetricSpec, provider::Instance};
 
 pub const BINARY_PATH: &str = "target/release";
 
 pub trait ProtocolParameters:
-    Default + Clone + Serialize + DeserializeOwned + Debug + Display
+    Default + Clone + Serialize + DeserializeOwned + Debug + Display + Send + Sync + 'static
 {
     /// Load the configuration from a YAML file located at the provided path.
     fn load<P: AsRef<Path>>(path: P) -> Result<Self, eyre::Error> {
@@ -27,9 +26,18 @@ pub trait ProtocolParameters:
     }
 }
 
+/// Carries the parameter types a protocol uses. Lives on its own (rather than
+/// being folded into `ProtocolCommands` or `ProtocolMetrics`) so a single
+/// `P: ProtocolCommands + ProtocolMetrics` bound resolves `P::NodeParameters`
+/// and `P::ClientParameters` unambiguously through the shared supertrait.
+pub trait Protocol {
+    type NodeParameters: ProtocolParameters;
+    type ClientParameters: ProtocolParameters;
+}
+
 /// The minimum interface that the protocol should implement to allow benchmarks from
 /// the orchestrator.
-pub trait ProtocolCommands {
+pub trait ProtocolCommands: Protocol {
     /// The list of dependencies to install (e.g., through apt-get).
     fn protocol_dependencies(&self) -> Vec<&'static str>;
 
@@ -38,20 +46,20 @@ pub trait ProtocolCommands {
 
     /// The command to generate the genesis and all configuration files. This command
     /// is run on each remote machine.
-    async fn genesis_command<'a, I>(
+    fn genesis_command<'a, I>(
         &self,
         instances: I,
-        parameters: &BenchmarkParameters,
-    ) -> String
+        parameters: &BenchmarkParameters<Self::NodeParameters, Self::ClientParameters>,
+    ) -> impl Future<Output = String> + Send
     where
-        I: Iterator<Item = &'a Instance>;
+        I: Iterator<Item = &'a Instance> + Send;
 
     /// The command to run a node. The function returns a vector of commands along with the
     /// associated instance on which to run the command.
     fn node_command<I>(
         &self,
         instances: I,
-        parameters: &BenchmarkParameters,
+        parameters: &BenchmarkParameters<Self::NodeParameters, Self::ClientParameters>,
     ) -> Vec<(Instance, String)>
     where
         I: IntoIterator<Item = Instance>;
@@ -61,33 +69,26 @@ pub trait ProtocolCommands {
     fn client_command<I>(
         &self,
         instances: I,
-        parameters: &BenchmarkParameters,
+        parameters: &BenchmarkParameters<Self::NodeParameters, Self::ClientParameters>,
     ) -> Vec<(Instance, String)>
     where
         I: IntoIterator<Item = Instance>;
 }
 
-/// The names of the minimum metrics exposed by the protocol that are required to
-/// compute performance.
-pub trait ProtocolMetrics {
-    /// The name of the metric reporting the total duration of the benchmark (in seconds).
-    const BENCHMARK_DURATION: &'static str;
-    /// The name of the metric reporting the total number of finalized transactions.
-    const TOTAL_TRANSACTIONS: &'static str;
-    /// The name of the metric reporting the latency buckets.
-    const LATENCY_BUCKETS: &'static str;
-    /// The name of the metric reporting the sum of the end-to-end latency of all finalized
-    /// transactions.
-    const LATENCY_SUM: &'static str;
-    /// The name of the metric reporting the square of the sum of the end-to-end latency of all
-    /// finalized transactions.
-    const LATENCY_SQUARED_SUM: &'static str;
+/// The metrics exposed by the protocol that the orchestrator's collector
+/// should query from Prometheus.
+pub trait ProtocolMetrics: Protocol {
+    /// Describe each metric and what kind of instrumentation backs it. The
+    /// collector synthesises the right PromQL per `MetricKind`: `rate()` for
+    /// counters, the raw name for gauges, and `histogram_quantile(rate(_bucket))`
+    /// for histograms.
+    fn metrics(&self) -> Vec<MetricSpec>;
 
     /// The network path where the nodes expose prometheus metrics.
     fn nodes_metrics_path<I>(
         &self,
         instances: I,
-        parameters: &BenchmarkParameters,
+        parameters: &BenchmarkParameters<Self::NodeParameters, Self::ClientParameters>,
     ) -> Vec<(Instance, String)>
     where
         I: IntoIterator<Item = Instance>;
@@ -96,7 +97,7 @@ pub trait ProtocolMetrics {
     fn clients_metrics_path<I>(
         &self,
         instances: I,
-        parameters: &BenchmarkParameters,
+        parameters: &BenchmarkParameters<Self::NodeParameters, Self::ClientParameters>,
     ) -> Vec<(Instance, String)>
     where
         I: IntoIterator<Item = Instance>;
@@ -105,7 +106,7 @@ pub trait ProtocolMetrics {
     fn nodes_metrics_command<I>(
         &self,
         instances: I,
-        parameters: &BenchmarkParameters,
+        parameters: &BenchmarkParameters<Self::NodeParameters, Self::ClientParameters>,
     ) -> Vec<(Instance, String)>
     where
         I: IntoIterator<Item = Instance>,
@@ -120,7 +121,7 @@ pub trait ProtocolMetrics {
     fn clients_metrics_command<I>(
         &self,
         instances: I,
-        parameters: &BenchmarkParameters,
+        parameters: &BenchmarkParameters<Self::NodeParameters, Self::ClientParameters>,
     ) -> Vec<(Instance, String)>
     where
         I: IntoIterator<Item = Instance>,
@@ -129,51 +130,5 @@ pub trait ProtocolMetrics {
             .into_iter()
             .map(|(instance, path)| (instance, format!("curl {path}")))
             .collect()
-    }
-}
-
-#[cfg(test)]
-pub mod test_protocol_metrics {
-    use super::ProtocolMetrics;
-    use crate::{benchmark::BenchmarkParameters, client::Instance};
-
-    pub struct TestProtocolMetrics;
-
-    impl ProtocolMetrics for TestProtocolMetrics {
-        const BENCHMARK_DURATION: &'static str = "benchmark_duration";
-        const TOTAL_TRANSACTIONS: &'static str = "latency_s_count";
-        const LATENCY_BUCKETS: &'static str = "latency_s";
-        const LATENCY_SUM: &'static str = "latency_s_sum";
-        const LATENCY_SQUARED_SUM: &'static str = "latency_squared_s";
-
-        fn nodes_metrics_path<I>(
-            &self,
-            instances: I,
-            _parameters: &BenchmarkParameters,
-        ) -> Vec<(Instance, String)>
-        where
-            I: IntoIterator<Item = Instance>,
-        {
-            instances
-                .into_iter()
-                .enumerate()
-                .map(|(i, instance)| (instance, format!("localhost:{}/metrics", 8000 + i as u16)))
-                .collect()
-        }
-
-        fn clients_metrics_path<I>(
-            &self,
-            instances: I,
-            _parameters: &BenchmarkParameters,
-        ) -> Vec<(Instance, String)>
-        where
-            I: IntoIterator<Item = Instance>,
-        {
-            instances
-                .into_iter()
-                .enumerate()
-                .map(|(i, instance)| (instance, format!("localhost:{}/metrics", 9000 + i as u16)))
-                .collect()
-        }
     }
 }

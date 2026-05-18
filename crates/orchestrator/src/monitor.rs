@@ -4,10 +4,10 @@
 use std::{fs, net::SocketAddr, path::PathBuf};
 
 use crate::{
-    benchmark::BenchmarkParameters,
-    client::Instance,
+    benchmark::Parameters,
     error::{MonitorError, MonitorResult},
     protocol::ProtocolMetrics,
+    provider::Instance,
     ssh::{CommandContext, SshConnectionManager},
 };
 
@@ -47,7 +47,7 @@ impl Monitor {
     pub async fn start_prometheus<P: ProtocolMetrics>(
         &self,
         protocol_commands: &P,
-        parameters: &BenchmarkParameters,
+        parameters: &Parameters<P>,
     ) -> MonitorResult<()> {
         // Configure and reload prometheus.
         let instance = [self.instance.clone()];
@@ -80,6 +80,16 @@ impl Monitor {
     pub fn grafana_address(&self) -> String {
         format!("http://{}:{}", self.instance.main_ip, Grafana::DEFAULT_PORT)
     }
+
+    /// The public address of the prometheus instance, used by the consumer to
+    /// query metrics over PromQL.
+    pub fn prometheus_address(&self) -> String {
+        format!(
+            "http://{}:{}",
+            self.instance.main_ip,
+            Prometheus::DEFAULT_PORT
+        )
+    }
 }
 
 /// Generate the commands to setup prometheus on the given instances.
@@ -104,7 +114,7 @@ impl Prometheus {
         nodes: I,
         _clients: I,
         protocol: &P,
-        parameters: &BenchmarkParameters,
+        parameters: &Parameters<P>,
     ) -> String
     where
         I: IntoIterator<Item = Instance>,

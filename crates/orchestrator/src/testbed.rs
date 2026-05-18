@@ -1,20 +1,45 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::time::Duration;
+use std::{fmt::Display, time::Duration};
 
 use futures::future::try_join_all;
-use prettytable::{Table, row};
-use tokio::time::{self, Instant};
+use tokio::time;
 
-use super::client::Instance;
 use crate::{
-    client::ServerProviderClient,
-    display,
     error::{TestbedError, TestbedResult},
+    provider::{Instance, ServerProviderClient},
     settings::Settings,
     ssh::SshConnection,
 };
+
+/// Snapshot of the testbed handed back by [`Testbed::status`]. The consumer
+/// renders it however it likes — the library no longer touches stdout.
+pub struct TestbedStatus {
+    /// Cloud-provider client summary (e.g. `"AWS EC2 client v1.x"` or
+    /// `"Custom (N instances)"`).
+    pub client_summary: String,
+    /// Repository URL the testbed is wired to deploy from.
+    pub repository_url: String,
+    /// Commit pinned in [`Settings::repository`].
+    pub repository_commit: String,
+    /// Count of currently-running instances across all regions.
+    pub active_count: usize,
+    /// Per-region instance lists, in the order declared in [`Settings::regions`].
+    pub regions: Vec<RegionStatus>,
+}
+
+pub struct RegionStatus {
+    pub region: String,
+    pub instances: Vec<InstanceEntry>,
+}
+
+pub struct InstanceEntry {
+    /// Ready-to-paste SSH command for this instance.
+    pub connect_command: String,
+    /// Whether the cloud provider reports the instance as running.
+    pub active: bool,
+}
 
 /// Represents a testbed running on a cloud provider.
 pub struct Testbed<C> {
@@ -41,15 +66,15 @@ impl<C: ServerProviderClient> Testbed<C> {
     }
 
     /// Return the username to connect to the instances through ssh.
-    pub fn username(&self) -> &'static str {
-        C::USERNAME
+    pub fn username(&self) -> &str {
+        self.client.username()
     }
 
     /// Return the list of instances of the testbed.
     pub fn instances(&self) -> Vec<Instance> {
         self.instances
             .iter()
-            .filter(|x| self.settings.filter_instances(x))
+            .filter(|x| self.settings.filter_instance(x))
             .cloned()
             .collect()
     }
@@ -62,71 +87,64 @@ impl<C: ServerProviderClient> Testbed<C> {
             .map_err(TestbedError::from)
     }
 
-    /// Print the current status of the testbed.
-    pub fn status(&self) {
-        let filtered = self
-            .instances
-            .iter()
-            .filter(|instance| self.settings.filter_instances(instance));
-        let sorted: Vec<(_, Vec<_>)> = self
+    /// Snapshot the current state of the testbed for the caller to render.
+    ///
+    /// Skips terminated instances (they have no SSH endpoint) and preserves the
+    /// region ordering declared in [`Settings::regions`] so the rendered output
+    /// stays stable across calls.
+    pub fn status(&self) -> TestbedStatus
+    where
+        C: Display,
+    {
+        let private_key_file = self.settings.ssh_private_key_file.display().to_string();
+        let username = self.client.username();
+
+        let regions = self
             .settings
             .regions
             .iter()
             .map(|region| {
-                (
-                    region,
-                    filtered
-                        .clone()
-                        .filter(|instance| &instance.region == region)
-                        .collect(),
-                )
+                let instances = self
+                    .instances
+                    .iter()
+                    .filter(|instance| {
+                        self.settings.filter_instance(instance)
+                            && &instance.region == region
+                            && !instance.is_terminated()
+                    })
+                    .map(|instance| InstanceEntry {
+                        connect_command: format!(
+                            "ssh -i {private_key_file} {username}@{}",
+                            instance.main_ip
+                        ),
+                        active: instance.is_active(),
+                    })
+                    .collect();
+                RegionStatus {
+                    region: region.clone(),
+                    instances,
+                }
             })
             .collect();
 
-        let mut table = Table::new();
-        table.set_format(display::default_table_format());
+        let active_count = self
+            .instances
+            .iter()
+            .filter(|instance| self.settings.filter_instance(instance) && instance.is_active())
+            .count();
 
-        let active = filtered.filter(|x| x.is_active()).count();
-        table.set_titles(row![bH2->format!("Instances ({active})")]);
-        for (i, (region, instances)) in sorted.iter().enumerate() {
-            table.add_row(row![bH2->region.to_uppercase()]);
-            let mut j = 0;
-            for instance in instances {
-                if j % 5 == 0 {
-                    table.add_row(row![]);
-                }
-                let private_key_file = self.settings.ssh_private_key_file.display();
-                let username = C::USERNAME;
-                let ip = instance.main_ip;
-                let connect = format!("ssh -i {private_key_file} {username}@{ip}");
-                if !instance.is_terminated() {
-                    if instance.is_active() {
-                        table.add_row(row![bFg->format!("{j}"), connect]);
-                    } else {
-                        table.add_row(row![bFr->format!("{j}"), connect]);
-                    }
-                    j += 1;
-                }
-            }
-            if i != sorted.len() - 1 {
-                table.add_row(row![]);
-            }
+        TestbedStatus {
+            client_summary: self.client.to_string(),
+            repository_url: self.settings.repository.url.to_string(),
+            repository_commit: self.settings.repository.commit.clone(),
+            active_count,
+            regions,
         }
-
-        display::newline();
-        display::config("Client", &self.client);
-        let repo = &self.settings.repository;
-        display::config("Repo", format!("{} ({})", repo.url, repo.commit));
-        display::newline();
-        table.printstd();
-        display::newline();
     }
 
     /// Populate the testbed by creating the specified amount of instances per region. The total
     /// number of instances created is thus the specified amount x the number of regions.
-    pub async fn deploy(&mut self, quantity: usize, region: Option<String>) -> TestbedResult<()> {
-        display::action(format!("Deploying instances ({quantity} per region)"));
-
+    pub async fn create(&mut self, quantity: usize, region: Option<String>) -> TestbedResult<()> {
         let instances = match region {
             Some(x) => {
                 try_join_all((0..quantity).map(|_| self.client.create_instance(x.clone()))).await?
@@ -144,31 +162,23 @@ impl<C: ServerProviderClient> Testbed<C> {
             self.wait_until_reachable(instances.iter()).await?;
         }
         self.instances = self.client.list_instances().await?;
-
-        display::done();
         Ok(())
     }
 
     /// Destroy all instances of the testbed.
     pub async fn destroy(&mut self) -> TestbedResult<()> {
-        display::action("Destroying testbed");
-
         try_join_all(
             self.instances
                 .drain(..)
                 .map(|instance| self.client.delete_instance(instance)),
         )
         .await?;
-
-        display::done();
         Ok(())
     }
 
     /// Start the specified number of instances in each region. Returns an error if there are not
     /// enough available instances.
     pub async fn start(&mut self, quantity: usize) -> TestbedResult<()> {
-        display::action("Booting instances");
-
         // Gather available instances.
         let mut available = Vec::new();
         for region in &self.settings.regions {
@@ -176,7 +186,7 @@ impl<C: ServerProviderClient> Testbed<C> {
                 self.instances
                     .iter()
                     .filter(|x| {
-                        x.is_inactive() && &x.region == region && self.settings.filter_instances(x)
+                        x.is_inactive() && &x.region == region && self.settings.filter_instance(x)
                     })
                     .take(quantity)
                     .cloned()
@@ -192,15 +202,11 @@ impl<C: ServerProviderClient> Testbed<C> {
             self.wait_until_reachable(available.iter()).await?;
         }
         self.instances = self.client.list_instances().await?;
-
-        display::done();
         Ok(())
     }
 
     /// Stop all instances of the testbed.
     pub async fn stop(&mut self) -> TestbedResult<()> {
-        display::action("Stopping instances");
-
         // Stop all instances.
         self.client
             .stop_instances(self.instances.iter().filter(|i| i.is_active()))
@@ -214,8 +220,6 @@ impl<C: ServerProviderClient> Testbed<C> {
                 break;
             }
         }
-
-        display::done();
         Ok(())
     }
 
@@ -229,19 +233,20 @@ impl<C: ServerProviderClient> Testbed<C> {
         let mut interval = time::interval(Duration::from_secs(5));
         interval.tick().await; // The first tick returns immediately.
 
-        let start = Instant::now();
         loop {
-            let now = interval.tick().await;
-            let elapsed = now.duration_since(start).as_secs_f64().ceil() as u64;
-            display::status(format!("{elapsed}s"));
-
+            interval.tick().await;
             let instances = self.client.list_instances().await?;
             let futures = instances
                 .iter()
                 .filter(|x| instances_ids.contains(&x.id))
                 .map(|instance| {
                     let private_key_file = self.settings.ssh_private_key_file.clone();
-                    SshConnection::new(instance.ssh_address(), C::USERNAME, private_key_file)
+                    SshConnection::new(
+                        instance.ssh_address(),
+                        self.client.username(),
+                        private_key_file,
+                        None,
+                    )
                 });
             if try_join_all(futures).await.is_ok() {
                 break;
@@ -253,20 +258,17 @@ impl<C: ServerProviderClient> Testbed<C> {
 
 #[cfg(test)]
 mod test {
-    use crate::{client::test_client::TestClient, settings::Settings, testbed::Testbed};
+    use crate::{provider::test_client::TestClient, settings::Settings, testbed::Testbed};
 
     #[tokio::test]
-    async fn deploy() {
+    async fn create() {
         let settings = Settings::new_for_test();
-        let client = TestClient::new(settings.clone());
+        let client = TestClient::new();
         let mut testbed = Testbed::new(settings, client).await.unwrap();
 
-        testbed.deploy(5, None).await.unwrap();
+        testbed.create(5, None).await.unwrap();
 
-        assert_eq!(
-            testbed.instances.len(),
-            5 * testbed.settings.number_of_regions()
-        );
+        assert_eq!(testbed.instances.len(), 5 * testbed.settings.regions.len());
         for (i, instance) in testbed.instances.iter().enumerate() {
             assert_eq!(i.to_string(), instance.id);
         }
@@ -275,7 +277,7 @@ mod test {
     #[tokio::test]
     async fn destroy() {
         let settings = Settings::new_for_test();
-        let client = TestClient::new(settings.clone());
+        let client = TestClient::new();
         let mut testbed = Testbed::new(settings, client).await.unwrap();
 
         testbed.destroy().await.unwrap();
@@ -286,9 +288,9 @@ mod test {
     #[tokio::test]
     async fn start() {
         let settings = Settings::new_for_test();
-        let client = TestClient::new(settings.clone());
+        let client = TestClient::new();
         let mut testbed = Testbed::new(settings, client).await.unwrap();
-        testbed.deploy(5, None).await.unwrap();
+        testbed.create(5, None).await.unwrap();
         testbed.stop().await.unwrap();
 
         let result = testbed.start(2).await;
@@ -314,9 +316,9 @@ mod test {
     #[tokio::test]
     async fn stop() {
         let settings = Settings::new_for_test();
-        let client = TestClient::new(settings.clone());
+        let client = TestClient::new();
         let mut testbed = Testbed::new(settings, client).await.unwrap();
-        testbed.deploy(5, None).await.unwrap();
+        testbed.create(5, None).await.unwrap();
         testbed.start(2).await.unwrap();
 
         testbed.stop().await.unwrap();

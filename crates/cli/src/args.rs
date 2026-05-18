@@ -42,6 +42,12 @@ pub enum Command {
     /// Useful for local testing.
     LocalTestbed(LocalTestbedArgs),
 
+    /// Manage a remote (cloud) testbed of replicas and run benchmarks on it.
+    ///
+    /// Requires a settings file describing the cloud provider, regions, and repository
+    /// to deploy. See `crates/orchestrator/assets/settings.yml` for a template.
+    RemoteTestbed(RemoteTestbedArgs),
+
     /// Print the startup banner and exit.
     PrintBanner,
 }
@@ -124,8 +130,8 @@ pub struct LocalTestbedArgs {
     /// Heartbeat cadence, in seconds, used to print live aggregated stats to stderr.
     #[arg(long, value_name = "SECS", default_value_t = 5)]
     pub heartbeat_interval: u64,
-    /// Directory for tracing logs and run artefacts (`config.yaml`, `meta.yaml`,
-    /// `metrics.prom`). Re-runs replace the artefacts atomically; replica WALs are
+    /// Directory for tracing logs and run artifacts (`config.yaml`, `meta.yaml`,
+    /// `metrics.prom`). Re-runs replace the artifacts atomically; replica WALs are
     /// kept in anonymous tempfiles, not written here. Omit to skip artefact export
     /// (banner / heartbeat / summary still print).
     #[arg(long, value_name = "DIR")]
@@ -135,4 +141,66 @@ pub struct LocalTestbedArgs {
     /// be many GB.
     #[arg(long, requires = "output_dir")]
     pub export_dag: bool,
+}
+
+#[derive(clap::Args)]
+pub struct RemoteTestbedArgs {
+    /// Path to the YAML settings file (cloud provider, regions, repository, etc.).
+    /// See `crates/orchestrator/assets/settings-template.yml` for a starting point.
+    #[arg(long, value_name = "FILE", global = true)]
+    pub settings_path: PathBuf,
+
+    #[command(subcommand)]
+    pub command: RemoteTestbedCommand,
+}
+
+#[derive(clap::Subcommand)]
+pub enum RemoteTestbedCommand {
+    /// Print the current testbed instances and SSH commands to reach them.
+    Status,
+
+    /// Create a given number of instances per region (or in a single specified region).
+    Create {
+        /// Number of instances to create (per region, unless `--region` is set).
+        #[arg(long)]
+        instances: usize,
+        /// Limit creation to this region. Omit to create instances in every configured region.
+        #[arg(long)]
+        region: Option<String>,
+    },
+
+    /// Boot the specified number of stopped instances per region.
+    Start {
+        /// Maximum number of instances to start per region.
+        #[arg(long, default_value_t = 10)]
+        instances: usize,
+    },
+
+    /// Stop all active instances (does not destroy them).
+    Stop,
+
+    /// Destroy the testbed and terminate every instance.
+    Destroy,
+
+    /// Deploy nodes and run a benchmark sweep over the supplied loads.
+    Benchmark {
+        /// Committee size for the benchmark.
+        #[arg(long, value_name = "INT", default_value_t = 4)]
+        committee: usize,
+
+        /// Comma-separated list of loads to sweep (tx/s). One run per load.
+        /// A load of `0` skips client deployment (useful for external load generators).
+        #[arg(long, value_name = "INT", value_delimiter = ',', default_value = "200")]
+        loads: Vec<usize>,
+
+        /// Skip `apt`/repo update on the testbed before benchmarking. Dangerous: may run
+        /// outdated nodes. Useful only when iterating locally on the same commit.
+        #[arg(long)]
+        skip_testbed_update: bool,
+
+        /// Skip generating fresh genesis + per-node configs. Dangerous: nodes may be
+        /// misconfigured for the requested committee size.
+        #[arg(long)]
+        skip_testbed_configuration: bool,
+    },
 }

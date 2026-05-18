@@ -1,0 +1,23 @@
+testbed_id: "${USER}-mysticeti"
+# The custom provider lets you bring your own pre-provisioned machines. The
+# orchestrator will not create, destroy, start, or stop them; it only SSHes in
+# to run benchmarks. Trying to invoke a lifecycle command (e.g.
+# `testbed deploy`) on a custom testbed returns an error.
+cloud_provider:
+  custom:
+    ssh_username: ubuntu
+    # Five instances: a 4-node committee (CLI default) plus one for the
+    # monitoring stack (Settings::monitoring defaults to true).
+    instances:
+      - {region: lab-rack-1, ip: 10.0.0.10}
+      - {region: lab-rack-1, ip: 10.0.0.11}
+      - {region: lab-rack-2, ip: 10.0.0.20}
+      - {region: lab-rack-2, ip: 10.0.0.21}
+      - {region: lab-rack-1, ip: 10.0.0.12}
+ssh_private_key_file: "/Users/${USER}/.ssh/id_rsa"
+regions:
+  - lab-rack-1
+  - lab-rack-2
+repository:
+  url: https://github.com/asonnino/mysticeti.git
+  commit: main

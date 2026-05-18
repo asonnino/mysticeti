@@ -5,7 +5,7 @@
 //! tabled-driven display code lives here.
 
 pub mod banner;
-mod progress;
+pub mod progress;
 mod render;
 pub mod table;
 
@@ -14,11 +14,11 @@ use std::{io::IsTerminal, time::Duration};
 use dag::metrics::SnapshotAggregate;
 use replica::result::RunResult;
 
-use self::progress::Progress;
 pub(crate) use self::render::{AggregateRender, ConfigRender, RunResultRender};
 use self::table::SuiteRow;
 
 pub use self::banner::BannerPrinter;
+pub use self::progress::Progress;
 
 // ANSI SGR escapes. `BLUE_FOREGROUND` and `BLUE_BACKGROUND` pair up in the banner art:
 // one paints character glyphs, the other fills the cell behind them.

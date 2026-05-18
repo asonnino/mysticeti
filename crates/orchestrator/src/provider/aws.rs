@@ -25,7 +25,7 @@ use serde::Serialize;
 use super::{Instance, ServerProviderClient};
 use crate::{
     error::{CloudProviderError, CloudProviderResult},
-    settings::Settings,
+    settings::{AwsConfig, CloudProvider, Settings},
 };
 
 // Make a request error from an AWS error message.
@@ -42,6 +42,10 @@ where
 pub struct AwsClient {
     /// The settings of the testbed.
     settings: Settings,
+    /// The AWS-specific configuration, extracted from `settings.cloud_provider`
+    /// at construction time so methods can read it without re-matching on the
+    /// enum.
+    aws: AwsConfig,
     /// A list of clients, one per AWS region.
     clients: HashMap<String, aws_sdk_ec2::Client>,
 }
@@ -57,10 +61,16 @@ impl AwsClient {
         "Canonical, Ubuntu, 24.04 LTS, amd64 noble image build on 2024-04-23";
     const DEFAULT_EBS_SIZE_GB: i32 = 500; // Default size of the EBS volume in GB.
 
-    /// Make a new AWS client.
+    /// Make a new AWS client. Panics if `settings.cloud_provider` is not
+    /// [`CloudProvider::Aws`]; the caller must match the variant first.
     pub async fn new(settings: Settings) -> Self {
+        let aws = match &settings.cloud_provider {
+            CloudProvider::Aws(c) => c.clone(),
+            _ => panic!("AwsClient::new called with a non-AWS cloud_provider"),
+        };
+
         let profile_files = EnvConfigFiles::builder()
-            .with_file(EnvConfigFileKind::Credentials, &settings.token_file)
+            .with_file(EnvConfigFileKind::Credentials, &aws.token_file)
             .with_contents(EnvConfigFileKind::Config, "[default]\noutput=json")
             .build();
 
@@ -75,7 +85,11 @@ impl AwsClient {
             clients.insert(region, client);
         }
 
-        Self { settings, clients }
+        Self {
+            settings,
+            aws,
+            clients,
+        }
     }
 
     /// Parse an AWS response and ignore errors if they mean a request is a duplicate.
@@ -216,7 +230,7 @@ impl AwsClient {
         // Request storage details for the instance type specified in the settings.
         let request = client
             .describe_instance_types()
-            .instance_types(self.settings.specs.as_str().into());
+            .instance_types(self.aws.specs.as_str().into());
 
         // Send the request.
         let response = request.send().await?;
@@ -233,7 +247,9 @@ impl AwsClient {
 }
 
 impl ServerProviderClient for AwsClient {
-    const USERNAME: &'static str = "ubuntu";
+    fn username(&self) -> &str {
+        "ubuntu"
+    }
 
     async fn list_instances(&self) -> CloudProviderResult<Vec<Instance>> {
         let filter = FilterBuilder::default()
@@ -337,7 +353,7 @@ impl ServerProviderClient for AwsClient {
         let request = client
             .run_instances()
             .image_id(image_id)
-            .instance_type(self.settings.specs.as_str().into())
+            .instance_type(self.aws.specs.as_str().into())
             .key_name(testbed_id)
             .min_count(1)
             .max_count(1)

@@ -5,6 +5,7 @@ use std::{
     env,
     fmt::Display,
     fs,
+    net::Ipv4Addr,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -14,9 +15,9 @@ use serde::{Deserialize, Serialize};
 use serde_with::{DisplayFromStr, DurationSeconds, serde_as};
 
 use crate::{
-    client::Instance,
     error::{SettingsError, SettingsResult},
     faults::FaultsType,
+    provider::Instance,
 };
 
 /// The git repository holding the codebase.
@@ -54,14 +55,51 @@ impl Repository {
     }
 }
 
+/// AWS-specific configuration carried inside [`CloudProvider::Aws`].
+#[derive(Serialize, Deserialize, Clone, Default, PartialEq, Eq, Debug)]
+pub struct AwsConfig {
+    /// The EC2 instance type, e.g. `m5d.8xlarge`.
+    pub specs: String,
+    /// The path to the AWS credentials file.
+    #[serde(skip_serializing)]
+    pub token_file: PathBuf,
+}
+
+/// A single pre-provisioned machine for the custom provider, tagged with the
+/// region it belongs to (which must appear in [`Settings::regions`]).
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+pub struct CustomInstance {
+    pub region: String,
+    pub ip: Ipv4Addr,
+}
+
+/// Custom-provider configuration: the user has pre-provisioned the machines
+/// and provides their addresses.
+#[derive(Serialize, Deserialize, Clone, Default, PartialEq, Eq, Debug)]
+pub struct CustomConfig {
+    /// The SSH username configured on the pre-provisioned machines.
+    pub ssh_username: String,
+    /// The pre-provisioned machines.
+    pub instances: Vec<CustomInstance>,
+}
+
 /// The list of supported cloud providers.
-#[derive(Serialize, Deserialize, Clone, Default)]
+///
+/// Each variant carries its own configuration so that the type system rules
+/// out invalid combinations (e.g. a custom testbed without an IP list, or
+/// AWS-specific fields stuck on a non-AWS settings file).
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 pub enum CloudProvider {
-    #[default]
     #[serde(alias = "aws")]
-    Aws,
-    #[serde(alias = "vultr")]
-    Vultr,
+    Aws(AwsConfig),
+    #[serde(alias = "custom")]
+    Custom(CustomConfig),
+}
+
+impl Default for CloudProvider {
+    fn default() -> Self {
+        Self::Aws(AwsConfig::default())
+    }
 }
 
 /// The testbed settings. Those are topically specified in a file.
@@ -71,22 +109,18 @@ pub struct Settings {
     /// The testbed unique id. This allows multiple users to run concurrent testbeds on the
     /// same cloud provider's account without interference with each others.
     pub testbed_id: String,
-    /// The cloud provider hosting the testbed.
+    /// The cloud provider hosting the testbed (plus its provider-specific config).
     pub cloud_provider: CloudProvider,
-    /// The path to the secret token for authentication with the cloud provider.
-    #[serde(skip_serializing)]
-    pub token_file: PathBuf,
     /// The ssh private key to access the instances.
     #[serde(skip_serializing)]
     pub ssh_private_key_file: PathBuf,
     /// The corresponding ssh public key registered on the instances. If not specified. the
     /// public key defaults the same path as the private key with an added extension 'pub'.
     pub ssh_public_key_file: Option<PathBuf>,
-    /// The list of cloud provider regions to deploy the testbed.
+    /// The list of regions hosting the testbed. Shared by both providers: for
+    /// AWS these are real cloud regions; for the custom provider they are
+    /// user-chosen labels that group pre-provisioned machines.
     pub regions: Vec<String>,
-    /// The specs of the instances to deploy. Those are dependent on the cloud provider, e.g.,
-    /// specifying 't3.medium' creates instances with 2 vCPU and 4GBo of ram on AWS.
-    pub specs: String,
     /// The details of the git reposit to deploy.
     pub repository: Repository,
     /// The path to the node's configuration file. If not specified, the orchestrator uses the
@@ -233,6 +267,23 @@ impl Settings {
         Ok(s)
     }
 
+    /// Whether the given instance belongs to the active testbed. The region
+    /// check applies to every provider; AWS additionally requires the instance
+    /// type to match the configured specs (a single AWS account may host
+    /// machines from unrelated testbeds, so the type narrows the match).
+    pub fn filter_instance(&self, instance: &Instance) -> bool {
+        if !self.regions.contains(&instance.region) {
+            return false;
+        }
+        match &self.cloud_provider {
+            CloudProvider::Aws(c) => {
+                instance.specs.to_lowercase().replace('.', "")
+                    == c.specs.to_lowercase().replace('.', "")
+            }
+            CloudProvider::Custom(_) => true,
+        }
+    }
+
     /// Get the name of the repository (from its url).
     pub fn repository_name(&self) -> String {
         self.repository
@@ -244,17 +295,6 @@ impl Settings {
             .next()
             .unwrap()
             .to_string()
-    }
-
-    /// Load the secret token to authenticate with the cloud provider.
-    pub fn load_token(&self) -> SettingsResult<String> {
-        match fs::read_to_string(&self.token_file) {
-            Ok(token) => Ok(token.trim_end_matches('\n').to_string()),
-            Err(e) => Err(SettingsError::TokenFileError {
-                file: self.token_file.display().to_string(),
-                message: e.to_string(),
-            }),
-        }
     }
 
     /// Load the ssh public key from file.
@@ -273,19 +313,6 @@ impl Settings {
         }
     }
 
-    /// Check whether the input instance matches the criteria described in the settings.
-    pub fn filter_instances(&self, instance: &Instance) -> bool {
-        self.regions.contains(&instance.region)
-            && instance.specs.to_lowercase().replace('.', "")
-                == self.specs.to_lowercase().replace('.', "")
-    }
-
-    /// The number of regions specified in the settings.
-    #[cfg(test)]
-    pub fn number_of_regions(&self) -> usize {
-        self.regions.len()
-    }
-
     /// Test settings for unit tests.
     #[cfg(test)]
     pub fn new_for_test() -> Self {
@@ -298,7 +325,11 @@ impl Settings {
         // Return set settings.
         Self {
             testbed_id: "testbed".into(),
-            token_file: "/path/to/token/file".into(),
+            cloud_provider: CloudProvider::Aws(AwsConfig {
+                specs: "test-specs".into(),
+                token_file: "/path/to/token/file".into(),
+            }),
+            regions: vec!["test-region".into()],
             ssh_private_key_file: "/path/to/private/key/file".into(),
             ssh_public_key_file: Some(path),
             ..Default::default()

@@ -182,6 +182,11 @@ pub struct LoadGeneratorConfig {
     pub initial_delay: Duration,
 }
 
+impl LoadGeneratorConfig {
+    /// Default on-disk filename, mirroring [`PublicReplicaConfig::DEFAULT_FILENAME`].
+    pub const DEFAULT_FILENAME: &'static str = "load-generator-config.yaml";
+}
+
 mod load_generator_defaults {
     use std::time::Duration;
 

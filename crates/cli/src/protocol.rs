@@ -1,22 +1,29 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Mysticeti's implementation of the orchestrator's protocol traits. Lives in
+//! the CLI crate so the orchestrator library stays protocol-agnostic.
+
 use std::{
-    fmt::{Debug, Display},
+    fmt::{self, Debug, Display},
     net::IpAddr,
     ops::Deref,
     path::PathBuf,
 };
 
 use dag::authority::Authority;
+use orchestrator::{
+    benchmark::BenchmarkParameters,
+    collector::{MetricKind, MetricSpec},
+    protocol::{BINARY_PATH, Protocol, ProtocolCommands, ProtocolMetrics, ProtocolParameters},
+    provider::Instance,
+    settings::Settings,
+};
 use replica::config::{LoadGeneratorConfig, PublicReplicaConfig, ReplicaParameters};
 use serde::{Deserialize, Serialize};
 
-use super::{BINARY_PATH, ProtocolCommands, ProtocolMetrics, ProtocolParameters};
-use crate::{benchmark::BenchmarkParameters, client::Instance, settings::Settings};
-
 const PUBLIC_REPLICA_CONFIG_FILENAME: &str = PublicReplicaConfig::DEFAULT_FILENAME;
-const LOAD_GENERATOR_CONFIG_FILENAME: &str = "load-generator-config.yaml";
+const LOAD_GENERATOR_CONFIG_FILENAME: &str = LoadGeneratorConfig::DEFAULT_FILENAME;
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(transparent)]
@@ -31,13 +38,13 @@ impl Deref for MysticetiNodeParameters {
 }
 
 impl Debug for MysticetiNodeParameters {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "c")
     }
 }
 
 impl Display for MysticetiNodeParameters {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Consensus-only mode")
     }
 }
@@ -57,13 +64,13 @@ impl Deref for MysticetiClientParameters {
 }
 
 impl Debug for MysticetiClientParameters {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.transaction_size)
     }
 }
 
 impl Display for MysticetiClientParameters {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}B tx", self.transaction_size)
     }
 }
@@ -72,6 +79,11 @@ impl ProtocolParameters for MysticetiClientParameters {}
 
 pub struct MysticetiProtocol {
     working_dir: PathBuf,
+}
+
+impl Protocol for MysticetiProtocol {
+    type NodeParameters = MysticetiNodeParameters;
+    type ClientParameters = MysticetiClientParameters;
 }
 
 impl ProtocolCommands for MysticetiProtocol {
@@ -83,7 +95,11 @@ impl ProtocolCommands for MysticetiProtocol {
         vec![self.working_dir.join("storage-*")]
     }
 
-    async fn genesis_command<'a, I>(&self, instances: I, parameters: &BenchmarkParameters) -> String
+    async fn genesis_command<'a, I>(
+        &self,
+        instances: I,
+        parameters: &BenchmarkParameters<Self::NodeParameters, Self::ClientParameters>,
+    ) -> String
     where
         I: Iterator<Item = &'a Instance>,
     {
@@ -132,7 +148,7 @@ impl ProtocolCommands for MysticetiProtocol {
     fn node_command<I>(
         &self,
         instances: I,
-        _parameters: &BenchmarkParameters,
+        _parameters: &BenchmarkParameters<Self::NodeParameters, Self::ClientParameters>,
     ) -> Vec<(Instance, String)>
     where
         I: IntoIterator<Item = Instance>,
@@ -171,7 +187,7 @@ impl ProtocolCommands for MysticetiProtocol {
     fn client_command<I>(
         &self,
         _instances: I,
-        _parameters: &BenchmarkParameters,
+        _parameters: &BenchmarkParameters<Self::NodeParameters, Self::ClientParameters>,
     ) -> Vec<(Instance, String)>
     where
         I: IntoIterator<Item = Instance>,
@@ -182,16 +198,38 @@ impl ProtocolCommands for MysticetiProtocol {
 }
 
 impl ProtocolMetrics for MysticetiProtocol {
-    const BENCHMARK_DURATION: &'static str = dag::metrics::BENCHMARK_DURATION;
-    const TOTAL_TRANSACTIONS: &'static str = "latency_s_count";
-    const LATENCY_BUCKETS: &'static str = "latency_s";
-    const LATENCY_SUM: &'static str = "latency_s_sum";
-    const LATENCY_SQUARED_SUM: &'static str = dag::metrics::LATENCY_SQUARED_S;
+    fn metrics(&self) -> Vec<MetricSpec> {
+        vec![
+            MetricSpec {
+                // Exposed as a counter but represents elapsed seconds — querying
+                // `rate(benchmark_duration[1m])` always returns ~1.0, useless.
+                // The cumulative value is what aggregation actually needs.
+                name: dag::metrics::BENCHMARK_DURATION.into(),
+                kind: MetricKind::Gauge,
+            },
+            MetricSpec {
+                name: "latency_s".into(),
+                kind: MetricKind::Histogram,
+            },
+            MetricSpec {
+                name: "latency_s_count".into(),
+                kind: MetricKind::Counter,
+            },
+            MetricSpec {
+                name: "latency_s_sum".into(),
+                kind: MetricKind::Counter,
+            },
+            MetricSpec {
+                name: dag::metrics::LATENCY_SQUARED_S.into(),
+                kind: MetricKind::Counter,
+            },
+        ]
+    }
 
     fn nodes_metrics_path<I>(
         &self,
         instances: I,
-        _parameters: &BenchmarkParameters,
+        _parameters: &BenchmarkParameters<Self::NodeParameters, Self::ClientParameters>,
     ) -> Vec<(Instance, String)>
     where
         I: IntoIterator<Item = Instance>,
@@ -212,7 +250,7 @@ impl ProtocolMetrics for MysticetiProtocol {
     fn clients_metrics_path<I>(
         &self,
         instances: I,
-        parameters: &BenchmarkParameters,
+        parameters: &BenchmarkParameters<Self::NodeParameters, Self::ClientParameters>,
     ) -> Vec<(Instance, String)>
     where
         I: IntoIterator<Item = Instance>,
