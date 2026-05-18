@@ -14,6 +14,7 @@ color-eyre = { workspace = true }
 eyre = { workspace = true }
 dag.workspace = true
 consensus.workspace = true
+orchestrator.workspace = true
 replica.workspace = true
 simulator.workspace = true
 humantime = "2.1"

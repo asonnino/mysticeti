@@ -4,7 +4,7 @@
 use std::{fs, net::SocketAddr, path::PathBuf};
 
 use crate::{
-    benchmark::BenchmarkParameters,
+    benchmark::Parameters,
     error::{MonitorError, MonitorResult},
     protocol::ProtocolMetrics,
     provider::Instance,
@@ -47,7 +47,7 @@ impl Monitor {
     pub async fn start_prometheus<P: ProtocolMetrics>(
         &self,
         protocol_commands: &P,
-        parameters: &BenchmarkParameters,
+        parameters: &Parameters<P>,
     ) -> MonitorResult<()> {
         // Configure and reload prometheus.
         let instance = [self.instance.clone()];
@@ -114,7 +114,7 @@ impl Prometheus {
         nodes: I,
         _clients: I,
         protocol: &P,
-        parameters: &BenchmarkParameters,
+        parameters: &Parameters<P>,
     ) -> String
     where
         I: IntoIterator<Item = Instance>,

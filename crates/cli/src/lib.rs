@@ -4,5 +4,6 @@
 pub mod args;
 pub mod commands;
 pub mod exporter;
+pub mod protocol;
 pub mod terminal;
 pub mod tracing;

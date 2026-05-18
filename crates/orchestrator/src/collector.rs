@@ -27,6 +27,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     benchmark::BenchmarkParameters,
     error::{MonitorError, MonitorResult, TestbedResult},
+    protocol::ProtocolParameters,
 };
 
 /// PromQL `rate()` window applied to [`MetricKind::Counter`] and histogram
@@ -77,8 +78,8 @@ pub struct Sample {
 /// Accumulated benchmark output. Keyed by metric name, each entry holds every
 /// sample observed across every [`Collector::collect`] tick.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct BenchmarkResults {
-    pub parameters: BenchmarkParameters,
+pub struct BenchmarkResults<N, C> {
+    pub parameters: BenchmarkParameters<N, C>,
     pub samples: HashMap<String, Vec<Sample>>,
 }
 
@@ -86,18 +87,18 @@ pub struct BenchmarkResults {
 /// accumulates the resulting samples in a [`BenchmarkResults`] that the caller
 /// periodically persists with [`Collector::save`]. The specific PromQL fired
 /// for each metric is derived from its [`MetricKind`].
-pub struct Collector {
+pub struct Collector<N, C> {
     client: PrometheusClient,
     metrics: Vec<MetricSpec>,
-    results: BenchmarkResults,
+    results: BenchmarkResults<N, C>,
 }
 
-impl Collector {
+impl<N: ProtocolParameters, C: ProtocolParameters> Collector<N, C> {
     /// `prometheus_address` is the URL the consumer received in
     /// [`crate::orchestrator::MonitoringReport::prometheus_address`].
     pub fn new(
         prometheus_address: &str,
-        mut parameters: BenchmarkParameters,
+        mut parameters: BenchmarkParameters<N, C>,
         metrics: Vec<MetricSpec>,
     ) -> TestbedResult<Self> {
         // The parameters end up serialised to disk via `save()`. Strip any

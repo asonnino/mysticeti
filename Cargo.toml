@@ -24,6 +24,7 @@ bincode = "1.3.3"
 consensus = { path = "crates/consensus" }
 dag = { path = "crates/dag" }
 minibytes = { path = "crates/minibytes", default-features = false }
+orchestrator = { path = "crates/orchestrator" }
 replica = { path = "crates/replica" }
 simulator = { path = "crates/simulator" }
 clap = { version = "4.5", features = ["derive"] }

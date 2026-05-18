@@ -21,7 +21,10 @@ async fn main() -> Result<()> {
         Command::Run(sub) => commands::run::run(sub, log_level, log_file).await?,
         Command::Simulate(sub) => commands::simulate::simulate(sub, log_level, log_file).await?,
         Command::LocalTestbed(sub) => {
-            commands::testbed::local_testbed(sub, log_level, log_file).await?
+            commands::local_testbed::local_testbed(sub, log_level, log_file).await?
+        }
+        Command::RemoteTestbed(sub) => {
+            commands::remote_testbed::remote_testbed(sub, log_level, log_file).await?
         }
         Command::PrintBanner => {
             terminal::BannerPrinter::new("Mysticeti", &[("Mode", "Preview")]).print();

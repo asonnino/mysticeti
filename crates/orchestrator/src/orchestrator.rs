@@ -9,7 +9,7 @@ use std::{
 };
 
 use crate::{
-    benchmark::BenchmarkParameters,
+    benchmark::Parameters,
     ensure,
     error::{TestbedError, TestbedResult},
     faults::{CrashRecoveryAction, CrashRecoverySchedule},
@@ -90,7 +90,9 @@ impl<P> Orchestrator<P> {
             ssh_manager,
         }
     }
+}
 
+impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
     /// Returns the instances of the testbed on which to run the benchmarks.
     ///
     /// This function returns two vectors of instances; the first contains the instances on which to
@@ -98,7 +100,7 @@ impl<P> Orchestrator<P> {
     /// Additionally returns an optional monitoring instance.
     pub fn select_instances(
         &self,
-        parameters: &BenchmarkParameters,
+        parameters: &Parameters<P>,
     ) -> TestbedResult<(Vec<Instance>, Vec<Instance>, Option<Instance>)> {
         // Ensure there are enough active instances.
         let available_instances: Vec<_> = self.instances.iter().filter(|x| x.is_active()).collect();
@@ -170,9 +172,7 @@ impl<P> Orchestrator<P> {
 
         Ok((client_instances, nodes_instances, monitoring_instance))
     }
-}
 
-impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
     /// Install the codebase and its dependencies on the testbed.
     pub async fn install(&self) -> TestbedResult<()> {
         let working_dir = self.settings.working_dir.display();
@@ -259,10 +259,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
     }
 
     /// Configure the instances with the appropriate configuration files.
-    pub async fn configure(
-        &self,
-        parameters: &BenchmarkParameters,
-    ) -> TestbedResult<ConfigureReport> {
+    pub async fn configure(&self, parameters: &Parameters<P>) -> TestbedResult<ConfigureReport> {
         // Select instances to configure.
         let (clients, nodes, _) = self.select_instances(parameters)?;
         let report = ConfigureReport::new(&nodes, &clients);
@@ -319,7 +316,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
     /// otherwise.
     pub async fn start_monitoring(
         &self,
-        parameters: &BenchmarkParameters,
+        parameters: &Parameters<P>,
     ) -> TestbedResult<Option<MonitoringReport>> {
         let (clients, nodes, instance) = self.select_instances(parameters)?;
         let Some(instance) = instance else {
@@ -341,7 +338,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
     async fn boot_nodes(
         &self,
         instances: Vec<Instance>,
-        parameters: &BenchmarkParameters,
+        parameters: &Parameters<P>,
     ) -> TestbedResult<()> {
         // Run one node per instance.
         let targets = self
@@ -367,7 +364,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
     }
 
     /// Deploy the nodes.
-    pub async fn run_nodes(&self, parameters: &BenchmarkParameters) -> TestbedResult<()> {
+    pub async fn run_nodes(&self, parameters: &Parameters<P>) -> TestbedResult<()> {
         // Select the instances to run.
         let (_, nodes, _) = self.select_instances(parameters)?;
 
@@ -378,7 +375,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
     }
 
     /// Deploy the load generators.
-    pub async fn run_clients(&self, parameters: &BenchmarkParameters) -> TestbedResult<()> {
+    pub async fn run_clients(&self, parameters: &Parameters<P>) -> TestbedResult<()> {
         if parameters.load == 0 {
             return Ok(());
         }
@@ -416,7 +413,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
     /// it wants.
     pub async fn apply_faults_step(
         &self,
-        parameters: &BenchmarkParameters,
+        parameters: &Parameters<P>,
         schedule: &mut CrashRecoverySchedule,
     ) -> TestbedResult<CrashRecoveryAction> {
         let action = schedule.update();
@@ -430,10 +427,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
     }
 
     /// Download the log files from the nodes and clients.
-    pub async fn download_logs(
-        &self,
-        parameters: &BenchmarkParameters,
-    ) -> TestbedResult<LogsReport> {
+    pub async fn download_logs(&self, parameters: &Parameters<P>) -> TestbedResult<LogsReport> {
         // Select the instances to run.
         let (clients, nodes, _) = self.select_instances(parameters)?;
 
