@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
-      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # pin@v2.8.2
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # pin@v2.9.1
         with:
           save-if: ${{ github.ref == 'refs/heads/main' && 'true' || 'false' }}
       - name: Check formatting with rustfmt
@@ -50,11 +50,11 @@ jobs:
     if: ${{ needs.diff.outputs.isRelevantForRustTests == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: taiki-e/install-action@70e00552f3196d9a4c7dde7c57ef4c4830d422dd # pin@v2.68.2
+      - uses: taiki-e/install-action@7be9fd86bd1707236395105d6e9329dd1511a7e1 # pin@v2.79.0
         with:
           tool: cargo-nextest
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
-      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # pin@v2.8.2
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # pin@v2.9.1
         with:
           save-if: ${{ github.ref == 'refs/heads/main' && 'true' || 'false' }}
       - name: Run tests
@@ -66,10 +66,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
-      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # pin@v2.8.2
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # pin@v2.9.1
         with:
           save-if: "true"
-      - uses: taiki-e/install-action@70e00552f3196d9a4c7dde7c57ef4c4830d422dd # pin@v2.68.2
+      - uses: taiki-e/install-action@7be9fd86bd1707236395105d6e9329dd1511a7e1 # pin@v2.79.0
         with:
           tool: cargo-tarpaulin
       - name: Generate code coverage
@@ -90,7 +90,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
-      - uses: taiki-e/install-action@70e00552f3196d9a4c7dde7c57ef4c4830d422dd # pin@v2.68.2
+      - uses: taiki-e/install-action@7be9fd86bd1707236395105d6e9329dd1511a7e1 # pin@v2.79.0
         with:
           tool: cargo-deny
       - name: Check bans, licenses, and sources
@@ -101,7 +101,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
-      - uses: taiki-e/install-action@70e00552f3196d9a4c7dde7c57ef4c4830d422dd # pin@v2.68.2
+      - uses: taiki-e/install-action@7be9fd86bd1707236395105d6e9329dd1511a7e1 # pin@v2.79.0
         with:
           tool: cargo-deny
       - name: Check advisories
