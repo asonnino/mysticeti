@@ -547,7 +547,7 @@ checksum = "8d7396fd9500589e62e460e987ecb671bad374934e55ec3b5f498cc7a8a8a7b7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn",
 ]
 
 [[package]]
@@ -1285,7 +1285,7 @@ dependencies = [
  "minibytes",
  "parking_lot",
  "prometheus",
- "rand 0.8.5",
+ "rand 0.10.0",
  "reqwest",
  "seahash",
  "serde",
@@ -2675,7 +2675,7 @@ dependencies = [
  "num-integer",
  "num-iter",
  "num-traits",
- "rand 0.8.5",
+ "rand 0.8.6",
  "serde",
  "smallvec",
 ]
@@ -2766,7 +2766,7 @@ dependencies = [
  "futures",
  "glob",
  "prometheus-http-query",
- "rand 0.8.5",
+ "rand 0.10.0",
  "replica",
  "reqwest",
  "russh",
@@ -2844,7 +2844,7 @@ dependencies = [
  "delegate",
  "futures",
  "log",
- "rand 0.8.5",
+ "rand 0.8.6",
  "sha2 0.10.9",
  "thiserror 1.0.69",
  "tokio",
@@ -3244,9 +3244,9 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "rand"
-version = "0.8.5"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
+checksum = "5ca0ecfa931c29007047d1bc58e623ab12e5590e8c7cc53200d5202b69266d8a"
 dependencies = [
  "libc",
  "rand_chacha 0.3.1",
@@ -3395,7 +3395,7 @@ dependencies = [
  "humantime-serde",
  "minibytes",
  "prometheus",
- "rand 0.8.5",
+ "rand 0.10.0",
  "reqwest",
  "serde",
  "serde_yaml",
@@ -4117,7 +4117,7 @@ dependencies = [
  "futures",
  "indoc",
  "parking_lot",
- "rand 0.8.5",
+ "rand 0.10.0",
  "replica",
  "serde",
  "serde_yaml",
