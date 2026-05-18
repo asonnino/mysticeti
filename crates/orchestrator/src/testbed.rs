@@ -7,11 +7,10 @@ use futures::future::try_join_all;
 use prettytable::{Table, row};
 use tokio::time::{self, Instant};
 
-use super::client::Instance;
 use crate::{
-    client::ServerProviderClient,
     display,
     error::{TestbedError, TestbedResult},
+    provider::{Instance, ServerProviderClient},
     settings::Settings,
     ssh::SshConnection,
 };
@@ -41,15 +40,15 @@ impl<C: ServerProviderClient> Testbed<C> {
     }
 
     /// Return the username to connect to the instances through ssh.
-    pub fn username(&self) -> &'static str {
-        C::USERNAME
+    pub fn username(&self) -> &str {
+        self.client.username()
     }
 
     /// Return the list of instances of the testbed.
     pub fn instances(&self) -> Vec<Instance> {
         self.instances
             .iter()
-            .filter(|x| self.settings.filter_instances(x))
+            .filter(|x| self.settings.filter_instance(x))
             .cloned()
             .collect()
     }
@@ -67,7 +66,7 @@ impl<C: ServerProviderClient> Testbed<C> {
         let filtered = self
             .instances
             .iter()
-            .filter(|instance| self.settings.filter_instances(instance));
+            .filter(|instance| self.settings.filter_instance(instance));
         let sorted: Vec<(_, Vec<_>)> = self
             .settings
             .regions
@@ -96,7 +95,7 @@ impl<C: ServerProviderClient> Testbed<C> {
                     table.add_row(row![]);
                 }
                 let private_key_file = self.settings.ssh_private_key_file.display();
-                let username = C::USERNAME;
+                let username = self.client.username();
                 let ip = instance.main_ip;
                 let connect = format!("ssh -i {private_key_file} {username}@{ip}");
                 if !instance.is_terminated() {
@@ -176,7 +175,7 @@ impl<C: ServerProviderClient> Testbed<C> {
                 self.instances
                     .iter()
                     .filter(|x| {
-                        x.is_inactive() && &x.region == region && self.settings.filter_instances(x)
+                        x.is_inactive() && &x.region == region && self.settings.filter_instance(x)
                     })
                     .take(quantity)
                     .cloned()
@@ -241,7 +240,11 @@ impl<C: ServerProviderClient> Testbed<C> {
                 .filter(|x| instances_ids.contains(&x.id))
                 .map(|instance| {
                     let private_key_file = self.settings.ssh_private_key_file.clone();
-                    SshConnection::new(instance.ssh_address(), C::USERNAME, private_key_file)
+                    SshConnection::new(
+                        instance.ssh_address(),
+                        self.client.username(),
+                        private_key_file,
+                    )
                 });
             if try_join_all(futures).await.is_ok() {
                 break;
@@ -253,20 +256,17 @@ impl<C: ServerProviderClient> Testbed<C> {
 
 #[cfg(test)]
 mod test {
-    use crate::{client::test_client::TestClient, settings::Settings, testbed::Testbed};
+    use crate::{provider::test_client::TestClient, settings::Settings, testbed::Testbed};
 
     #[tokio::test]
     async fn deploy() {
         let settings = Settings::new_for_test();
-        let client = TestClient::new(settings.clone());
+        let client = TestClient::new();
         let mut testbed = Testbed::new(settings, client).await.unwrap();
 
         testbed.deploy(5, None).await.unwrap();
 
-        assert_eq!(
-            testbed.instances.len(),
-            5 * testbed.settings.number_of_regions()
-        );
+        assert_eq!(testbed.instances.len(), 5 * testbed.settings.regions.len());
         for (i, instance) in testbed.instances.iter().enumerate() {
             assert_eq!(i.to_string(), instance.id);
         }
@@ -275,7 +275,7 @@ mod test {
     #[tokio::test]
     async fn destroy() {
         let settings = Settings::new_for_test();
-        let client = TestClient::new(settings.clone());
+        let client = TestClient::new();
         let mut testbed = Testbed::new(settings, client).await.unwrap();
 
         testbed.destroy().await.unwrap();
@@ -286,7 +286,7 @@ mod test {
     #[tokio::test]
     async fn start() {
         let settings = Settings::new_for_test();
-        let client = TestClient::new(settings.clone());
+        let client = TestClient::new();
         let mut testbed = Testbed::new(settings, client).await.unwrap();
         testbed.deploy(5, None).await.unwrap();
         testbed.stop().await.unwrap();
@@ -314,7 +314,7 @@ mod test {
     #[tokio::test]
     async fn stop() {
         let settings = Settings::new_for_test();
-        let client = TestClient::new(settings.clone());
+        let client = TestClient::new();
         let mut testbed = Testbed::new(settings, client).await.unwrap();
         testbed.deploy(5, None).await.unwrap();
         testbed.start(2).await.unwrap();

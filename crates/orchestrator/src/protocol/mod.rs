@@ -10,7 +10,7 @@ use eyre::Context;
 use serde::{Serialize, de::DeserializeOwned};
 use std::future::Future;
 
-use crate::{benchmark::BenchmarkParameters, client::Instance, collector::MetricSpec};
+use crate::{benchmark::BenchmarkParameters, collector::MetricSpec, provider::Instance};
 
 pub mod mysticeti;
 

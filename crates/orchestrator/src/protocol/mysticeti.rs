@@ -15,8 +15,8 @@ use serde::{Deserialize, Serialize};
 use super::{BINARY_PATH, ProtocolCommands, ProtocolMetrics, ProtocolParameters};
 use crate::{
     benchmark::BenchmarkParameters,
-    client::Instance,
     collector::{MetricKind, MetricSpec},
+    provider::Instance,
     settings::Settings,
 };
 

@@ -13,9 +13,9 @@ use ssh2::{Channel, Session};
 use tokio::{net::TcpStream, runtime::Handle, task::JoinHandle, time::sleep};
 
 use crate::{
-    client::Instance,
     ensure,
     error::{SshError, SshResult},
+    provider::Instance,
 };
 
 #[derive(PartialEq, Eq)]

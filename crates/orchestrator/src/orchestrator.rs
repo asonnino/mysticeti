@@ -10,13 +10,13 @@ use std::{
 
 use crate::{
     benchmark::BenchmarkParameters,
-    client::Instance,
     ensure,
     error::{TestbedError, TestbedResult},
     faults::{CrashRecoveryAction, CrashRecoverySchedule},
     logs::{LogsAnalyzer, LogsReport},
     monitor::Monitor,
     protocol::{ProtocolCommands, ProtocolMetrics},
+    provider::Instance,
     settings::Settings,
     ssh::{CommandContext, CommandStatus, SshConnectionManager},
 };

@@ -11,7 +11,6 @@
 //! moves to `crates/cli/` in #101 once the lib API is fully decoupled.
 
 pub mod benchmark;
-pub mod client;
 pub mod collector;
 pub mod display;
 pub mod error;
@@ -20,6 +19,7 @@ pub mod logs;
 pub mod monitor;
 pub mod orchestrator;
 pub mod protocol;
+pub mod provider;
 pub mod settings;
 pub mod ssh;
 pub mod testbed;

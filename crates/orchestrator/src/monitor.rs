@@ -5,9 +5,9 @@ use std::{fs, net::SocketAddr, path::PathBuf};
 
 use crate::{
     benchmark::BenchmarkParameters,
-    client::Instance,
     error::{MonitorError, MonitorResult},
     protocol::ProtocolMetrics,
+    provider::Instance,
     ssh::{CommandContext, SshConnectionManager},
 };
 

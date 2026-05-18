@@ -19,9 +19,6 @@ pub enum SettingsError {
     #[error("Failed to read settings file '{file:?}': {message}")]
     InvalidSettings { file: String, message: String },
 
-    #[error("Failed to read token file '{file:?}': {message}")]
-    TokenFileError { file: String, message: String },
-
     #[error("Failed to read ssh public key file '{file:?}': {message}")]
     SshPublicKeyFileError { file: String, message: String },
 }
@@ -41,6 +38,9 @@ pub enum CloudProviderError {
 
     #[error("SSH key \"{0}\" not found")]
     SshKeyNotFound(String),
+
+    #[error("Operation not supported by this provider: {0}")]
+    Unsupported(String),
 }
 
 pub type SshResult<T> = Result<T, SshError>;

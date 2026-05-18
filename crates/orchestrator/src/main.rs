@@ -8,13 +8,13 @@ use eyre::Context;
 use orchestrator::{
     ClientParameters, NodeParameters, Protocol,
     benchmark::BenchmarkParameters,
-    client::{ServerProviderClient, aws::AwsClient, vultr::VultrClient},
     collector::Collector,
     display,
     error::{self, TestbedResult},
     faults::CrashRecoverySchedule,
     orchestrator::{MonitoringReport, Orchestrator},
     protocol::{ProtocolCommands, ProtocolMetrics, ProtocolParameters},
+    provider::{ServerProviderClient, aws::AwsClient, custom::CustomClient},
     settings::{CloudProvider, Settings},
     ssh::SshConnectionManager,
     testbed::Testbed,
@@ -120,21 +120,12 @@ async fn main() -> eyre::Result<()> {
     let settings = Settings::load(&opts.settings_path).wrap_err("Failed to load settings")?;
 
     match &settings.cloud_provider {
-        CloudProvider::Aws => {
-            // Create the client for the cloud provider.
+        CloudProvider::Aws(_) => {
             let client = AwsClient::new(settings.clone()).await;
-
-            // Execute the command.
             run(settings, client, opts).await
         }
-        CloudProvider::Vultr => {
-            // Create the client for the cloud provider.
-            let token = settings
-                .load_token()
-                .wrap_err("Failed to load cloud provider's token")?;
-            let client = VultrClient::new(token, settings.clone());
-
-            // Execute the command.
+        CloudProvider::Custom(_) => {
+            let client = CustomClient::new(settings.clone());
             run(settings, client, opts).await
         }
     }

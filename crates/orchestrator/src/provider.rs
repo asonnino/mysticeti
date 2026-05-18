@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::CloudProviderResult;
 
 pub mod aws;
-pub mod vultr;
+pub mod custom;
 
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub enum InstanceStatus {
@@ -83,7 +83,7 @@ impl Instance {
 
 pub trait ServerProviderClient: Display {
     /// The username used to connect to the instances.
-    const USERNAME: &'static str;
+    fn username(&self) -> &str;
 
     /// List all existing instances (regardless of their status).
     fn list_instances(&self) -> impl Future<Output = CloudProviderResult<Vec<Instance>>> + Send;
@@ -138,19 +138,23 @@ pub mod test_client {
     use serde::Serialize;
 
     use super::{Instance, InstanceStatus, ServerProviderClient};
-    use crate::{error::CloudProviderResult, settings::Settings};
+    use crate::error::CloudProviderResult;
 
     pub struct TestClient {
-        settings: Settings,
         instances: Mutex<Vec<Instance>>,
     }
 
     impl TestClient {
-        pub fn new(settings: Settings) -> Self {
+        pub fn new() -> Self {
             Self {
-                settings,
                 instances: Mutex::new(Vec::new()),
             }
+        }
+    }
+
+    impl Default for TestClient {
+        fn default() -> Self {
+            Self::new()
         }
     }
 
@@ -161,7 +165,9 @@ pub mod test_client {
     }
 
     impl ServerProviderClient for TestClient {
-        const USERNAME: &'static str = "root";
+        fn username(&self) -> &str {
+            "root"
+        }
 
         async fn list_instances(&self) -> CloudProviderResult<Vec<Instance>> {
             let guard = self.instances.lock().unwrap();
@@ -203,7 +209,7 @@ pub mod test_client {
                 region: region.into(),
                 main_ip: format!("0.0.0.{id}").parse().unwrap(),
                 tags: Vec::new(),
-                specs: self.settings.specs.clone(),
+                specs: "test-specs".into(),
                 status: InstanceStatus::Active,
             };
             guard.push(instance.clone());
