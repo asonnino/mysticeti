@@ -389,7 +389,7 @@ async fn run_benchmark_loop<P: ProtocolCommands + ProtocolMetrics>(
             Collector::new(
                 &report.prometheus_address,
                 parameters.clone(),
-                MysticetiProtocol::new(settings).metrics(),
+                orchestrator.protocol().metrics(),
             )
         })
         .transpose()

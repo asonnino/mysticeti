@@ -90,6 +90,14 @@ impl<P> Orchestrator<P> {
             ssh_manager,
         }
     }
+
+    /// Borrow the protocol implementation the orchestrator is driving. Callers
+    /// that need protocol-specific data (e.g. metric names for the PromQL
+    /// collector) should ask the orchestrator rather than re-instantiating the
+    /// protocol from `Settings`, so a non-default `P` is honored.
+    pub fn protocol(&self) -> &P {
+        &self.protocol_commands
+    }
 }
 
 impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {

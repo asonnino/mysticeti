@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::net::SocketAddr;
+use std::{net::SocketAddr, string::FromUtf8Error};
 
 #[macro_export(local_inner_macros)]
 macro_rules! ensure {
@@ -68,7 +68,7 @@ pub enum SshError {
         message: String,
     },
 
-    #[error("Remote execution on {address} terminated by signal {signal:?}")]
+    #[error("Remote execution on {address} killed by {signal} (core_dumped: {core_dumped})")]
     TerminatedBySignal {
         address: SocketAddr,
         signal: String,
@@ -77,6 +77,13 @@ pub enum SshError {
 
     #[error("Remote execution on {address} did not report an exit status")]
     MissingExitStatus { address: SocketAddr },
+
+    #[error("Remote output from {address} was not valid UTF-8: {source}")]
+    InvalidUtf8 {
+        address: SocketAddr,
+        #[source]
+        source: FromUtf8Error,
+    },
 }
 
 pub type MonitorResult<T> = Result<T, MonitorError>;

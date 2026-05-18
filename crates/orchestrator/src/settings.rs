@@ -61,6 +61,7 @@ pub struct AwsConfig {
     /// The EC2 instance type, e.g. `m5d.8xlarge`.
     pub specs: String,
     /// The path to the AWS credentials file.
+    #[serde(skip_serializing)]
     pub token_file: PathBuf,
 }
 

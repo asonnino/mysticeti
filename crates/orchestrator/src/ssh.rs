@@ -4,13 +4,14 @@
 use std::{
     net::SocketAddr,
     path::{Path, PathBuf},
+    string::FromUtf8Error,
     sync::Arc,
     time::Duration,
 };
 
 use futures::future::try_join_all;
 use russh::{
-    ChannelMsg,
+    ChannelMsg, Sig,
     client::{self, Handle},
     keys::{PrivateKeyWithHashAlg, PublicKey, load_secret_key},
 };
@@ -275,6 +276,28 @@ impl SshConnectionManager {
     }
 }
 
+/// Render a russh signal name without the Debug-format wrapping that would
+/// otherwise appear for `Sig::Custom(_)`. Unit variants format as their plain
+/// signal name (e.g. `TERM`); a `Custom` payload is unwrapped so the remote
+/// supplied name is preserved verbatim.
+fn render_signal(sig: Sig) -> String {
+    match sig {
+        Sig::ABRT => "ABRT".into(),
+        Sig::ALRM => "ALRM".into(),
+        Sig::FPE => "FPE".into(),
+        Sig::HUP => "HUP".into(),
+        Sig::ILL => "ILL".into(),
+        Sig::INT => "INT".into(),
+        Sig::KILL => "KILL".into(),
+        Sig::PIPE => "PIPE".into(),
+        Sig::QUIT => "QUIT".into(),
+        Sig::SEGV => "SEGV".into(),
+        Sig::TERM => "TERM".into(),
+        Sig::USR1 => "USR1".into(),
+        Sig::Custom(s) => s,
+    }
+}
+
 /// Accepts any server host key. This matches the previous `ssh2`-based behavior, which did
 /// not perform host-key verification. Real verification is tracked as a follow-up.
 struct AcceptAllHostKeys;
@@ -369,6 +392,14 @@ impl SshConnection {
         }
     }
 
+    /// Wrap a UTF-8 decoding failure with the connection's address.
+    fn utf8_error(&self, source: FromUtf8Error) -> SshError {
+        SshError::InvalidUtf8 {
+            address: self.address,
+            source,
+        }
+    }
+
     /// Execute an ssh command on the remote machine.
     pub async fn execute(&self, command: String) -> SshResult<(String, String)> {
         let mut error = None;
@@ -403,13 +434,25 @@ impl SshConnection {
                         signal_name,
                         core_dumped,
                         ..
-                    } => signal = Some((format!("{signal_name:?}"), core_dumped)),
+                    } => signal = Some((render_signal(signal_name), core_dumped)),
                     _ => {}
                 }
             }
 
-            let stdout = String::from_utf8_lossy(&stdout).into_owned();
-            let stderr = String::from_utf8_lossy(&stderr).into_owned();
+            let stdout = match String::from_utf8(stdout) {
+                Ok(s) => s,
+                Err(e) => {
+                    error = Some(self.utf8_error(e));
+                    continue;
+                }
+            };
+            let stderr = match String::from_utf8(stderr) {
+                Ok(s) => s,
+                Err(e) => {
+                    error = Some(self.utf8_error(e));
+                    continue;
+                }
+            };
 
             if let Some((signal, core_dumped)) = signal {
                 error = Some(SshError::TerminatedBySignal {
@@ -468,9 +511,16 @@ impl SshConnection {
                 }
             };
 
-            match sftp.read(path.to_string_lossy().as_ref()).await {
-                Ok(bytes) => return Ok(String::from_utf8_lossy(&bytes).into_owned()),
-                Err(e) => error = Some(self.sftp_error(e)),
+            let bytes = match sftp.read(path.to_string_lossy().as_ref()).await {
+                Ok(b) => b,
+                Err(e) => {
+                    error = Some(self.sftp_error(e));
+                    continue;
+                }
+            };
+            match String::from_utf8(bytes) {
+                Ok(s) => return Ok(s),
+                Err(e) => error = Some(self.utf8_error(e)),
             }
         }
         Err(error.unwrap())
