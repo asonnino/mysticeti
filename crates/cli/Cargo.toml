@@ -23,7 +23,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 tempfile = { workspace = true }
-tabled = "0.12.2"
+tabled = "0.20.0"
 terminal_size = "0.4.4"
 tokio = { workspace = true }
 tokio-util = { workspace = true }

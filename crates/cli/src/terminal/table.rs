@@ -24,9 +24,9 @@ pub struct ReplicaRow {
     committed_leaders_per_second: String,
     #[tabled(rename = "tx/s")]
     tx_per_second: String,
-    #[tabled(rename = "p50 latency", display_with = "fmt_latency_ms")]
+    #[tabled(rename = "p50 latency", display = "fmt_latency_ms")]
     p50_latency_ms: Option<f64>,
-    #[tabled(rename = "p90 latency", display_with = "fmt_latency_ms")]
+    #[tabled(rename = "p90 latency", display = "fmt_latency_ms")]
     p90_latency_ms: Option<f64>,
     #[tabled(rename = "timeouts")]
     leader_timeouts: u64,
