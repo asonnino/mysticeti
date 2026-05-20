@@ -5,6 +5,7 @@ pub(crate) mod base;
 pub mod committer;
 pub(crate) mod leader;
 pub mod protocol;
+pub(crate) mod wave;
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_util;

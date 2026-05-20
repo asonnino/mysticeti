@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::{leader::LeaderElector, protocol::Protocol};
+use crate::{leader::LeaderElector, protocol::Protocol, wave::Wave};
 use dag::{
     authority::Authority,
     block::{Block, BlockReference, RoundNumber},
@@ -16,10 +16,6 @@ use dag::{
     data::Data,
     storage::BlockReader,
 };
-
-/// The consensus protocol operates in 'waves'. Each wave is composed of a leader round, at least
-///  one voting round, and one decision round.
-type WaveNumber = u64;
 
 /// The [`BaseCommitter`] contains the bare bone commit
 /// logic. Once instantiated, the methods
@@ -34,9 +30,8 @@ pub(crate) struct BaseCommitter {
     direct_commit_quorum: Stake,
     direct_skip_quorum: Stake,
     anchor_link_size: Stake,
-    wave_length: RoundNumber,
+    wave: Wave,
     leader_offset: RoundNumber,
-    round_offset: RoundNumber,
 }
 
 impl BaseCommitter {
@@ -55,48 +50,18 @@ impl BaseCommitter {
             direct_commit_quorum: protocol.direct_commit_quorum,
             direct_skip_quorum: protocol.direct_skip_quorum,
             anchor_link_size: protocol.anchor_link_size,
-            wave_length: protocol.wave_length,
+            wave: Wave::new(protocol.wave_length, round_offset),
             leader_offset,
-            round_offset,
         }
-    }
-
-    /// Return the wave in which the specified round belongs.
-    #[inline]
-    fn wave_number(&self, round: RoundNumber) -> WaveNumber {
-        round.saturating_sub(self.round_offset) / self.wave_length
-    }
-
-    /// Return the leader round of the specified wave number.
-    #[inline]
-    fn leader_round(&self, wave: WaveNumber) -> RoundNumber {
-        wave * self.wave_length + self.round_offset
-    }
-
-    /// Return the decision round of the specified wave.
-    #[inline]
-    fn decision_round(&self, wave: WaveNumber) -> RoundNumber {
-        let leader_round = self.leader_round(wave);
-        leader_round + self.wave_length - 1
-    }
-
-    /// Return the voting round of the specified wave.
-    #[inline]
-    fn voting_round(&self, wave: WaveNumber) -> RoundNumber {
-        let leader_round = self.leader_round(wave);
-        let decision_round = self.decision_round(wave);
-        (leader_round + 1).max(decision_round - 1)
     }
 
     /// The leader-elect protocol is offset by `leader_offset` to ensure that different
     /// committers with different leader offsets elect different leaders for the same round number.
     /// This function returns `None` if there are no leaders for the specified round.
     pub(crate) fn elect_leader(&self, round: RoundNumber) -> Option<Authority> {
-        let wave = self.wave_number(round);
-        if self.leader_round(wave) != round {
+        if !self.wave.is_leader_round(round) {
             return None;
         }
-
         let offset = self.leader_offset as RoundNumber;
         Some(self.leader_elector.elect_leader(round + offset))
     }
@@ -189,8 +154,8 @@ impl BaseCommitter {
 
         // Get all blocks that could be potential certificates for the target leader. These blocks
         // are in the decision round of the target leader and are linked to the anchor.
-        let wave = self.wave_number(leader_round);
-        let decision_round = self.decision_round(wave);
+        let wave = self.wave.number(leader_round);
+        let decision_round = self.wave.decision_round(wave);
         let decision_blocks = self.block_reader.get_blocks_by_round(decision_round);
 
         // Find the certified leader block (at most one).
@@ -283,7 +248,7 @@ impl BaseCommitter {
     ) -> LeaderStatus {
         // The anchor is the first committed leader with round higher than the decision round of the
         // target leader. We must stop the iteration upon encountering an undecided leader.
-        let anchors = leaders.filter(|x| leader_round + self.wave_length <= x.round());
+        let anchors = leaders.filter(|x| leader_round + self.wave.length() <= x.round());
 
         for anchor in anchors {
             tracing::trace!(
@@ -314,9 +279,9 @@ impl BaseCommitter {
         leader: Authority,
         leader_round: RoundNumber,
     ) -> LeaderStatus {
-        let wave = self.wave_number(leader_round);
-        let voting_round = self.voting_round(wave);
-        let decision_round = self.decision_round(wave);
+        let wave = self.wave.number(leader_round);
+        let voting_round = self.wave.voting_round(wave);
+        let decision_round = self.wave.decision_round(wave);
 
         // Check whether the leader has enough blame. That is, whether there are
         // `direct_skip_quorum` non-votes for that leader (which ensure there will never
@@ -353,7 +318,8 @@ impl Display for BaseCommitter {
         write!(
             f,
             "Committer-L{}-R{}",
-            self.leader_offset, self.round_offset
+            self.leader_offset,
+            self.wave.round_offset(),
         )
     }
 }
