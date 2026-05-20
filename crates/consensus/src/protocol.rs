@@ -107,22 +107,31 @@ impl fmt::Display for ConsensusProtocol {
 
 impl ConsensusProtocol {
     /// Build the concrete `Protocol` used by the committer.
-    pub fn to_protocol(&self, total_stake: Stake) -> Protocol {
-        match *self {
+    pub fn to_protocol(&self, total_stake: Stake) -> Result<Protocol, ProtocolError> {
+        Ok(match *self {
             Self::CordialMinersPartiallySynchronous => {
                 Protocol::cordial_miners_partially_synchronous(total_stake)
             }
             Self::CordialMinersAsynchronous => Protocol::cordial_miners_asynchronous(total_stake),
             Self::Mysticeti { leader_count } => Protocol::mysticeti(total_stake, leader_count),
             Self::BlueBottle { leader_count } => Protocol::blue_bottle(total_stake, leader_count),
-            Self::Orcaella { leader_count, c } => Protocol::orcaella(total_stake, c, leader_count),
+            Self::Orcaella { leader_count, c } => Protocol::orcaella(total_stake, c, leader_count)?,
             Self::MahiMahi {
                 leader_count,
                 wave_length,
-            } => Protocol::mahi_mahi(total_stake, leader_count, wave_length),
+            } => Protocol::mahi_mahi(total_stake, leader_count, wave_length)?,
             Self::NemoNemo { leader_count } => Protocol::nemo_nemo(total_stake, leader_count),
-        }
+        })
     }
+}
+
+/// Errors that can arise when building a [`Protocol`] from a [`ConsensusProtocol`].
+#[derive(Debug, thiserror::Error)]
+pub enum ProtocolError {
+    #[error("Orcaella requires 3c + 1 <= n (n={n}, c={c})")]
+    OrcaellaCrashStakeTooLarge { n: Stake, c: Stake },
+    #[error("Mahi-Mahi requires wave_length in {{4, 5}}, got {wave_length}")]
+    MahiMahiInvalidWaveLength { wave_length: RoundNumber },
 }
 
 /// Protocol-specific parameters for the consensus committer.
@@ -223,14 +232,18 @@ impl Protocol {
     ///
     /// "Orcaella: Hybrid Fault Tolerance with Client-Selectable Finality Latency"
     /// <TBD>
-    pub fn orcaella(total_stake: Stake, c: Stake, leader_count: NonZeroUsize) -> Self {
-        assert!(
-            3 * c < total_stake,
-            "Orcaella requires 3c + 1 <= n (n={total_stake}, c={c})"
-        );
+    pub fn orcaella(
+        total_stake: Stake,
+        c: Stake,
+        leader_count: NonZeroUsize,
+    ) -> Result<Self, ProtocolError> {
+        if 3 * c >= total_stake {
+            return Err(ProtocolError::OrcaellaCrashStakeTooLarge { n: total_stake, c });
+        }
+
         let strong_quorum = (4 * total_stake - 2 * c) / 5 + 1;
         let weak_quorum = (2 * total_stake - c) / 5 + 1;
-        Self {
+        Ok(Self {
             direct_commit_quorum: strong_quorum,
             direct_skip_quorum: strong_quorum,
             anchor_link_size: weak_quorum,
@@ -239,7 +252,7 @@ impl Protocol {
             pipeline: true,
             leader_wait: true,
             require_crypto: true,
-        }
+        })
     }
 
     /// Mahi-Mahi
@@ -250,13 +263,13 @@ impl Protocol {
         total_stake: Stake,
         leader_count: NonZeroUsize,
         wave_length: RoundNumber,
-    ) -> Self {
-        assert!(
-            wave_length == 4 || wave_length == 5,
-            "MahiMahi requires wave_length of 4 or 5"
-        );
+    ) -> Result<Self, ProtocolError> {
+        if wave_length != 4 && wave_length != 5 {
+            return Err(ProtocolError::MahiMahiInvalidWaveLength { wave_length });
+        }
+
         let quorum = 2 * total_stake / 3 + 1;
-        Self {
+        Ok(Self {
             direct_commit_quorum: quorum,
             direct_skip_quorum: quorum,
             anchor_link_size: 1,
@@ -265,7 +278,7 @@ impl Protocol {
             pipeline: true,
             leader_wait: false,
             require_crypto: true,
-        }
+        })
     }
 
     /// Nemo-Nemo
