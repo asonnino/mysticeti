@@ -62,7 +62,7 @@ impl Committer {
     /// decision; pass `None` on a fresh start to yield every decided leader from round 0
     /// upward.
     #[tracing::instrument(level = "debug", skip_all, fields(last_decided = ?last_decided))]
-    pub(crate) fn try_commit(
+    pub fn try_commit(
         &mut self,
         last_decided: Option<(RoundNumber, Authority)>,
     ) -> impl Iterator<Item = LeaderStatus> + '_ {
