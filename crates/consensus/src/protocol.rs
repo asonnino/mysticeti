@@ -24,6 +24,13 @@ pub enum ConsensusProtocol {
         #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
     },
+    Orcaella {
+        #[serde(default = "defaults::default_leader_count")]
+        leader_count: NonZeroUsize,
+        /// Crash-fault stake to tolerate; the Byzantine bound `f` is
+        /// derived by saturating `5f + 3c + 1 <= total_stake`.
+        c: Stake,
+    },
     MahiMahi {
         #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
@@ -80,6 +87,9 @@ impl fmt::Display for ConsensusProtocol {
             Self::BlueBottle { leader_count } => {
                 write!(f, "Blue Bottle ({} leaders/round)", leader_count)
             }
+            Self::Orcaella { leader_count, c } => {
+                write!(f, "Orcaella ({} leaders/round, c={})", leader_count, c)
+            }
             Self::MahiMahi {
                 leader_count,
                 wave_length,
@@ -105,6 +115,7 @@ impl ConsensusProtocol {
             Self::CordialMinersAsynchronous => Protocol::cordial_miners_asynchronous(total_stake),
             Self::Mysticeti { leader_count } => Protocol::mysticeti(total_stake, leader_count),
             Self::BlueBottle { leader_count } => Protocol::blue_bottle(total_stake, leader_count),
+            Self::Orcaella { leader_count, c } => Protocol::orcaella(total_stake, c, leader_count),
             Self::MahiMahi {
                 leader_count,
                 wave_length,
@@ -196,6 +207,29 @@ impl Protocol {
     pub fn blue_bottle(total_stake: Stake, leader_count: NonZeroUsize) -> Self {
         let strong_quorum = 4 * total_stake / 5 + 1;
         let weak_quorum = 2 * total_stake / 5 + 1;
+        Self {
+            direct_commit_quorum: strong_quorum,
+            direct_skip_quorum: strong_quorum,
+            anchor_link_size: weak_quorum,
+            wave_length: 2,
+            leader_count,
+            pipeline: true,
+            leader_wait: true,
+            require_crypto: true,
+        }
+    }
+
+    /// Orcaella
+    ///
+    /// "Orcaella: Hybrid Fault Tolerance with Client-Selectable Finality Latency"
+    /// <TBD>
+    pub fn orcaella(total_stake: Stake, c: Stake, leader_count: NonZeroUsize) -> Self {
+        assert!(
+            3 * c < total_stake,
+            "Orcaella requires 3c + 1 <= n (n={total_stake}, c={c})"
+        );
+        let strong_quorum = (4 * total_stake - 2 * c) / 5 + 1;
+        let weak_quorum = (2 * total_stake - c) / 5 + 1;
         Self {
             direct_commit_quorum: strong_quorum,
             direct_skip_quorum: strong_quorum,
