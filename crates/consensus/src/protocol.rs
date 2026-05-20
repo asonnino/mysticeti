@@ -3,7 +3,10 @@
 
 use std::{fmt, num::NonZeroUsize, time::Duration};
 
-use dag::{block::RoundNumber, committee::Stake};
+use dag::{
+    block::RoundNumber,
+    committee::{Committee, Stake},
+};
 use serde::{Deserialize, Serialize};
 
 /// User-facing choice of consensus protocol variant.
@@ -107,14 +110,9 @@ impl fmt::Display for ConsensusProtocol {
 
 impl ConsensusProtocol {
     /// Build the concrete `Protocol` used by the committer.
-    pub fn to_protocol(
-        &self,
-        total_stake: Stake,
-        committee_size: usize,
-    ) -> Result<Protocol, ProtocolError> {
-        // Variants that expose `leader_count` to the user must keep it within the
-        // committee, otherwise leader election wraps modulo `committee_size` and the
-        // same authority is assigned to multiple leader slots in the same round.
+    pub fn to_protocol(&self, committee: &Committee) -> Result<Protocol, ProtocolError> {
+        let total_stake = committee.total_stake();
+        let committee_size = committee.len();
         let user_leader_count = match self {
             Self::CordialMinersPartiallySynchronous | Self::CordialMinersAsynchronous => None,
             Self::Mysticeti { leader_count }
