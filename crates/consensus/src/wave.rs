@@ -27,10 +27,12 @@ impl Wave {
         }
     }
 
+    #[inline]
     pub(crate) fn length(&self) -> RoundNumber {
         self.wave_length
     }
 
+    #[inline]
     pub(crate) fn round_offset(&self) -> RoundNumber {
         self.round_offset
     }
