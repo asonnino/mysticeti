@@ -3,6 +3,7 @@
 
 use std::{path::Path, sync::Arc};
 
+use consensus::{committer::Committer, protocol::ConsensusProtocol};
 use dag::{
     authority::Authority,
     committee::Committee,
@@ -13,8 +14,6 @@ use dag::{
     storage::Storage,
     test_util::committee,
 };
-
-use crate::{committer::Committer, protocol::ConsensusProtocol};
 
 fn open_core<C: Ctx>(
     authority: Authority,

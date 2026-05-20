@@ -6,7 +6,7 @@ publish.workspace = true
 
 [dependencies]
 dag = { workspace = true, features = ["test-utils"] }
-consensus = { workspace = true, features = ["test-utils"] }
+consensus.workspace = true
 replica.workspace = true
 eyre = { workspace = true }
 futures = { workspace = true }

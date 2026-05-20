@@ -1,7 +1,9 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use consensus::test_util::{committee_and_cores, committee_and_cores_persisted};
+mod common;
+
+use common::{committee_and_cores, committee_and_cores_persisted};
 use dag::{
     authority::Authority, block::Block, context::TokioCtx,
     core::threshold_clock::threshold_clock_valid_non_genesis, data::Data,

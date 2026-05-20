@@ -3,7 +3,9 @@
 
 use std::time::Duration;
 
-use consensus::test_util::committee_and_cores;
+mod common;
+
+use common::committee_and_cores;
 use dag::{
     context::TokioCtx,
     core::block_handler::CommitHandler,
