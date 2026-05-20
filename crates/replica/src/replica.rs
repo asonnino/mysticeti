@@ -74,9 +74,7 @@ impl Replica {
         let (storage, recovered) = match storage_kind {
             StorageKind::Wal(path) => Storage::open(authority, &path, metrics.clone(), &committee)
                 .wrap_err("Failed to open replica storage")?,
-            StorageKind::Ephemeral => {
-                Storage::new_for_tests(authority, metrics.clone(), &committee)
-            }
+            StorageKind::Ephemeral => Storage::ephemeral(authority, metrics.clone(), &committee),
         };
 
         // Crypto: disabled if the caller asked for it (simulator mode) or if the chosen protocol
