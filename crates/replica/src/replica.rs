@@ -84,7 +84,7 @@ impl Replica {
         // config.
         let protocol = parameters
             .consensus
-            .to_protocol(committee.total_stake())
+            .to_protocol(committee.total_stake(), committee.len())
             .wrap_err("Invalid consensus protocol configuration")?;
         let crypto = if crypto_disabled || !protocol.require_crypto {
             CryptoEngine::disabled()

@@ -107,7 +107,31 @@ impl fmt::Display for ConsensusProtocol {
 
 impl ConsensusProtocol {
     /// Build the concrete `Protocol` used by the committer.
-    pub fn to_protocol(&self, total_stake: Stake) -> Result<Protocol, ProtocolError> {
+    pub fn to_protocol(
+        &self,
+        total_stake: Stake,
+        committee_size: usize,
+    ) -> Result<Protocol, ProtocolError> {
+        // Variants that expose `leader_count` to the user must keep it within the
+        // committee, otherwise leader election wraps modulo `committee_size` and the
+        // same authority is assigned to multiple leader slots in the same round.
+        let user_leader_count = match self {
+            Self::CordialMinersPartiallySynchronous | Self::CordialMinersAsynchronous => None,
+            Self::Mysticeti { leader_count }
+            | Self::BlueBottle { leader_count }
+            | Self::Orcaella { leader_count, .. }
+            | Self::MahiMahi { leader_count, .. }
+            | Self::NemoNemo { leader_count } => Some(*leader_count),
+        };
+        if let Some(leader_count) = user_leader_count
+            && leader_count.get() > committee_size
+        {
+            return Err(ProtocolError::LeaderCountExceedsCommittee {
+                leader_count,
+                committee_size,
+            });
+        }
+
         Ok(match *self {
             Self::CordialMinersPartiallySynchronous => {
                 Protocol::cordial_miners_partially_synchronous(total_stake)
@@ -132,6 +156,11 @@ pub enum ProtocolError {
     OrcaellaCrashStakeTooLarge { n: Stake, c: Stake },
     #[error("Mahi-Mahi requires wave_length in {{4, 5}}, got {wave_length}")]
     MahiMahiInvalidWaveLength { wave_length: RoundNumber },
+    #[error("leader_count ({leader_count}) exceeds committee size ({committee_size})")]
+    LeaderCountExceedsCommittee {
+        leader_count: NonZeroUsize,
+        committee_size: usize,
+    },
 }
 
 /// Protocol-specific parameters for the consensus committer.
