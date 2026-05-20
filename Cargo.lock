@@ -1073,6 +1073,7 @@ version = "0.1.0"
 dependencies = [
  "dag",
  "serde",
+ "thiserror 2.0.18",
  "tracing",
  "tracing-test",
 ]

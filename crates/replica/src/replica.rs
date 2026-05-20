@@ -82,7 +82,10 @@ impl Replica {
         // Crypto: disabled if the caller asked for it (simulator mode) or if the chosen protocol
         // is authentication-free (e.g. a CFT variant). Otherwise use the keypair from the private
         // config.
-        let protocol = parameters.consensus.to_protocol(committee.total_stake());
+        let protocol = parameters
+            .consensus
+            .to_protocol(committee.total_stake())
+            .wrap_err("Invalid consensus protocol configuration")?;
         let crypto = if crypto_disabled || !protocol.require_crypto {
             CryptoEngine::disabled()
         } else {

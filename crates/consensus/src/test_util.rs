@@ -29,7 +29,9 @@ fn open_core<C: Ctx>(
     } else {
         Storage::new_for_tests(authority, metrics.clone(), committee)
     };
-    let protocol = ConsensusProtocol::default().to_protocol(committee.total_stake());
+    let protocol = ConsensusProtocol::default()
+        .to_protocol(committee.total_stake())
+        .expect("default protocol is infallible");
     let committer = Committer::new(committee.clone(), storage.block_reader().clone(), protocol);
     let (block_handler, _tx_sender) = RealBlockHandler::new(metrics.clone());
     let crypto = CryptoEngine::disabled();
