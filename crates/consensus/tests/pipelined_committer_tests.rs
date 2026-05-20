@@ -3,7 +3,7 @@
 
 use std::num::NonZeroUsize;
 
-use crate::{committer::Committer, leader::LeaderElector, protocol::Protocol};
+use consensus::{committer::Committer, leader::LeaderElector, protocol::Protocol};
 
 const WAVE_LENGTH: u64 = 3;
 use dag::{

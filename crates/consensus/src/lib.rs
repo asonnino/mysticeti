@@ -3,9 +3,6 @@
 
 pub(crate) mod base;
 pub mod committer;
-pub(crate) mod leader;
+pub mod leader;
 pub mod protocol;
 pub(crate) mod wave;
-
-#[cfg(test)]
-mod tests;
