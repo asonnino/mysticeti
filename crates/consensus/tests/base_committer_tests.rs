@@ -8,7 +8,6 @@ use dag::{
     authority::Authority,
     block::RoundNumber,
     consensus::LeaderStatus,
-    metrics::Metrics,
     storage::Storage,
     test_util::{build_dag, build_dag_layer, committee},
 };
@@ -20,8 +19,7 @@ fn direct_commit() {
     let committee = committee(4);
     let leader_elector = LeaderElector::new(committee.len());
 
-    let (mut storage, _) =
-        Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
+    let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
     build_dag(&committee, &mut storage, None, 5);
 
     let mut committer = Committer::new(
@@ -59,8 +57,7 @@ fn direct_commit() {
 fn idempotence() {
     let committee = committee(4);
 
-    let (mut storage, _) =
-        Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
+    let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
     build_dag(&committee, &mut storage, None, 5);
 
     let mut committer = Committer::new(
@@ -101,8 +98,7 @@ fn multiple_direct_commit() {
     let mut last_committed: Option<(RoundNumber, Authority)> = None;
     for n in 1..=10 {
         let enough_blocks = wave_length * (n + 1) - 1;
-        let (mut storage, _) =
-            Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
+        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
         build_dag(&committee, &mut storage, None, enough_blocks);
 
         let mut committer = Committer::new(
@@ -148,8 +144,7 @@ fn direct_commit_late_call() {
 
     let n = 10;
     let enough_blocks = wave_length * (n + 1) - 1;
-    let (mut storage, _) =
-        Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
+    let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
     build_dag(&committee, &mut storage, None, enough_blocks);
 
     let mut committer = Committer::new(
@@ -193,8 +188,7 @@ fn no_genesis_commit() {
 
     let first_commit_round = 2 * wave_length - 1;
     for r in 0..first_commit_round {
-        let (mut storage, _) =
-            Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
+        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
         build_dag(&committee, &mut storage, None, r);
 
         let mut committer = Committer::new(
@@ -227,8 +221,7 @@ fn no_leader() {
     let leader_elector = LeaderElector::new(committee.len());
     let wave_length = 3;
 
-    let (mut storage, _) =
-        Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
+    let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
 
     // Add enough blocks to finish wave 0.
     let decision_round_0 = wave_length - 1;
@@ -286,8 +279,7 @@ fn direct_skip() {
     let leader_elector = LeaderElector::new(committee.len());
     let wave_length = 3;
 
-    let (mut storage, _) =
-        Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
+    let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
 
     // Add enough blocks to reach the first leader.
     let leader_round_1 = wave_length;
@@ -350,8 +342,7 @@ fn indirect_commit() {
     let one_fault = total / 3 + 1;
     let wave_length = 3;
 
-    let (mut storage, _) =
-        Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
+    let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
 
     // Add enough blocks to reach the 1st leader.
     let leader_round_1 = wave_length;
@@ -460,8 +451,7 @@ fn indirect_skip() {
     let one_fault = total / 3 + 1;
     let wave_length = 3;
 
-    let (mut storage, _) =
-        Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
+    let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
 
     // Add enough blocks to reach the 2nd leader.
     let leader_round_2 = 2 * wave_length;
@@ -561,8 +551,7 @@ fn undecided() {
     let strong_quorum = 2 * total / 3 + 1;
     let wave_length = 3;
 
-    let (mut storage, _) =
-        Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
+    let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
 
     // Add enough blocks to reach the first leader.
     let leader_round_1 = wave_length;
@@ -622,8 +611,7 @@ fn trailing_skip_not_re_yielded() {
     let leader_elector = LeaderElector::new(committee.len());
     let wave_length = 3;
 
-    let (mut storage, _) =
-        Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
+    let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
 
     // Build the same DAG as `direct_skip` so the only decision is one Skip.
     let leader_round_1 = wave_length;

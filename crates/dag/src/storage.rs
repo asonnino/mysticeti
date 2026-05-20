@@ -40,8 +40,9 @@ impl Storage {
         Ok((Self { wal_writer, reader }, recovered))
     }
 
-    #[cfg(any(test, feature = "test-utils"))]
-    pub fn new_for_tests(
+    /// Open an ephemeral [`Storage`] backed by an anonymous tempfile that is removed
+    /// when the file handle is dropped.
+    pub fn ephemeral(
         authority: Authority,
         metrics: Arc<Metrics>,
         committee: &Committee,
@@ -51,6 +52,12 @@ impl Storage {
         let (reader, recovered) =
             BlockReader::open(authority, wal_reader, &wal_writer, metrics, committee);
         (Self { wal_writer, reader }, recovered)
+    }
+
+    #[cfg(any(test, feature = "test-utils"))]
+    pub fn new_for_test(authority: Authority, committee: &Committee) -> (Self, RecoveredState) {
+        let metrics = Metrics::new_for_test(committee.len());
+        Self::ephemeral(authority, metrics, committee)
     }
 
     pub(crate) fn write_payload(&mut self, payload: &[u8]) -> WalPosition {
@@ -119,15 +126,13 @@ mod tests {
     use crate::{
         authority::Authority,
         committee::Committee,
-        metrics::Metrics,
         storage::{Storage, block_store::CommitData},
     };
 
     #[test]
     fn iter_commits_yields_every_batch_in_order() {
         let committee = Committee::new_test(vec![1; 4]);
-        let (mut storage, _recovered) =
-            Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
+        let (mut storage, _recovered) = Storage::new_for_test(Authority::from(0u64), &committee);
 
         let batch_one = CommitData::new_for_test(&[(0, 1), (1, 2)]);
         let batch_two = CommitData::new_for_test(&[(2, 3)]);
@@ -154,8 +159,7 @@ mod tests {
     #[test]
     fn iter_commits_is_empty_for_fresh_storage() {
         let committee = Committee::new_test(vec![1; 4]);
-        let (storage, _recovered) =
-            Storage::new_for_tests(Authority::from(0u64), Metrics::new_for_test(0), &committee);
+        let (storage, _recovered) = Storage::new_for_test(Authority::from(0u64), &committee);
         assert_eq!(storage.iter_commits().count(), 0);
     }
 }

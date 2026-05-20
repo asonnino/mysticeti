@@ -170,7 +170,7 @@ mod tests {
         for index in 0..replica_count {
             let metrics = Metrics::new_for_test(replica_count);
             let (mut storage, _) =
-                Storage::new_for_tests(Authority::from(index as u64), metrics.clone(), &committee);
+                Storage::ephemeral(Authority::from(index as u64), metrics.clone(), &committee);
             storage.write_commits(batch);
             snapshots.push(metrics.collect());
             storages.push(storage);
