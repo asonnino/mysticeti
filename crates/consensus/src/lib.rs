@@ -7,8 +7,5 @@ pub(crate) mod leader;
 pub mod protocol;
 pub(crate) mod wave;
 
-#[cfg(any(test, feature = "test-utils"))]
-pub mod test_util;
-
 #[cfg(test)]
 mod tests;
