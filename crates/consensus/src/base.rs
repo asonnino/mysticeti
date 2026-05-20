@@ -55,6 +55,34 @@ impl BaseCommitter {
         }
     }
 
+    #[cfg(test)]
+    fn new_for_test(
+        committee: &Arc<Committee>,
+        block_reader: BlockReader,
+        wave_length: RoundNumber,
+        leader_offset: RoundNumber,
+    ) -> Self {
+        let total = committee.total_stake();
+        let protocol = Protocol {
+            direct_commit_quorum: 2 * total / 3 + 1,
+            direct_skip_quorum: 2 * total / 3 + 1,
+            anchor_link_size: 1,
+            wave_length,
+            leader_count: std::num::NonZeroUsize::new(1).unwrap(),
+            pipeline: false,
+            leader_wait: false,
+            require_crypto: false,
+        };
+        BaseCommitter::new(
+            committee.clone(),
+            block_reader,
+            LeaderElector::new(committee.len()),
+            &protocol,
+            leader_offset,
+            0,
+        )
+    }
+
     /// The leader-elect protocol is offset by `leader_offset` to ensure that different
     /// committers with different leader offsets elect different leaders for the same round number.
     /// This function returns `None` if there are no leaders for the specified round.
@@ -321,5 +349,317 @@ impl Display for BaseCommitter {
             self.leader_offset,
             self.wave.round_offset(),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use dag::{
+        authority::Authority,
+        consensus::LeaderStatus,
+        storage::Storage,
+        test_util::{build_dag, build_dag_layer, committee},
+    };
+
+    use crate::base::BaseCommitter;
+
+    /// `elect_leader` returns `None` outside leader rounds.
+    #[test]
+    fn elect_leader_none_at_non_leader_round() {
+        let committee = committee(4);
+        let (storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        let committer =
+            BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
+        // wave_length = 3, round_offset = 0 → leader rounds {0, 3, 6, ...}.
+        assert!(committer.elect_leader(0).is_some());
+        assert!(committer.elect_leader(1).is_none());
+        assert!(committer.elect_leader(2).is_none());
+        assert!(committer.elect_leader(3).is_some());
+        assert!(committer.elect_leader(4).is_none());
+        assert!(committer.elect_leader(6).is_some());
+    }
+
+    /// `leader_offset` shifts the elected authority within the round-robin schedule.
+    #[test]
+    fn elect_leader_offset_shifts_authority() {
+        let committee = committee(4);
+        let (storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        let c0 = BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
+        let c1 = BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 1);
+        assert_ne!(c0.elect_leader(3), c1.elect_leader(3));
+    }
+
+    /// `find_support` returns the direct include when one points at the target slot.
+    #[test]
+    fn find_support_direct_include() {
+        let committee = committee(4);
+        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        build_dag(&committee, &mut storage, None, 2);
+        let committer =
+            BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
+
+        let block_at_2 = storage
+            .block_reader()
+            .get_blocks_at_authority_round(Authority::from(0u64), 2)
+            .into_iter()
+            .next()
+            .unwrap();
+
+        let r = committer
+            .find_support((Authority::from(1u64), 1), &block_at_2)
+            .expect("fully connected DAG must include round-1 (auth=1)");
+        assert_eq!(r.authority, Authority::from(1u64));
+        assert_eq!(r.round, 1);
+    }
+
+    /// `find_support` walks transitively through includes.
+    #[test]
+    fn find_support_transitive_walk() {
+        let committee = committee(4);
+        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        build_dag(&committee, &mut storage, None, 3);
+        let committer =
+            BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
+
+        let block_at_3 = storage
+            .block_reader()
+            .get_blocks_at_authority_round(Authority::from(0u64), 3)
+            .into_iter()
+            .next()
+            .unwrap();
+
+        // The round-3 block's direct includes are at round 2; finding (1, 1) requires
+        // walking through one of those round-2 blocks to locate the round-1 reference.
+        let r = committer
+            .find_support((Authority::from(1u64), 1), &block_at_3)
+            .expect("transitive walk must locate the round-1 (auth=1) block");
+        assert_eq!(r.authority, Authority::from(1u64));
+        assert_eq!(r.round, 1);
+    }
+
+    /// `find_support` returns `None` when the source block is below the target round.
+    #[test]
+    fn find_support_below_target_round_returns_none() {
+        let committee = committee(4);
+        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        build_dag(&committee, &mut storage, None, 1);
+        let committer =
+            BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
+
+        let block_at_1 = storage
+            .block_reader()
+            .get_blocks_at_authority_round(Authority::from(0u64), 1)
+            .into_iter()
+            .next()
+            .unwrap();
+
+        assert!(
+            committer
+                .find_support((Authority::from(1u64), 2), &block_at_1)
+                .is_none(),
+        );
+    }
+
+    /// At `wave_length = 2`, votes and certificates coincide on the same round:
+    /// `is_certificate` reduces to `is_vote`.
+    #[test]
+    fn is_certificate_wave_length_two_reduces_to_vote() {
+        let committee = committee(4);
+        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        build_dag(&committee, &mut storage, None, 3);
+        let committer =
+            BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 2, 0);
+
+        let leader_block = storage
+            .block_reader()
+            .get_blocks_at_authority_round(Authority::from(0u64), 2)
+            .into_iter()
+            .next()
+            .unwrap();
+        let cert_candidate = storage
+            .block_reader()
+            .get_blocks_at_authority_round(Authority::from(1u64), 3)
+            .into_iter()
+            .next()
+            .unwrap();
+
+        assert!(committer.is_certificate(&cert_candidate, &leader_block));
+    }
+
+    /// At `wave_length = 3`, a fully-connected DAG produces a strong-quorum of votes
+    /// under each decision-round block, so every decision-round block is a certificate.
+    #[test]
+    fn is_certificate_wave_length_three_full_dag() {
+        let committee = committee(4);
+        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        build_dag(&committee, &mut storage, None, 5);
+        let committer =
+            BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
+
+        let leader_block = storage
+            .block_reader()
+            .get_blocks_at_authority_round(Authority::from(0u64), 3)
+            .into_iter()
+            .next()
+            .unwrap();
+        let cert_candidate = storage
+            .block_reader()
+            .get_blocks_at_authority_round(Authority::from(1u64), 5)
+            .into_iter()
+            .next()
+            .unwrap();
+
+        assert!(committer.is_certificate(&cert_candidate, &leader_block));
+    }
+
+    /// `enough_leader_blame` is `true` when every non-leader voter omits the leader.
+    #[test]
+    fn enough_leader_blame_when_all_non_leader_voters_blame() {
+        let committee = committee(4);
+        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+
+        let leader_round = 3;
+        let refs_at_leader = build_dag(&committee, &mut storage, None, leader_round);
+        let leader = Authority::from(0u64);
+        let refs_without_leader: Vec<_> = refs_at_leader
+            .into_iter()
+            .filter(|r| r.authority != leader)
+            .collect();
+        let connections = committee
+            .authorities()
+            .filter(|&a| a != leader)
+            .map(|a| (a, refs_without_leader.clone()))
+            .collect();
+        build_dag_layer(connections, &mut storage);
+
+        let committer =
+            BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
+        assert!(committer.enough_leader_blame(4, leader, leader_round));
+    }
+
+    /// `enough_leader_support` is `true` for a fully-connected DAG.
+    #[test]
+    fn enough_leader_support_when_full_dag() {
+        let committee = committee(4);
+        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        build_dag(&committee, &mut storage, None, 5);
+        let committer =
+            BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
+
+        let leader = Authority::from(0u64);
+        let leader_block = storage
+            .block_reader()
+            .get_blocks_at_authority_round(leader, 3)
+            .into_iter()
+            .next()
+            .unwrap();
+        assert!(committer.enough_leader_support(5, &leader_block));
+    }
+
+    /// `try_direct_decide` issues `DirectCommit` on a fully-connected DAG.
+    #[test]
+    fn try_direct_decide_commits_on_full_dag() {
+        let committee = committee(4);
+        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        build_dag(&committee, &mut storage, None, 5);
+        let committer =
+            BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
+
+        let leader = committer.elect_leader(3).unwrap();
+        match committer.try_direct_decide(leader, 3) {
+            LeaderStatus::DirectCommit(b) => assert_eq!(b.author(), leader),
+            other => panic!("expected DirectCommit, got {other:?}"),
+        }
+    }
+
+    /// `try_direct_decide` issues `DirectSkip` when the leader is unanimously blamed.
+    #[test]
+    fn try_direct_decide_skips_when_leader_omitted() {
+        let committee = committee(4);
+        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+
+        let refs = build_dag(&committee, &mut storage, None, 3);
+        // Round-robin: round 3 → authority 3.
+        let leader = committee.authorities().nth(3).unwrap();
+        let refs_without_leader: Vec<_> =
+            refs.into_iter().filter(|r| r.authority != leader).collect();
+        let voting_connections = committee
+            .authorities()
+            .filter(|&a| a != leader)
+            .map(|a| (a, refs_without_leader.clone()))
+            .collect();
+        let refs_at_4 = build_dag_layer(voting_connections, &mut storage);
+        build_dag(&committee, &mut storage, Some(refs_at_4), 5);
+
+        let committer =
+            BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
+        match committer.try_direct_decide(leader, 3) {
+            LeaderStatus::DirectSkip(skipped, round) => {
+                assert_eq!(skipped, leader);
+                assert_eq!(round, 3);
+            }
+            other => panic!("expected DirectSkip, got {other:?}"),
+        }
+    }
+
+    /// `try_direct_decide` reports `Undecided` when neither support nor blame reaches quorum.
+    #[test]
+    fn try_direct_decide_undecided_on_insufficient_dag() {
+        let committee = committee(4);
+        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        // DAG only reaches the leader round → nothing has voted yet.
+        build_dag(&committee, &mut storage, None, 3);
+        let committer =
+            BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
+
+        let leader = committer.elect_leader(3).unwrap();
+        match committer.try_direct_decide(leader, 3) {
+            LeaderStatus::Undecided(a, r) => {
+                assert_eq!(a, leader);
+                assert_eq!(r, 3);
+            }
+            other => panic!("expected Undecided, got {other:?}"),
+        }
+    }
+
+    /// `try_indirect_decide` returns `Undecided` when the anchor iterator is empty.
+    #[test]
+    fn try_indirect_decide_undecided_on_empty_anchors() {
+        let committee = committee(4);
+        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        build_dag(&committee, &mut storage, None, 3);
+        let committer =
+            BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
+
+        let leader = committer.elect_leader(3).unwrap();
+        match committer.try_indirect_decide(leader, 3, std::iter::empty()) {
+            LeaderStatus::Undecided(a, r) => {
+                assert_eq!(a, leader);
+                assert_eq!(r, 3);
+            }
+            other => panic!("expected Undecided, got {other:?}"),
+        }
+    }
+
+    /// `try_indirect_decide` short-circuits when an undecided anchor appears in the iterator.
+    #[test]
+    fn try_indirect_decide_breaks_on_undecided_anchor() {
+        let committee = committee(4);
+        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        build_dag(&committee, &mut storage, None, 3);
+        let committer =
+            BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
+
+        let leader = committer.elect_leader(3).unwrap();
+        let undecided_anchor = LeaderStatus::Undecided(Authority::from(0u64), 6);
+        let anchors = [undecided_anchor];
+        match committer.try_indirect_decide(leader, 3, anchors.iter()) {
+            LeaderStatus::Undecided(a, r) => {
+                assert_eq!(a, leader);
+                assert_eq!(r, 3);
+            }
+            other => panic!("expected Undecided after undecided anchor, got {other:?}"),
+        }
     }
 }
