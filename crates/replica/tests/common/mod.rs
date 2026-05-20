@@ -26,7 +26,7 @@ fn open_core<C: Ctx>(
         Storage::open(authority, &wal_path, metrics.clone(), committee)
             .expect("Failed to open storage")
     } else {
-        Storage::new_for_test(authority, committee)
+        Storage::ephemeral(authority, metrics.clone(), committee)
     };
     let protocol = ConsensusProtocol::default()
         .to_protocol(committee)

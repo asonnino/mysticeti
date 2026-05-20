@@ -368,7 +368,7 @@ mod tests {
     #[test]
     fn elect_leader_none_at_non_leader_round() {
         let committee = committee(4);
-        let (storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        let storage = Storage::new_for_test(Authority::from(0u64), &committee);
         let committer =
             BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
         // wave_length = 3, round_offset = 0 → leader rounds {0, 3, 6, ...}.
@@ -384,7 +384,7 @@ mod tests {
     #[test]
     fn elect_leader_offset_shifts_authority() {
         let committee = committee(4);
-        let (storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        let storage = Storage::new_for_test(Authority::from(0u64), &committee);
         let c0 = BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
         let c1 = BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 1);
         assert_ne!(c0.elect_leader(3), c1.elect_leader(3));
@@ -394,7 +394,7 @@ mod tests {
     #[test]
     fn find_support_direct_include() {
         let committee = committee(4);
-        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
         build_dag(&committee, &mut storage, None, 2);
         let committer =
             BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
@@ -417,7 +417,7 @@ mod tests {
     #[test]
     fn find_support_transitive_walk() {
         let committee = committee(4);
-        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
         build_dag(&committee, &mut storage, None, 3);
         let committer =
             BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
@@ -442,7 +442,7 @@ mod tests {
     #[test]
     fn find_support_below_target_round_returns_none() {
         let committee = committee(4);
-        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
         build_dag(&committee, &mut storage, None, 1);
         let committer =
             BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
@@ -466,7 +466,7 @@ mod tests {
     #[test]
     fn is_certificate_wave_length_two_reduces_to_vote() {
         let committee = committee(4);
-        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
         build_dag(&committee, &mut storage, None, 3);
         let committer =
             BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 2, 0);
@@ -492,7 +492,7 @@ mod tests {
     #[test]
     fn is_certificate_wave_length_three_full_dag() {
         let committee = committee(4);
-        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
         build_dag(&committee, &mut storage, None, 5);
         let committer =
             BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
@@ -517,7 +517,7 @@ mod tests {
     #[test]
     fn enough_leader_blame_when_all_non_leader_voters_blame() {
         let committee = committee(4);
-        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
 
         let leader_round = 3;
         let refs_at_leader = build_dag(&committee, &mut storage, None, leader_round);
@@ -542,7 +542,7 @@ mod tests {
     #[test]
     fn enough_leader_support_when_full_dag() {
         let committee = committee(4);
-        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
         build_dag(&committee, &mut storage, None, 5);
         let committer =
             BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
@@ -561,7 +561,7 @@ mod tests {
     #[test]
     fn try_direct_decide_commits_on_full_dag() {
         let committee = committee(4);
-        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
         build_dag(&committee, &mut storage, None, 5);
         let committer =
             BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
@@ -577,7 +577,7 @@ mod tests {
     #[test]
     fn try_direct_decide_skips_when_leader_omitted() {
         let committee = committee(4);
-        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
 
         let refs = build_dag(&committee, &mut storage, None, 3);
         // Round-robin: round 3 → authority 3.
@@ -607,7 +607,7 @@ mod tests {
     #[test]
     fn try_direct_decide_undecided_on_insufficient_dag() {
         let committee = committee(4);
-        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
         // DAG only reaches the leader round → nothing has voted yet.
         build_dag(&committee, &mut storage, None, 3);
         let committer =
@@ -627,7 +627,7 @@ mod tests {
     #[test]
     fn try_indirect_decide_undecided_on_empty_anchors() {
         let committee = committee(4);
-        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
         build_dag(&committee, &mut storage, None, 3);
         let committer =
             BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
@@ -646,7 +646,7 @@ mod tests {
     #[test]
     fn try_indirect_decide_breaks_on_undecided_anchor() {
         let committee = committee(4);
-        let (mut storage, _) = Storage::new_for_test(Authority::from(0u64), &committee);
+        let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
         build_dag(&committee, &mut storage, None, 3);
         let committer =
             BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
