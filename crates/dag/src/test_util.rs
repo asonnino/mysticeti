@@ -130,3 +130,64 @@ pub fn build_dag_layer(
     }
     references
 }
+
+/// Build a "split chain" DAG: starting from `support` (refs whose causal past
+/// includes some target leader L) and `blames` (refs that exclude L), advance
+/// the two chains in lockstep up to `target_round`. At each intermediate round,
+/// authority 0 carries the support chain (parents = previous support refs) and
+/// authorities `1..n` carry the blame chain (parents = previous blame refs). At
+/// the final `target_round`, the layer is split into `n - final_blamers_count`
+/// support blocks and `final_blamers_count` blame blocks.
+///
+/// Pre-conditions: `support` and `blames` must be at the same round R,
+/// `target_round` must be `>= R + 1`, and `final_blamers_count` must be `< n`.
+pub fn build_split_chain(
+    committee: &Committee,
+    storage: &mut Storage,
+    support: Vec<BlockReference>,
+    blames: Vec<BlockReference>,
+    target_round: RoundNumber,
+    final_blamers_count: usize,
+) -> (Vec<BlockReference>, Vec<BlockReference>) {
+    let n = committee.len();
+    let initial_round = support.first().unwrap().round;
+    assert_eq!(
+        initial_round,
+        blames.first().unwrap().round,
+        "support and blames must be at the same round",
+    );
+    assert!(target_round > initial_round);
+    assert!(final_blamers_count < n);
+
+    let mut support = support;
+    let mut blames = blames;
+    let mut current_round = initial_round;
+
+    while current_round + 1 < target_round {
+        let next_support = build_dag_layer(vec![(Authority::from(0u64), support.clone())], storage);
+        let next_blames = build_dag_layer(
+            (1..n as u64)
+                .map(|i| (Authority::from(i), blames.clone()))
+                .collect(),
+            storage,
+        );
+        support = next_support;
+        blames = next_blames;
+        current_round += 1;
+    }
+
+    let supporters_count = n - final_blamers_count;
+    let final_support = build_dag_layer(
+        (0..supporters_count as u64)
+            .map(|i| (Authority::from(i), support.clone()))
+            .collect(),
+        storage,
+    );
+    let final_blames = build_dag_layer(
+        (supporters_count as u64..n as u64)
+            .map(|i| (Authority::from(i), blames.clone()))
+            .collect(),
+        storage,
+    );
+    (final_support, final_blames)
+}
