@@ -1,34 +1,23 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-//! BlueBottle integration tests.
-//!
-//! BlueBottle (see `Protocol::blue_bottle`) is pipelined (leader per round) with
-//! `wave_length = 2`, `strong_quorum = 4n/5 + 1`, and `anchor_link_size = 2n/5 + 1`.
-//! All tests use `n = 10` so the integer quorums come out to:
-//!   - strong = direct_commit_quorum = direct_skip_quorum = 9
-//!   - anchor link = weak quorum = 5
-//!   - "one-fault" surrogate (total - strong + 1) = 2
-//!
-//! That sizing gives clean headroom for the vote-split scenarios.
-
-use std::num::NonZeroUsize;
+//! Cordial Miners (Asynchronous) integration tests.
 
 use consensus::{committer::Committer, leader::LeaderElector, protocol::Protocol};
 use dag::{
     authority::Authority,
-    block::{Block, RoundNumber},
+    block::{BlockReference, RoundNumber},
     committee::Committee,
     consensus::LeaderStatus,
     storage::Storage,
-    test_util::{build_dag, build_dag_layer, committee},
+    test_util::{build_dag, build_dag_layer, build_split_chain, committee},
 };
 
-const WAVE_LENGTH: u64 = 2;
-const COMMITTEE_SIZE: usize = 10;
+const WAVE_LENGTH: u64 = 5;
+const COMMITTEE_SIZE: usize = 4;
 
 fn build_protocol(committee: &Committee) -> Protocol {
-    Protocol::blue_bottle(committee.total_stake(), NonZeroUsize::new(1).unwrap())
+    Protocol::cordial_miners_asynchronous(committee.total_stake())
 }
 
 /// Commit one leader.
@@ -38,8 +27,7 @@ fn direct_commit() {
     let committee = committee(COMMITTEE_SIZE);
     let leader_elector = LeaderElector::new(committee.len());
     let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
-    // Decision round of the first leader is round 1 + (wave_length - 1) = WAVE_LENGTH.
-    build_dag(&committee, &mut storage, None, WAVE_LENGTH);
+    build_dag(&committee, &mut storage, None, 2 * WAVE_LENGTH - 1);
 
     let mut committer = Committer::new(
         committee.clone(),
@@ -55,7 +43,7 @@ fn direct_commit() {
     if let LeaderStatus::DirectCommit(ref block) | LeaderStatus::IndirectCommit(ref block) =
         sequence[0]
     {
-        assert_eq!(block.author(), leader_elector.elect_leader(1));
+        assert_eq!(block.author(), leader_elector.elect_leader(WAVE_LENGTH));
     } else {
         panic!("Expected a committed leader")
     };
@@ -67,7 +55,7 @@ fn direct_commit() {
 fn idempotence() {
     let committee = committee(COMMITTEE_SIZE);
     let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
-    build_dag(&committee, &mut storage, None, 5);
+    build_dag(&committee, &mut storage, None, 2 * WAVE_LENGTH - 1);
 
     let mut committer = Committer::new(
         committee.clone(),
@@ -77,7 +65,6 @@ fn idempotence() {
 
     let last_committed: Option<(RoundNumber, Authority)> = None;
     let committed = committer.try_commit(last_committed).collect::<Vec<_>>();
-
     let last = committed.into_iter().last().unwrap();
     let last_committed = Some((last.round(), last.authority()));
     let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
@@ -85,7 +72,7 @@ fn idempotence() {
     assert!(sequence.is_empty());
 }
 
-/// Commit one by one each leader as the dag progresses in ideal conditions.
+/// Commit one by one each leader as the DAG progresses in ideal conditions.
 #[test]
 #[tracing_test::traced_test]
 fn multiple_direct_commit() {
@@ -93,8 +80,8 @@ fn multiple_direct_commit() {
     let leader_elector = LeaderElector::new(committee.len());
 
     let mut last_committed: Option<(RoundNumber, Authority)> = None;
-    for n in 1..=10 {
-        let enough_blocks = n + (WAVE_LENGTH - 1);
+    for n in 1..=10u64 {
+        let enough_blocks = WAVE_LENGTH * (n + 1) - 1;
         let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
         build_dag(&committee, &mut storage, None, enough_blocks);
 
@@ -108,7 +95,7 @@ fn multiple_direct_commit() {
         tracing::info!("Commit sequence: {sequence:?}");
 
         assert_eq!(sequence.len(), 1);
-        let leader_round = n;
+        let leader_round = n * WAVE_LENGTH;
         if let LeaderStatus::DirectCommit(ref block) | LeaderStatus::IndirectCommit(ref block) =
             sequence[0]
         {
@@ -122,15 +109,15 @@ fn multiple_direct_commit() {
     }
 }
 
-/// Commit 10 leaders in a row (calling the committer after adding them).
+/// Commit 10 leaders in a row.
 #[test]
 #[tracing_test::traced_test]
 fn direct_commit_late_call() {
     let committee = committee(COMMITTEE_SIZE);
     let leader_elector = LeaderElector::new(committee.len());
 
-    let n = 10;
-    let enough_blocks = n + (WAVE_LENGTH - 1);
+    let n = 10u64;
+    let enough_blocks = WAVE_LENGTH * (n + 1) - 1;
     let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
     build_dag(&committee, &mut storage, None, enough_blocks);
 
@@ -146,7 +133,7 @@ fn direct_commit_late_call() {
 
     assert_eq!(sequence.len(), n as usize);
     for (index, leader_block) in sequence.iter().enumerate() {
-        let leader_round = 1 + index as u64;
+        let leader_round = (index as u64 + 1) * WAVE_LENGTH;
         if let LeaderStatus::DirectCommit(block) | LeaderStatus::IndirectCommit(block) =
             leader_block
         {
@@ -162,7 +149,7 @@ fn direct_commit_late_call() {
 #[tracing_test::traced_test]
 fn no_genesis_commit() {
     let committee = committee(COMMITTEE_SIZE);
-    let first_commit_round = WAVE_LENGTH - 1;
+    let first_commit_round = 2 * WAVE_LENGTH - 1;
     for r in 0..first_commit_round {
         let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
         build_dag(&committee, &mut storage, None, r);
@@ -188,24 +175,21 @@ fn no_leader() {
     let leader_elector = LeaderElector::new(committee.len());
     let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
 
-    let leader_round_1 = 1;
+    let leader_round_1 = WAVE_LENGTH;
     let leader_1 = leader_elector.elect_leader(leader_round_1);
+    let references_pre_leader = build_dag(&committee, &mut storage, None, leader_round_1 - 1);
 
-    let genesis: Vec<_> = committee
-        .authorities()
-        .map(|authority| *Block::genesis(authority).reference())
-        .collect();
     let connections = committee
         .authorities()
         .filter(|&authority| authority != leader_1)
-        .map(|authority| (authority, genesis.clone()));
-    let references_at_round_1 = build_dag_layer(connections.collect(), &mut storage);
+        .map(|authority| (authority, references_pre_leader.clone()));
+    let references_at_leader_round = build_dag_layer(connections.collect(), &mut storage);
 
-    let decision_round_1 = WAVE_LENGTH;
+    let decision_round_1 = 2 * WAVE_LENGTH - 1;
     build_dag(
         &committee,
         &mut storage,
-        Some(references_at_round_1),
+        Some(references_at_leader_round),
         decision_round_1,
     );
 
@@ -226,11 +210,16 @@ fn no_leader() {
         assert_eq!(leader, leader_1);
         assert_eq!(round, leader_round_1);
     } else {
-        panic!("Expected to directly skip the leader");
+        panic!("Expected to skip the leader");
     }
 }
 
-/// Directly skip the first leader when no one votes for it.
+/// Boundary test of the unanimous-blame rule: when every authority's voting-round
+/// block omits the leader, `direct_skip_quorum = n` is met and the implementation
+/// yields a `DirectSkip`. In adversarial production this scenario is unreachable
+/// (f Byzantine validators can refuse to participate), so Cordial Miners' realistic
+/// skip path is `IndirectSkip` via a later anchor — see [`indirect_skip`]. This test
+/// is kept for parity with the BFT suites and to exercise the threshold boundary.
 #[test]
 #[tracing_test::traced_test]
 fn direct_skip() {
@@ -238,15 +227,14 @@ fn direct_skip() {
     let leader_elector = LeaderElector::new(committee.len());
     let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
 
-    let leader_round_1 = 1;
-    let references_1 = build_dag(&committee, &mut storage, None, leader_round_1);
-
-    let references_without_leader_1: Vec<_> = references_1
+    let leader_round_1 = WAVE_LENGTH;
+    let references_at_leader_round = build_dag(&committee, &mut storage, None, leader_round_1);
+    let references_without_leader_1: Vec<_> = references_at_leader_round
         .into_iter()
         .filter(|reference| reference.authority != leader_elector.elect_leader(leader_round_1))
         .collect();
 
-    let decision_round_1 = WAVE_LENGTH;
+    let decision_round_1 = 2 * WAVE_LENGTH - 1;
     build_dag(
         &committee,
         &mut storage,
@@ -271,7 +259,7 @@ fn direct_skip() {
         assert_eq!(leader, leader_elector.elect_leader(leader_round_1));
         assert_eq!(round, leader_round_1);
     } else {
-        panic!("Expected to directly skip the leader");
+        panic!("Expected to skip the leader");
     }
 }
 
@@ -282,43 +270,126 @@ fn indirect_commit() {
     let committee = committee(COMMITTEE_SIZE);
     let leader_elector = LeaderElector::new(committee.len());
     let total = committee.total_stake();
-    let strong_quorum = 4 * total / 5 + 1;
+    let strong_quorum = 2 * total / 3 + 1;
+    let one_fault = total / 3 + 1;
     let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
 
-    // Round 1: full DAG (leader L1 exists).
-    let leader_round_1 = 1;
-    let references_at_round_1 = build_dag(&committee, &mut storage, None, leader_round_1);
-
-    let references_without_leader_1: Vec<_> = references_at_round_1
+    let leader_round_1 = WAVE_LENGTH;
+    let references_at_leader_round = build_dag(&committee, &mut storage, None, leader_round_1);
+    let references_without_leader_1: Vec<_> = references_at_leader_round
         .iter()
-        .cloned()
+        .copied()
         .filter(|reference| reference.authority != leader_elector.elect_leader(leader_round_1))
         .collect();
 
-    // Round 2: split. Only strong_quorum - 1 = 8 authorities link to L1; the remaining 2
-    // (a "one-fault" minority) don't. With strong_quorum = 9, L1 misses direct commit
-    // but has enough weak supporters for an indirect commit via a later anchor.
-    let supporters: Vec<(Authority, Vec<_>)> = committee
+    let voters: Vec<(Authority, Vec<BlockReference>)> = committee
         .authorities()
-        .take((strong_quorum - 1) as usize)
-        .map(|authority| (authority, references_at_round_1.clone()))
+        .take(strong_quorum as usize)
+        .map(|authority| (authority, references_at_leader_round.clone()))
         .collect();
-    let non_supporters: Vec<(Authority, Vec<_>)> = committee
+    let references_with_votes = build_dag_layer(voters, &mut storage);
+    let blamers: Vec<(Authority, Vec<BlockReference>)> = committee
         .authorities()
-        .skip((strong_quorum - 1) as usize)
+        .skip(strong_quorum as usize)
         .map(|authority| (authority, references_without_leader_1.clone()))
         .collect();
-    let connections_round_2: Vec<_> = supporters.into_iter().chain(non_supporters).collect();
-    let references_at_round_2 = build_dag_layer(connections_round_2, &mut storage);
+    let references_without_votes = build_dag_layer(blamers, &mut storage);
 
-    // Build forward enough to commit a later leader as anchor for L1. With wave_length = 2
-    // the next BaseCommitter-B leader (same round_offset as L1) sits at round 3; its
-    // decision round is round 4.
-    let decision_round_3 = 2 * WAVE_LENGTH + 1;
+    let mut references_at_certificate_round = Vec::new();
+    let certifier_connections: Vec<(Authority, Vec<BlockReference>)> = committee
+        .authorities()
+        .take(one_fault as usize)
+        .map(|authority| (authority, references_with_votes.clone()))
+        .collect();
+    references_at_certificate_round.extend(build_dag_layer(certifier_connections, &mut storage));
+    let mixed_parents: Vec<_> = references_without_votes
+        .into_iter()
+        .chain(references_with_votes)
+        .take(strong_quorum as usize)
+        .collect();
+    let non_certifier_connections: Vec<(Authority, Vec<BlockReference>)> = committee
+        .authorities()
+        .skip(one_fault as usize)
+        .map(|authority| (authority, mixed_parents.clone()))
+        .collect();
+    references_at_certificate_round
+        .extend(build_dag_layer(non_certifier_connections, &mut storage));
+
+    let decision_round_2 = 3 * WAVE_LENGTH - 1;
     build_dag(
         &committee,
         &mut storage,
-        Some(references_at_round_2),
+        Some(references_at_certificate_round),
+        decision_round_2,
+    );
+
+    let mut committer = Committer::new(
+        committee.clone(),
+        storage.block_reader().clone(),
+        build_protocol(&committee),
+    );
+
+    let last_committed: Option<(RoundNumber, Authority)> = None;
+    let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
+    tracing::info!("Commit sequence: {sequence:?}");
+
+    assert_eq!(sequence.len(), 2);
+    let leader_1 = leader_elector.elect_leader(leader_round_1);
+    if let LeaderStatus::DirectCommit(ref block) | LeaderStatus::IndirectCommit(ref block) =
+        sequence[0]
+    {
+        assert_eq!(block.author(), leader_1);
+    } else {
+        panic!(
+            "Expected the first leader to be committed, got {:?}",
+            sequence[0]
+        );
+    }
+}
+
+/// Commit L1, indirect-skip L2 (too few certifiers), commit L3.
+///
+/// For `wave_length = 5`, the leader-to-voting-round distance is 3 rounds, so the
+/// split has to be propagated across each intermediate layer via `build_split_chain`
+/// — otherwise a full-DAG layer between L2 and the voting round would silently
+/// reconnect every block back to L2 via `find_support`'s transitive traversal.
+#[test]
+#[tracing_test::traced_test]
+fn indirect_skip() {
+    let committee = committee(COMMITTEE_SIZE);
+    let leader_elector = LeaderElector::new(committee.len());
+    let protocol = build_protocol(&committee);
+    let blamers_count = (protocol.direct_skip_quorum - 1) as usize; // = 3 for n=4.
+    let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
+
+    let leader_round_2 = 2 * WAVE_LENGTH;
+    let references_at_leader_2 = build_dag(&committee, &mut storage, None, leader_round_2);
+    let skipped_leader = leader_elector.elect_leader(leader_round_2);
+    let references_without_leader_2: Vec<_> = references_at_leader_2
+        .iter()
+        .copied()
+        .filter(|reference| reference.authority != skipped_leader)
+        .collect();
+
+    let voting_round = leader_round_2 + WAVE_LENGTH - 2; // = 13 for wl=5.
+    let (supports_at_voting, blames_at_voting) = build_split_chain(
+        &committee,
+        &mut storage,
+        references_at_leader_2,
+        references_without_leader_2,
+        voting_round,
+        blamers_count,
+    );
+
+    let references_at_voting_round: Vec<_> = supports_at_voting
+        .into_iter()
+        .chain(blames_at_voting)
+        .collect();
+    let decision_round_3 = 4 * WAVE_LENGTH - 1;
+    build_dag(
+        &committee,
+        &mut storage,
+        Some(references_at_voting_round),
         decision_round_3,
     );
 
@@ -332,124 +403,76 @@ fn indirect_commit() {
     let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
     tracing::info!("Commit sequence: {sequence:?}");
 
-    // Sanity: L1 must be committed (directly or indirectly).
-    let leader_1 = leader_elector.elect_leader(leader_round_1);
-    let first = &sequence[0];
-    if let LeaderStatus::DirectCommit(block) | LeaderStatus::IndirectCommit(block) = first {
+    assert_eq!(sequence.len(), 3);
+
+    let leader_1 = leader_elector.elect_leader(WAVE_LENGTH);
+    if let LeaderStatus::DirectCommit(ref block) | LeaderStatus::IndirectCommit(ref block) =
+        sequence[0]
+    {
         assert_eq!(block.author(), leader_1);
     } else {
-        panic!("Expected the first leader to be committed, got {first:?}");
+        panic!("Expected L1 to be committed, got {:?}", sequence[0]);
+    }
+
+    if let LeaderStatus::DirectSkip(leader, round) | LeaderStatus::IndirectSkip(leader, round) =
+        sequence[1]
+    {
+        assert_eq!(leader, skipped_leader);
+        assert_eq!(round, leader_round_2);
+    } else {
+        panic!("Expected L2 to be skipped, got {:?}", sequence[1]);
+    }
+
+    let leader_3 = leader_elector.elect_leader(3 * WAVE_LENGTH);
+    if let LeaderStatus::DirectCommit(ref block) | LeaderStatus::IndirectCommit(ref block) =
+        sequence[2]
+    {
+        assert_eq!(block.author(), leader_3);
+    } else {
+        panic!("Expected L3 to be committed, got {:?}", sequence[2]);
     }
 }
 
-/// Commit the first leaders, indirect-skip a later one whose supporters are too few.
-#[test]
-#[tracing_test::traced_test]
-fn indirect_skip() {
-    let committee = committee(COMMITTEE_SIZE);
-    let leader_elector = LeaderElector::new(committee.len());
-    let protocol = build_protocol(&committee);
-    let blamers_count = (protocol.direct_skip_quorum - 1) as usize; // = 8 for n=10.
-    let supporters_count = committee.len() - blamers_count; // = 2 for n=10.
-    let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
-
-    // Build to the leader we want to skip.
-    let leader_round_to_skip = WAVE_LENGTH + 1; // First leader of the second BaseCommitter wave.
-    let references_at_skip_round = build_dag(&committee, &mut storage, None, leader_round_to_skip);
-
-    let references_without_skipped_leader: Vec<_> = references_at_skip_round
-        .iter()
-        .cloned()
-        .filter(|reference| {
-            reference.authority != leader_elector.elect_leader(leader_round_to_skip)
-        })
-        .collect();
-
-    // Uniform threshold: `direct_skip_quorum - 1` blamers (so direct-skip just barely
-    // fails), the rest support. The number of supporters falls below `anchor_link_size`
-    // for BlueBottle (5), so the later anchor can't reach the indirect-commit
-    // threshold and indirect-skips the leader instead.
-    let mut references_next_round = Vec::new();
-    let supporters: Vec<(Authority, Vec<_>)> = committee
-        .authorities()
-        .take(supporters_count)
-        .map(|authority| (authority, references_at_skip_round.clone()))
-        .collect();
-    references_next_round.extend(build_dag_layer(supporters, &mut storage));
-    let blamers: Vec<(Authority, Vec<_>)> = committee
-        .authorities()
-        .skip(supporters_count)
-        .map(|authority| (authority, references_without_skipped_leader.clone()))
-        .collect();
-    references_next_round.extend(build_dag_layer(blamers, &mut storage));
-
-    let decision_round_final = 3 * WAVE_LENGTH;
-    build_dag(
-        &committee,
-        &mut storage,
-        Some(references_next_round),
-        decision_round_final,
-    );
-
-    let mut committer = Committer::new(
-        committee.clone(),
-        storage.block_reader().clone(),
-        build_protocol(&committee),
-    );
-
-    let last_committed: Option<(RoundNumber, Authority)> = None;
-    let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
-    tracing::info!("Commit sequence: {sequence:?}");
-
-    // The skipped leader must appear as a Skip in the sequence.
-    let skipped_leader = leader_elector.elect_leader(leader_round_to_skip);
-    let skip_found = sequence.iter().any(|status| {
-        matches!(
-            status,
-            LeaderStatus::DirectSkip(leader, round) | LeaderStatus::IndirectSkip(leader, round)
-                if *leader == skipped_leader && *round == leader_round_to_skip
-        )
-    });
-    assert!(
-        skip_found,
-        "expected Skip(leader={skipped_leader:?}, round={leader_round_to_skip}), got {sequence:?}",
-    );
-}
-
-/// If exactly one authority votes for the leader, neither commit nor skip threshold is met.
+/// `direct_skip_quorum - 1` blamers and one supporter at L1's voting round leaves
+/// neither commit nor skip thresholds reached — L1 is undecided after the direct
+/// phase. As with `indirect_skip`, the split must be chained through every round
+/// between L1 and the voting round for `wave_length = 5`.
 #[test]
 #[tracing_test::traced_test]
 fn undecided() {
     let committee = committee(COMMITTEE_SIZE);
     let leader_elector = LeaderElector::new(committee.len());
-    let total = committee.total_stake();
-    let strong_quorum = 4 * total / 5 + 1;
+    let protocol = build_protocol(&committee);
+    let blamers_count = (protocol.direct_skip_quorum - 1) as usize; // = 3 for n=4.
     let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
 
-    let leader_round_1 = 1;
-    let references_1 = build_dag(&committee, &mut storage, None, leader_round_1);
-
-    let references_1_without_leader: Vec<_> = references_1
+    let leader_round_1 = WAVE_LENGTH;
+    let references_at_leader_round = build_dag(&committee, &mut storage, None, leader_round_1);
+    let references_without_leader_1: Vec<_> = references_at_leader_round
         .iter()
-        .cloned()
+        .copied()
         .filter(|reference| reference.authority != leader_elector.elect_leader(leader_round_1))
         .collect();
 
-    // One authority votes for the leader; the rest don't.
-    let mut authorities = committee.authorities();
-    let leader_connection = vec![(authorities.next().unwrap(), references_1)];
-    let non_leader_connections: Vec<_> = authorities
-        .take((strong_quorum - 1) as usize)
-        .map(|authority| (authority, references_1_without_leader.clone()))
+    let voting_round = leader_round_1 + WAVE_LENGTH - 2; // = 8 for wl=5.
+    let (supports_at_voting, blames_at_voting) = build_split_chain(
+        &committee,
+        &mut storage,
+        references_at_leader_round,
+        references_without_leader_1,
+        voting_round,
+        blamers_count,
+    );
+    let references_at_voting_round: Vec<_> = supports_at_voting
+        .into_iter()
+        .chain(blames_at_voting)
         .collect();
-    let connections = leader_connection.into_iter().chain(non_leader_connections);
-    let references_at_round_2 = build_dag_layer(connections.collect(), &mut storage);
 
-    let decision_round_1 = WAVE_LENGTH;
+    let decision_round_1 = 2 * WAVE_LENGTH - 1;
     build_dag(
         &committee,
         &mut storage,
-        Some(references_at_round_2),
+        Some(references_at_voting_round),
         decision_round_1,
     );
 
@@ -473,14 +496,13 @@ fn trailing_skip_not_re_yielded() {
     let leader_elector = LeaderElector::new(committee.len());
     let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
 
-    // Same DAG as `direct_skip`.
-    let leader_round_1 = 1;
-    let references_1 = build_dag(&committee, &mut storage, None, leader_round_1);
-    let references_without_leader_1: Vec<_> = references_1
+    let leader_round_1 = WAVE_LENGTH;
+    let references_at_leader_round = build_dag(&committee, &mut storage, None, leader_round_1);
+    let references_without_leader_1: Vec<_> = references_at_leader_round
         .into_iter()
         .filter(|reference| reference.authority != leader_elector.elect_leader(leader_round_1))
         .collect();
-    let decision_round_1 = WAVE_LENGTH;
+    let decision_round_1 = 2 * WAVE_LENGTH - 1;
     build_dag(
         &committee,
         &mut storage,
