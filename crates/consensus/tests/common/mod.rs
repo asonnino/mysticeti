@@ -2,23 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Shared scaffolding for the per-protocol integration test suites.
-//!
-//! Each protocol-specific test file implements [`Fixture`] for a unit struct and
-//! then delegates each `#[test]` to a generic runner in this module. All round
-//! arithmetic flows through the test-only accessors on [`Committer`], so the
-//! runners never re-derive formulas that already live in `wave.rs`.
-//!
-//! ## Where the variation lives
-//!
-//! - **Uniform runners** ([`run_direct_commit`], [`run_idempotence`], etc.) are
-//!   parameterized only by the fixture (`COMMITTEE_SIZE` + `build_protocol`).
-//! - **Variant runners** ([`run_indirect_commit`], [`run_indirect_skip`],
-//!   [`run_undecided`]) read protocol fields directly (`direct_commit_quorum`,
-//!   `direct_skip_quorum`, `anchor_link_size`, `wave_length`) to pick the right
-//!   DAG topology. The one auto-dispatched branch is in `run_indirect_skip`,
-//!   which falls back to a "hide voters" construction when the uniform
-//!   `(direct_skip_quorum - 1)`-blamers pattern cannot yield an indirect skip
-//!   (today only Nemo-Nemo at `c = 0`).
 
 use std::collections::HashSet;
 
