@@ -30,7 +30,7 @@ pub(crate) struct BaseCommitter {
     direct_commit_quorum: Stake,
     direct_skip_quorum: Stake,
     anchor_link_size: Stake,
-    wave: Wave,
+    pub(crate) wave: Wave,
     leader_offset: RoundNumber,
 }
 
