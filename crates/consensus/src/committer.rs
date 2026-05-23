@@ -114,6 +114,46 @@ impl Committer {
     }
 }
 
+/// Test-only round-arithmetic queries.
+#[cfg(any(test, feature = "test-utils"))]
+impl Committer {
+    /// True if any of this committer's base committers owns a leader at `round`.
+    pub fn is_leader_round(&self, round: RoundNumber) -> bool {
+        self.base_committers
+            .iter()
+            .any(|bc| bc.wave.is_leader_round(round))
+    }
+
+    /// Smallest leader round strictly greater than `round`.
+    pub fn next_leader_round_after(&self, round: RoundNumber) -> RoundNumber {
+        (round + 1..)
+            .find(|&r| self.is_leader_round(r))
+            .expect("leader rounds are unbounded above")
+    }
+
+    /// Voting round for the leader at `leader_round`.
+    /// Panics if `leader_round` is not a leader round.
+    pub fn voting_round_for(&self, leader_round: RoundNumber) -> RoundNumber {
+        let bc = self
+            .base_committers
+            .iter()
+            .find(|bc| bc.wave.is_leader_round(leader_round))
+            .expect("not a leader round");
+        bc.wave.voting_round(bc.wave.number(leader_round))
+    }
+
+    /// Decision round for the leader at `leader_round`.
+    /// Panics if `leader_round` is not a leader round.
+    pub fn decision_round_for(&self, leader_round: RoundNumber) -> RoundNumber {
+        let bc = self
+            .base_committers
+            .iter()
+            .find(|bc| bc.wave.is_leader_round(leader_round))
+            .expect("not a leader round");
+        bc.wave.decision_round(bc.wave.number(leader_round))
+    }
+}
+
 impl DagConsensus for Committer {
     fn quorum_threshold(&self) -> Stake {
         self.direct_commit_quorum

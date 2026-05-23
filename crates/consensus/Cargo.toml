@@ -11,5 +11,9 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+consensus = { path = ".", features = ["test-utils"] }
 dag = { workspace = true, features = ["test-utils"] }
 tracing-test.workspace = true
+
+[features]
+test-utils = []
