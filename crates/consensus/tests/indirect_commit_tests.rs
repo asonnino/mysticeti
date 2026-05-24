@@ -12,6 +12,10 @@
 //!   `direct_commit_quorum` authorities voting (final blamers = `n - direct_commit_quorum`),
 //!   then a hand-crafted decision-round layer where only
 //!   `(direct_commit_quorum - 1)` certifiers fully link to the voters.
+//!
+//! For multi-leader cohorts, we sweep `target_offset` over `0..K`: the targeted
+//! cohort leader is the one driven into indirect-commit, while the remaining
+//! `K-1` cohort members direct-commit unchanged.
 
 use std::sync::Arc;
 
@@ -39,82 +43,99 @@ fn indirect_commit_n10() {
 
 fn run_for_size(n: usize) {
     let committee = committee(n);
-    for spec in ConsensusProtocol::all_for_test() {
+    let leader_counts = [1, 2, 2 * n / 3 + 1, n];
+    for spec in ConsensusProtocol::all_for_test(&leader_counts) {
         run(&spec, &committee);
     }
 }
 
 fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
-    let mut storage = Storage::new_for_test(Authority::from(0u64), committee);
-    let mut committer = Committer::new_for_test(committee, &storage, spec);
     let protocol = spec.to_protocol(committee).expect("valid protocol");
-    let l1 = committer.next_leader_round_after(0);
-    let leader = LeaderElector::new(committee.len()).elect_leader(l1);
+    let k = protocol.leader_count.get();
+    let elector = LeaderElector::new(committee.len());
 
-    let refs_at_leader = build_dag(committee, &mut storage, None, l1);
-    let refs_without_leader = drop_leader(&refs_at_leader, leader);
-    let voting_round = committer.voting_round_for(l1);
-    let decision_round = committer.decision_round_for(l1);
+    for target_offset in 0..k {
+        let mut storage = Storage::new_for_test(Authority::from(0u64), committee);
+        let mut committer = Committer::new_for_test(committee, &storage, spec);
+        let l1 = committer.next_leader_round_after(0);
+        let target_leader = elector.elect_leader(l1 + target_offset as u64);
 
-    let top_refs: Vec<BlockReference> = if protocol.wave_length == 2 {
-        let voters_count = (protocol.direct_commit_quorum - 1) as usize;
-        let blamers_count = committee.len() - voters_count;
-        let (supports, blames) = build_split_chain(
-            committee,
-            &mut storage,
-            refs_at_leader,
-            refs_without_leader,
-            voting_round,
-            blamers_count,
+        let refs_at_leader = build_dag(committee, &mut storage, None, l1);
+        let refs_without_target = drop_leader(&refs_at_leader, target_leader);
+        let voting_round = committer.voting_round_for(l1);
+        let decision_round = committer.decision_round_for(l1);
+
+        let top_refs: Vec<BlockReference> = if protocol.wave_length == 2 {
+            let voters_count = (protocol.direct_commit_quorum - 1) as usize;
+            let blamers_count = committee.len() - voters_count;
+            let (supports, blames) = build_split_chain(
+                committee,
+                &mut storage,
+                refs_at_leader,
+                refs_without_target,
+                voting_round,
+                blamers_count,
+            );
+            supports.into_iter().chain(blames).collect()
+        } else {
+            let blamers_count = committee.len() - protocol.direct_commit_quorum as usize;
+            let (supports, blames) = build_split_chain(
+                committee,
+                &mut storage,
+                refs_at_leader,
+                refs_without_target,
+                voting_round,
+                blamers_count,
+            );
+            let certifiers_count = (protocol.direct_commit_quorum - 1) as usize;
+            let mut decision_refs = Vec::new();
+            let certifier_connections: Vec<(Authority, Vec<BlockReference>)> = committee
+                .authorities()
+                .take(certifiers_count)
+                .map(|authority| (authority, supports.clone()))
+                .collect();
+            decision_refs.extend(build_dag_layer(certifier_connections, &mut storage));
+
+            let mixed_parents: Vec<_> = blames
+                .into_iter()
+                .chain(supports)
+                .take(protocol.direct_commit_quorum as usize)
+                .collect();
+            let non_certifier_connections: Vec<(Authority, Vec<BlockReference>)> = committee
+                .authorities()
+                .skip(certifiers_count)
+                .map(|authority| (authority, mixed_parents.clone()))
+                .collect();
+            decision_refs.extend(build_dag_layer(non_certifier_connections, &mut storage));
+            decision_refs
+        };
+
+        let next_leader = committer.next_leader_round_after(decision_round);
+        let anchor_decision = committer.decision_round_for(next_leader);
+        build_dag(committee, &mut storage, Some(top_refs), anchor_decision);
+
+        let sequence = committer.try_commit(None).collect::<Vec<_>>();
+        tracing::info!("[{spec}] target_offset={target_offset} sequence: {sequence:?}");
+
+        assert!(
+            sequence.len() >= k,
+            "[{spec}] target_offset={target_offset} expected at least {k} decisions"
         );
-        supports.into_iter().chain(blames).collect()
-    } else {
-        let blamers_count = committee.len() - protocol.direct_commit_quorum as usize;
-        let (supports, blames) = build_split_chain(
-            committee,
-            &mut storage,
-            refs_at_leader,
-            refs_without_leader,
-            voting_round,
-            blamers_count,
-        );
-        let certifiers_count = (protocol.direct_commit_quorum - 1) as usize;
-        let mut decision_refs = Vec::new();
-        let certifier_connections: Vec<(Authority, Vec<BlockReference>)> = committee
-            .authorities()
-            .take(certifiers_count)
-            .map(|authority| (authority, supports.clone()))
-            .collect();
-        decision_refs.extend(build_dag_layer(certifier_connections, &mut storage));
-
-        let mixed_parents: Vec<_> = blames
-            .into_iter()
-            .chain(supports)
-            .take(protocol.direct_commit_quorum as usize)
-            .collect();
-        let non_certifier_connections: Vec<(Authority, Vec<BlockReference>)> = committee
-            .authorities()
-            .skip(certifiers_count)
-            .map(|authority| (authority, mixed_parents.clone()))
-            .collect();
-        decision_refs.extend(build_dag_layer(non_certifier_connections, &mut storage));
-        decision_refs
-    };
-
-    let next_leader = committer.next_leader_round_after(decision_round);
-    let anchor_decision = committer.decision_round_for(next_leader);
-    build_dag(committee, &mut storage, Some(top_refs), anchor_decision);
-
-    let sequence = committer.try_commit(None).collect::<Vec<_>>();
-    tracing::info!("[{spec}] Commit sequence: {sequence:?}");
-
-    let first = sequence
-        .first()
-        .unwrap_or_else(|| panic!("[{spec}] expected at least one decision"));
-    match first {
-        LeaderStatus::DirectCommit(block) | LeaderStatus::IndirectCommit(block) => {
-            assert_eq!(block.author(), leader, "[{spec}]");
+        for (offset, decision) in sequence.iter().take(k).enumerate() {
+            let expected = elector.elect_leader(l1 + offset as u64);
+            match decision {
+                LeaderStatus::DirectCommit(block) | LeaderStatus::IndirectCommit(block) => {
+                    assert_eq!(
+                        block.author(),
+                        expected,
+                        "[{spec}] target_offset={target_offset} offset={offset}"
+                    );
+                }
+                other => panic!(
+                    "[{spec}] target_offset={target_offset} offset={offset} \
+                    expected commit, got {other:?}"
+                ),
+            }
         }
-        other => panic!("[{spec}] expected L1 to be committed, got {other:?}"),
     }
 }

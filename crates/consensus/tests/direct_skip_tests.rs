@@ -28,31 +28,65 @@ fn direct_skip_n10() {
 
 fn run_for_size(n: usize) {
     let committee = committee(n);
-    for spec in ConsensusProtocol::all_for_test() {
+    let leader_counts = [1, 2, 2 * n / 3 + 1, n];
+    for spec in ConsensusProtocol::all_for_test(&leader_counts) {
         run(&spec, &committee);
     }
 }
 
 fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
-    let mut storage = Storage::new_for_test(Authority::from(0u64), committee);
-    let mut committer = Committer::new_for_test(committee, &storage, spec);
-    let l1 = committer.next_leader_round_after(0);
-    let leader = LeaderElector::new(committee.len()).elect_leader(l1);
+    let protocol = spec.to_protocol(committee).expect("valid protocol");
+    let k = protocol.leader_count.get();
+    let elector = LeaderElector::new(committee.len());
 
-    let refs_at_leader = build_dag(committee, &mut storage, None, l1);
-    let refs_without_leader = drop_leader(&refs_at_leader, leader);
-    let decision = committer.decision_round_for(l1);
-    build_dag(committee, &mut storage, Some(refs_without_leader), decision);
+    for target_offset in 0..k {
+        let mut storage = Storage::new_for_test(Authority::from(0u64), committee);
+        let mut committer = Committer::new_for_test(committee, &storage, spec);
+        let l1 = committer.next_leader_round_after(0);
+        let target_leader = elector.elect_leader(l1 + target_offset as u64);
 
-    let sequence = committer.try_commit(None).collect::<Vec<_>>();
-    tracing::info!("[{spec}] Commit sequence: {sequence:?}");
-    assert_eq!(sequence.len(), 1, "[{spec}] expected 1 decision");
-    match &sequence[0] {
-        LeaderStatus::DirectSkip(actual_leader, round)
-        | LeaderStatus::IndirectSkip(actual_leader, round) => {
-            assert_eq!(*actual_leader, leader, "[{spec}]");
-            assert_eq!(*round, l1, "[{spec}]");
+        let refs_at_leader = build_dag(committee, &mut storage, None, l1);
+        let refs_without_target = drop_leader(&refs_at_leader, target_leader);
+        let decision = committer.decision_round_for(l1);
+        build_dag(committee, &mut storage, Some(refs_without_target), decision);
+
+        let sequence = committer.try_commit(None).collect::<Vec<_>>();
+        tracing::info!("[{spec}] target_offset={target_offset} sequence: {sequence:?}");
+        assert_eq!(
+            sequence.len(),
+            k,
+            "[{spec}] target_offset={target_offset} expected {k} decisions"
+        );
+
+        for (offset, decision) in sequence.iter().enumerate() {
+            let expected = elector.elect_leader(l1 + offset as u64);
+            if offset == target_offset {
+                match decision {
+                    LeaderStatus::DirectSkip(actual, round)
+                    | LeaderStatus::IndirectSkip(actual, round) => {
+                        assert_eq!(*actual, expected, "[{spec}] target_offset={target_offset}");
+                        assert_eq!(*round, l1, "[{spec}] target_offset={target_offset}");
+                    }
+                    other => panic!(
+                        "[{spec}] target_offset={target_offset} expected skip at offset \
+                        {offset}, got {other:?}"
+                    ),
+                }
+            } else {
+                match decision {
+                    LeaderStatus::DirectCommit(block) | LeaderStatus::IndirectCommit(block) => {
+                        assert_eq!(
+                            block.author(),
+                            expected,
+                            "[{spec}] target_offset={target_offset} offset={offset}"
+                        );
+                    }
+                    other => panic!(
+                        "[{spec}] target_offset={target_offset} expected commit at offset \
+                        {offset}, got {other:?}"
+                    ),
+                }
+            }
         }
-        other => panic!("[{spec}] expected to skip the leader, got {other:?}"),
     }
 }

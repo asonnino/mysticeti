@@ -27,7 +27,8 @@ fn no_genesis_commit_n10() {
 
 fn run_for_size(n: usize) {
     let committee = committee(n);
-    for spec in ConsensusProtocol::all_for_test() {
+    let leader_counts = [1, 2, 2 * n / 3 + 1, n];
+    for spec in ConsensusProtocol::all_for_test(&leader_counts) {
         run(&spec, &committee);
     }
 }
