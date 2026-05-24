@@ -151,29 +151,30 @@ impl ConsensusProtocol {
 #[cfg(any(test, feature = "test-utils"))]
 impl ConsensusProtocol {
     /// All protocols at the baseline matrix configuration used by the
-    /// per-scenario integration tests: `leader_count = 1`, `Orcaella.c = 0`,
-    /// both supported Mahi-Mahi wave lengths.
-    pub fn all_for_test() -> Vec<Self> {
-        let one = NonZeroUsize::new(1).unwrap();
-        vec![
-            Self::Mysticeti { leader_count: one },
-            Self::BlueBottle { leader_count: one },
-            Self::NemoNemo { leader_count: one },
-            Self::Orcaella {
-                leader_count: one,
-                c: 0,
-            },
-            Self::CordialMinersPartiallySynchronous,
-            Self::CordialMinersAsynchronous,
-            Self::MahiMahi {
-                leader_count: one,
+    /// per-scenario integration tests, swept over `leader_counts`. Multi-leader-
+    /// aware protocols (Mysticeti, BlueBottle, NemoNemo, Orcaella with `c=0`,
+    /// Mahi-Mahi for `wave_length ∈ {4, 5}`) emit one variant per leader count;
+    /// Cordial Miners variants are leader-count-agnostic and emit once.
+    pub fn all_for_test(leader_counts: &[usize]) -> Vec<Self> {
+        let mut variants = Vec::new();
+        for &l in leader_counts {
+            let leader_count = NonZeroUsize::new(l).expect("leader_count must be non-zero");
+            variants.push(Self::Mysticeti { leader_count });
+            variants.push(Self::BlueBottle { leader_count });
+            variants.push(Self::NemoNemo { leader_count });
+            variants.push(Self::Orcaella { leader_count, c: 0 });
+            variants.push(Self::MahiMahi {
+                leader_count,
                 wave_length: 4,
-            },
-            Self::MahiMahi {
-                leader_count: one,
+            });
+            variants.push(Self::MahiMahi {
+                leader_count,
                 wave_length: 5,
-            },
-        ]
+            });
+        }
+        variants.push(Self::CordialMinersPartiallySynchronous);
+        variants.push(Self::CordialMinersAsynchronous);
+        variants
     }
 }
 
