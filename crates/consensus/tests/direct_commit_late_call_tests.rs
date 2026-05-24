@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use consensus::{committer::Committer, leader::LeaderElector, protocol::ConsensusProtocol};
 use dag::{
-    block::RoundNumber,
     committee::Committee,
     consensus::LeaderStatus,
     storage::Storage,
@@ -39,7 +38,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     let mut committer = Committer::new_for_test(committee, &storage, spec);
     let protocol = spec.to_protocol(committee).expect("valid protocol");
     let k = protocol.leader_count.get();
-    let leader_rounds: Vec<RoundNumber> = (1..=10).map(|n| committer.nth_leader_round(n)).collect();
+    let leader_rounds: Vec<_> = (1..=10).map(|n| committer.nth_leader_round(n)).collect();
     let dag_depth = committer.decision_round_for(*leader_rounds.last().unwrap());
     build_dag(committee, &mut storage, None, dag_depth);
 

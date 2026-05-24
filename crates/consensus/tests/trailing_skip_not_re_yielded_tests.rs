@@ -53,10 +53,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
 
     let first = committer.try_commit(None).collect::<Vec<_>>();
     assert!(
-        matches!(
-            first.last(),
-            Some(LeaderStatus::DirectSkip(..) | LeaderStatus::IndirectSkip(..)),
-        ),
+        matches!(first.last(), Some(LeaderStatus::DirectSkip(..))),
         "[{spec}] precondition: last decision must be a Skip, got {first:?}"
     );
 
