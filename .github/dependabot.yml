@@ -23,7 +23,7 @@ updates:
       # digest 0.11 can't be adopted until blake2 / ed25519-consensus move off the
       # digest 0.10 `Digest` trait; bumping digest alone yields two incompatible traits.
       - dependency-name: "digest"
-        versions: ["0.11.x"]
+        versions: ["0.11"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
