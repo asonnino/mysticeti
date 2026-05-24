@@ -16,6 +16,14 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # bincode 3.0.0 is a deliberately non-compiling protest release.
+      - dependency-name: "bincode"
+        update-types: ["version-update:semver-major"]
+      # digest 0.11 can't be adopted until blake2 / ed25519-consensus move off the
+      # digest 0.10 `Digest` trait; bumping digest alone yields two incompatible traits.
+      - dependency-name: "digest"
+        versions: ["0.11.x"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
