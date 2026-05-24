@@ -131,6 +131,16 @@ pub fn build_dag_layer(
     references
 }
 
+/// Return the references at a round excluding the given leader's block.
+/// Convenience for tests that need to drive a "leader missed its proposal"
+/// scenario over an existing layer of refs.
+pub fn drop_leader(refs: &[BlockReference], leader: Authority) -> Vec<BlockReference> {
+    refs.iter()
+        .copied()
+        .filter(|reference| reference.authority != leader)
+        .collect()
+}
+
 /// Build a "split chain" DAG: starting from `support` (refs whose causal past
 /// includes some target leader L) and `blames` (refs that exclude L), advance
 /// the two chains in lockstep up to `target_round`. At each intermediate round,
