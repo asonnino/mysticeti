@@ -55,7 +55,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     for target_offset in 0..k {
         let mut storage = Storage::new_for_test(committee);
         let mut committer = Committer::new_for_test(committee, &storage, spec);
-        let l1 = committer.next_leader_round_after(0);
+        let l1 = committer.nth_leader_round(1);
         let target_round = l1 + protocol.wave_length;
         let target_leader = elector.elect_leader(target_round + target_offset as u64);
         let refs_at_target = build_dag(committee, &mut storage, None, target_round);

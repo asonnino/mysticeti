@@ -42,7 +42,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     let mut committer = Committer::new_for_test(committee, &storage, spec);
     let protocol = spec.to_protocol(committee).expect("valid protocol");
     let elector = LeaderElector::new(committee.len());
-    let l1 = committer.next_leader_round_after(0);
+    let l1 = committer.nth_leader_round(1);
     let target_offset = 0;
     let target_leader = elector.elect_leader(l1 + target_offset as u64);
 
