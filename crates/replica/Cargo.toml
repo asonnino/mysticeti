@@ -7,7 +7,7 @@ publish.workspace = true
 [dependencies]
 axum = "0.7"
 blake2 = "0.10.6"
-digest = "0.10.6"
+digest = "0.11.3"
 eyre = { workspace = true }
 dag.workspace = true
 consensus.workspace = true
