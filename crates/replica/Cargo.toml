@@ -9,10 +9,7 @@ axum = "0.7"
 blake2 = "0.10.6"
 digest = "0.10.6"
 eyre = { workspace = true }
-# `test-utils` is required for `Storage::new_for_tests`, used by
-# `StorageKind::Ephemeral`. Replace with a dedicated constructor once true
-# in-memory storage lands (see project_ephemeral_storage memory).
-dag = { workspace = true, features = ["test-utils"] }
+dag.workspace = true
 consensus.workspace = true
 humantime-serde = "1.1"
 minibytes = { workspace = true, default-features = false }
