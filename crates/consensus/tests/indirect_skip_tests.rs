@@ -53,7 +53,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     let elector = LeaderElector::new(committee.len());
 
     for target_offset in 0..k {
-        let mut storage = Storage::new_for_test(Authority::from(0u64), committee);
+        let mut storage = Storage::new_for_test(committee);
         let mut committer = Committer::new_for_test(committee, &storage, spec);
         let l1 = committer.next_leader_round_after(0);
         let target_round = l1 + protocol.wave_length;

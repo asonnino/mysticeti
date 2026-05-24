@@ -38,7 +38,7 @@ fn run_for_size(n: usize) {
 fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     let mut last_committed: Option<(RoundNumber, Authority)> = None;
 
-    let template_storage = Storage::new_for_test(Authority::from(0u64), committee);
+    let template_storage = Storage::new_for_test(committee);
     let template_committer = Committer::new_for_test(committee, &template_storage, spec);
     let protocol = spec.to_protocol(committee).expect("valid protocol");
     let k = protocol.leader_count.get();
@@ -48,7 +48,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
         let leader_round = template_committer.nth_leader_round(n);
         let dag_depth = template_committer.decision_round_for(leader_round);
 
-        let mut storage = Storage::new_for_test(Authority::from(0u64), committee);
+        let mut storage = Storage::new_for_test(committee);
         build_dag(committee, &mut storage, None, dag_depth);
         let mut committer = Committer::new_for_test(committee, &storage, spec);
 

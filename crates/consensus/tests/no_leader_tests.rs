@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use consensus::{committer::Committer, leader::LeaderElector, protocol::ConsensusProtocol};
 use dag::{
-    authority::Authority,
     committee::Committee,
     consensus::LeaderStatus,
     storage::Storage,
@@ -40,7 +39,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     let elector = LeaderElector::new(committee.len());
 
     for target_offset in 0..k {
-        let mut storage = Storage::new_for_test(Authority::from(0u64), committee);
+        let mut storage = Storage::new_for_test(committee);
         let mut committer = Committer::new_for_test(committee, &storage, spec);
         let l1 = committer.next_leader_round_after(0);
         let target_leader = elector.elect_leader(l1 + target_offset as u64);
