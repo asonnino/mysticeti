@@ -5,7 +5,7 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
-axum = "0.7"
+axum = "0.8"
 blake2 = "0.10.6"
 digest = "0.10.6"
 eyre = { workspace = true }
