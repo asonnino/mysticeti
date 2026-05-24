@@ -20,7 +20,7 @@ license = "Apache-2.0"
 publish = false
 
 [workspace.dependencies]
-bincode = "1.3.3"
+bincode = "3.0.0"
 consensus = { path = "crates/consensus" }
 dag = { path = "crates/dag" }
 minibytes = { path = "crates/minibytes", default-features = false }
