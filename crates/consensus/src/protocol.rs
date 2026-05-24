@@ -147,6 +147,36 @@ impl ConsensusProtocol {
     }
 }
 
+/// Test-only constructors.
+#[cfg(any(test, feature = "test-utils"))]
+impl ConsensusProtocol {
+    /// All protocols at the baseline matrix configuration used by the
+    /// per-scenario integration tests: `leader_count = 1`, `Orcaella.c = 0`,
+    /// both supported Mahi-Mahi wave lengths.
+    pub fn all_for_test() -> Vec<Self> {
+        let one = NonZeroUsize::new(1).unwrap();
+        vec![
+            Self::Mysticeti { leader_count: one },
+            Self::BlueBottle { leader_count: one },
+            Self::NemoNemo { leader_count: one },
+            Self::Orcaella {
+                leader_count: one,
+                c: 0,
+            },
+            Self::CordialMinersPartiallySynchronous,
+            Self::CordialMinersAsynchronous,
+            Self::MahiMahi {
+                leader_count: one,
+                wave_length: 4,
+            },
+            Self::MahiMahi {
+                leader_count: one,
+                wave_length: 5,
+            },
+        ]
+    }
+}
+
 /// Errors that can arise when building a [`Protocol`] from a [`ConsensusProtocol`].
 #[derive(Debug, thiserror::Error)]
 pub enum ProtocolError {

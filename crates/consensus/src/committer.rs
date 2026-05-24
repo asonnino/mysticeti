@@ -13,6 +13,11 @@ use dag::{
     storage::BlockReader,
 };
 
+#[cfg(any(test, feature = "test-utils"))]
+use crate::protocol::ConsensusProtocol;
+#[cfg(any(test, feature = "test-utils"))]
+use dag::storage::Storage;
+
 /// A universal committer uses a collection of committers to commit a sequence of leaders.
 /// It can be configured to use a combination of different commit strategies, including
 /// multi-leaders, backup leaders, and pipelines.
@@ -114,9 +119,25 @@ impl Committer {
     }
 }
 
-/// Test-only round-arithmetic queries.
+/// Test-only constructor and round-arithmetic queries.
 #[cfg(any(test, feature = "test-utils"))]
 impl Committer {
+    /// Build a [`Committer`] over the given storage from a [`ConsensusProtocol`]
+    /// spec. Mirrors [`Storage::new_for_test`] so integration tests can stamp
+    /// out fresh committers without depending on `BlockReader` or
+    /// [`Protocol::to_protocol`] internals.
+    pub fn new_for_test(
+        committee: &Arc<Committee>,
+        storage: &Storage,
+        spec: &ConsensusProtocol,
+    ) -> Self {
+        Self::new(
+            committee.clone(),
+            storage.block_reader().clone(),
+            spec.to_protocol(committee).expect("valid protocol"),
+        )
+    }
+
     /// True if any of this committer's base committers owns a leader at `round`.
     pub fn is_leader_round(&self, round: RoundNumber) -> bool {
         self.base_committers
@@ -129,6 +150,16 @@ impl Committer {
         (round + 1..)
             .find(|&r| self.is_leader_round(r))
             .expect("leader rounds are unbounded above")
+    }
+
+    /// The `n`-th leader round counting from 0 (1-indexed: `n=1` returns the
+    /// first non-genesis leader round).
+    pub fn nth_leader_round(&self, n: u64) -> RoundNumber {
+        let mut round = 0;
+        for _ in 0..n {
+            round = self.next_leader_round_after(round);
+        }
+        round
     }
 
     /// Voting round for the leader at `leader_round`.

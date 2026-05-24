@@ -1,0 +1,65 @@
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+//! `multiple_direct_commit` scenario across the protocol matrix.
+
+use std::sync::Arc;
+
+use consensus::{committer::Committer, leader::LeaderElector, protocol::ConsensusProtocol};
+use dag::{
+    authority::Authority,
+    block::RoundNumber,
+    committee::Committee,
+    consensus::LeaderStatus,
+    storage::Storage,
+    test_util::{build_dag, committee},
+};
+
+#[test]
+#[tracing_test::traced_test]
+fn multiple_direct_commit_n4() {
+    run_for_size(4);
+}
+
+#[test]
+#[tracing_test::traced_test]
+fn multiple_direct_commit_n10() {
+    run_for_size(10);
+}
+
+fn run_for_size(n: usize) {
+    let committee = committee(n);
+    for spec in ConsensusProtocol::all_for_test() {
+        run(&spec, &committee);
+    }
+}
+
+fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
+    let mut last_committed: Option<(RoundNumber, Authority)> = None;
+
+    let template_storage = Storage::new_for_test(Authority::from(0u64), committee);
+    let template_committer = Committer::new_for_test(committee, &template_storage, spec);
+
+    for n in 1..=10u64 {
+        let leader_round = template_committer.nth_leader_round(n);
+        let dag_depth = template_committer.decision_round_for(leader_round);
+
+        let mut storage = Storage::new_for_test(Authority::from(0u64), committee);
+        build_dag(committee, &mut storage, None, dag_depth);
+        let mut committer = Committer::new_for_test(committee, &storage, spec);
+
+        let sequence = committer.try_commit(last_committed).collect::<Vec<_>>();
+        tracing::info!("[{spec}] Commit sequence at n={n}: {sequence:?}");
+
+        assert_eq!(sequence.len(), 1, "[{spec}] n={n} expected 1 decision");
+        let leader = LeaderElector::new(committee.len()).elect_leader(leader_round);
+        match &sequence[0] {
+            LeaderStatus::DirectCommit(block) | LeaderStatus::IndirectCommit(block) => {
+                assert_eq!(block.author(), leader, "[{spec}] n={n}");
+            }
+            other => panic!("[{spec}] n={n} expected a committed leader, got {other:?}"),
+        }
+        let last = sequence.into_iter().last().unwrap();
+        last_committed = Some((last.round(), last.authority()));
+    }
+}
