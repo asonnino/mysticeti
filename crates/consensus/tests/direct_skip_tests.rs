@@ -41,13 +41,13 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     for target_offset in 0..k {
         let mut storage = Storage::new_for_test(committee);
         let mut committer = Committer::new_for_test(committee, &storage, spec);
-        let l1 = committer.next_leader_round_after(0);
+        let l1 = committer.nth_leader_round(1);
         let target_leader = elector.elect_leader(l1 + target_offset as u64);
 
-        let refs_at_leader = build_dag(committee, &mut storage, None, l1);
-        let refs_without_target = drop_leader(&refs_at_leader, target_leader);
-        let decision = committer.decision_round_for(l1);
-        build_dag(committee, &mut storage, Some(refs_without_target), decision);
+        let l1_votes = build_dag(committee, &mut storage, None, l1);
+        let l1_blames = drop_leader(&l1_votes, target_leader);
+        let decision_round = committer.decision_round_for(l1);
+        build_dag(committee, &mut storage, Some(l1_blames), decision_round);
 
         let sequence = committer.try_commit(None).collect::<Vec<_>>();
         tracing::info!("[{spec}] target_offset={target_offset} sequence: {sequence:?}");
@@ -61,8 +61,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
             let expected = elector.elect_leader(l1 + offset as u64);
             if offset == target_offset {
                 match decision {
-                    LeaderStatus::DirectSkip(actual, round)
-                    | LeaderStatus::IndirectSkip(actual, round) => {
+                    LeaderStatus::DirectSkip(actual, round) => {
                         assert_eq!(*actual, expected, "[{spec}] target_offset={target_offset}");
                         assert_eq!(*round, l1, "[{spec}] target_offset={target_offset}");
                     }
@@ -73,7 +72,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
                 }
             } else {
                 match decision {
-                    LeaderStatus::DirectCommit(block) | LeaderStatus::IndirectCommit(block) => {
+                    LeaderStatus::DirectCommit(block) => {
                         assert_eq!(
                             block.author(),
                             expected,

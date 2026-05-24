@@ -35,7 +35,7 @@ fn run_for_size(n: usize) {
 fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     let template_storage = Storage::new_for_test(committee);
     let template_committer = Committer::new_for_test(committee, &template_storage, spec);
-    let l1 = template_committer.next_leader_round_after(0);
+    let l1 = template_committer.nth_leader_round(1);
     let first_commit_round = template_committer.decision_round_for(l1);
 
     for r in 0..first_commit_round {

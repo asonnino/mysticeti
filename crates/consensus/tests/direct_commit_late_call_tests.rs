@@ -39,8 +39,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     let mut committer = Committer::new_for_test(committee, &storage, spec);
     let protocol = spec.to_protocol(committee).expect("valid protocol");
     let k = protocol.leader_count.get();
-    let leader_rounds: Vec<RoundNumber> =
-        (1..=10u64).map(|n| committer.nth_leader_round(n)).collect();
+    let leader_rounds: Vec<RoundNumber> = (1..=10).map(|n| committer.nth_leader_round(n)).collect();
     let dag_depth = committer.decision_round_for(*leader_rounds.last().unwrap());
     build_dag(committee, &mut storage, None, dag_depth);
 
@@ -59,7 +58,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
         for (offset, decision) in chunk.iter().enumerate() {
             let expected = elector.elect_leader(leader_round + offset as u64);
             match decision {
-                LeaderStatus::DirectCommit(block) | LeaderStatus::IndirectCommit(block) => {
+                LeaderStatus::DirectCommit(block) => {
                     assert_eq!(
                         block.author(),
                         expected,
