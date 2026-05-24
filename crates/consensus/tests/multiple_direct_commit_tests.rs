@@ -44,7 +44,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     let k = protocol.leader_count.get();
     let elector = LeaderElector::new(committee.len());
 
-    for n in 1..=10u64 {
+    for n in 1..=10 {
         let leader_round = template_committer.nth_leader_round(n);
         let dag_depth = template_committer.decision_round_for(leader_round);
 
@@ -59,7 +59,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
         for (offset, decision) in sequence.iter().enumerate() {
             let expected = elector.elect_leader(leader_round + offset as u64);
             match decision {
-                LeaderStatus::DirectCommit(block) | LeaderStatus::IndirectCommit(block) => {
+                LeaderStatus::DirectCommit(block) => {
                     assert_eq!(block.author(), expected, "[{spec}] n={n} offset={offset}");
                 }
                 other => panic!("[{spec}] n={n} offset={offset} expected commit, got {other:?}"),

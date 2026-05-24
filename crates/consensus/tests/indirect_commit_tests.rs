@@ -21,8 +21,6 @@ use std::sync::Arc;
 
 use consensus::{committer::Committer, leader::LeaderElector, protocol::ConsensusProtocol};
 use dag::{
-    authority::Authority,
-    block::BlockReference,
     committee::Committee,
     consensus::LeaderStatus,
     storage::Storage,
@@ -60,19 +58,19 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
         let l1 = committer.nth_leader_round(1);
         let target_leader = elector.elect_leader(l1 + target_offset as u64);
 
-        let refs_at_leader = build_dag(committee, &mut storage, None, l1);
-        let refs_without_target = drop_leader(&refs_at_leader, target_leader);
+        let l1_votes = build_dag(committee, &mut storage, None, l1);
+        let l1_blames = drop_leader(&l1_votes, target_leader);
         let voting_round = committer.voting_round_for(l1);
         let decision_round = committer.decision_round_for(l1);
 
-        let top_refs: Vec<BlockReference> = if protocol.wave_length == 2 {
+        let top_refs = if protocol.wave_length == 2 {
             let voters_count = (protocol.direct_commit_quorum - 1) as usize;
             let blamers_count = committee.len() - voters_count;
             let (supports, blames) = build_split_chain(
                 committee,
                 &mut storage,
-                refs_at_leader,
-                refs_without_target,
+                l1_votes,
+                l1_blames,
                 voting_round,
                 blamers_count,
             );
@@ -82,14 +80,14 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
             let (supports, blames) = build_split_chain(
                 committee,
                 &mut storage,
-                refs_at_leader,
-                refs_without_target,
+                l1_votes,
+                l1_blames,
                 voting_round,
                 blamers_count,
             );
             let certifiers_count = (protocol.direct_commit_quorum - 1) as usize;
             let mut decision_refs = Vec::new();
-            let certifier_connections: Vec<(Authority, Vec<BlockReference>)> = committee
+            let certifier_connections = committee
                 .authorities()
                 .take(certifiers_count)
                 .map(|authority| (authority, supports.clone()))
@@ -101,7 +99,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
                 .chain(supports)
                 .take(protocol.direct_commit_quorum as usize)
                 .collect();
-            let non_certifier_connections: Vec<(Authority, Vec<BlockReference>)> = committee
+            let non_certifier_connections = committee
                 .authorities()
                 .skip(certifiers_count)
                 .map(|authority| (authority, mixed_parents.clone()))
@@ -123,18 +121,34 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
         );
         for (offset, decision) in sequence.iter().take(k).enumerate() {
             let expected = elector.elect_leader(l1 + offset as u64);
-            match decision {
-                LeaderStatus::DirectCommit(block) | LeaderStatus::IndirectCommit(block) => {
-                    assert_eq!(
-                        block.author(),
-                        expected,
-                        "[{spec}] target_offset={target_offset} offset={offset}"
-                    );
+            if offset == target_offset {
+                match decision {
+                    LeaderStatus::IndirectCommit(block) => {
+                        assert_eq!(
+                            block.author(),
+                            expected,
+                            "[{spec}] target_offset={target_offset}"
+                        );
+                    }
+                    other => panic!(
+                        "[{spec}] target_offset={target_offset} expected IndirectCommit at \
+                        offset {offset}, got {other:?}"
+                    ),
                 }
-                other => panic!(
-                    "[{spec}] target_offset={target_offset} offset={offset} \
-                    expected commit, got {other:?}"
-                ),
+            } else {
+                match decision {
+                    LeaderStatus::DirectCommit(block) => {
+                        assert_eq!(
+                            block.author(),
+                            expected,
+                            "[{spec}] target_offset={target_offset} offset={offset}"
+                        );
+                    }
+                    other => panic!(
+                        "[{spec}] target_offset={target_offset} expected DirectCommit at \
+                        offset {offset}, got {other:?}"
+                    ),
+                }
             }
         }
     }
