@@ -15,7 +15,7 @@ futures = { workspace = true }
 glob = "0.3.1"
 dag.workspace = true
 replica.workspace = true
-prometheus-http-query = { version = "0.8", default-features = false, features = [
+prometheus-http-query = { version = "0.9", default-features = false, features = [
   "rustls-tls",
 ] }
 rand = { workspace = true }
