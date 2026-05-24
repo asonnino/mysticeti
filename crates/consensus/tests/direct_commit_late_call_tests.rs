@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use consensus::{committer::Committer, leader::LeaderElector, protocol::ConsensusProtocol};
 use dag::{
-    authority::Authority,
     block::RoundNumber,
     committee::Committee,
     consensus::LeaderStatus,
@@ -36,7 +35,7 @@ fn run_for_size(n: usize) {
 }
 
 fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
-    let mut storage = Storage::new_for_test(Authority::from(0u64), committee);
+    let mut storage = Storage::new_for_test(committee);
     let mut committer = Committer::new_for_test(committee, &storage, spec);
     let protocol = spec.to_protocol(committee).expect("valid protocol");
     let k = protocol.leader_count.get();

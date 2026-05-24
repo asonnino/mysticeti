@@ -20,7 +20,7 @@ fn direct_commit() {
     let leader_elector = LeaderElector::new(committee.len());
     let wave_length = 3;
     for leader_count in 1..committee.len() {
-        let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
+        let mut storage = Storage::new_for_test(&committee);
         build_dag(&committee, &mut storage, None, 5);
 
         let mut committer = Committer::new(
@@ -63,7 +63,7 @@ fn direct_commit() {
 fn idempotence() {
     let committee = committee(4);
     for leader_count in 1..committee.len() {
-        let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
+        let mut storage = Storage::new_for_test(&committee);
         build_dag(&committee, &mut storage, None, 5);
 
         let mut committer = Committer::new(
@@ -108,7 +108,7 @@ fn multiple_direct_commit() {
     let mut last_committed: Option<(RoundNumber, Authority)> = None;
     for n in 1..=10 {
         let enough_blocks = wave_length * (n + 1) - 1;
-        let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
+        let mut storage = Storage::new_for_test(&committee);
         build_dag(&committee, &mut storage, None, enough_blocks);
 
         let mut committer = Committer::new(
@@ -163,7 +163,7 @@ fn direct_commit_partial_round() {
     let last_committed = Some((first_leader_round, first_leader));
 
     let enough_blocks = 2 * wave_length - 1;
-    let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
+    let mut storage = Storage::new_for_test(&committee);
     build_dag(&committee, &mut storage, None, enough_blocks);
 
     let mut committer = Committer::new(
@@ -209,7 +209,7 @@ fn direct_commit_late_call() {
 
     let n = 10;
     let enough_blocks = wave_length * (n + 1) - 1;
-    let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
+    let mut storage = Storage::new_for_test(&committee);
     build_dag(&committee, &mut storage, None, enough_blocks);
 
     let mut committer = Committer::new(
@@ -259,7 +259,7 @@ fn no_genesis_commit() {
 
     let first_commit_round = 2 * wave_length - 1;
     for r in 0..first_commit_round {
-        let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
+        let mut storage = Storage::new_for_test(&committee);
         build_dag(&committee, &mut storage, None, r);
 
         let mut committer = Committer::new(
@@ -295,7 +295,7 @@ fn no_leader() {
     let wave_length = 3;
     let leader_count = strong_quorum as usize;
 
-    let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
+    let mut storage = Storage::new_for_test(&committee);
 
     // Add enough blocks to finish wave 0.
     let decision_round_0 = wave_length - 1;
@@ -369,7 +369,7 @@ fn direct_skip() {
     let wave_length = 3;
     let leader_count = strong_quorum as usize;
 
-    let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
+    let mut storage = Storage::new_for_test(&committee);
 
     // Add enough blocks to reach the first leader of wave 1.
     let leader_round_1 = wave_length;
@@ -446,7 +446,7 @@ fn indirect_commit() {
     let wave_length = 3;
     let leader_count = strong_quorum as usize;
 
-    let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
+    let mut storage = Storage::new_for_test(&committee);
 
     // Add enough blocks to reach the leaders of wave 1.
     let leader_round_1 = wave_length;
@@ -557,7 +557,7 @@ fn indirect_skip() {
     let wave_length = 3;
     let leader_count = strong_quorum as usize;
 
-    let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
+    let mut storage = Storage::new_for_test(&committee);
 
     // Add enough blocks to reach the leaders of wave 2.
     let leader_round_2 = 2 * wave_length;
@@ -686,7 +686,7 @@ fn undecided() {
     let wave_length = 3;
     let leader_count = strong_quorum as usize;
 
-    let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
+    let mut storage = Storage::new_for_test(&committee);
 
     // Add enough blocks to reach the leaders of wave 1.
     let leader_round_1 = wave_length;

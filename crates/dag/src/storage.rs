@@ -55,9 +55,9 @@ impl Storage {
     }
 
     #[cfg(any(test, feature = "test-utils"))]
-    pub fn new_for_test(authority: Authority, committee: &Committee) -> Self {
+    pub fn new_for_test(committee: &Committee) -> Self {
         let metrics = Metrics::new_for_test(committee.len());
-        Self::ephemeral(authority, metrics, committee).0
+        Self::ephemeral(Authority::default(), metrics, committee).0
     }
 
     pub(crate) fn write_payload(&mut self, payload: &[u8]) -> WalPosition {
@@ -124,7 +124,6 @@ impl Storage {
 #[cfg(test)]
 mod tests {
     use crate::{
-        authority::Authority,
         committee::Committee,
         storage::{Storage, block_store::CommitData},
     };
@@ -132,7 +131,7 @@ mod tests {
     #[test]
     fn iter_commits_yields_every_batch_in_order() {
         let committee = Committee::new_test(vec![1; 4]);
-        let mut storage = Storage::new_for_test(Authority::from(0u64), &committee);
+        let mut storage = Storage::new_for_test(&committee);
 
         let batch_one = CommitData::new_for_test(&[(0, 1), (1, 2)]);
         let batch_two = CommitData::new_for_test(&[(2, 3)]);
@@ -159,7 +158,7 @@ mod tests {
     #[test]
     fn iter_commits_is_empty_for_fresh_storage() {
         let committee = Committee::new_test(vec![1; 4]);
-        let storage = Storage::new_for_test(Authority::from(0u64), &committee);
+        let storage = Storage::new_for_test(&committee);
         assert_eq!(storage.iter_commits().count(), 0);
     }
 }
