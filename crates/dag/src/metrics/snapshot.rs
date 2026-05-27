@@ -60,14 +60,14 @@ impl MetricsSnapshot {
         let mut total = 0.0;
         for metric in family.get_metric() {
             let is_commit = metric.get_label().iter().any(|l| {
-                l.get_name() == LABEL_COMMIT_TYPE
+                l.name() == LABEL_COMMIT_TYPE
                     && matches!(
-                        l.get_value(),
+                        l.value(),
                         COMMIT_TYPE_DIRECT_COMMIT | COMMIT_TYPE_INDIRECT_COMMIT,
                     )
             });
-            if is_commit && metric.has_counter() {
-                total += metric.get_counter().get_value();
+            if is_commit && metric.counter.is_some() {
+                total += metric.counter.value();
             }
         }
         total as u64
@@ -107,17 +107,17 @@ impl MetricsSnapshot {
                 && label_values.iter().all(|(key, value)| {
                     actual
                         .iter()
-                        .any(|l| l.get_name() == *key && l.get_value() == *value)
+                        .any(|l| l.name() == *key && l.value() == *value)
                 });
             if !labels_match {
                 continue;
             }
-            if metric.has_counter() {
-                return metric.get_counter().get_value();
-            } else if metric.has_gauge() {
-                return metric.get_gauge().get_value();
-            } else if metric.has_untyped() {
-                return metric.get_untyped().get_value();
+            if metric.counter.is_some() {
+                return metric.counter.value();
+            } else if metric.gauge.is_some() {
+                return metric.gauge.value();
+            } else if metric.untyped.is_some() {
+                return metric.untyped.value();
             }
         }
         0.0
@@ -132,7 +132,7 @@ impl MetricsSnapshot {
         let p = p.clamp(0.0, 1.0);
         let family = self.find_family(name)?;
         for metric in family.get_metric() {
-            if !metric.has_histogram() {
+            if metric.histogram.is_none() {
                 continue;
             }
             let histogram = metric.get_histogram();
@@ -149,8 +149,8 @@ impl MetricsSnapshot {
             let mut prev_count = 0_u64;
             let mut last_finite_bound = 0.0_f64;
             for bucket in buckets {
-                let upper = bucket.get_upper_bound();
-                let count = bucket.get_cumulative_count();
+                let upper = bucket.upper_bound();
+                let count = bucket.cumulative_count();
                 if count as f64 >= target {
                     let high = if upper.is_finite() {
                         upper
@@ -187,7 +187,7 @@ impl MetricsSnapshot {
     pub fn histogram_sum_and_count(&self, name: &str) -> Option<(f64, u64)> {
         let family = self.find_family(name)?;
         for metric in family.get_metric() {
-            if !metric.has_histogram() {
+            if metric.histogram.is_none() {
                 continue;
             }
             let histogram = metric.get_histogram();
@@ -197,7 +197,7 @@ impl MetricsSnapshot {
     }
 
     fn find_family(&self, name: &str) -> Option<&MetricFamily> {
-        self.families.iter().find(|f| f.get_name() == name)
+        self.families.iter().find(|f| f.name() == name)
     }
 }
 
@@ -282,16 +282,16 @@ mod test {
         )
         .unwrap();
         counter
-            .with_label_values(&[&authority, COMMIT_TYPE_DIRECT_COMMIT])
+            .with_label_values(&[authority.as_str(), COMMIT_TYPE_DIRECT_COMMIT])
             .inc();
         counter
-            .with_label_values(&[&authority, COMMIT_TYPE_INDIRECT_COMMIT])
+            .with_label_values(&[authority.as_str(), COMMIT_TYPE_INDIRECT_COMMIT])
             .inc();
         counter
-            .with_label_values(&[&authority, COMMIT_TYPE_DIRECT_SKIP])
+            .with_label_values(&[authority.as_str(), COMMIT_TYPE_DIRECT_SKIP])
             .inc();
         counter
-            .with_label_values(&[&authority, COMMIT_TYPE_INDIRECT_SKIP])
+            .with_label_values(&[authority.as_str(), COMMIT_TYPE_INDIRECT_SKIP])
             .inc();
         let snapshot = collect_snapshot(&registry);
         assert_eq!(snapshot.total_committed_leaders(), 2);

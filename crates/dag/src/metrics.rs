@@ -159,7 +159,7 @@ impl Metrics {
         let authority = status.authority().to_string();
         self.coarse
             .committed_leaders_total
-            .with_label_values(&[&authority, label])
+            .with_label_values(&[authority.as_str(), label])
             .inc();
     }
 
@@ -187,7 +187,7 @@ impl Metrics {
         let label = authority.to_string();
         self.coarse
             .block_sync_requests_received
-            .with_label_values(&[&label, fulfilled.as_label()])
+            .with_label_values(&[label.as_str(), fulfilled.as_label()])
             .inc();
     }
 
