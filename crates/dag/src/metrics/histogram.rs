@@ -128,19 +128,19 @@ impl<T: HistogramValue> VecHistogramReporter<T> {
                 continue;
             };
             self.gauge
-                .with_label_values(&[label, "p50"])
+                .with_label_values(&[label.as_str(), "p50"])
                 .set(p50.as_prometheus_metric());
             self.gauge
-                .with_label_values(&[label, "p90"])
+                .with_label_values(&[label.as_str(), "p90"])
                 .set(p90.as_prometheus_metric());
             self.gauge
-                .with_label_values(&[label, "p99"])
+                .with_label_values(&[label.as_str(), "p99"])
                 .set(p99.as_prometheus_metric());
             self.gauge
-                .with_label_values(&[label, "sum"])
+                .with_label_values(&[label.as_str(), "sum"])
                 .set(histogram.sum().as_prometheus_metric());
             self.gauge
-                .with_label_values(&[label, "count"])
+                .with_label_values(&[label.as_str(), "count"])
                 .set(histogram.count().as_prometheus_metric());
         }
     }
