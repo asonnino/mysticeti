@@ -145,22 +145,24 @@ fn crash_one_node_n9() {
 #[test]
 fn partition_at_quorum_n9() {
     // Majority has exactly 7 nodes == commit threshold — just barely makes progress.
-    let result = run(SimulationConfig {
-        committee_size: 9,
-        topology: NetworkTopology::Partition(vec![vec![0, 1], vec![2, 3, 4, 5, 6, 7, 8]]),
-        duration_secs: 40,
-        replica_parameters: ReplicaParameters {
-            consensus: orcaella(1, 1, 2),
+    assert_progress(
+        &run(SimulationConfig {
+            committee_size: 9,
+            topology: NetworkTopology::Partition(vec![vec![0, 1], vec![2, 3, 4, 5, 6, 7, 8]]),
+            duration_secs: 40,
+            replica_parameters: ReplicaParameters {
+                consensus: orcaella(1, 1, 2),
+                ..Default::default()
+            },
             ..Default::default()
-        },
-        ..Default::default()
-    });
-    assert_ne!(result.outcome, Outcome::Diverged);
+        }),
+        10,
+    );
 }
 
 #[test]
 fn partition_below_quorum_n9() {
-    // Majority has 6 nodes < commit=7 — neither side can commit; safety must hold.
+    // Majority has 6 nodes < commit=7 — neither side can commit.
     let result = run(SimulationConfig {
         committee_size: 9,
         topology: NetworkTopology::Partition(vec![vec![0, 1, 2], vec![3, 4, 5, 6, 7, 8]]),
@@ -171,7 +173,7 @@ fn partition_below_quorum_n9() {
         },
         ..Default::default()
     });
-    assert_ne!(result.outcome, Outcome::Diverged);
+    assert_eq!(result.outcome, Outcome::NoProgress);
 }
 
 #[test]
