@@ -2,11 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Orcaella simulation tests.
-//!
-//! Covers happy-path, crash faults (OneDown), partition boundary cases,
-//! non-optimal (k>0) committee sizes, multi-leader, and feasibility errors.
-//! Byzantine equivocation is not injectable with the current simulator and
-//! is out of scope here.
 
 use std::num::NonZeroUsize;
 
@@ -38,11 +33,12 @@ fn assert_progress(result: &RunResult<SimulationConfig>, min_commits: u64) {
 }
 
 #[test]
-fn happy_path_crash_only_n4() {
-    // n=4, f=0, c=1 → commit=3, skip=3, anchor=2 (tight)
+fn happy_path_crash_only_n3() {
+    // n=3, f=0, c=1 → commit=2, skip=3, anchor=1 — CFT minimum (n=2c+1)
+    // Direct skip is disabled (s=n); progress relies on indirect commit.
     assert_progress(
         &run(SimulationConfig {
-            committee_size: 4,
+            committee_size: 3,
             duration_secs: 30,
             replica_parameters: ReplicaParameters {
                 consensus: orcaella(0, 1, 2),
@@ -89,11 +85,11 @@ fn happy_path_mixed_n9() {
 }
 
 #[test]
-fn crash_one_node_n4() {
-    // commit=3, 3 active nodes — exactly at threshold
+fn crash_one_node_n3() {
+    // n=3, f=0, c=1: crash 1 node → 2 active == commit threshold
     assert_progress(
         &run(SimulationConfig {
-            committee_size: 4,
+            committee_size: 3,
             topology: NetworkTopology::OneDown(0),
             duration_secs: 30,
             replica_parameters: ReplicaParameters {
@@ -261,10 +257,16 @@ fn multi_leader_4_n9() {
 
 #[test]
 fn infeasible_params_rejected() {
-    // n=4, f=1, c=0: 5*1 + 3*0 + 1 = 6 > 4 — must be rejected
+    // BFT: n=4, f=1, c=0 needs n >= 5*1+3*0+1 = 6 — rejected
     let result = Protocol::orcaella(4, 1, 0, NonZeroUsize::new(1).unwrap());
     assert!(matches!(
         result,
         Err(ProtocolError::OrcaellaFaultBoundViolated { n: 4, f: 1, c: 0 })
+    ));
+    // CFT: n=2, f=0, c=1 needs n >= 2*1+1 = 3 — rejected
+    let result = Protocol::orcaella(2, 0, 1, NonZeroUsize::new(1).unwrap());
+    assert!(matches!(
+        result,
+        Err(ProtocolError::OrcaellaFaultBoundViolated { n: 2, f: 0, c: 1 })
     ));
 }
