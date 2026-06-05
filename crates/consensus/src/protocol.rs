@@ -33,7 +33,7 @@ pub enum ConsensusProtocol {
         /// Byzantine-fault stake to tolerate.
         f: Stake,
         /// Crash-only fault stake to tolerate (on top of `f`); requires
-        /// `5f + 3c + 1 <= total_stake`.
+        /// `n >= 5f+3c+1` for `f > 0`, or `n >= 2c+1` for `f = 0`.
         c: Stake,
     },
     MahiMahi {
@@ -204,7 +204,7 @@ impl ConsensusProtocol {
 /// Errors that can arise when building a [`Protocol`] from a [`ConsensusProtocol`].
 #[derive(Debug, thiserror::Error)]
 pub enum ProtocolError {
-    #[error("Orcaella requires 5f + 3c + 1 <= n (n={n}, f={f}, c={c})")]
+    #[error("Orcaella fault bound violated (n={n}, f={f}, c={c})")]
     OrcaellaFaultBoundViolated { n: Stake, f: Stake, c: Stake },
     #[error("Mahi-Mahi requires wave_length in {{4, 5}}, got {wave_length}")]
     MahiMahiInvalidWaveLength { wave_length: RoundNumber },
@@ -319,7 +319,8 @@ impl Protocol {
         c: Stake,
         leader_count: NonZeroUsize,
     ) -> Result<Self, ProtocolError> {
-        if 5 * f + 3 * c + 1 > total_stake {
+        let min_n = if f == 0 { 2 * c + 1 } else { 5 * f + 3 * c + 1 };
+        if min_n > total_stake {
             return Err(ProtocolError::OrcaellaFaultBoundViolated {
                 n: total_stake,
                 f,
