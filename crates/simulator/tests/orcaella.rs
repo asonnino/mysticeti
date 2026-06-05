@@ -73,7 +73,7 @@ fn happy_path_bft_n6() {
 
 #[test]
 fn happy_path_mixed_n9() {
-    // n=9, f=1, c=1 → commit=7, skip=7, anchor=5 (tight)
+    // n=9, f=1, c=1 → commit=7, skip=7, anchor=4 (tight)
     assert_progress(
         &run(SimulationConfig {
             committee_size: 9,
