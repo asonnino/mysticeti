@@ -296,8 +296,8 @@ impl RemoteBenchmarkDriver {
         let start = Instant::now();
         let outcome = loop {
             tokio::select! {
-                now = metrics_interval.tick() => {
-                    let elapsed = now.duration_since(start);
+                _ = metrics_interval.tick() => {
+                    let elapsed = start.elapsed();
                     self.progress.set_elapsed(elapsed);
                     if let Some(collector) = collector.as_mut() {
                         if let Err(error) = collector.collect().await {
