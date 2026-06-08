@@ -89,7 +89,7 @@ pub enum SshError {
     WaitTimeout { timeout: Duration },
 }
 
-pub type MonitorResult<T> = Result<T, MonitorError>;
+pub(crate) type MonitorResult<T> = Result<T, MonitorError>;
 
 #[derive(thiserror::Error, Debug)]
 pub enum MonitorError {
