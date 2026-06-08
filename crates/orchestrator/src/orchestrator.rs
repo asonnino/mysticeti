@@ -485,8 +485,8 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
 
         Ok(log_parsers
             .into_iter()
-            .max()
+            .max_by_key(|a| (a.node_panic, a.client_panic, a.node_errors, a.client_errors))
             .expect("At least one log parser")
-            .summarise())
+            .summarize())
     }
 }
