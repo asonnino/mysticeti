@@ -143,46 +143,61 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
         .collect();
         fs::create_dir_all(&path).expect("Failed to create log directory");
 
-        let client_futures = clients.iter().enumerate().map(|(index, instance)| {
-            let ssh_manager = self.ssh_manager.clone();
-            let path = path.clone();
-            let address = instance.ssh_address();
-            async move {
-                let connection = ssh_manager.connect(address).await?;
-                let content = connection.download("client.log").await?;
-                let log_file: PathBuf = [path, format!("client-{index}.log").into()]
-                    .iter()
-                    .collect();
-                fs::write(&log_file, content.as_bytes()).expect("Cannot write log file");
-                let mut parser = LogsAnalyzer::default();
-                parser.set_client_errors(&content);
-                TestbedResult::Ok(parser)
-            }
-        });
+        let (client_parsers, node_parsers) = tokio::try_join!(
+            fetch_logs(
+                &clients,
+                self.ssh_manager.clone(),
+                path.clone(),
+                "client.log",
+                "client",
+                LogsAnalyzer::set_client_errors,
+            ),
+            fetch_logs(
+                &nodes,
+                self.ssh_manager.clone(),
+                path,
+                "node.log",
+                "node",
+                LogsAnalyzer::set_node_errors,
+            ),
+        )?;
 
-        let node_futures = nodes.iter().enumerate().map(|(index, instance)| {
-            let ssh_manager = self.ssh_manager.clone();
-            let path = path.clone();
-            let address = instance.ssh_address();
-            async move {
-                let connection = ssh_manager.connect(address).await?;
-                let content = connection.download("node.log").await?;
-                let log_file: PathBuf = [path, format!("node-{index}.log").into()].iter().collect();
-                fs::write(&log_file, content.as_bytes()).expect("Cannot write log file");
-                let mut parser = LogsAnalyzer::default();
-                parser.set_node_errors(&content);
-                TestbedResult::Ok(parser)
-            }
-        });
-
-        let (client_parsers, node_parsers) =
-            tokio::try_join!(try_join_all(client_futures), try_join_all(node_futures))?;
-        let log_parsers: Vec<_> = client_parsers.into_iter().chain(node_parsers).collect();
-
-        Ok(log_parsers
+        Ok(client_parsers
             .into_iter()
+            .chain(node_parsers)
             .max_by_key(|a| (a.node_panic, a.client_panic, a.node_errors, a.client_errors))
             .expect("At least one log parser")
             .summarize())
     }
+}
+
+/// Download one log file per instance in parallel, write each to `log_dir`, and
+/// return a [`LogsAnalyzer`] per instance. `set_errors` is a method pointer
+/// (`LogsAnalyzer::set_client_errors` or `LogsAnalyzer::set_node_errors`) that
+/// applies the content to the analyser.
+async fn fetch_logs(
+    instances: &[Instance],
+    ssh_manager: crate::ssh::SshConnectionManager,
+    log_dir: PathBuf,
+    remote_file: &'static str,
+    local_prefix: &'static str,
+    set_errors: fn(&mut LogsAnalyzer, &str),
+) -> TestbedResult<Vec<LogsAnalyzer>> {
+    try_join_all(instances.iter().enumerate().map(|(index, instance)| {
+        let ssh_manager = ssh_manager.clone();
+        let path = log_dir.clone();
+        let address = instance.ssh_address();
+        async move {
+            let connection = ssh_manager.connect(address).await?;
+            let content = connection.download(remote_file).await?;
+            let log_file: PathBuf = [path, format!("{local_prefix}-{index}.log").into()]
+                .iter()
+                .collect();
+            fs::write(&log_file, content.as_bytes()).expect("Cannot write log file");
+            let mut parser = LogsAnalyzer::default();
+            set_errors(&mut parser, &content);
+            TestbedResult::Ok(parser)
+        }
+    }))
+    .await
 }
