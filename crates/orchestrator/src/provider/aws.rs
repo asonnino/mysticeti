@@ -384,7 +384,12 @@ impl ServerProviderClient for AwsClient {
         Ok(())
     }
 
-    async fn register_ssh_public_key(&self, public_key: String) -> CloudProviderResult<()> {
+    async fn register_ssh_public_key(&self, public_key: Option<String>) -> CloudProviderResult<()> {
+        let public_key = public_key.ok_or_else(|| {
+            CloudProviderError::SshKeyNotFound(
+                self.settings.ssh_private_key_file.display().to_string(),
+            )
+        })?;
         for client in self.clients.values() {
             let request = client
                 .import_key_pair()
