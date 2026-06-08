@@ -3,6 +3,8 @@
 
 use std::{fs, path::PathBuf};
 
+use futures::future::try_join_all;
+
 use crate::{
     benchmark::Parameters,
     error::TestbedResult,
@@ -141,37 +143,41 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
         .collect();
         fs::create_dir_all(&path).expect("Failed to create log directory");
 
-        // NOTE: Our ssh library does not seem to be able to transfers files in parallel reliably.
-        let mut log_parsers = Vec::new();
+        let client_futures = clients.iter().enumerate().map(|(index, instance)| {
+            let ssh_manager = self.ssh_manager.clone();
+            let path = path.clone();
+            let address = instance.ssh_address();
+            async move {
+                let connection = ssh_manager.connect(address).await?;
+                let content = connection.download("client.log").await?;
+                let log_file: PathBuf = [path, format!("client-{index}.log").into()]
+                    .iter()
+                    .collect();
+                fs::write(&log_file, content.as_bytes()).expect("Cannot write log file");
+                let mut parser = LogsAnalyzer::default();
+                parser.set_client_errors(&content);
+                TestbedResult::Ok(parser)
+            }
+        });
 
-        for (index, instance) in clients.iter().enumerate() {
-            let connection = self.ssh_manager.connect(instance.ssh_address()).await?;
-            let client_log_content = connection.download("client.log").await?;
+        let node_futures = nodes.iter().enumerate().map(|(index, instance)| {
+            let ssh_manager = self.ssh_manager.clone();
+            let path = path.clone();
+            let address = instance.ssh_address();
+            async move {
+                let connection = ssh_manager.connect(address).await?;
+                let content = connection.download("node.log").await?;
+                let log_file: PathBuf = [path, format!("node-{index}.log").into()].iter().collect();
+                fs::write(&log_file, content.as_bytes()).expect("Cannot write log file");
+                let mut parser = LogsAnalyzer::default();
+                parser.set_node_errors(&content);
+                TestbedResult::Ok(parser)
+            }
+        });
 
-            let client_log_file = [path.clone(), format!("client-{index}.log").into()]
-                .iter()
-                .collect::<PathBuf>();
-            fs::write(&client_log_file, client_log_content.as_bytes())
-                .expect("Cannot write log file");
-
-            let mut log_parser = LogsAnalyzer::default();
-            log_parser.set_client_errors(&client_log_content);
-            log_parsers.push(log_parser)
-        }
-
-        for (index, instance) in nodes.iter().enumerate() {
-            let connection = self.ssh_manager.connect(instance.ssh_address()).await?;
-            let node_log_content = connection.download("node.log").await?;
-
-            let node_log_file = [path.clone(), format!("node-{index}.log").into()]
-                .iter()
-                .collect::<PathBuf>();
-            fs::write(&node_log_file, node_log_content.as_bytes()).expect("Cannot write log file");
-
-            let mut log_parser = LogsAnalyzer::default();
-            log_parser.set_node_errors(&node_log_content);
-            log_parsers.push(log_parser)
-        }
+        let (client_parsers, node_parsers) =
+            tokio::try_join!(try_join_all(client_futures), try_join_all(node_futures))?;
+        let log_parsers: Vec<_> = client_parsers.into_iter().chain(node_parsers).collect();
 
         Ok(log_parsers
             .into_iter()
