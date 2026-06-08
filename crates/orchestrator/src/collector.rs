@@ -69,18 +69,18 @@ pub struct MetricSpec {
 /// matching time series. `labels` is the full label map for that series; the
 /// consumer filters or groups by it (e.g. `labels["workload"] == "owned"`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Sample {
-    pub timestamp: f64,
-    pub value: f64,
-    pub labels: HashMap<String, String>,
+pub(crate) struct Sample {
+    pub(crate) timestamp: f64,
+    pub(crate) value: f64,
+    pub(crate) labels: HashMap<String, String>,
 }
 
 /// Accumulated benchmark output. Keyed by metric name, each entry holds every
 /// sample observed across every [`Collector::collect`] tick.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BenchmarkResults<N, C> {
-    pub parameters: BenchmarkParameters<N, C>,
-    pub samples: HashMap<String, Vec<Sample>>,
+    parameters: BenchmarkParameters<N, C>,
+    samples: HashMap<String, Vec<Sample>>,
 }
 
 /// Issues PromQL queries against a deployed Prometheus instance and
