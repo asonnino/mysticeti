@@ -11,7 +11,7 @@ use crate::{
     ssh::{CommandContext, SshConnectionManager},
 };
 
-pub struct Monitor {
+pub(crate) struct Monitor {
     instance: Instance,
     clients: Vec<Instance>,
     nodes: Vec<Instance>,
@@ -20,7 +20,7 @@ pub struct Monitor {
 
 impl Monitor {
     /// Create a new monitor.
-    pub fn new(
+    pub(crate) fn new(
         instance: Instance,
         clients: Vec<Instance>,
         nodes: Vec<Instance>,
@@ -35,7 +35,7 @@ impl Monitor {
     }
 
     /// Dependencies to install.
-    pub fn dependencies() -> Vec<String> {
+    pub(crate) fn dependencies() -> Vec<String> {
         let mut commands: Vec<String> = Vec::new();
         commands.extend(Prometheus::install_commands().into_iter().map(String::from));
         commands.extend(Grafana::install_commands().into_iter().map(String::from));
@@ -44,7 +44,7 @@ impl Monitor {
     }
 
     /// Start a prometheus instance on the dedicated motoring machine.
-    pub async fn start_prometheus<P: ProtocolMetrics>(
+    pub(crate) async fn start_prometheus<P: ProtocolMetrics>(
         &self,
         protocol_commands: &P,
         parameters: &Parameters<P>,
@@ -65,7 +65,7 @@ impl Monitor {
     }
 
     /// Start grafana on the dedicated motoring machine.
-    pub async fn start_grafana(&self) -> MonitorResult<()> {
+    pub(crate) async fn start_grafana(&self) -> MonitorResult<()> {
         // Configure and reload grafana.
         let instance = std::iter::once(self.instance.clone());
         let commands = Grafana::setup_commands();
@@ -77,13 +77,13 @@ impl Monitor {
     }
 
     /// The public address of the grafana instance.
-    pub fn grafana_address(&self) -> String {
+    pub(crate) fn grafana_address(&self) -> String {
         format!("http://{}:{}", self.instance.main_ip, Grafana::DEFAULT_PORT)
     }
 
     /// The public address of the prometheus instance, used by the consumer to
     /// query metrics over PromQL.
-    pub fn prometheus_address(&self) -> String {
+    pub(crate) fn prometheus_address(&self) -> String {
         format!(
             "http://{}:{}",
             self.instance.main_ip,
@@ -93,16 +93,16 @@ impl Monitor {
 }
 
 /// Generate the commands to setup prometheus on the given instances.
-pub struct Prometheus;
+pub(crate) struct Prometheus;
 
 impl Prometheus {
     /// The default prometheus configuration path.
     const DEFAULT_PROMETHEUS_CONFIG_PATH: &'static str = "/etc/prometheus/prometheus.yml";
     /// The default prometheus port.
-    pub const DEFAULT_PORT: u16 = 9090;
+    pub(crate) const DEFAULT_PORT: u16 = 9090;
 
     /// The commands to install prometheus.
-    pub fn install_commands() -> Vec<&'static str> {
+    pub(crate) fn install_commands() -> Vec<&'static str> {
         vec![
             "sudo apt-get -y install prometheus",
             "sudo chmod 777 -R /var/lib/prometheus/ /etc/prometheus/",
@@ -110,7 +110,7 @@ impl Prometheus {
     }
 
     /// Generate the commands to update the prometheus configuration and restart prometheus.
-    pub fn setup_commands<I, P>(
+    pub(crate) fn setup_commands<I, P>(
         nodes: I,
         _clients: I,
         protocol: &P,
@@ -182,16 +182,16 @@ impl Prometheus {
     }
 }
 
-pub struct Grafana;
+pub(crate) struct Grafana;
 
 impl Grafana {
     /// The path to the datasources directory.
     const DATASOURCES_PATH: &'static str = "/etc/grafana/provisioning/datasources";
     /// The default grafana port.
-    pub const DEFAULT_PORT: u16 = 3000;
+    pub(crate) const DEFAULT_PORT: u16 = 3000;
 
     /// The commands to install grafana.
-    pub fn install_commands() -> Vec<&'static str> {
+    pub(crate) fn install_commands() -> Vec<&'static str> {
         vec![
             "sudo apt-get install -y apt-transport-https software-properties-common wget",
             "sudo wget -q -O /etc/apt/keyrings/grafana.key https://apt.grafana.com/gpg.key",
@@ -207,7 +207,7 @@ impl Grafana {
     }
 
     /// Generate the commands to update the grafana datasource and restart grafana.
-    pub fn setup_commands() -> String {
+    pub(crate) fn setup_commands() -> String {
         [
             &format!("(rm -r {} || true)", Self::DATASOURCES_PATH),
             &format!("mkdir -p {}", Self::DATASOURCES_PATH),
@@ -249,7 +249,7 @@ impl NodeExporter {
     const DEFAULT_PORT: u16 = 9200;
     const SERVICE_PATH: &'static str = "/etc/systemd/system/node_exporter.service";
 
-    pub fn install_commands() -> Vec<String> {
+    pub(crate) fn install_commands() -> Vec<String> {
         let build = format!("node_exporter-{}.linux-amd64", Self::RELEASE);
         let source = format!(
             "https://github.com/prometheus/node_exporter/releases/download/v{}/{build}.tar.gz",
