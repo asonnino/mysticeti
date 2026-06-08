@@ -170,6 +170,11 @@ pub struct Settings {
     /// The number of times the orchestrator should retry an ssh command.
     #[serde(default = "defaults::default_ssh_retries")]
     pub ssh_retries: usize,
+    /// How long to wait for a node or client process to pass its health check
+    /// after being launched. If the deadline is exceeded, the benchmark aborts.
+    #[serde(default = "defaults::default_health_check_timeout")]
+    #[serde_as(as = "DurationSeconds")]
+    pub health_check_timeout: Duration,
 }
 
 mod defaults {
@@ -223,6 +228,10 @@ mod defaults {
 
     pub fn default_ssh_retries() -> usize {
         3
+    }
+
+    pub fn default_health_check_timeout() -> Duration {
+        Duration::from_secs(120)
     }
 }
 

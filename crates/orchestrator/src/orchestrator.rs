@@ -366,7 +366,9 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
         let commands = self
             .protocol_commands
             .nodes_metrics_command(instances.clone(), parameters);
-        self.ssh_manager.wait_for_success(commands).await;
+        self.ssh_manager
+            .wait_for_success(commands, self.settings.health_check_timeout)
+            .await?;
 
         Ok(())
     }
@@ -409,7 +411,9 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
         let commands = self
             .protocol_commands
             .clients_metrics_command(clients, parameters);
-        self.ssh_manager.wait_for_success(commands).await;
+        self.ssh_manager
+            .wait_for_success(commands, self.settings.health_check_timeout)
+            .await?;
 
         Ok(())
     }

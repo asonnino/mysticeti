@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{net::SocketAddr, string::FromUtf8Error};
+use std::{net::SocketAddr, string::FromUtf8Error, time::Duration};
 
 #[macro_export(local_inner_macros)]
 macro_rules! ensure {
@@ -84,6 +84,9 @@ pub enum SshError {
         #[source]
         source: FromUtf8Error,
     },
+
+    #[error("Timed out after {timeout:?} waiting for remote service to become healthy")]
+    WaitTimeout { timeout: Duration },
 }
 
 pub type MonitorResult<T> = Result<T, MonitorError>;
