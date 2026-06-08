@@ -297,16 +297,22 @@ impl Settings {
             .to_string()
     }
 
+    /// Resolve the SSH public key path: uses `ssh_public_key_file` when set,
+    /// otherwise defaults to the private key path with a `.pub` extension.
+    pub fn public_key_file(&self) -> PathBuf {
+        self.ssh_public_key_file.clone().unwrap_or_else(|| {
+            let mut path = self.ssh_private_key_file.clone();
+            path.set_extension("pub");
+            path
+        })
+    }
+
     /// Load the ssh public key from file. Returns `None` if the file does not
     /// exist — providers that don't need a registered key (e.g. the custom
     /// provider) can accept `None` without error. Returns `Err` only for
     /// unexpected IO failures (file present but unreadable).
     pub fn load_ssh_public_key(&self) -> SettingsResult<Option<String>> {
-        let ssh_public_key_file = self.ssh_public_key_file.clone().unwrap_or_else(|| {
-            let mut private = self.ssh_private_key_file.clone();
-            private.set_extension("pub");
-            private
-        });
+        let ssh_public_key_file = self.public_key_file();
         match fs::read_to_string(&ssh_public_key_file) {
             Ok(token) => Ok(Some(token.trim_end_matches('\n').to_string())),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
