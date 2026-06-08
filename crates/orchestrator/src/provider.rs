@@ -34,17 +34,17 @@ impl From<&str> for InstanceStatus {
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct Instance {
     /// The unique identifier of the instance.
-    pub id: String,
+    pub(crate) id: String,
     /// The region where the instance runs.
     pub region: String,
     /// The public ip address of the instance (accessible from anywhere).
     pub main_ip: Ipv4Addr,
     /// The list of tags associated with the instance.
-    pub tags: Vec<String>,
+    pub(crate) tags: Vec<String>,
     /// The specs of the instance.
-    pub specs: String,
+    pub(crate) specs: String,
     /// The current status of the instance.
-    pub status: InstanceStatus,
+    pub(crate) status: InstanceStatus,
 }
 
 impl Instance {
@@ -64,7 +64,7 @@ impl Instance {
     }
 
     /// Return the ssh address to connect to the instance.
-    pub fn ssh_address(&self) -> SocketAddr {
+    pub(crate) fn ssh_address(&self) -> SocketAddr {
         SocketAddr::new(self.main_ip.into(), 22)
     }
 
