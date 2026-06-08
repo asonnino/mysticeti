@@ -297,15 +297,19 @@ impl Settings {
             .to_string()
     }
 
-    /// Load the ssh public key from file.
-    pub fn load_ssh_public_key(&self) -> SettingsResult<String> {
+    /// Load the ssh public key from file. Returns `None` if the file does not
+    /// exist — providers that don't need a registered key (e.g. the custom
+    /// provider) can accept `None` without error. Returns `Err` only for
+    /// unexpected IO failures (file present but unreadable).
+    pub fn load_ssh_public_key(&self) -> SettingsResult<Option<String>> {
         let ssh_public_key_file = self.ssh_public_key_file.clone().unwrap_or_else(|| {
             let mut private = self.ssh_private_key_file.clone();
             private.set_extension("pub");
             private
         });
         match fs::read_to_string(&ssh_public_key_file) {
-            Ok(token) => Ok(token.trim_end_matches('\n').to_string()),
+            Ok(token) => Ok(Some(token.trim_end_matches('\n').to_string())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(SettingsError::SshPublicKeyFileError {
                 file: ssh_public_key_file.display().to_string(),
                 message: e.to_string(),
@@ -347,7 +351,10 @@ mod test {
     fn load_ssh_public_key() {
         let settings = Settings::new_for_test();
         let public_key = settings.load_ssh_public_key().unwrap();
-        assert_eq!(public_key, "This is a fake public key for tests");
+        assert_eq!(
+            public_key,
+            Some("This is a fake public key for tests".to_string())
+        );
     }
 
     #[test]

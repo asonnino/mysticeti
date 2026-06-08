@@ -119,10 +119,12 @@ pub trait ServerProviderClient: Display {
         instance: Instance,
     ) -> impl Future<Output = CloudProviderResult<()>> + Send;
 
-    /// Authorize the provided ssh public key to access machines.
+    /// Authorize the provided ssh public key to access machines. `None` means
+    /// the public key file was absent on disk; providers that require key
+    /// registration (e.g. AWS) must return an error in that case.
     fn register_ssh_public_key(
         &self,
-        public_key: String,
+        public_key: Option<String>,
     ) -> impl Future<Output = CloudProviderResult<()>> + Send;
 
     /// Return provider-specific commands to setup the instance.
@@ -222,7 +224,10 @@ pub mod test_client {
             Ok(())
         }
 
-        async fn register_ssh_public_key(&self, _public_key: String) -> CloudProviderResult<()> {
+        async fn register_ssh_public_key(
+            &self,
+            _public_key: Option<String>,
+        ) -> CloudProviderResult<()> {
             Ok(())
         }
 
