@@ -59,16 +59,16 @@ impl Repository {
 #[derive(Serialize, Deserialize, Clone, Default, PartialEq, Eq, Debug)]
 pub struct AwsConfig {
     /// The EC2 instance type, e.g. `m5d.8xlarge`.
-    pub specs: String,
+    pub(crate) specs: String,
     /// The path to the AWS credentials file.
     #[serde(skip_serializing)]
-    pub token_file: PathBuf,
+    pub(crate) token_file: PathBuf,
 }
 
 /// A single pre-provisioned machine for the custom provider, tagged with the
 /// region it belongs to (which must appear in [`Settings::regions`]).
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
-pub struct CustomInstance {
+pub(crate) struct CustomInstance {
     pub region: String,
     pub ip: Ipv4Addr,
 }
@@ -78,9 +78,9 @@ pub struct CustomInstance {
 #[derive(Serialize, Deserialize, Clone, Default, PartialEq, Eq, Debug)]
 pub struct CustomConfig {
     /// The SSH username configured on the pre-provisioned machines.
-    pub ssh_username: String,
+    pub(crate) ssh_username: String,
     /// The pre-provisioned machines.
-    pub instances: Vec<CustomInstance>,
+    pub(crate) instances: Vec<CustomInstance>,
 }
 
 /// The list of supported cloud providers.
@@ -280,12 +280,12 @@ impl Settings {
     /// region only: for AWS, `AwsClient::list_instances` already applies a
     /// `tag:Name = testbed_id` filter at the API level so every instance in
     /// `self.instances` already belongs to this testbed.
-    pub fn filter_instance(&self, instance: &Instance) -> bool {
+    pub(crate) fn filter_instance(&self, instance: &Instance) -> bool {
         self.regions.contains(&instance.region)
     }
 
     /// Get the name of the repository (from its url).
-    pub fn repository_name(&self) -> String {
+    pub(crate) fn repository_name(&self) -> String {
         self.repository
             .url
             .path_segments()
@@ -299,7 +299,7 @@ impl Settings {
 
     /// Resolve the SSH public key path: uses `ssh_public_key_file` when set,
     /// otherwise defaults to the private key path with a `.pub` extension.
-    pub fn public_key_file(&self) -> PathBuf {
+    pub(crate) fn public_key_file(&self) -> PathBuf {
         self.ssh_public_key_file.clone().unwrap_or_else(|| {
             let mut path = self.ssh_private_key_file.clone();
             path.set_extension("pub");
@@ -311,7 +311,7 @@ impl Settings {
     /// exist — providers that don't need a registered key (e.g. the custom
     /// provider) can accept `None` without error. Returns `Err` only for
     /// unexpected IO failures (file present but unreadable).
-    pub fn load_ssh_public_key(&self) -> SettingsResult<Option<String>> {
+    pub(crate) fn load_ssh_public_key(&self) -> SettingsResult<Option<String>> {
         let ssh_public_key_file = self.public_key_file();
         match fs::read_to_string(&ssh_public_key_file) {
             Ok(token) => Ok(Some(token.trim_end_matches('\n').to_string())),
