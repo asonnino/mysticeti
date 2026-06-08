@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
 use futures::future::try_join_all;
 
@@ -141,7 +141,9 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
         ]
         .iter()
         .collect();
-        fs::create_dir_all(&path).expect("Failed to create log directory");
+        tokio::fs::create_dir_all(&path)
+            .await
+            .expect("Failed to create log directory");
 
         let (client_parsers, node_parsers) = tokio::try_join!(
             fetch_logs(
@@ -193,7 +195,9 @@ async fn fetch_logs(
             let log_file: PathBuf = [path, format!("{local_prefix}-{index}.log").into()]
                 .iter()
                 .collect();
-            fs::write(&log_file, content.as_bytes()).expect("Cannot write log file");
+            tokio::fs::write(&log_file, content.as_bytes())
+                .await
+                .expect("Cannot write log file");
             let mut parser = LogsAnalyzer::default();
             set_errors(&mut parser, &content);
             TestbedResult::Ok(parser)
