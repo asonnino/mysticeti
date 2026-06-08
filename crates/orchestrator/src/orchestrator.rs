@@ -36,14 +36,19 @@ pub struct Orchestrator<P> {
 }
 
 impl<P> Orchestrator<P> {
-    /// Make a new orchestrator.
+    /// Make a new orchestrator. `username` is the SSH login name for the
+    /// testbed instances.
     pub fn new(
         settings: Settings,
         instances: Vec<Instance>,
         instance_setup_commands: Vec<String>,
         protocol_commands: P,
-        ssh_manager: SshConnectionManager,
+        username: &str,
     ) -> Self {
+        let ssh_manager =
+            SshConnectionManager::new(username.into(), settings.ssh_private_key_file.clone())
+                .with_timeout(settings.ssh_timeout)
+                .with_retries(settings.ssh_retries);
         Self {
             settings,
             instances,
