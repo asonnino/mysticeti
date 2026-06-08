@@ -276,21 +276,12 @@ impl Settings {
         Ok(s)
     }
 
-    /// Whether the given instance belongs to the active testbed. The region
-    /// check applies to every provider; AWS additionally requires the instance
-    /// type to match the configured specs (a single AWS account may host
-    /// machines from unrelated testbeds, so the type narrows the match).
+    /// Whether the given instance belongs to the active testbed. Filters by
+    /// region only: for AWS, `AwsClient::list_instances` already applies a
+    /// `tag:Name = testbed_id` filter at the API level so every instance in
+    /// `self.instances` already belongs to this testbed.
     pub fn filter_instance(&self, instance: &Instance) -> bool {
-        if !self.regions.contains(&instance.region) {
-            return false;
-        }
-        match &self.cloud_provider {
-            CloudProvider::Aws(c) => {
-                instance.specs.to_lowercase().replace('.', "")
-                    == c.specs.to_lowercase().replace('.', "")
-            }
-            CloudProvider::Custom(_) => true,
-        }
+        self.regions.contains(&instance.region)
     }
 
     /// Get the name of the repository (from its url).
