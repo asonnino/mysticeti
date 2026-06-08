@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{mem, time::Duration};
+use std::{future::Future, mem, time::Duration};
 
 use indicatif::{ProgressBar, ProgressStyle};
 
@@ -85,6 +85,19 @@ impl Progress {
         if let Animation::Bar(bar) = &self.animation {
             bar.set_position(elapsed.as_secs());
         }
+    }
+
+    /// Run `work` under an indeterminate spinner labelled `label`, stop it when
+    /// the future resolves, and return the result. The natural home for any
+    /// "do this one thing while showing a spinner" call site.
+    pub async fn track<T, E, F>(&mut self, label: &str, work: F) -> Result<T, E>
+    where
+        F: Future<Output = Result<T, E>>,
+    {
+        self.start(None, label);
+        let result = work.await;
+        self.stop();
+        result
     }
 
     /// Run `f` while the bar stays alive: indicatif clears the bar, runs the

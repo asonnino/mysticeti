@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{fmt::Display, future::Future, path::PathBuf, time::Duration};
+use std::{fmt::Display, path::PathBuf, time::Duration};
 
 use eyre::{Context, Result};
 use orchestrator::{
@@ -11,7 +11,7 @@ use orchestrator::{
     faults::CrashRecoverySchedule,
     orchestrator::{MonitoringReport, Orchestrator},
     protocol::{ProtocolCommands, ProtocolMetrics, ProtocolParameters as _},
-    provider::ServerProviderClient,
+    provider::{ServerProviderClient, aws::AwsClient, custom::CustomClient},
     settings::{CloudProvider, Settings},
     ssh::SshConnectionManager,
     testbed::{Testbed, TestbedStatus},
@@ -25,19 +25,6 @@ use crate::{
     terminal::{BOLD, BannerPrinter, Progress, RESET, stderr_supports_color},
     tracing::ReplicaTracing,
 };
-
-/// Run a single phase under an indeterminate spinner. Will eventually move to
-/// `terminal.rs` when `Terminal` is unified to cover remote testbed runs
-/// (see issue #170).
-async fn phase<T, E, F>(progress: &mut Progress, label: &str, work: F) -> std::result::Result<T, E>
-where
-    F: Future<Output = std::result::Result<T, E>>,
-{
-    progress.start(None, label);
-    let result = work.await;
-    progress.stop();
-    result
-}
 
 trait TestbedStatusRender {
     fn render(&self, color: bool) -> String;
@@ -174,29 +161,23 @@ impl<C: ServerProviderClient> RemoteTestbedDriver<C> {
             self.ssh_manager.clone(),
         );
 
-        phase(
-            &mut self.progress,
-            "Cleaning up testbed",
-            orchestrator.cleanup(true),
-        )
-        .await
-        .wrap_err("Cleanup failed")?;
+        self.progress
+            .track("Cleaning up testbed", orchestrator.cleanup(true))
+            .await
+            .wrap_err("Cleanup failed")?;
 
         if !skip_testbed_update {
-            phase(
-                &mut self.progress,
-                "Installing dependencies on all machines",
-                orchestrator.install(),
-            )
-            .await
-            .wrap_err("Install failed")?;
-            phase(
-                &mut self.progress,
-                "Updating all instances",
-                orchestrator.update(),
-            )
-            .await
-            .wrap_err("Update failed")?;
+            self.progress
+                .track(
+                    "Installing dependencies on all machines",
+                    orchestrator.install(),
+                )
+                .await
+                .wrap_err("Install failed")?;
+            self.progress
+                .track("Updating all instances", orchestrator.update())
+                .await
+                .wrap_err("Update failed")?;
         }
 
         let mut latest_committee_size = 0;
@@ -209,24 +190,22 @@ impl<C: ServerProviderClient> RemoteTestbedDriver<C> {
             );
             eprintln!("Node parameters: {}", parameters.node_parameters);
 
-            phase(
-                &mut self.progress,
-                "Cleaning up testbed",
-                orchestrator.cleanup(true),
-            )
-            .await
-            .wrap_err("Cleanup failed")?;
+            self.progress
+                .track("Cleaning up testbed", orchestrator.cleanup(true))
+                .await
+                .wrap_err("Cleanup failed")?;
 
             // When monitoring is disabled, start_monitoring always returns None;
             // skip the call entirely rather than performing a no-op SSH round-trip.
             let monitoring = if self.settings.monitoring {
-                let report = phase(
-                    &mut self.progress,
-                    "Configuring monitoring instance",
-                    orchestrator.start_monitoring(&parameters),
-                )
-                .await
-                .wrap_err("Monitoring setup failed")?;
+                let report = self
+                    .progress
+                    .track(
+                        "Configuring monitoring instance",
+                        orchestrator.start_monitoring(&parameters),
+                    )
+                    .await
+                    .wrap_err("Monitoring setup failed")?;
                 if let Some(r) = &report {
                     eprintln!("Grafana: {}", r.grafana_address);
                 }
@@ -244,22 +223,17 @@ impl<C: ServerProviderClient> RemoteTestbedDriver<C> {
             )
             .await?;
 
-            phase(
-                &mut self.progress,
-                "Cleaning up testbed",
-                orchestrator.cleanup(false),
-            )
-            .await
-            .wrap_err("Cleanup failed")?;
+            self.progress
+                .track("Cleaning up testbed", orchestrator.cleanup(false))
+                .await
+                .wrap_err("Cleanup failed")?;
 
             if self.settings.log_processing {
-                let logs = phase(
-                    &mut self.progress,
-                    "Downloading logs",
-                    orchestrator.download_logs(&parameters),
-                )
-                .await
-                .wrap_err("Failed to download logs")?;
+                let logs = self
+                    .progress
+                    .track("Downloading logs", orchestrator.download_logs(&parameters))
+                    .await
+                    .wrap_err("Failed to download logs")?;
                 if logs.node_panic {
                     eprintln!("ERROR: node(s) panicked!");
                 } else if logs.client_panic {
@@ -287,13 +261,11 @@ impl<C: ServerProviderClient> RemoteTestbedDriver<C> {
         skip_testbed_configuration: bool,
     ) -> Result<()> {
         if !skip_testbed_configuration && *latest_committee_size != parameters.nodes {
-            let configure_report = phase(
-                &mut self.progress,
-                "Configuring instances",
-                orchestrator.configure(parameters),
-            )
-            .await
-            .wrap_err("Configure failed")?;
+            let configure_report = self
+                .progress
+                .track("Configuring instances", orchestrator.configure(parameters))
+                .await
+                .wrap_err("Configure failed")?;
             for (node_index, address) in &configure_report.nodes {
                 eprintln!("  node {node_index}: {address}");
             }
@@ -303,13 +275,10 @@ impl<C: ServerProviderClient> RemoteTestbedDriver<C> {
             *latest_committee_size = parameters.nodes;
         }
 
-        phase(
-            &mut self.progress,
-            "Deploying replicas",
-            orchestrator.run_nodes(parameters),
-        )
-        .await
-        .wrap_err("Deploying replicas failed")?;
+        self.progress
+            .track("Deploying replicas", orchestrator.run_nodes(parameters))
+            .await
+            .wrap_err("Deploying replicas failed")?;
 
         if parameters.settings.benchmark_duration.as_secs() == 0 {
             return Ok(());
@@ -320,13 +289,10 @@ impl<C: ServerProviderClient> RemoteTestbedDriver<C> {
         } else {
             "Setting up load generators"
         };
-        phase(
-            &mut self.progress,
-            load_label,
-            orchestrator.run_clients(parameters),
-        )
-        .await
-        .wrap_err("Starting load generators failed")?;
+        self.progress
+            .track(load_label, orchestrator.run_clients(parameters))
+            .await
+            .wrap_err("Starting load generators failed")?;
 
         self.run_benchmark_loop(orchestrator, parameters, monitoring)
             .await
@@ -438,35 +404,26 @@ impl<C: ServerProviderClient + Display> RemoteTestbedDriver<C> {
             }
             RemoteTestbedCommand::Create { instances, region } => {
                 let label = format!("Creating instances ({instances} per region)");
-                phase(
-                    &mut self.progress,
-                    &label,
-                    self.testbed.create(instances, region),
-                )
-                .await
-                .wrap_err("Failed to create testbed")
+                self.progress
+                    .track(&label, self.testbed.create(instances, region))
+                    .await
+                    .wrap_err("Failed to create testbed")
             }
-            RemoteTestbedCommand::Start { instances } => phase(
-                &mut self.progress,
-                "Booting instances",
-                self.testbed.start(instances),
-            )
-            .await
-            .wrap_err("Failed to start testbed"),
-            RemoteTestbedCommand::Stop => phase(
-                &mut self.progress,
-                "Stopping instances",
-                self.testbed.stop(),
-            )
-            .await
-            .wrap_err("Failed to stop testbed"),
-            RemoteTestbedCommand::Destroy => phase(
-                &mut self.progress,
-                "Destroying testbed",
-                self.testbed.destroy(),
-            )
-            .await
-            .wrap_err("Failed to destroy testbed"),
+            RemoteTestbedCommand::Start { instances } => self
+                .progress
+                .track("Booting instances", self.testbed.start(instances))
+                .await
+                .wrap_err("Failed to start testbed"),
+            RemoteTestbedCommand::Stop => self
+                .progress
+                .track("Stopping instances", self.testbed.stop())
+                .await
+                .wrap_err("Failed to stop testbed"),
+            RemoteTestbedCommand::Destroy => self
+                .progress
+                .track("Destroying testbed", self.testbed.destroy())
+                .await
+                .wrap_err("Failed to destroy testbed"),
             RemoteTestbedCommand::Benchmark {
                 committee,
                 loads,
@@ -507,7 +464,6 @@ pub async fn remote_testbed(
 
     match &settings.cloud_provider {
         CloudProvider::Aws(_) => {
-            use orchestrator::provider::aws::AwsClient;
             let client = AwsClient::new(settings.clone()).await;
             RemoteTestbedDriver::new(settings, client, color)
                 .await?
@@ -515,7 +471,6 @@ pub async fn remote_testbed(
                 .await
         }
         CloudProvider::Custom(_) => {
-            use orchestrator::provider::custom::CustomClient;
             let client = CustomClient::new(settings.clone());
             RemoteTestbedDriver::new(settings, client, color)
                 .await?
