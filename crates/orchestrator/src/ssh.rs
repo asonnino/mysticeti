@@ -16,7 +16,10 @@ use russh::{
     keys::{PrivateKeyWithHashAlg, PublicKey, load_secret_key},
 };
 use russh_sftp::client::SftpSession;
-use tokio::{task::JoinHandle, time::sleep};
+use tokio::{
+    task::JoinHandle,
+    time::{Instant, sleep},
+};
 
 use crate::{
     error::{SshError, SshResult},
@@ -245,20 +248,23 @@ impl SshConnectionManager {
         Ok(())
     }
 
-    pub async fn wait_for_success<I, S>(&self, instances: I)
+    pub async fn wait_for_success<I, S>(&self, instances: I, timeout: Duration) -> SshResult<()>
     where
         I: IntoIterator<Item = (Instance, S)> + Clone,
         S: Into<String> + Send + 'static + Clone,
     {
+        let deadline = Instant::now() + timeout;
         loop {
             sleep(Self::RETRY_DELAY).await;
-
             if self
                 .execute_per_instance(instances.clone(), CommandContext::default())
                 .await
                 .is_ok()
             {
-                break;
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err(SshError::WaitTimeout { timeout });
             }
         }
     }
