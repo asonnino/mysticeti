@@ -13,7 +13,6 @@ use orchestrator::{
     protocol::{ProtocolCommands, ProtocolMetrics, ProtocolParameters as _},
     provider::Instance,
     settings::Settings,
-    ssh::SshConnectionManager,
 };
 use tokio::time::{self, Instant};
 
@@ -24,15 +23,15 @@ use crate::{
 
 pub struct RemoteBenchmarkDriver {
     settings: Settings,
-    ssh_manager: SshConnectionManager,
+    username: String,
     progress: Progress,
 }
 
 impl RemoteBenchmarkDriver {
-    pub fn new(settings: Settings, ssh_manager: SshConnectionManager, color: bool) -> Self {
+    pub fn new(settings: Settings, username: String, color: bool) -> Self {
         Self {
             settings,
-            ssh_manager,
+            username,
             progress: Progress::new(color),
         }
     }
@@ -102,7 +101,7 @@ impl RemoteBenchmarkDriver {
             instances,
             setup_commands,
             protocol_commands,
-            self.ssh_manager.clone(),
+            &self.username,
         );
 
         self.progress

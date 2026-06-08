@@ -8,9 +8,7 @@ mod testbed;
 use std::fmt::Display;
 
 use eyre::{Context, Result};
-use orchestrator::{
-    provider::ServerProviderClient, settings::Settings, ssh::SshConnectionManager, testbed::Testbed,
-};
+use orchestrator::{provider::ServerProviderClient, settings::Settings, testbed::Testbed};
 
 use crate::{args::RemoteTestbedCommand, terminal::Progress};
 
@@ -79,13 +77,8 @@ impl<C: ServerProviderClient + Display> RemoteTestbedDriver<C> {
                     .setup_commands()
                     .await
                     .wrap_err("Failed to load testbed setup commands")?;
-                let ssh_manager = SshConnectionManager::new(
-                    self.testbed.username().into(),
-                    self.settings.ssh_private_key_file.clone(),
-                )
-                .with_timeout(self.settings.ssh_timeout)
-                .with_retries(self.settings.ssh_retries);
-                RemoteBenchmarkDriver::new(self.settings, ssh_manager, self.color)
+                let username = self.testbed.username().to_string();
+                RemoteBenchmarkDriver::new(self.settings, username, self.color)
                     .benchmark(
                         instances,
                         setup_commands,
