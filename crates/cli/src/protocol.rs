@@ -1,8 +1,8 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Mysticeti's implementation of the orchestrator's protocol traits. Lives in
-//! the CLI crate so the orchestrator library stays protocol-agnostic.
+//! Replica protocol implementation of the orchestrator's protocol traits. Lives
+//! in the CLI crate so the orchestrator library stays protocol-agnostic.
 
 use std::{
     fmt::{self, Debug, Display},
@@ -27,9 +27,9 @@ const LOAD_GENERATOR_CONFIG_FILENAME: &str = LoadGeneratorConfig::DEFAULT_FILENA
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(transparent)]
-pub struct MysticetiNodeParameters(ReplicaParameters);
+pub struct NodeParameters(ReplicaParameters);
 
-impl Deref for MysticetiNodeParameters {
+impl Deref for NodeParameters {
     type Target = ReplicaParameters;
 
     fn deref(&self) -> &Self::Target {
@@ -37,25 +37,25 @@ impl Deref for MysticetiNodeParameters {
     }
 }
 
-impl Debug for MysticetiNodeParameters {
+impl Debug for NodeParameters {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "c")
     }
 }
 
-impl Display for MysticetiNodeParameters {
+impl Display for NodeParameters {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Consensus-only mode")
     }
 }
 
-impl ProtocolParameters for MysticetiNodeParameters {}
+impl ProtocolParameters for NodeParameters {}
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 #[serde(transparent)]
-pub struct MysticetiClientParameters(LoadGeneratorConfig);
+pub struct ClientParameters(LoadGeneratorConfig);
 
-impl Deref for MysticetiClientParameters {
+impl Deref for ClientParameters {
     type Target = LoadGeneratorConfig;
 
     fn deref(&self) -> &Self::Target {
@@ -63,30 +63,30 @@ impl Deref for MysticetiClientParameters {
     }
 }
 
-impl Debug for MysticetiClientParameters {
+impl Debug for ClientParameters {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.transaction_size)
     }
 }
 
-impl Display for MysticetiClientParameters {
+impl Display for ClientParameters {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}B tx", self.transaction_size)
     }
 }
 
-impl ProtocolParameters for MysticetiClientParameters {}
+impl ProtocolParameters for ClientParameters {}
 
-pub struct MysticetiProtocol {
+pub struct ReplicaProtocol {
     working_dir: PathBuf,
 }
 
-impl Protocol for MysticetiProtocol {
-    type NodeParameters = MysticetiNodeParameters;
-    type ClientParameters = MysticetiClientParameters;
+impl Protocol for ReplicaProtocol {
+    type NodeParameters = NodeParameters;
+    type ClientParameters = ClientParameters;
 }
 
-impl ProtocolCommands for MysticetiProtocol {
+impl ProtocolCommands for ReplicaProtocol {
     fn protocol_dependencies(&self) -> Vec<&'static str> {
         vec!["sudo apt -y install libfontconfig1-dev"]
     }
@@ -192,12 +192,11 @@ impl ProtocolCommands for MysticetiProtocol {
     where
         I: IntoIterator<Item = Instance>,
     {
-        // TODO: Isolate clients from the node (#9).
         vec![]
     }
 }
 
-impl ProtocolMetrics for MysticetiProtocol {
+impl ProtocolMetrics for ReplicaProtocol {
     fn metrics(&self) -> Vec<MetricSpec> {
         vec![
             MetricSpec {
@@ -260,7 +259,7 @@ impl ProtocolMetrics for MysticetiProtocol {
     }
 }
 
-impl MysticetiProtocol {
+impl ReplicaProtocol {
     /// Make a new instance of the Mysticeti protocol commands generator.
     pub fn new(settings: &Settings) -> Self {
         Self {
