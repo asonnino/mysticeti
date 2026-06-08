@@ -15,33 +15,33 @@ pub struct LogsReport {
 
 /// A simple log analyzer counting the number of errors and panics.
 #[derive(Default, PartialEq, Eq)]
-pub struct LogsAnalyzer {
+pub(crate) struct LogsAnalyzer {
     /// The number of errors in the nodes' log files.
-    pub node_errors: usize,
+    node_errors: usize,
     /// Whether a node panicked.
-    pub node_panic: bool,
+    node_panic: bool,
     /// The number of errors in the clients' log files.
-    pub client_errors: usize,
+    client_errors: usize,
     /// Whether a client panicked.
-    pub client_panic: bool,
+    client_panic: bool,
 }
 
 impl LogsAnalyzer {
     /// Deduce the number of nodes errors from the logs.
-    pub fn set_node_errors(&mut self, log: &str) {
+    pub(crate) fn set_node_errors(&mut self, log: &str) {
         self.node_errors = log.matches(" ERROR").count();
         self.node_panic = log.contains("panic");
     }
 
     /// Deduce the number of clients errors from the logs.
-    pub fn set_client_errors(&mut self, log: &str) {
+    pub(crate) fn set_client_errors(&mut self, log: &str) {
         self.client_errors = max(self.client_errors, log.matches(" ERROR").count());
         self.client_panic = log.contains("panic");
     }
 
     /// Snapshot the analyzer's state into a [`LogsReport`] — the data the
     /// caller renders into a banner or reacts to programmatically.
-    pub fn summarize(&self) -> LogsReport {
+    pub(crate) fn summarize(&self) -> LogsReport {
         LogsReport {
             node_panic: self.node_panic,
             client_panic: self.client_panic,

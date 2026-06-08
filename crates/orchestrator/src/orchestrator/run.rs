@@ -167,7 +167,10 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
         Ok(client_parsers
             .into_iter()
             .chain(node_parsers)
-            .max_by_key(|a| (a.node_panic, a.client_panic, a.node_errors, a.client_errors))
+            .max_by_key(|a| {
+                let s = a.summarize();
+                (s.node_panic, s.client_panic, s.node_errors, s.client_errors)
+            })
             .expect("At least one log parser")
             .summarize())
     }
