@@ -23,16 +23,16 @@ use crate::{
 /// An orchestrator to deploy nodes and run benchmarks on a testbed.
 pub struct Orchestrator<P> {
     /// The testbed's settings.
-    pub(super) settings: Settings,
+    settings: Settings,
     /// The state of the testbed (reflecting accurately the state of the machines).
-    pub(super) instances: Vec<Instance>,
+    instances: Vec<Instance>,
     /// Provider-specific commands to install on the instance.
-    pub(super) instance_setup_commands: Vec<String>,
+    instance_setup_commands: Vec<String>,
     /// Protocol-specific commands generator to generate the protocol configuration files,
     /// boot clients and nodes, etc.
-    pub(super) protocol_commands: P,
+    protocol_commands: P,
     /// Handle ssh connections to instances.
-    pub(super) ssh_manager: SshConnectionManager,
+    ssh_manager: SshConnectionManager,
 }
 
 impl<P> Orchestrator<P> {
