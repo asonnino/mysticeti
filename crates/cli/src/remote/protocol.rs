@@ -260,7 +260,6 @@ impl ProtocolMetrics for ReplicaProtocol {
 }
 
 impl ReplicaProtocol {
-    /// Make a new instance of the Mysticeti protocol commands generator.
     pub fn new(settings: &Settings) -> Self {
         Self {
             working_dir: settings.working_dir.clone(),
