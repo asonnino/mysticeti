@@ -323,7 +323,7 @@ impl LocalGrafana {
 struct NodeExporter;
 
 impl NodeExporter {
-    const RELEASE: &'static str = "0.18.1";
+    const RELEASE: &'static str = "1.11.1";
     const DEFAULT_PORT: u16 = 9200;
     const SERVICE_PATH: &'static str = "/etc/systemd/system/node_exporter.service";
 
