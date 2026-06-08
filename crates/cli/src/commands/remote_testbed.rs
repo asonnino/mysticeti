@@ -395,9 +395,9 @@ async fn run_benchmark_loop<P: ProtocolCommands + ProtocolMetrics>(
         .transpose()
         .wrap_err("Failed to set up the metrics collector")?;
 
-    let mut metrics_interval = time::interval(settings.scrape_interval);
+    let mut metrics_interval = time::interval(parameters.settings.scrape_interval);
     metrics_interval.tick().await; // First tick returns immediately.
-    let mut faults_interval = time::interval(settings.faults.crash_interval());
+    let mut faults_interval = time::interval(parameters.settings.faults.crash_interval());
     faults_interval.tick().await; // First tick returns immediately.
 
     // Per-commit subdirectory so re-running the same benchmark parameters
