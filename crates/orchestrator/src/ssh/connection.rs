@@ -50,7 +50,7 @@ impl client::Handler for AcceptAllHostKeys {
 }
 
 /// Representation of an ssh connection.
-pub struct SshConnection {
+pub(crate) struct SshConnection {
     /// The russh client handle for this session.
     handle: Handle<AcceptAllHostKeys>,
     /// The host address.
@@ -64,7 +64,7 @@ impl SshConnection {
     const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
     /// Create a new ssh connection with a specific host.
-    pub async fn new<P: AsRef<Path>>(
+    pub(crate) async fn new<P: AsRef<Path>>(
         address: SocketAddr,
         username: &str,
         private_key_file: P,
@@ -107,7 +107,7 @@ impl SshConnection {
     }
 
     /// Set the maximum number of times to retries to establish a connection and execute commands.
-    pub fn with_retries(mut self, retries: usize) -> Self {
+    pub(crate) fn with_retries(mut self, retries: usize) -> Self {
         self.retries = retries;
         self
     }
@@ -137,7 +137,7 @@ impl SshConnection {
     }
 
     /// Execute an ssh command on the remote machine.
-    pub async fn execute(&self, command: String) -> SshResult<(String, String)> {
+    pub(crate) async fn execute(&self, command: String) -> SshResult<(String, String)> {
         let mut error = None;
         for _ in 0..self.retries + 1 {
             let mut channel = match self.handle.channel_open_session().await {
@@ -223,7 +223,7 @@ impl SshConnection {
     }
 
     /// Download a file from the remote machine over SFTP.
-    pub async fn download<P: AsRef<Path>>(&self, path: P) -> SshResult<String> {
+    pub(crate) async fn download<P: AsRef<Path>>(&self, path: P) -> SshResult<String> {
         let path = path.as_ref();
         let mut error = None;
         for _ in 0..self.retries + 1 {

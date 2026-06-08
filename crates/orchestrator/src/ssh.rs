@@ -4,8 +4,8 @@
 mod command;
 mod connection;
 
-pub use command::{CommandContext, CommandStatus};
-pub use connection::SshConnection;
+pub(crate) use command::{CommandContext, CommandStatus};
+pub(crate) use connection::SshConnection;
 
 use std::{path::PathBuf, time::Duration};
 
@@ -59,7 +59,7 @@ impl SshConnectionManager {
     }
 
     /// Create a new ssh connection with the provided host.
-    pub async fn connect(&self, address: std::net::SocketAddr) -> SshResult<SshConnection> {
+    pub(crate) async fn connect(&self, address: std::net::SocketAddr) -> SshResult<SshConnection> {
         let mut error = None;
         for _ in 0..self.retries + 1 {
             match SshConnection::new(
@@ -79,7 +79,7 @@ impl SshConnectionManager {
     }
 
     /// Execute the specified ssh command on all provided instances.
-    pub async fn execute<I, S>(
+    pub(crate) async fn execute<I, S>(
         &self,
         instances: I,
         command: S,
@@ -96,7 +96,7 @@ impl SshConnectionManager {
     }
 
     /// Execute the ssh command associated with each instance.
-    pub async fn execute_per_instance<I, S>(
+    pub(crate) async fn execute_per_instance<I, S>(
         &self,
         instances: I,
         context: CommandContext,
@@ -114,7 +114,7 @@ impl SshConnectionManager {
             .collect::<SshResult<_>>()
     }
 
-    pub fn run_per_instance<I, S>(
+    pub(crate) fn run_per_instance<I, S>(
         &self,
         instances: I,
         context: CommandContext,
@@ -138,7 +138,7 @@ impl SshConnectionManager {
     }
 
     /// Wait until a command running in the background returns or started.
-    pub async fn wait_for_command<I>(
+    pub(crate) async fn wait_for_command<I>(
         &self,
         instances: I,
         command_id: &str,
@@ -167,7 +167,11 @@ impl SshConnectionManager {
         Ok(())
     }
 
-    pub async fn wait_for_success<I, S>(&self, instances: I, timeout: Duration) -> SshResult<()>
+    pub(crate) async fn wait_for_success<I, S>(
+        &self,
+        instances: I,
+        timeout: Duration,
+    ) -> SshResult<()>
     where
         I: IntoIterator<Item = (Instance, S)> + Clone,
         S: Into<String> + Send + 'static + Clone,
@@ -189,7 +193,7 @@ impl SshConnectionManager {
     }
 
     /// Kill a command running in the background of the specified instances.
-    pub async fn kill<I>(&self, instances: I, command_id: &str) -> SshResult<()>
+    pub(crate) async fn kill<I>(&self, instances: I, command_id: &str) -> SshResult<()>
     where
         I: IntoIterator<Item = Instance>,
     {
