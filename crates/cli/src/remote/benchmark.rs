@@ -18,18 +18,22 @@ use replica::result::Outcome;
 use crate::{
     exporter::Exporter,
     remote::protocol::{ClientParameters, NodeParameters, ReplicaProtocol},
-    terminal::{BannerPrinter, Terminal},
+    terminal::{BannerPrinter, OutcomeDisplay, ResultRender, Terminal, table::SuiteRow},
 };
 
-/// Final result of one remote benchmark run, as the terminal renders it.
-pub(crate) struct RemoteResult {
-    pub(crate) duration: Duration,
-    pub(crate) logs: Option<LogsReport>,
+/// Final result of one remote benchmark run, as the terminal renders it: the
+/// configured duration plus the log-analysis report (absent when log processing
+/// is disabled). Perf numbers live in the saved measurement files; the rendered
+/// block carries only the pass/warn/fail verdict derived from the logs.
+struct RemoteResult {
+    duration: Duration,
+    logs: Option<LogsReport>,
 }
 
 impl RemoteResult {
-    /// Classify the log reports.
-    pub(crate) fn outcome(&self) -> Option<Outcome> {
+    /// Classify the log report into a consensus-style [`Outcome`] for display.
+    /// `None` when logs were not collected.
+    fn outcome(&self) -> Option<Outcome> {
         let logs = self.logs.as_ref()?;
         Some(if logs.node_panic || logs.client_panic {
             Outcome::Diverged
@@ -38,6 +42,36 @@ impl RemoteResult {
         } else {
             Outcome::Pass
         })
+    }
+}
+
+impl ResultRender for RemoteResult {
+    fn render_block(&self, color: bool) -> String {
+        // Log analysis disabled: no verdict to derive, so just confirm completion.
+        let (Some(outcome), Some(logs)) = (self.outcome(), self.logs.as_ref()) else {
+            return "Benchmark complete (log analysis disabled)".to_string();
+        };
+        let mut out = outcome.badge(color);
+        if logs.node_errors != 0 || logs.client_errors != 0 {
+            out.push('\n');
+            out.push_str(&format!(
+                "Log errors — node: {}, client: {}",
+                logs.node_errors, logs.client_errors
+            ));
+        }
+        out
+    }
+
+    fn suite_row(&self, name: &str, nodes: usize) -> Option<SuiteRow> {
+        let outcome = self.outcome()?;
+        // Remote runs have no per-replica committed-leader counts to show.
+        Some(SuiteRow::new(
+            name,
+            nodes,
+            self.duration.as_secs(),
+            outcome,
+            &[],
+        ))
     }
 }
 
