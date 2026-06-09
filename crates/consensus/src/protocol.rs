@@ -30,8 +30,10 @@ pub enum ConsensusProtocol {
     Orcaella {
         #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
-        /// Crash-fault stake to tolerate; the Byzantine bound `f` is
-        /// derived by saturating `5f + 3c + 1 <= total_stake`.
+        /// Byzantine-fault stake to tolerate.
+        f: Stake,
+        /// Crash-only fault stake to tolerate (on top of `f`); requires
+        /// `n >= 5f+3c+1` for `f > 0`, or `n >= 2c+1` for `f = 0`.
         c: Stake,
     },
     MahiMahi {
@@ -78,31 +80,35 @@ impl Default for ConsensusProtocol {
 }
 
 impl fmt::Display for ConsensusProtocol {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::CordialMinersPartiallySynchronous => {
-                write!(f, "Cordial Miners (PS)")
+                write!(fmt, "Cordial Miners (PS)")
             }
-            Self::CordialMinersAsynchronous => write!(f, "Cordial Miners (Async)"),
+            Self::CordialMinersAsynchronous => write!(fmt, "Cordial Miners (Async)"),
             Self::Mysticeti { leader_count } => {
-                write!(f, "Mysticeti ({} leaders/round)", leader_count)
+                write!(fmt, "Mysticeti ({} leaders/round)", leader_count)
             }
             Self::BlueBottle { leader_count } => {
-                write!(f, "Blue Bottle ({} leaders/round)", leader_count)
+                write!(fmt, "Blue Bottle ({} leaders/round)", leader_count)
             }
-            Self::Orcaella { leader_count, c } => {
-                write!(f, "Orcaella ({} leaders/round, c={})", leader_count, c)
+            Self::Orcaella { leader_count, f, c } => {
+                write!(
+                    fmt,
+                    "Orcaella ({} leaders/round, f={f}, c={c})",
+                    leader_count
+                )
             }
             Self::MahiMahi {
                 leader_count,
                 wave_length,
             } => write!(
-                f,
+                fmt,
                 "Mahi-Mahi ({} leaders/round, wave length {})",
                 leader_count, wave_length
             ),
             Self::NemoNemo { leader_count } => {
-                write!(f, "Nemo-Nemo ({} leaders/round)", leader_count)
+                write!(fmt, "Nemo-Nemo ({} leaders/round)", leader_count)
             }
         }
     }
@@ -137,7 +143,9 @@ impl ConsensusProtocol {
             Self::CordialMinersAsynchronous => Protocol::cordial_miners_asynchronous(total_stake),
             Self::Mysticeti { leader_count } => Protocol::mysticeti(total_stake, leader_count),
             Self::BlueBottle { leader_count } => Protocol::blue_bottle(total_stake, leader_count),
-            Self::Orcaella { leader_count, c } => Protocol::orcaella(total_stake, c, leader_count)?,
+            Self::Orcaella { leader_count, f, c } => {
+                Protocol::orcaella(total_stake, f, c, leader_count)?
+            }
             Self::MahiMahi {
                 leader_count,
                 wave_length,
@@ -151,18 +159,33 @@ impl ConsensusProtocol {
 #[cfg(any(test, feature = "test-utils"))]
 impl ConsensusProtocol {
     /// All protocols at the baseline matrix configuration used by the
-    /// per-scenario integration tests, swept over `leader_counts`. Multi-leader-
-    /// aware protocols (Mysticeti, BlueBottle, NemoNemo, Orcaella with `c=0`,
-    /// Mahi-Mahi for `wave_length ∈ {4, 5}`) emit one variant per leader count;
-    /// Cordial Miners variants are leader-count-agnostic and emit once.
-    pub fn all_for_test(leader_counts: &[usize]) -> Vec<Self> {
+    /// per-scenario integration tests, swept over `leader_counts`.
+    pub fn all_for_test(n: usize, leader_counts: &[usize]) -> Vec<Self> {
         let mut variants = Vec::new();
         for &l in leader_counts {
             let leader_count = NonZeroUsize::new(l).expect("leader_count must be non-zero");
             variants.push(Self::Mysticeti { leader_count });
             variants.push(Self::BlueBottle { leader_count });
             variants.push(Self::NemoNemo { leader_count });
-            variants.push(Self::Orcaella { leader_count, c: 0 });
+            variants.push(Self::Orcaella {
+                leader_count,
+                f: 0,
+                c: 1,
+            });
+            if n >= 6 {
+                variants.push(Self::Orcaella {
+                    leader_count,
+                    f: 1,
+                    c: 0,
+                });
+            }
+            if n >= 9 {
+                variants.push(Self::Orcaella {
+                    leader_count,
+                    f: 1,
+                    c: 1,
+                });
+            }
             variants.push(Self::MahiMahi {
                 leader_count,
                 wave_length: 4,
@@ -181,8 +204,8 @@ impl ConsensusProtocol {
 /// Errors that can arise when building a [`Protocol`] from a [`ConsensusProtocol`].
 #[derive(Debug, thiserror::Error)]
 pub enum ProtocolError {
-    #[error("Orcaella requires 3c + 1 <= n (n={n}, c={c})")]
-    OrcaellaCrashStakeTooLarge { n: Stake, c: Stake },
+    #[error("Orcaella fault bound violated (n={n}, f={f}, c={c})")]
+    OrcaellaFaultBoundViolated { n: Stake, f: Stake, c: Stake },
     #[error("Mahi-Mahi requires wave_length in {{4, 5}}, got {wave_length}")]
     MahiMahiInvalidWaveLength { wave_length: RoundNumber },
     #[error("leader_count ({leader_count}) exceeds committee size ({committee_size})")]
@@ -292,19 +315,23 @@ impl Protocol {
     /// <TBD>
     pub fn orcaella(
         total_stake: Stake,
+        f: Stake,
         c: Stake,
         leader_count: NonZeroUsize,
     ) -> Result<Self, ProtocolError> {
-        if 3 * c >= total_stake {
-            return Err(ProtocolError::OrcaellaCrashStakeTooLarge { n: total_stake, c });
+        let min_n = if f == 0 { 2 * c + 1 } else { 5 * f + 3 * c + 1 };
+        if min_n > total_stake {
+            return Err(ProtocolError::OrcaellaFaultBoundViolated {
+                n: total_stake,
+                f,
+                c,
+            });
         }
 
-        let strong_quorum = (4 * total_stake - 2 * c) / 5 + 1;
-        let weak_quorum = (2 * total_stake - c) / 5 + 1;
         Ok(Self {
-            direct_commit_quorum: strong_quorum,
-            direct_skip_quorum: strong_quorum,
-            anchor_link_size: weak_quorum,
+            direct_commit_quorum: total_stake - f - c,
+            direct_skip_quorum: 4 * f + 2 * c + 1,
+            anchor_link_size: total_stake - 3 * f - 2 * c,
             wave_length: 2,
             leader_count,
             pipeline: true,
