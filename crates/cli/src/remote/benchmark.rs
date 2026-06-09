@@ -4,7 +4,6 @@
 use eyre::{Context, Result};
 use orchestrator::{
     benchmark::{BenchmarkParameters, Parameters},
-    error::MonitorError,
     orchestrator::{MonitoringReport, Orchestrator},
     protocol::{ProtocolCommands, ProtocolMetrics, ProtocolParameters as _},
     provider::Instance,
@@ -14,6 +13,7 @@ use orchestrator::{
 };
 
 use crate::{
+    exporter::Exporter,
     remote::protocol::{ClientParameters, NodeParameters, ReplicaProtocol},
     terminal::{BannerPrinter, Progress},
 };
@@ -269,10 +269,8 @@ impl RemoteBenchmarkDriver {
             .settings
             .results_dir
             .join(format!("results-{}", self.settings.repository.commit));
-        tokio::fs::create_dir_all(&results_path)
-            .await
-            .map_err(MonitorError::ResultsWriteError)
-            .wrap_err("Failed to create results directory")?;
+        let exporter =
+            Exporter::new(results_path).wrap_err("Failed to create results directory")?;
 
         self.progress.start(Some(benchmark_duration), &label);
         let outcome = loop {
@@ -281,10 +279,15 @@ impl RemoteBenchmarkDriver {
                 Ok(TickReport::MetricsTick { elapsed, results }) => {
                     self.progress.set_elapsed(elapsed);
                     if let Some(yaml) = results {
-                        let path = results_path.join(format!("measurements-{:?}.yaml", parameters));
-                        if let Err(e) = tokio::fs::write(&path, &yaml).await {
-                            break Err(MonitorError::ResultsWriteError(e))
-                                .wrap_err("Failed to save benchmark results");
+                        let key = format!("{parameters:?}");
+                        let exp = exporter.clone();
+                        if let Err(e) = tokio::task::spawn_blocking(move || {
+                            exp.write_benchmark_result(&yaml, &key)
+                        })
+                        .await
+                        .unwrap()
+                        {
+                            break Err(e).wrap_err("Failed to save benchmark results");
                         }
                     }
                     if elapsed > benchmark_duration {

@@ -67,6 +67,7 @@ struct DagRecord<'a> {
     commit: &'a CommitData,
 }
 
+#[derive(Clone)]
 pub struct Exporter {
     output_dir: PathBuf,
 }
@@ -195,6 +196,15 @@ impl Exporter {
                 }
             }
             Ok(())
+        })
+    }
+
+    /// Write benchmark result YAML to `measurements-{key}.yaml` using the same
+    /// atomic write-rename pattern as other artefacts. `key` is typically
+    /// `format!("{parameters:?}")` at the call site.
+    pub fn write_benchmark_result(&self, yaml: &str, key: &str) -> Result<()> {
+        Self::write_atomic(&self.output_dir, &format!("measurements-{key}.yaml"), |w| {
+            w.write_all(yaml.as_bytes())
         })
     }
 
