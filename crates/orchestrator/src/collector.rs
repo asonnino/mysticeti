@@ -23,6 +23,7 @@ use std::{
 use futures::future::try_join_all;
 use prometheus_http_query::{Client as PrometheusClient, response::Data};
 use serde::{Deserialize, Serialize};
+use serde_yaml;
 
 use crate::{
     benchmark::BenchmarkParameters,
@@ -84,10 +85,8 @@ pub struct BenchmarkResults<N, C> {
 }
 
 impl<N: Serialize, C: Serialize> BenchmarkResults<N, C> {
-    /// Serialise the results to a pretty-printed JSON string. Used by
-    /// `TickReport::MetricsTick` to hand a type-erased snapshot to the caller.
-    pub fn to_json(&self) -> String {
-        serde_json::to_string_pretty(self).expect("BenchmarkResults always serialises")
+    pub fn to_yaml(&self) -> String {
+        serde_yaml::to_string(self).expect("BenchmarkResults always serialises to YAML")
     }
 }
 
@@ -179,14 +178,12 @@ impl<N: ProtocolParameters, C: ProtocolParameters> Collector<N, C> {
         Ok(())
     }
 
-    /// Write the accumulated results to `dir/measurements-{parameters:?}.json`.
-    /// Preserves today's mysticeti filename convention.
+    /// Write the accumulated results to `dir/measurements-{parameters:?}.yaml`.
     pub fn save(&self, dir: &Path) -> Result<(), MonitorError> {
-        let json = serde_json::to_string_pretty(&self.results)
-            .expect("BenchmarkResults always serialises");
+        let yaml = self.results.to_yaml();
         let mut path = PathBuf::from(dir);
-        path.push(format!("measurements-{:?}.json", self.results.parameters));
-        fs::write(&path, json)?;
+        path.push(format!("measurements-{:?}.yaml", self.results.parameters));
+        fs::write(&path, yaml)?;
         Ok(())
     }
 }
