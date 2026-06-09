@@ -1,17 +1,17 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{fs, net::SocketAddr, path::PathBuf};
+use std::net::SocketAddr;
 
 use crate::{
     benchmark::Parameters,
-    error::{MonitorError, MonitorResult},
+    error::MonitorResult,
     protocol::ProtocolMetrics,
     provider::Instance,
     ssh::{CommandContext, SshConnectionManager},
 };
 
-pub struct Monitor {
+pub(crate) struct Monitor {
     instance: Instance,
     clients: Vec<Instance>,
     nodes: Vec<Instance>,
@@ -20,7 +20,7 @@ pub struct Monitor {
 
 impl Monitor {
     /// Create a new monitor.
-    pub fn new(
+    pub(crate) fn new(
         instance: Instance,
         clients: Vec<Instance>,
         nodes: Vec<Instance>,
@@ -35,7 +35,7 @@ impl Monitor {
     }
 
     /// Dependencies to install.
-    pub fn dependencies() -> Vec<String> {
+    pub(crate) fn dependencies() -> Vec<String> {
         let mut commands: Vec<String> = Vec::new();
         commands.extend(Prometheus::install_commands().into_iter().map(String::from));
         commands.extend(Grafana::install_commands().into_iter().map(String::from));
@@ -44,7 +44,7 @@ impl Monitor {
     }
 
     /// Start a prometheus instance on the dedicated motoring machine.
-    pub async fn start_prometheus<P: ProtocolMetrics>(
+    pub(crate) async fn start_prometheus<P: ProtocolMetrics>(
         &self,
         protocol_commands: &P,
         parameters: &Parameters<P>,
@@ -65,7 +65,7 @@ impl Monitor {
     }
 
     /// Start grafana on the dedicated motoring machine.
-    pub async fn start_grafana(&self) -> MonitorResult<()> {
+    pub(crate) async fn start_grafana(&self) -> MonitorResult<()> {
         // Configure and reload grafana.
         let instance = std::iter::once(self.instance.clone());
         let commands = Grafana::setup_commands();
@@ -77,13 +77,13 @@ impl Monitor {
     }
 
     /// The public address of the grafana instance.
-    pub fn grafana_address(&self) -> String {
+    pub(crate) fn grafana_address(&self) -> String {
         format!("http://{}:{}", self.instance.main_ip, Grafana::DEFAULT_PORT)
     }
 
     /// The public address of the prometheus instance, used by the consumer to
     /// query metrics over PromQL.
-    pub fn prometheus_address(&self) -> String {
+    pub(crate) fn prometheus_address(&self) -> String {
         format!(
             "http://{}:{}",
             self.instance.main_ip,
@@ -93,16 +93,16 @@ impl Monitor {
 }
 
 /// Generate the commands to setup prometheus on the given instances.
-pub struct Prometheus;
+pub(crate) struct Prometheus;
 
 impl Prometheus {
     /// The default prometheus configuration path.
     const DEFAULT_PROMETHEUS_CONFIG_PATH: &'static str = "/etc/prometheus/prometheus.yml";
     /// The default prometheus port.
-    pub const DEFAULT_PORT: u16 = 9090;
+    pub(crate) const DEFAULT_PORT: u16 = 9090;
 
     /// The commands to install prometheus.
-    pub fn install_commands() -> Vec<&'static str> {
+    pub(crate) fn install_commands() -> Vec<&'static str> {
         vec![
             "sudo apt-get -y install prometheus",
             "sudo chmod 777 -R /var/lib/prometheus/ /etc/prometheus/",
@@ -110,7 +110,7 @@ impl Prometheus {
     }
 
     /// Generate the commands to update the prometheus configuration and restart prometheus.
-    pub fn setup_commands<I, P>(
+    pub(crate) fn setup_commands<I, P>(
         nodes: I,
         _clients: I,
         protocol: &P,
@@ -182,16 +182,16 @@ impl Prometheus {
     }
 }
 
-pub struct Grafana;
+pub(crate) struct Grafana;
 
 impl Grafana {
     /// The path to the datasources directory.
     const DATASOURCES_PATH: &'static str = "/etc/grafana/provisioning/datasources";
     /// The default grafana port.
-    pub const DEFAULT_PORT: u16 = 3000;
+    pub(crate) const DEFAULT_PORT: u16 = 3000;
 
     /// The commands to install grafana.
-    pub fn install_commands() -> Vec<&'static str> {
+    pub(crate) fn install_commands() -> Vec<&'static str> {
         vec![
             "sudo apt-get install -y apt-transport-https software-properties-common wget",
             "sudo wget -q -O /etc/apt/keyrings/grafana.key https://apt.grafana.com/gpg.key",
@@ -207,7 +207,7 @@ impl Grafana {
     }
 
     /// Generate the commands to update the grafana datasource and restart grafana.
-    pub fn setup_commands() -> String {
+    pub(crate) fn setup_commands() -> String {
         [
             &format!("(rm -r {} || true)", Self::DATASOURCES_PATH),
             &format!("mkdir -p {}", Self::DATASOURCES_PATH),
@@ -241,93 +241,15 @@ impl Grafana {
         .join("\n")
     }
 }
-
-#[allow(dead_code)] // TODO: Will be used to observe local testbeds (#8)
-/// Bootstrap the grafana with datasource to connect to the given instances.
-/// NOTE: Only for macOS. Grafana must be installed through homebrew (and not from source).
-/// Deeper grafana configuration can be done through the grafana.ini file
-/// (/opt/homebrew/etc/grafana/grafana.ini) or the plist file
-/// (~/Library/LaunchAgents/homebrew.mxcl.grafana.plist).
-pub struct LocalGrafana;
-
-#[allow(dead_code)] // TODO: Will be used to observe local testbeds (#8)
-impl LocalGrafana {
-    /// The default grafana home directory (macOS, homebrew install).
-    const DEFAULT_GRAFANA_HOME: &'static str = "/opt/homebrew/opt/grafana/share/grafana/";
-    /// The path to the datasources directory.
-    const DATASOURCES_PATH: &'static str = "conf/provisioning/datasources/";
-    /// The default grafana port.
-    pub const DEFAULT_PORT: u16 = 3000;
-
-    /// Configure grafana to connect to the given instances. Only for macOS.
-    pub fn run<I>(instances: I) -> MonitorResult<()>
-    where
-        I: IntoIterator<Item = Instance>,
-    {
-        let path: PathBuf = [Self::DEFAULT_GRAFANA_HOME, Self::DATASOURCES_PATH]
-            .iter()
-            .collect();
-
-        // Remove the old datasources.
-        fs::remove_dir_all(&path).unwrap();
-        fs::create_dir(&path).unwrap();
-
-        // Create the new datasources.
-        for (i, instance) in instances.into_iter().enumerate() {
-            let mut file = path.clone();
-            file.push(format!("instance-{}.yml", i));
-            fs::write(&file, Self::datasource(&instance, i)).map_err(|e| {
-                MonitorError::GrafanaError(format!("Failed to write grafana datasource ({e})"))
-            })?;
-        }
-
-        // Restart grafana.
-        std::process::Command::new("brew")
-            .arg("services")
-            .arg("restart")
-            .arg("grafana")
-            .arg("-q")
-            .spawn()
-            .map_err(|e| MonitorError::GrafanaError(e.to_string()))?;
-
-        Ok(())
-    }
-
-    /// Generate the content of the datasource file for the given instance. This grafana instance
-    /// takes one datasource per instance and assumes one prometheus server runs per instance.
-    /// NOTE: The datasource file is a yaml file so spaces are important.
-    fn datasource(instance: &Instance, index: usize) -> String {
-        [
-            "apiVersion: 1",
-            "deleteDatasources:",
-            &format!("  - name: instance-{index}"),
-            "    orgId: 1",
-            "datasources:",
-            &format!("  - name: instance-{index}"),
-            "    type: prometheus",
-            "    access: proxy",
-            "    orgId: 1",
-            &format!(
-                "    url: http://{}:{}",
-                instance.main_ip,
-                Prometheus::DEFAULT_PORT
-            ),
-            "    editable: true",
-            &format!("    uid: UID-{index}"),
-        ]
-        .join("\n")
-    }
-}
-
 /// Generate the commands to setup node exporter on the given instances.
 struct NodeExporter;
 
 impl NodeExporter {
-    const RELEASE: &'static str = "0.18.1";
+    const RELEASE: &'static str = "1.11.1";
     const DEFAULT_PORT: u16 = 9200;
     const SERVICE_PATH: &'static str = "/etc/systemd/system/node_exporter.service";
 
-    pub fn install_commands() -> Vec<String> {
+    pub(crate) fn install_commands() -> Vec<String> {
         let build = format!("node_exporter-{}.linux-amd64", Self::RELEASE);
         let source = format!(
             "https://github.com/prometheus/node_exporter/releases/download/v{}/{build}.tar.gz",

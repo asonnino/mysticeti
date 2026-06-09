@@ -34,17 +34,17 @@ impl From<&str> for InstanceStatus {
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct Instance {
     /// The unique identifier of the instance.
-    pub id: String,
+    pub(crate) id: String,
     /// The region where the instance runs.
     pub region: String,
     /// The public ip address of the instance (accessible from anywhere).
     pub main_ip: Ipv4Addr,
     /// The list of tags associated with the instance.
-    pub tags: Vec<String>,
+    pub(crate) tags: Vec<String>,
     /// The specs of the instance.
-    pub specs: String,
+    pub(crate) specs: String,
     /// The current status of the instance.
-    pub status: InstanceStatus,
+    pub(crate) status: InstanceStatus,
 }
 
 impl Instance {
@@ -64,7 +64,7 @@ impl Instance {
     }
 
     /// Return the ssh address to connect to the instance.
-    pub fn ssh_address(&self) -> SocketAddr {
+    pub(crate) fn ssh_address(&self) -> SocketAddr {
         SocketAddr::new(self.main_ip.into(), 22)
     }
 
@@ -119,10 +119,12 @@ pub trait ServerProviderClient: Display {
         instance: Instance,
     ) -> impl Future<Output = CloudProviderResult<()>> + Send;
 
-    /// Authorize the provided ssh public key to access machines.
+    /// Authorize the provided ssh public key to access machines. `None` means
+    /// the public key file was absent on disk; providers that require key
+    /// registration (e.g. AWS) must return an error in that case.
     fn register_ssh_public_key(
         &self,
-        public_key: String,
+        public_key: Option<String>,
     ) -> impl Future<Output = CloudProviderResult<()>> + Send;
 
     /// Return provider-specific commands to setup the instance.
@@ -222,7 +224,10 @@ pub mod test_client {
             Ok(())
         }
 
-        async fn register_ssh_public_key(&self, _public_key: String) -> CloudProviderResult<()> {
+        async fn register_ssh_public_key(
+            &self,
+            _public_key: Option<String>,
+        ) -> CloudProviderResult<()> {
             Ok(())
         }
 

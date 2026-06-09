@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     benchmark::BenchmarkParameters,
-    error::{MonitorError, MonitorResult, TestbedResult},
+    error::{MonitorError, TestbedResult},
     protocol::ProtocolParameters,
 };
 
@@ -69,18 +69,18 @@ pub struct MetricSpec {
 /// matching time series. `labels` is the full label map for that series; the
 /// consumer filters or groups by it (e.g. `labels["workload"] == "owned"`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Sample {
-    pub timestamp: f64,
-    pub value: f64,
-    pub labels: HashMap<String, String>,
+pub(crate) struct Sample {
+    timestamp: f64,
+    value: f64,
+    labels: HashMap<String, String>,
 }
 
 /// Accumulated benchmark output. Keyed by metric name, each entry holds every
 /// sample observed across every [`Collector::collect`] tick.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BenchmarkResults<N, C> {
-    pub parameters: BenchmarkParameters<N, C>,
-    pub samples: HashMap<String, Vec<Sample>>,
+    parameters: BenchmarkParameters<N, C>,
+    samples: HashMap<String, Vec<Sample>>,
 }
 
 /// Issues PromQL queries against a deployed Prometheus instance and
@@ -122,7 +122,7 @@ impl<N: ProtocolParameters, C: ProtocolParameters> Collector<N, C> {
     /// Histograms fan out to one query per [`HISTOGRAM_QUANTILES`] entry; the
     /// returned samples land under `{name}.p{quantile*100}`. Everything else
     /// stores under the spec's `name`.
-    pub async fn collect(&mut self) -> MonitorResult<()> {
+    pub async fn collect(&mut self) -> Result<(), MonitorError> {
         // (storage_key, promql) pairs for this tick.
         let mut targets: Vec<(String, String)> = Vec::new();
         for spec in &self.metrics {
@@ -173,7 +173,7 @@ impl<N: ProtocolParameters, C: ProtocolParameters> Collector<N, C> {
 
     /// Write the accumulated results to `dir/measurements-{parameters:?}.json`.
     /// Preserves today's mysticeti filename convention.
-    pub fn save(&self, dir: &Path) -> MonitorResult<()> {
+    pub fn save(&self, dir: &Path) -> Result<(), MonitorError> {
         let json = serde_json::to_string_pretty(&self.results)
             .expect("BenchmarkResults always serialises");
         let mut path = PathBuf::from(dir);

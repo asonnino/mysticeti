@@ -12,7 +12,7 @@ pub mod collector;
 pub mod error;
 pub mod faults;
 pub mod logs;
-pub mod monitor;
+pub(crate) mod monitor;
 pub mod orchestrator;
 pub mod protocol;
 pub mod provider;
