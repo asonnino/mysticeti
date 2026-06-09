@@ -11,8 +11,6 @@ use std::time::Duration;
 use dag::{authority::Authority, metrics::SnapshotAggregate};
 use orchestrator::benchmark::BenchmarkParameters;
 use orchestrator::collector::LiveStats;
-
-use crate::remote::benchmark::RemoteResult;
 use replica::result::{Outcome, RunResult};
 use replica::testbed::TestbedConfig;
 use simulator::SimulationConfig;
@@ -286,35 +284,6 @@ impl<C> ResultRender for RunResult<C> {
             self.duration.as_secs(),
             self.outcome,
             &commit_counts,
-        ))
-    }
-}
-
-impl ResultRender for RemoteResult {
-    fn render_block(&self, color: bool) -> String {
-        let (Some(outcome), Some(logs)) = (self.outcome(), self.logs.as_ref()) else {
-            return String::new();
-        };
-        let mut out = outcome.badge(color);
-        if logs.node_errors != 0 || logs.client_errors != 0 {
-            out.push('\n');
-            out.push_str(&format!(
-                "Log errors — node: {}, client: {}",
-                logs.node_errors, logs.client_errors
-            ));
-        }
-        out
-    }
-
-    fn suite_row(&self, name: &str, nodes: usize) -> Option<SuiteRow> {
-        let outcome = self.outcome()?;
-        // Remote runs have no per-replica committed-leader counts to show.
-        Some(SuiteRow::new(
-            name,
-            nodes,
-            self.duration.as_secs(),
-            outcome,
-            &[],
         ))
     }
 }

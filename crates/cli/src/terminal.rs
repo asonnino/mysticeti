@@ -11,7 +11,7 @@ pub mod table;
 
 use std::{future::Future, io::IsTerminal, time::Duration};
 
-pub(crate) use self::render::{ConfigRender, ResultRender, StatusRender};
+pub(crate) use self::render::{ConfigRender, OutcomeDisplay, ResultRender, StatusRender};
 use self::table::SuiteRow;
 
 pub use self::banner::BannerPrinter;
@@ -112,10 +112,11 @@ impl Terminal {
         }
     }
 
-    /// Print the suite summary when more than one run was recorded; no-op for
-    /// single-run commands.
+    /// Print the suite summary when more than one run recorded a row; no-op for
+    /// single-run commands and when no run produced a row (e.g. remote benchmarks
+    /// with log analysis disabled), so we never print an empty table.
     pub(crate) fn print_summary(&self) {
-        if self.total <= 1 {
+        if self.total <= 1 || self.suite_rows.is_empty() {
             return;
         }
         println!();
