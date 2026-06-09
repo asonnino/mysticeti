@@ -280,9 +280,9 @@ impl RemoteBenchmarkDriver {
                     self.progress.set_elapsed(elapsed);
                     if let Some(yaml) = results {
                         let key = format!("{parameters:?}");
-                        let e = exporter.clone();
+                        let exporter_clone = exporter.clone();
                         let result = tokio::task::spawn_blocking(move || {
-                            e.write_benchmark_result(&yaml, &key)
+                            exporter_clone.write_benchmark_result(&yaml, &key)
                         })
                         .await
                         .map_err(|e| eyre::eyre!("write_benchmark_result task panicked: {e}"))
