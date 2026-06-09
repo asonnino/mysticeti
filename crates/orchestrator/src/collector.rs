@@ -15,7 +15,7 @@
 //! by labels post-hoc.
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fs,
     path::{Path, PathBuf},
 };
@@ -87,6 +87,60 @@ pub struct BenchmarkResults<N, C> {
 impl<N: Serialize, C: Serialize> BenchmarkResults<N, C> {
     pub fn to_yaml(&self) -> String {
         serde_yaml::to_string(self).expect("BenchmarkResults always serialises to YAML")
+    }
+}
+
+impl<N, C> BenchmarkResults<N, C> {
+    /// Snapshot the most recent scrape as one value per metric key, for a live
+    /// heartbeat. Each PromQL query is already windowed (`rate(..[RATE_WINDOW])`,
+    /// `histogram_quantile(.., rate(..[RATE_WINDOW]))`), so the latest sample is
+    /// the last-window throughput / quantile — no run-to-date averaging. A scrape
+    /// stores one sample per series (e.g. per node) sharing one instant-query
+    /// timestamp, so we take the max-timestamp group and average it across series
+    /// into a single cluster figure.
+    pub fn live_stats(&self) -> LiveStats {
+        let values = self
+            .samples
+            .iter()
+            .filter_map(|(key, samples)| {
+                let latest_timestamp = samples
+                    .iter()
+                    .map(|sample| sample.timestamp)
+                    .fold(f64::NEG_INFINITY, f64::max);
+                let latest: Vec<f64> = samples
+                    .iter()
+                    .filter(|sample| sample.timestamp == latest_timestamp)
+                    .map(|sample| sample.value)
+                    .collect();
+                if latest.is_empty() {
+                    return None;
+                }
+                Some((
+                    key.clone(),
+                    latest.iter().sum::<f64>() / latest.len() as f64,
+                ))
+            })
+            .collect();
+        LiveStats { values }
+    }
+}
+
+/// Point-in-time snapshot of the collected metrics: the most recent scrape value
+/// per metric key (throughput rates and histogram quantiles), averaged across
+/// series. Non-generic so it can ride on [`crate::report::TickReport`] without
+/// leaking the protocol parameter types; the consumer interprets the keys (e.g.
+/// the CLI maps `latency_s.p50` → p50 latency).
+#[derive(Clone, Debug, Default)]
+pub struct LiveStats {
+    values: BTreeMap<String, f64>,
+}
+
+impl LiveStats {
+    /// Latest value for `key`, or `None` if no samples landed under it. Keys follow
+    /// the collector's storage convention: a bare metric name for counters/gauges,
+    /// `{name}.p{quantile}` for histogram quantiles.
+    pub fn get(&self, key: &str) -> Option<f64> {
+        self.values.get(key).copied()
     }
 }
 

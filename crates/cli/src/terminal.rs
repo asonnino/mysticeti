@@ -9,12 +9,9 @@ pub mod progress;
 mod render;
 pub mod table;
 
-use std::{io::IsTerminal, time::Duration};
+use std::{future::Future, io::IsTerminal, time::Duration};
 
-use dag::metrics::SnapshotAggregate;
-use replica::result::RunResult;
-
-pub(crate) use self::render::{AggregateRender, ConfigRender, RunResultRender};
+pub(crate) use self::render::{ConfigRender, ResultRender, StatusRender};
 use self::table::SuiteRow;
 
 pub use self::banner::BannerPrinter;
@@ -62,13 +59,14 @@ impl Terminal {
     /// [`ConfigRender::config_rows`] is empty. Callers start the progress
     /// indicator separately via [`Self::start_progress_animation`].
     pub(crate) fn print_config<C: ConfigRender>(&mut self, index: usize, config: &C) {
+        let kind = config.run_kind();
         let heading = match (self.total > 1, config.name()) {
             (true, Some(name)) => Some(format!(
-                "Simulation [{index}/{total}]: {name}",
+                "{kind} [{index}/{total}]: {name}",
                 total = self.total
             )),
-            (true, None) => Some(format!("Simulation [{index}/{total}]", total = self.total)),
-            (false, Some(name)) => Some(format!("Simulation: {name}")),
+            (true, None) => Some(format!("{kind} [{index}/{total}]", total = self.total)),
+            (false, Some(name)) => Some(format!("{kind}: {name}")),
             (false, None) => None,
         };
 
@@ -88,40 +86,30 @@ impl Terminal {
         }
     }
 
-    /// Advance the bar and optionally print the live progress line on stderr.
-    pub(crate) fn print_status(
-        &mut self,
-        elapsed: Duration,
-        aggregate: Option<&SnapshotAggregate<'_>>,
-    ) {
-        if let Some(aggregate) = aggregate {
-            self.progress
-                .suspend(|| eprintln!("{}", aggregate.render(elapsed)));
-        }
+    /// Print the live heartbeat line on stderr and advance the bar to `elapsed`.
+    /// For an advance without a line (sub-heartbeat ticks), use [`Self::set_elapsed`].
+    pub(crate) fn print_status(&mut self, elapsed: Duration, status: &impl StatusRender) {
+        self.progress
+            .suspend(|| eprintln!("{}", status.render_status_line(elapsed)));
         self.progress.set_elapsed(elapsed);
     }
 
     /// Stop the progress indicator, print the per-result block (badge + per-replica
     /// table or happy-path headline), and record the suite row for later aggregate
-    /// display.
-    pub(crate) fn print_results<C: ConfigRender>(&mut self, result: &RunResult<C>) {
+    /// display. Config and result are separate: the result owns the metrics/outcome
+    /// while the config supplies the run's name and committee size.
+    pub(crate) fn print_results(&mut self, config: &impl ConfigRender, result: &impl ResultRender) {
         self.stop_progress_animation();
-        println!("{}", result.render(self.color));
-        println!();
+        let block = result.render_block(self.color);
+        if !block.is_empty() {
+            println!("{block}");
+            println!();
+        }
 
-        let run_name = result
-            .config
-            .name()
-            .map(str::to_owned)
-            .unwrap_or_else(|| "unnamed".into());
-        let commit_counts = SnapshotAggregate::new(&result.metrics).committed_leaders_per_replica();
-        self.suite_rows.push(SuiteRow::new(
-            &run_name,
-            result.config.committee_size(),
-            result.duration.as_secs(),
-            result.outcome,
-            &commit_counts,
-        ));
+        let run_name = config.name().unwrap_or_else(|| "unnamed".into());
+        if let Some(row) = result.suite_row(&run_name, config.committee_size()) {
+            self.suite_rows.push(row);
+        }
     }
 
     /// Print the suite summary when more than one run was recorded; no-op for
@@ -151,5 +139,25 @@ impl Terminal {
     /// line with the printed text.
     pub(crate) fn stop_progress_animation(&mut self) {
         self.progress.stop();
+    }
+
+    /// Advance the determinate bar to `elapsed`. No-op for the spinner / idle.
+    pub(crate) fn set_elapsed(&self, elapsed: Duration) {
+        self.progress.set_elapsed(elapsed);
+    }
+
+    /// Run `work` under an indeterminate spinner labelled `label`, clearing it
+    /// when the future resolves. Delegates to [`Progress::track`].
+    pub(crate) async fn track<T, E, F>(&mut self, label: &str, work: F) -> Result<T, E>
+    where
+        F: Future<Output = Result<T, E>>,
+    {
+        self.progress.track(label, work).await
+    }
+
+    /// Run `f` while the active indicator is suspended (cleared, then redrawn),
+    /// so plain prints don't fight the bar for the line.
+    pub(crate) fn suspend<F: FnOnce() -> R, R>(&self, f: F) -> R {
+        self.progress.suspend(f)
     }
 }
