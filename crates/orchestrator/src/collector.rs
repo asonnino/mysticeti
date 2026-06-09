@@ -101,6 +101,11 @@ pub struct Collector<N, C> {
 }
 
 impl<N: ProtocolParameters, C: ProtocolParameters> Collector<N, C> {
+    /// Return a reference to the accumulated results.
+    pub fn results(&self) -> &BenchmarkResults<N, C> {
+        &self.results
+    }
+
     /// `prometheus_address` is the URL the consumer received in
     /// [`crate::orchestrator::MonitoringReport::prometheus_address`].
     pub fn new(
