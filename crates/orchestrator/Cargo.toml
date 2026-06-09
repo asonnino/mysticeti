@@ -12,7 +12,6 @@ aws-runtime = "1.2.3"
 aws-sdk-ec2 = "1.227.0"
 eyre = { workspace = true }
 futures = { workspace = true }
-glob = "0.3.1"
 dag.workspace = true
 replica.workspace = true
 prometheus-http-query = { version = "0.9", default-features = false, features = [
@@ -23,7 +22,7 @@ reqwest = { workspace = true }
 russh = "0.61"
 russh-sftp = "2.1"
 serde = { workspace = true }
-serde_json = "1.0.150"
+serde_json = { workspace = true }
 serde_with = "3.20.0"
 serde_yaml = { workspace = true }
 thiserror = { workspace = true }

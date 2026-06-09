@@ -59,16 +59,16 @@ impl Repository {
 #[derive(Serialize, Deserialize, Clone, Default, PartialEq, Eq, Debug)]
 pub struct AwsConfig {
     /// The EC2 instance type, e.g. `m5d.8xlarge`.
-    pub specs: String,
+    pub(crate) specs: String,
     /// The path to the AWS credentials file.
     #[serde(skip_serializing)]
-    pub token_file: PathBuf,
+    pub(crate) token_file: PathBuf,
 }
 
 /// A single pre-provisioned machine for the custom provider, tagged with the
 /// region it belongs to (which must appear in [`Settings::regions`]).
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
-pub struct CustomInstance {
+pub(crate) struct CustomInstance {
     pub region: String,
     pub ip: Ipv4Addr,
 }
@@ -78,9 +78,9 @@ pub struct CustomInstance {
 #[derive(Serialize, Deserialize, Clone, Default, PartialEq, Eq, Debug)]
 pub struct CustomConfig {
     /// The SSH username configured on the pre-provisioned machines.
-    pub ssh_username: String,
+    pub(crate) ssh_username: String,
     /// The pre-provisioned machines.
-    pub instances: Vec<CustomInstance>,
+    pub(crate) instances: Vec<CustomInstance>,
 }
 
 /// The list of supported cloud providers.
@@ -170,6 +170,11 @@ pub struct Settings {
     /// The number of times the orchestrator should retry an ssh command.
     #[serde(default = "defaults::default_ssh_retries")]
     pub ssh_retries: usize,
+    /// How long to wait for a node or client process to pass its health check
+    /// after being launched. If the deadline is exceeded, the benchmark aborts.
+    #[serde(default = "defaults::default_health_check_timeout")]
+    #[serde_as(as = "DurationSeconds")]
+    pub health_check_timeout: Duration,
 }
 
 mod defaults {
@@ -224,6 +229,10 @@ mod defaults {
     pub fn default_ssh_retries() -> usize {
         3
     }
+
+    pub fn default_health_check_timeout() -> Duration {
+        Duration::from_secs(120)
+    }
 }
 
 impl Settings {
@@ -267,25 +276,16 @@ impl Settings {
         Ok(s)
     }
 
-    /// Whether the given instance belongs to the active testbed. The region
-    /// check applies to every provider; AWS additionally requires the instance
-    /// type to match the configured specs (a single AWS account may host
-    /// machines from unrelated testbeds, so the type narrows the match).
-    pub fn filter_instance(&self, instance: &Instance) -> bool {
-        if !self.regions.contains(&instance.region) {
-            return false;
-        }
-        match &self.cloud_provider {
-            CloudProvider::Aws(c) => {
-                instance.specs.to_lowercase().replace('.', "")
-                    == c.specs.to_lowercase().replace('.', "")
-            }
-            CloudProvider::Custom(_) => true,
-        }
+    /// Whether the given instance belongs to the active testbed. Filters by
+    /// region only: for AWS, `AwsClient::list_instances` already applies a
+    /// `tag:Name = testbed_id` filter at the API level so every instance in
+    /// `self.instances` already belongs to this testbed.
+    pub(crate) fn filter_instance(&self, instance: &Instance) -> bool {
+        self.regions.contains(&instance.region)
     }
 
     /// Get the name of the repository (from its url).
-    pub fn repository_name(&self) -> String {
+    pub(crate) fn repository_name(&self) -> String {
         self.repository
             .url
             .path_segments()
@@ -297,15 +297,25 @@ impl Settings {
             .to_string()
     }
 
-    /// Load the ssh public key from file.
-    pub fn load_ssh_public_key(&self) -> SettingsResult<String> {
-        let ssh_public_key_file = self.ssh_public_key_file.clone().unwrap_or_else(|| {
-            let mut private = self.ssh_private_key_file.clone();
-            private.set_extension("pub");
-            private
-        });
+    /// Resolve the SSH public key path: uses `ssh_public_key_file` when set,
+    /// otherwise defaults to the private key path with a `.pub` extension.
+    pub(crate) fn public_key_file(&self) -> PathBuf {
+        self.ssh_public_key_file.clone().unwrap_or_else(|| {
+            let mut path = self.ssh_private_key_file.clone();
+            path.set_extension("pub");
+            path
+        })
+    }
+
+    /// Load the ssh public key from file. Returns `None` if the file does not
+    /// exist — providers that don't need a registered key (e.g. the custom
+    /// provider) can accept `None` without error. Returns `Err` only for
+    /// unexpected IO failures (file present but unreadable).
+    pub(crate) fn load_ssh_public_key(&self) -> SettingsResult<Option<String>> {
+        let ssh_public_key_file = self.public_key_file();
         match fs::read_to_string(&ssh_public_key_file) {
-            Ok(token) => Ok(token.trim_end_matches('\n').to_string()),
+            Ok(token) => Ok(Some(token.trim_end_matches('\n').to_string())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(SettingsError::SshPublicKeyFileError {
                 file: ssh_public_key_file.display().to_string(),
                 message: e.to_string(),
@@ -347,7 +357,10 @@ mod test {
     fn load_ssh_public_key() {
         let settings = Settings::new_for_test();
         let public_key = settings.load_ssh_public_key().unwrap();
-        assert_eq!(public_key, "This is a fake public key for tests");
+        assert_eq!(
+            public_key,
+            Some("This is a fake public key for tests".to_string())
+        );
     }
 
     #[test]

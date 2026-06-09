@@ -107,7 +107,10 @@ impl ServerProviderClient for CustomClient {
         ))
     }
 
-    async fn register_ssh_public_key(&self, _public_key: String) -> CloudProviderResult<()> {
+    async fn register_ssh_public_key(
+        &self,
+        _public_key: Option<String>,
+    ) -> CloudProviderResult<()> {
         // SSH key registration is the user's responsibility on a custom testbed.
         // This silently succeeds so that `Testbed::new` (which always calls it)
         // works for every command, not just lifecycle ones.

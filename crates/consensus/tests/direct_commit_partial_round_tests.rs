@@ -28,14 +28,14 @@ fn direct_commit_partial_round_n4() {
 
 #[test]
 #[tracing_test::traced_test]
-fn direct_commit_partial_round_n10() {
-    run_for_size(10);
+fn direct_commit_partial_round_n20() {
+    run_for_size(20);
 }
 
 fn run_for_size(n: usize) {
     let committee = committee(n);
     let leader_counts = [1, 2, 2 * n / 3 + 1, n];
-    for spec in ConsensusProtocol::all_for_test(&leader_counts) {
+    for spec in ConsensusProtocol::all_for_test(n, &leader_counts) {
         run(&spec, &committee);
     }
 }
