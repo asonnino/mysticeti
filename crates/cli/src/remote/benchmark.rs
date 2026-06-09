@@ -1,20 +1,17 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::time::Duration;
-
 use eyre::{Context, Result};
 use orchestrator::{
     benchmark::{BenchmarkParameters, Parameters},
-    collector::Collector,
     error::MonitorError,
-    faults::CrashRecoverySchedule,
     orchestrator::{MonitoringReport, Orchestrator},
     protocol::{ProtocolCommands, ProtocolMetrics, ProtocolParameters as _},
     provider::Instance,
+    report::TickReport,
+    session::BenchmarkSession,
     settings::Settings,
 };
-use tokio::time::{self, Instant};
 
 use crate::{
     remote::protocol::{ClientParameters, NodeParameters, ReplicaProtocol},
@@ -244,6 +241,7 @@ impl RemoteBenchmarkDriver {
     /// Drive the metrics + faults tick loop for a single benchmark run. Owns the
     /// `tokio::select!`, the fault schedule, and (when monitoring is deployed) a
     /// PromQL [`Collector`] that polls Prometheus on the metrics tick.
+    /// Drive the metrics + faults tick loop for a single benchmark run.
     async fn run_benchmark_loop<P: ProtocolCommands + ProtocolMetrics>(
         &mut self,
         orchestrator: &Orchestrator<P>,
@@ -263,77 +261,46 @@ impl RemoteBenchmarkDriver {
             )
         };
 
-        let (_, nodes, _) = orchestrator
-            .select_instances(parameters)
-            .wrap_err("Failed to select instances for benchmark loop")?;
-        let mut schedule = CrashRecoverySchedule::new(parameters.settings.faults.clone(), nodes);
-
-        let mut collector = monitoring
-            .map(|report| {
-                Collector::new(
-                    &report.prometheus_address,
-                    parameters.clone(),
-                    orchestrator.protocol().metrics(),
-                )
-            })
-            .transpose()
-            .wrap_err("Failed to set up the metrics collector")?;
-
-        let mut metrics_interval = time::interval(parameters.settings.scrape_interval);
-        metrics_interval.tick().await;
-        let mut faults_interval = time::interval(parameters.settings.faults.crash_interval());
-        faults_interval.tick().await;
+        let mut session = BenchmarkSession::new(orchestrator, parameters, monitoring)
+            .await
+            .wrap_err("Failed to start benchmark session")?;
 
         let results_path = self
             .settings
             .results_dir
             .join(format!("results-{}", self.settings.repository.commit));
-        std::fs::create_dir_all(&results_path)
+        tokio::fs::create_dir_all(&results_path)
+            .await
             .map_err(MonitorError::ResultsWriteError)
             .wrap_err("Failed to create results directory")?;
 
         self.progress.start(Some(benchmark_duration), &label);
-        let start = Instant::now();
         let outcome = loop {
-            tokio::select! {
-                _ = metrics_interval.tick() => {
-                    let elapsed = start.elapsed();
+            match session.tick(orchestrator, parameters).await {
+                Err(e) => break Err(e).wrap_err("Benchmark tick failed"),
+                Ok(TickReport::MetricsTick { elapsed, results }) => {
                     self.progress.set_elapsed(elapsed);
-                    if let Some(collector) = collector.as_mut() {
-                        if let Err(error) = collector.collect().await {
-                            break Err(error);
-                        }
-                        if let Err(error) = collector.save(&results_path) {
-                            break Err(error);
+                    if let Some(yaml) = results {
+                        let path = results_path.join(format!("measurements-{:?}.yaml", parameters));
+                        if let Err(e) = tokio::fs::write(&path, &yaml).await {
+                            break Err(MonitorError::ResultsWriteError(e))
+                                .wrap_err("Failed to save benchmark results");
                         }
                     }
                     if elapsed > benchmark_duration {
                         break Ok(());
                     }
-                },
-                _ = faults_interval.tick() => {
-                    let action = match orchestrator
-                        .apply_faults_step(parameters, &mut schedule)
-                        .await
-                    {
-                        Ok(action) => action,
-                        Err(error) => {
-                            self.progress.stop();
-                            return Err(error).wrap_err("Failed to apply fault schedule");
-                        }
-                    };
+                }
+                Ok(TickReport::FaultUpdate { elapsed, action }) => {
+                    self.progress.set_elapsed(elapsed);
                     if !action.kill.is_empty() || !action.boot.is_empty() {
-                        self.progress.suspend(|| eprintln!("Testbed update: {action}"));
+                        self.progress
+                            .suspend(|| eprintln!("Testbed update: {action}"));
                     }
                 }
             }
-            self.progress.set_elapsed(
-                start
-                    .elapsed()
-                    .min(benchmark_duration + Duration::from_secs(1)),
-            );
         };
         self.progress.stop();
-        outcome.wrap_err("Metrics collection failed")
+        outcome
     }
 }
