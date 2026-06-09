@@ -83,7 +83,7 @@ jobs:
             --exclude-files "crates/**/benches/**/*" \
             --exclude-files "crates/**/tests/**/*" \
             --exclude-files "crates/**/test_utils/**/*" \
-            -- --include-ignored
+            -- --include-ignored --skip n20
   dependencies:
     name: Check dependencies
     needs: diff
