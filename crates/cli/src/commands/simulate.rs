@@ -87,7 +87,7 @@ pub async fn simulate(
             .await
             .map_err(|error| eyre::eyre!("Simulation task panicked: {error}"))??;
 
-        terminal.print_results(&result);
+        terminal.print_results(&result.config, &result);
 
         if result.outcome == Outcome::Diverged {
             diverged += 1;

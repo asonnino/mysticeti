@@ -1,35 +1,60 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::time::Duration;
+
 use eyre::{Context, Result};
 use orchestrator::{
     benchmark::{BenchmarkParameters, Parameters},
     orchestrator::{MonitoringReport, Orchestrator},
     protocol::{ProtocolCommands, ProtocolMetrics, ProtocolParameters as _},
     provider::Instance,
-    report::TickReport,
+    report::{LogsReport, TickReport},
     session::BenchmarkSession,
     settings::Settings,
 };
+use replica::result::Outcome;
 
 use crate::{
     exporter::Exporter,
     remote::protocol::{ClientParameters, NodeParameters, ReplicaProtocol},
-    terminal::{BannerPrinter, Progress},
+    terminal::{BannerPrinter, Terminal},
 };
+
+/// Final result of one remote benchmark run, as the terminal renders it.
+pub(crate) struct RemoteResult {
+    pub(crate) duration: Duration,
+    pub(crate) logs: Option<LogsReport>,
+}
+
+impl RemoteResult {
+    /// Classify the log reports.
+    pub(crate) fn outcome(&self) -> Option<Outcome> {
+        let logs = self.logs.as_ref()?;
+        Some(if logs.node_panic || logs.client_panic {
+            Outcome::Diverged
+        } else if logs.node_errors != 0 || logs.client_errors != 0 {
+            Outcome::NoProgress
+        } else {
+            Outcome::Pass
+        })
+    }
+}
 
 pub struct RemoteBenchmarkDriver {
     settings: Settings,
     username: String,
-    progress: Progress,
+    terminal: Terminal,
 }
 
 impl RemoteBenchmarkDriver {
-    pub fn new(settings: Settings, username: String, color: bool) -> Self {
+    /// `runs` is the number of benchmarks the suite will execute (one per load),
+    /// used for the per-run heading (`[i/N]`) and the suite summary.
+    pub fn new(settings: Settings, username: String, runs: usize) -> Self {
         Self {
             settings,
             username,
-            progress: Progress::new(color),
+            terminal: Terminal::new(runs),
         }
     }
 
@@ -91,7 +116,6 @@ impl RemoteBenchmarkDriver {
             committee,
             loads,
         );
-        let total = parameters_set.len();
 
         let orchestrator = Orchestrator::new(
             self.settings.clone(),
@@ -101,20 +125,20 @@ impl RemoteBenchmarkDriver {
             &self.username,
         );
 
-        self.progress
+        self.terminal
             .track("Cleaning up testbed", orchestrator.cleanup(true))
             .await
             .wrap_err("Cleanup failed")?;
 
         if !skip_testbed_update {
-            self.progress
+            self.terminal
                 .track(
                     "Installing dependencies on all machines",
                     orchestrator.install(),
                 )
                 .await
                 .wrap_err("Install failed")?;
-            self.progress
+            self.terminal
                 .track("Updating all instances", orchestrator.update())
                 .await
                 .wrap_err("Update failed")?;
@@ -123,14 +147,9 @@ impl RemoteBenchmarkDriver {
         let mut latest_committee_size = 0;
         for (index, parameters) in parameters_set.into_iter().enumerate() {
             let benchmark_number = index + 1;
-            eprintln!();
-            eprintln!(
-                "--- Benchmark {benchmark_number}/{total}: {} ---",
-                parameters
-            );
-            eprintln!("Node parameters: {}", parameters.node_parameters);
+            self.terminal.print_config(benchmark_number, &parameters);
 
-            self.progress
+            self.terminal
                 .track("Cleaning up testbed", orchestrator.cleanup(true))
                 .await
                 .wrap_err("Cleanup failed")?;
@@ -139,7 +158,7 @@ impl RemoteBenchmarkDriver {
             // skip the call entirely rather than performing a no-op SSH round-trip.
             let monitoring = if self.settings.monitoring {
                 let report = self
-                    .progress
+                    .terminal
                     .track(
                         "Configuring monitoring instance",
                         orchestrator.start_monitoring(&parameters),
@@ -163,32 +182,29 @@ impl RemoteBenchmarkDriver {
             )
             .await?;
 
-            self.progress
+            self.terminal
                 .track("Cleaning up testbed", orchestrator.cleanup(false))
                 .await
                 .wrap_err("Cleanup failed")?;
 
-            if self.settings.log_processing {
-                let logs = self
-                    .progress
-                    .track("Downloading logs", orchestrator.download_logs(&parameters))
-                    .await
-                    .wrap_err("Failed to download logs")?;
-                if logs.node_panic {
-                    eprintln!("ERROR: node(s) panicked!");
-                } else if logs.client_panic {
-                    eprintln!("ERROR: client(s) panicked!");
-                } else if logs.node_errors != 0 || logs.client_errors != 0 {
-                    eprintln!(
-                        "WARNING: logs contain errors (node: {}, client: {})",
-                        logs.node_errors, logs.client_errors,
-                    );
-                }
-            }
+            let logs = if self.settings.log_processing {
+                Some(
+                    self.terminal
+                        .track("Downloading logs", orchestrator.download_logs(&parameters))
+                        .await
+                        .wrap_err("Failed to download logs")?,
+                )
+            } else {
+                None
+            };
+            let result = RemoteResult {
+                duration: parameters.settings.benchmark_duration,
+                logs,
+            };
+            self.terminal.print_results(&parameters, &result);
         }
 
-        eprintln!();
-        eprintln!("Benchmark completed");
+        self.terminal.print_summary();
         Ok(())
     }
 
@@ -202,7 +218,7 @@ impl RemoteBenchmarkDriver {
     ) -> Result<()> {
         if !skip_testbed_configuration && *latest_committee_size != parameters.nodes {
             let configure_report = self
-                .progress
+                .terminal
                 .track("Configuring instances", orchestrator.configure(parameters))
                 .await
                 .wrap_err("Configure failed")?;
@@ -215,7 +231,7 @@ impl RemoteBenchmarkDriver {
             *latest_committee_size = parameters.nodes;
         }
 
-        self.progress
+        self.terminal
             .track("Deploying replicas", orchestrator.run_nodes(parameters))
             .await
             .wrap_err("Deploying replicas failed")?;
@@ -229,7 +245,7 @@ impl RemoteBenchmarkDriver {
         } else {
             "Setting up load generators"
         };
-        self.progress
+        self.terminal
             .track(load_label, orchestrator.run_clients(parameters))
             .await
             .wrap_err("Starting load generators failed")?;
@@ -238,10 +254,9 @@ impl RemoteBenchmarkDriver {
             .await
     }
 
-    /// Drive the metrics + faults tick loop for a single benchmark run. Owns the
-    /// `tokio::select!`, the fault schedule, and (when monitoring is deployed) a
-    /// PromQL [`Collector`] that polls Prometheus on the metrics tick.
-    /// Drive the metrics + faults tick loop for a single benchmark run.
+    /// Drive the metrics + faults tick loop for a single benchmark run: render a
+    /// live heartbeat from the collector's scraped stats on each metrics tick,
+    /// persist each scrape's YAML, and announce fault injections.
     async fn run_benchmark_loop<P: ProtocolCommands + ProtocolMetrics>(
         &mut self,
         orchestrator: &Orchestrator<P>,
@@ -272,12 +287,17 @@ impl RemoteBenchmarkDriver {
         let exporter =
             Exporter::new(results_path).wrap_err("Failed to create results directory")?;
 
-        self.progress.start(Some(benchmark_duration), &label);
+        self.terminal
+            .start_progress_animation(Some(benchmark_duration), &label);
         let outcome = loop {
             match session.tick(orchestrator, parameters).await {
                 Err(e) => break Err(e).wrap_err("Benchmark tick failed"),
-                Ok(TickReport::MetricsTick { elapsed, results }) => {
-                    self.progress.set_elapsed(elapsed);
+                Ok(TickReport::MetricsTick {
+                    elapsed,
+                    results,
+                    stats,
+                }) => {
+                    self.terminal.print_status(elapsed, &stats);
                     if let Some(yaml) = results {
                         let key = format!("{parameters:?}");
                         let exporter_clone = exporter.clone();
@@ -296,15 +316,15 @@ impl RemoteBenchmarkDriver {
                     }
                 }
                 Ok(TickReport::FaultUpdate { elapsed, action }) => {
-                    self.progress.set_elapsed(elapsed);
+                    self.terminal.set_elapsed(elapsed);
                     if !action.kill.is_empty() || !action.boot.is_empty() {
-                        self.progress
+                        self.terminal
                             .suspend(|| eprintln!("Testbed update: {action}"));
                     }
                 }
             }
         };
-        self.progress.stop();
+        self.terminal.stop_progress_animation();
         outcome
     }
 }

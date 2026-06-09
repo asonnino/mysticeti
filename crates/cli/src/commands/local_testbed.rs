@@ -140,11 +140,11 @@ pub async fn local_testbed(
             biased;
             _ = signal::ctrl_c() => break,
             _ = deadline.as_mut() => break,
-            _ = progress.tick() => terminal.print_status(started_at.elapsed(), None),
+            _ = progress.tick() => terminal.set_elapsed(started_at.elapsed()),
             _ = heartbeat.tick() => {
                 let snapshots = metrics.iter().map(|m| m.collect()).collect::<Vec<_>>();
-                let statistics = Some(&SnapshotAggregate::new(&snapshots));
-                terminal.print_status(started_at.elapsed(), statistics);
+                let aggregate = SnapshotAggregate::new(&snapshots);
+                terminal.print_status(started_at.elapsed(), &aggregate);
             },
         }
     }
@@ -167,7 +167,7 @@ pub async fn local_testbed(
 
     terminal.stop_progress_animation();
     eprintln!();
-    terminal.print_results(&result);
+    terminal.print_results(&result.config, &result);
     terminal.print_summary();
 
     if let Some(exporter) = &exporter {

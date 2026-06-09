@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-mod benchmark;
+pub(crate) mod benchmark;
 pub mod protocol;
 mod testbed;
 
@@ -78,7 +78,7 @@ impl<C: ServerProviderClient + Display> RemoteTestbedDriver<C> {
                     .await
                     .wrap_err("Failed to load testbed setup commands")?;
                 let username = self.testbed.username().to_string();
-                RemoteBenchmarkDriver::new(self.settings, username, self.color)
+                RemoteBenchmarkDriver::new(self.settings, username, loads.len())
                     .benchmark(
                         instances,
                         setup_commands,

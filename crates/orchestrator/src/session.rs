@@ -78,9 +78,15 @@ impl<P: ProtocolCommands + ProtocolMetrics> BenchmarkSession<P> {
                     collector.collect().await?;
                 }
                 let results = self.collector.as_ref().map(|c| c.results().to_yaml());
+                let stats = self
+                    .collector
+                    .as_ref()
+                    .map(|c| c.results().live_stats())
+                    .unwrap_or_default();
                 Ok(TickReport::MetricsTick {
                     elapsed: self.start.elapsed(),
                     results,
+                    stats,
                 })
             }
             _ = self.faults_interval.tick() => {

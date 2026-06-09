@@ -3,7 +3,7 @@
 
 use std::{net::SocketAddr, time::Duration};
 
-use crate::{faults::CrashRecoveryAction, provider::Instance};
+use crate::{collector::LiveStats, faults::CrashRecoveryAction, provider::Instance};
 
 /// Per-instance addresses produced by [`crate::orchestrator::Orchestrator::configure`].
 /// The caller uses this to render the "Configuring instances" table;
@@ -54,14 +54,15 @@ pub struct LogsReport {
 }
 
 /// One iteration of the benchmark tick loop. Future return type of
-/// `Orchestrator::tick()` (issue #172).
+/// `Orchestrator::tick()`.
 pub enum TickReport {
-    /// A metrics scrape interval fired. `results` contains the YAML-serialised
-    /// snapshot of the accumulated `BenchmarkResults` when a Prometheus collector
-    /// is active.
+    /// A metrics scrape interval fired. When a Prometheus collector is active,
+    /// `results` carries the YAML-serialised snapshot of the accumulated
+    /// `BenchmarkResults` (for on-disk persistence).
     MetricsTick {
         elapsed: Duration,
         results: Option<String>,
+        stats: LiveStats,
     },
     /// A fault-schedule interval fired and the orchestrator killed or rebooted
     /// instances accordingly.
