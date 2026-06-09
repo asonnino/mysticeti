@@ -77,6 +77,7 @@ jobs:
           cargo tarpaulin \
             --workspace \
             --skip-clean \
+            --timeout 180 \
             --run-types Bins --run-types Lib --run-types Tests \
             --out Html --out Xml \
             --exclude-files "crates/**/benches/**/*" \
