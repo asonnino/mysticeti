@@ -56,9 +56,9 @@ pub struct LogsReport {
 /// One iteration of the benchmark tick loop. Future return type of
 /// `Orchestrator::tick()` (issue #172).
 pub enum TickReport {
-    /// A metrics scrape interval fired. `results` is `Some(json)` when a
-    /// Prometheus collector is active — the caller serialises the results from
-    /// `BenchmarkResults::to_json()` and decides where to persist them.
+    /// A metrics scrape interval fired. `results` contains the YAML-serialised
+    /// snapshot of the accumulated `BenchmarkResults` when a Prometheus collector
+    /// is active.
     MetricsTick {
         elapsed: Duration,
         results: Option<String>,

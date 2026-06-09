@@ -3,7 +3,7 @@
 
 use std::cmp::max;
 
-use crate::report::LogsReport;
+pub use crate::report::LogsReport;
 
 /// A simple log analyzer counting the number of errors and panics.
 #[derive(Default, PartialEq, Eq)]
