@@ -3,15 +3,7 @@
 
 use std::cmp::max;
 
-/// Snapshot of log-analysis state — the data callers need to render or react to
-/// a benchmark's log outcome. Produced by [`LogsAnalyzer::summarize`].
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct LogsReport {
-    pub node_panic: bool,
-    pub client_panic: bool,
-    pub node_errors: usize,
-    pub client_errors: usize,
-}
+use crate::report::LogsReport;
 
 /// A simple log analyzer counting the number of errors and panics.
 #[derive(Default, PartialEq, Eq)]

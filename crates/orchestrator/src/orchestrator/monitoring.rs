@@ -6,20 +6,10 @@ use crate::{
     error::TestbedResult,
     monitor::Monitor,
     protocol::{ProtocolCommands, ProtocolMetrics},
+    report::MonitoringReport,
 };
 
 use super::Orchestrator;
-
-/// Outcome of a successful [`Orchestrator::start_monitoring`] when the testbed
-/// has a dedicated monitoring instance configured. `None` from `start_monitoring`
-/// means monitoring is disabled in [`crate::settings::Settings`].
-pub struct MonitoringReport {
-    pub grafana_address: String,
-    /// PromQL endpoint that consumers can hand to [`crate::collector::Collector`]
-    /// when they want lib-provided metric collection. Always populated when this
-    /// report is returned — the same monitoring instance hosts both servers.
-    pub prometheus_address: String,
-}
 
 impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
     /// Reload prometheus and grafana. Returns `Some(report)` when monitoring is

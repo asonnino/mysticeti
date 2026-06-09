@@ -83,6 +83,14 @@ pub struct BenchmarkResults<N, C> {
     samples: HashMap<String, Vec<Sample>>,
 }
 
+impl<N: Serialize, C: Serialize> BenchmarkResults<N, C> {
+    /// Serialise the results to a pretty-printed JSON string. Used by
+    /// `TickReport::MetricsTick` to hand a type-erased snapshot to the caller.
+    pub fn to_json(&self) -> String {
+        serde_json::to_string_pretty(self).expect("BenchmarkResults always serialises")
+    }
+}
+
 /// Issues PromQL queries against a deployed Prometheus instance and
 /// accumulates the resulting samples in a [`BenchmarkResults`] that the caller
 /// periodically persists with [`Collector::save`]. The specific PromQL fired
