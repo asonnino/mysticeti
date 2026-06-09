@@ -9,9 +9,10 @@ use crate::{
     benchmark::Parameters,
     error::TestbedResult,
     faults::{CrashRecoveryAction, CrashRecoverySchedule},
-    logs::{LogsAnalyzer, LogsReport},
+    logs::LogsAnalyzer,
     protocol::{ProtocolCommands, ProtocolMetrics},
     provider::Instance,
+    report::LogsReport,
     ssh::CommandContext,
 };
 

@@ -16,6 +16,7 @@ pub(crate) mod monitor;
 pub mod orchestrator;
 pub mod protocol;
 pub mod provider;
+pub mod report;
 pub mod settings;
 pub mod ssh;
 pub mod testbed;

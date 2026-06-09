@@ -1,44 +1,16 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::net::SocketAddr;
-
 use crate::{
     benchmark::Parameters,
     error::TestbedResult,
     monitor::Monitor,
     protocol::{ProtocolCommands, ProtocolMetrics},
-    provider::Instance,
+    report::ConfigureReport,
     ssh::{CommandContext, CommandStatus},
 };
 
 use super::Orchestrator;
-
-/// Per-instance addresses produced by [`Orchestrator::configure`]. The caller
-/// uses this to render the "Configuring instances" table; `Orchestrator` itself
-/// never prints.
-pub struct ConfigureReport {
-    pub nodes: Vec<(usize, SocketAddr)>,
-    pub clients: Vec<(usize, SocketAddr)>,
-}
-
-impl ConfigureReport {
-    /// Snapshot the addresses of every node and client the orchestrator just
-    /// configured.
-    pub fn new(nodes: &[Instance], clients: &[Instance]) -> Self {
-        let enumerate_addresses = |instances: &[Instance]| {
-            instances
-                .iter()
-                .enumerate()
-                .map(|(index, instance)| (index, instance.ssh_address()))
-                .collect()
-        };
-        Self {
-            nodes: enumerate_addresses(nodes),
-            clients: enumerate_addresses(clients),
-        }
-    }
-}
 
 impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
     /// Install the codebase and its dependencies on the testbed.

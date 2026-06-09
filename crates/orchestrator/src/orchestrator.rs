@@ -5,8 +5,7 @@ mod monitoring;
 mod prepare;
 mod run;
 
-pub use monitoring::MonitoringReport;
-pub use prepare::ConfigureReport;
+pub use crate::report::{ConfigureReport, MonitoringReport};
 
 use std::collections::{HashMap, VecDeque};
 
