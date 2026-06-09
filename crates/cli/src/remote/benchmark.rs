@@ -281,12 +281,13 @@ impl RemoteBenchmarkDriver {
                     if let Some(yaml) = results {
                         let key = format!("{parameters:?}");
                         let e = exporter.clone();
-                        if let Err(e) = tokio::task::spawn_blocking(move || {
+                        let result = tokio::task::spawn_blocking(move || {
                             e.write_benchmark_result(&yaml, &key)
                         })
                         .await
-                        .expect("failed to write benchmark results to file")
-                        {
+                        .map_err(|e| eyre::eyre!("write_benchmark_result task panicked: {e}"))
+                        .and_then(|r| r);
+                        if let Err(e) = result {
                             break Err(e).wrap_err("Failed to save benchmark results");
                         }
                     }
