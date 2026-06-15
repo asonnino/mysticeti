@@ -200,32 +200,9 @@
             "uid": "Fixed-UID-testbed"
           },
           "editorMode": "code",
-          "expr": "avg(transaction_certified_latency{v=\"p50\"}) / 1000",
-          "legendFormat": "Certificate p50",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "Fixed-UID-testbed"
-          },
-          "editorMode": "code",
-          "expr": "avg(transaction_certified_latency{v=\"p90\"}) / 1000",
-          "hide": false,
-          "legendFormat": "Certificate p90",
-          "range": true,
-          "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "Fixed-UID-testbed"
-          },
-          "editorMode": "code",
           "expr": "avg(transaction_committed_latency{v=\"p50\"}) / 1000",
           "hide": false,
-          "legendFormat": "Tx Commit p50",
+          "legendFormat": "Block Commit p50",
           "range": true,
           "refId": "C"
         },
@@ -237,33 +214,9 @@
           "editorMode": "code",
           "expr": "avg(transaction_committed_latency{v=\"p90\"}) / 1000",
           "hide": false,
-          "legendFormat": "Tx Commit p90",
+          "legendFormat": "Block Commit p90",
           "range": true,
           "refId": "D"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "Fixed-UID-testbed"
-          },
-          "editorMode": "code",
-          "expr": "avg(certificate_committed_latency{v=\"p50\"}) / 1000",
-          "hide": false,
-          "legendFormat": "Cert commit p50",
-          "range": true,
-          "refId": "E"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "Fixed-UID-testbed"
-          },
-          "editorMode": "code",
-          "expr": "avg(certificate_committed_latency{v=\"p90\"}) / 1000",
-          "hide": false,
-          "legendFormat": "Cert commit p90",
-          "range": true,
-          "refId": "F"
         },
         {
           "datasource": {
