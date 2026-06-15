@@ -122,8 +122,21 @@ pub enum TestbedError {
     #[error(transparent)]
     SshError(#[from] SshError),
 
-    #[error("Not enough instances: missing {0} instances")]
-    InsufficientCapacity(usize),
+    #[error(
+        "Not enough active instances: need {needed} \
+        ({nodes} node(s) + {clients} dedicated client(s) + {monitoring} monitoring) \
+        but only {available} active"
+    )]
+    InsufficientCapacity {
+        needed: usize,
+        available: usize,
+        nodes: usize,
+        clients: usize,
+        monitoring: usize,
+    },
+
+    #[error("No active instance available in region '{region}' to host the monitoring stack")]
+    NoMonitoringInstance { region: String },
 
     #[error(transparent)]
     MonitorError(#[from] MonitorError),

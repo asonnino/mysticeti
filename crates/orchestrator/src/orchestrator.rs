@@ -78,12 +78,17 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
     ) -> TestbedResult<(Vec<Instance>, Vec<Instance>, Option<Instance>)> {
         // Ensure there are enough active instances.
         let available_instances: Vec<_> = self.instances.iter().filter(|x| x.is_active()).collect();
-        let minimum_instances = parameters.nodes
-            + self.settings.dedicated_clients
-            + if self.settings.monitoring { 1 } else { 0 };
+        let monitoring = if self.settings.monitoring { 1 } else { 0 };
+        let minimum_instances = parameters.nodes + self.settings.dedicated_clients + monitoring;
         ensure!(
             available_instances.len() >= minimum_instances,
-            TestbedError::InsufficientCapacity(minimum_instances - available_instances.len())
+            TestbedError::InsufficientCapacity {
+                needed: minimum_instances,
+                available: available_instances.len(),
+                nodes: parameters.nodes,
+                clients: self.settings.dedicated_clients,
+                monitoring,
+            }
         );
 
         // Sort the instances by region. This step ensures that the instances are selected as
@@ -107,7 +112,9 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
                 instances_by_regions
                     .get_mut(region)
                     .and_then(|instances| instances.pop_front())
-                    .ok_or(TestbedError::InsufficientCapacity(1))?
+                    .ok_or_else(|| TestbedError::NoMonitoringInstance {
+                        region: region.clone(),
+                    })?
                     .clone(),
             );
         }
