@@ -26,12 +26,19 @@ use super::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
 /// renders [`Self::config_rows`] (empty means "no config to print for this
 /// command").
 pub trait ConfigRender {
-    /// Per-run name shown in the heading and the suite summary's `name` column.
+    /// Per-run name used as the suite summary's `name` column identity.
     fn name(&self) -> Option<String>;
     fn committee_size(&self) -> usize;
     fn config_rows(&self) -> Vec<(&'static str, String)>;
 
-    /// Noun used in the per-run heading (`"{kind} [i/N]: {name}"`).
+    /// Label for the per-run heading (`"{kind} [i/N]: {heading}"`). Defaults to
+    /// [`Self::name`]; types whose `name` merely duplicates `config_rows` (and
+    /// the banner) can return `None` to suppress the heading text.
+    fn heading(&self) -> Option<String> {
+        self.name()
+    }
+
+    /// Noun used in the per-run heading (`"{kind} [i/N]: {heading}"`).
     fn run_kind(&self) -> &str;
 
     /// Render `config_rows` in the banner's border-less key/value style.
@@ -100,6 +107,13 @@ impl<N: fmt::Display, C> ConfigRender for BenchmarkParameters<N, C> {
         // The suite-summary `name` column needs a per-run identity; benchmarks
         // carry theirs in the `Display` impl (`"N nodes (faults) - L tx/s"`).
         Some(self.to_string())
+    }
+
+    fn heading(&self) -> Option<String> {
+        // Suppress the per-run heading: `name()` duplicates the banner (committee)
+        // and the config rows (load, faults). The sweep index from `run_kind`
+        // still marks each run.
+        None
     }
 
     fn run_kind(&self) -> &str {
