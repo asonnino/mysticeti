@@ -3,7 +3,7 @@
 
 use orchestrator::testbed::TestbedStatus;
 
-use crate::terminal::{BOLD, GREEN, RED, RESET};
+use crate::terminal::{BOLD, DIM, GREEN, RED, RESET};
 
 pub trait TestbedStatusRender {
     fn render(&self, color: bool) -> String;
@@ -11,10 +11,20 @@ pub trait TestbedStatusRender {
 
 impl TestbedStatusRender for TestbedStatus {
     fn render(&self, color: bool) -> String {
-        let mut out = format!(
-            "Client: {}\nRepo: {} ({})\nInstances active: {}\n",
-            self.client_summary, self.repository_url, self.repository_commit, self.active_count
-        );
+        let kv = |key: &str, value: &str| {
+            if color {
+                format!("{DIM}{key}:{RESET} {BOLD}{value}{RESET}\n")
+            } else {
+                format!("{key}: {value}\n")
+            }
+        };
+        let mut out = String::from("\n");
+        out.push_str(&kv("Client", &self.client_summary));
+        out.push_str(&kv(
+            "Repo",
+            &format!("{} ({})", self.repository_url, self.repository_commit),
+        ));
+        out.push_str(&kv("Instances active", &self.active_count.to_string()));
         for region in &self.regions {
             out.push('\n');
             let heading = region.region.to_uppercase();
@@ -49,7 +59,7 @@ impl TestbedStatusRender for TestbedStatus {
 mod test {
     use orchestrator::testbed::{InstanceEntry, RegionStatus, TestbedStatus};
 
-    use crate::terminal::{GREEN, RED};
+    use crate::terminal::{DIM, GREEN, RED, RESET};
 
     use super::TestbedStatusRender;
 
@@ -80,6 +90,14 @@ mod test {
         let rendered = status().render(true);
         assert!(rendered.contains(&format!("{GREEN}●")));
         assert!(rendered.contains(&format!("{RED}○")));
+    }
+
+    #[test]
+    fn dims_header_keys_after_a_blank_line() {
+        let rendered = status().render(true);
+        assert!(rendered.starts_with('\n'));
+        assert!(rendered.contains(&format!("{DIM}Client:{RESET}")));
+        assert!(rendered.contains(&format!("{DIM}Instances active:{RESET}")));
     }
 
     #[test]
