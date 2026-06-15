@@ -1,0 +1,14 @@
+testbed_id: "${USER}-mysticeti"
+# The AWS provider creates and manages the machines for you. The orchestrator
+# handles their full lifecycle (create/start/stop/destroy) via the EC2 API and
+# SSHes in to run benchmarks. `specs` is the EC2 instance type and `token_file`
+# points at your AWS credentials.
+cloud_provider: !aws
+  specs: m5d.8xlarge
+  token_file: "/Users/${USER}/.aws/credentials"
+ssh_private_key_file: "/Users/${USER}/.ssh/aws"
+regions:
+  - us-west-1
+repository:
+  url: https://github.com/asonnino/mysticeti.git
+  commit: main
