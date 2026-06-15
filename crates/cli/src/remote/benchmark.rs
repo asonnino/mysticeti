@@ -126,9 +126,11 @@ impl RemoteBenchmarkDriver {
             .map(|l| l.to_string())
             .collect::<Vec<_>>()
             .join(",");
+        let protocol = node_parameters.consensus.to_string();
         BannerPrinter::new(
-            "Mysticeti remote benchmark",
+            "Remote benchmark",
             &[
+                ("Protocol", &protocol),
                 ("Committee", &committee.to_string()),
                 ("Loads", &loads_label),
                 ("Commit", &self.settings.repository.commit),
@@ -166,29 +168,32 @@ impl RemoteBenchmarkDriver {
                 .wrap_err("Not enough instances for this benchmark")?;
         }
 
-        self.terminal
-            .track("Cleaning up testbed", orchestrator.cleanup(true))
-            .await
-            .wrap_err("Cleanup failed")?;
-
-        if !skip_testbed_update {
-            self.terminal
-                .track(
-                    "Installing dependencies on all machines",
-                    orchestrator.install(),
-                )
-                .await
-                .wrap_err("Install failed")?;
-            self.terminal
-                .track("Updating all instances", orchestrator.update())
-                .await
-                .wrap_err("Update failed")?;
-        }
-
         let mut latest_committee_size = 0;
         for (index, parameters) in parameters_set.into_iter().enumerate() {
             let benchmark_number = index + 1;
             self.terminal.print_config(benchmark_number, &parameters);
+
+            // Prepare the testbed once, after announcing the first run's config,
+            // so the user sees what is about to run before the (slow) setup.
+            if index == 0 {
+                self.terminal
+                    .track("Cleaning up testbed", orchestrator.cleanup(true))
+                    .await
+                    .wrap_err("Cleanup failed")?;
+                if !skip_testbed_update {
+                    self.terminal
+                        .track(
+                            "Installing dependencies on all machines",
+                            orchestrator.install(),
+                        )
+                        .await
+                        .wrap_err("Install failed")?;
+                    self.terminal
+                        .track("Updating all instances", orchestrator.update())
+                        .await
+                        .wrap_err("Update failed")?;
+                }
+            }
 
             self.terminal
                 .track("Cleaning up testbed", orchestrator.cleanup(true))

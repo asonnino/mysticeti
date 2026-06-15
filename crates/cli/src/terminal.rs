@@ -60,7 +60,7 @@ impl Terminal {
     /// indicator separately via [`Self::start_progress_animation`].
     pub(crate) fn print_config<C: ConfigRender>(&mut self, index: usize, config: &C) {
         let kind = config.run_kind();
-        let heading = match (self.total > 1, config.name()) {
+        let heading = match (self.total > 1, config.heading()) {
             (true, Some(name)) => Some(format!(
                 "{kind} [{index}/{total}]: {name}",
                 total = self.total
