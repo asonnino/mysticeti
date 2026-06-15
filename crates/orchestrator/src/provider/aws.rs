@@ -57,8 +57,14 @@ impl Display for AwsClient {
 }
 
 impl AwsClient {
-    const OS_IMAGE: &'static str =
-        "Canonical, Ubuntu, 24.04 LTS, amd64 noble image build on 2024-04-23";
+    /// Name pattern for the Ubuntu 26.04 (resolute) amd64 server image.
+    /// Canonical publishes a fresh build under this pattern periodically.
+    const OS_IMAGE_NAME: &'static str =
+        "ubuntu/images/hvm-ssd*/ubuntu-resolute-26.04-amd64-server-*";
+    /// Canonical's AWS account id (same across all commercial regions).
+    /// Restricting the image search to this owner ensures we match official
+    /// Ubuntu images rather than Marketplace republished copies.
+    const CANONICAL_OWNER_ID: &'static str = "099720109477";
     const DEFAULT_EBS_SIZE_GB: i32 = 500; // Default size of the EBS volume in GB.
 
     /// Make a new AWS client. Panics if `settings.cloud_provider` is not
@@ -144,19 +150,24 @@ impl AwsClient {
     /// Query the image id determining the os of the instances.
     /// NOTE: The image id changes depending on the region.
     async fn find_image_id(&self, client: &aws_sdk_ec2::Client) -> CloudProviderResult<String> {
-        // Query all images that match the description.
-        let request = client.describe_images().filters(
-            FilterBuilder::default()
-                .name("description")
-                .values(Self::OS_IMAGE)
-                .build(),
-        );
+        // Query all Canonical-owned images matching the Ubuntu name pattern.
+        let request = client
+            .describe_images()
+            .owners(Self::CANONICAL_OWNER_ID)
+            .filters(
+                FilterBuilder::default()
+                    .name("name")
+                    .values(Self::OS_IMAGE_NAME)
+                    .build(),
+            );
         let response = request.send().await?;
 
-        // Parse the response to select the first returned image id.
+        // Select the most recently created image (creation dates are ISO 8601,
+        // so lexicographic ordering matches chronological ordering).
         response
             .images()
-            .first()
+            .iter()
+            .max_by_key(|image| image.creation_date())
             .ok_or_else(|| CloudProviderError::RequestError("Cannot find image id".into()))?
             .image_id
             .clone()
