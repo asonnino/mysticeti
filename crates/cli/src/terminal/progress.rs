@@ -5,7 +5,7 @@ use std::{future::Future, mem, time::Duration};
 
 use indicatif::{ProgressBar, ProgressStyle};
 
-use super::{BOLD, RESET};
+use super::{BOLD, GREEN, RED, RESET};
 
 enum Animation {
     Idle,
@@ -17,7 +17,7 @@ impl Animation {
     fn spinner(label: &str) -> Animation {
         let bar = ProgressBar::new_spinner();
         bar.set_style(
-            ProgressStyle::with_template(" {spinner} {msg} {elapsed}")
+            ProgressStyle::with_template(" {spinner} {msg} ({elapsed})")
                 .unwrap_or_else(|_| ProgressStyle::default_spinner()),
         );
         bar.set_message(label.to_owned());
@@ -87,17 +87,37 @@ impl Progress {
         }
     }
 
-    /// Run `work` under an indeterminate spinner labelled `label`, stop it when
-    /// the future resolves, and return the result. The natural home for any
-    /// "do this one thing while showing a spinner" call site.
+    /// Run `work` under an indeterminate spinner labelled `label`, then settle
+    /// the spinner into a persistent one-line summary and return the result. The natural
+    /// home for any "do this one thing while showing a spinner" call site.
     pub async fn track<T, E, F>(&mut self, label: &str, work: F) -> Result<T, E>
     where
         F: Future<Output = Result<T, E>>,
     {
         self.start(None, label);
         let result = work.await;
-        self.stop();
+        self.finish(label, result.is_ok());
         result
+    }
+
+    /// Settle the active spinner into a persistent summary line marked with a
+    /// green check (success) or red cross (failure), keeping the elapsed time.
+    /// On a non-colour terminal the spinner is `Idle`, so this is a no-op.
+    fn finish(&mut self, label: &str, success: bool) {
+        if let Animation::Spinner(bar) | Animation::Bar(bar) =
+            mem::replace(&mut self.animation, Animation::Idle)
+        {
+            let (color, glyph) = if success {
+                (GREEN, "✔")
+            } else {
+                (RED, "✘")
+            };
+            bar.set_style(
+                ProgressStyle::with_template(" {msg} ({elapsed})")
+                    .unwrap_or_else(|_| ProgressStyle::default_spinner()),
+            );
+            bar.finish_with_message(format!("{color}{glyph}{RESET} {label}"));
+        }
     }
 
     /// Run `f` while the bar stays alive: indicatif clears the bar, runs the
