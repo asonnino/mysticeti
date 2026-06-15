@@ -335,7 +335,18 @@ impl RemoteBenchmarkDriver {
         self.terminal.print_separator();
         self.terminal.start_progress_animation(total, &label);
         let outcome = loop {
-            match session.tick(orchestrator, parameters).await {
+            let tick = tokio::select! {
+                biased;
+                // Stop gracefully on Ctrl-C so the caller still runs cleanup and
+                // tears down the remote replicas, rather than leaking them.
+                _ = tokio::signal::ctrl_c() => {
+                    self.terminal
+                        .suspend(|| eprintln!("Interrupted, stopping the benchmark"));
+                    break Ok(());
+                }
+                tick = session.tick(orchestrator, parameters) => tick,
+            };
+            match tick {
                 Err(e) => break Err(e).wrap_err("Benchmark tick failed"),
                 Ok(TickReport::MetricsTick {
                     elapsed,
