@@ -264,6 +264,30 @@
           "legendFormat": "Cert commit p90",
           "range": true,
           "refId": "F"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Fixed-UID-testbed"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(latency_s_bucket[1m]))) * 1000",
+          "hide": false,
+          "legendFormat": "End-to-end p50",
+          "range": true,
+          "refId": "G"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Fixed-UID-testbed"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.9, sum by (le) (rate(latency_s_bucket[1m]))) * 1000",
+          "hide": false,
+          "legendFormat": "End-to-end p90",
+          "range": true,
+          "refId": "H"
         }
       ],
       "title": "Latency(ms)",
