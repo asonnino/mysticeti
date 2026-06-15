@@ -159,6 +159,13 @@ impl RemoteBenchmarkDriver {
             &self.username,
         );
 
+        // Validate instance capacity up front.
+        if let Some(parameters) = parameters_set.first() {
+            orchestrator
+                .select_instances(parameters)
+                .wrap_err("Not enough instances for this benchmark")?;
+        }
+
         self.terminal
             .track("Cleaning up testbed", orchestrator.cleanup(true))
             .await
