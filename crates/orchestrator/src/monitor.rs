@@ -193,16 +193,16 @@ impl Grafana {
     /// The commands to install grafana.
     pub(crate) fn install_commands() -> Vec<&'static str> {
         vec![
-            "sudo apt-get install -y apt-transport-https software-properties-common wget",
-            "sudo wget -q -O /etc/apt/keyrings/grafana.key https://apt.grafana.com/gpg.key",
-            "(sudo rm /etc/apt/sources.list.d/grafana.list || true)",
+            "sudo apt-get install -y apt-transport-https software-properties-common wget gnupg",
+            "sudo mkdir -p /etc/apt/keyrings",
+            "wget -q -O - https://apt.grafana.com/gpg.key \
+                | sudo gpg --yes --dearmor -o /etc/apt/keyrings/grafana.gpg",
             "echo \
-                \"deb [signed-by=/etc/apt/keyrings/grafana.key] \
+                \"deb [signed-by=/etc/apt/keyrings/grafana.gpg] \
                 https://apt.grafana.com stable main\" \
-                | sudo tee -a /etc/apt/sources.list.d/grafana.list",
+                | sudo tee /etc/apt/sources.list.d/grafana.list",
             "sudo apt-get update",
             "sudo apt-get install -y grafana",
-            "sudo chmod 777 -R /etc/grafana/",
         ]
     }
 
