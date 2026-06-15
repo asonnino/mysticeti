@@ -209,10 +209,10 @@ impl Grafana {
     /// Generate the commands to update the grafana datasource and restart grafana.
     pub(crate) fn setup_commands() -> String {
         [
-            &format!("(rm -r {} || true)", Self::DATASOURCES_PATH),
-            &format!("mkdir -p {}", Self::DATASOURCES_PATH),
+            &format!("sudo rm -rf {}", Self::DATASOURCES_PATH),
+            &format!("sudo mkdir -p {}", Self::DATASOURCES_PATH),
             &format!(
-                "sudo echo \"{}\" > {}/testbed.yml",
+                "echo \"{}\" | sudo tee {}/testbed.yml > /dev/null",
                 Self::datasource(),
                 Self::DATASOURCES_PATH
             ),
