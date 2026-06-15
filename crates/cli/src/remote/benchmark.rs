@@ -168,7 +168,6 @@ impl RemoteBenchmarkDriver {
                 .wrap_err("Not enough instances for this benchmark")?;
         }
 
-        let mut latest_committee_size = 0;
         for (index, parameters) in parameters_set.into_iter().enumerate() {
             let benchmark_number = index + 1;
             self.terminal.print_config(benchmark_number, &parameters);
@@ -230,7 +229,6 @@ impl RemoteBenchmarkDriver {
                 &orchestrator,
                 &parameters,
                 monitoring.as_ref(),
-                &mut latest_committee_size,
                 skip_testbed_configuration,
             )
             .await?;
@@ -266,15 +264,13 @@ impl RemoteBenchmarkDriver {
         orchestrator: &Orchestrator<P>,
         parameters: &Parameters<P>,
         monitoring: Option<&MonitoringReport>,
-        latest_committee_size: &mut usize,
         skip_testbed_configuration: bool,
     ) -> Result<()> {
-        if !skip_testbed_configuration && *latest_committee_size != parameters.nodes {
+        if !skip_testbed_configuration {
             self.terminal
                 .track("Configuring instances", orchestrator.configure(parameters))
                 .await
                 .wrap_err("Configure failed")?;
-            *latest_committee_size = parameters.nodes;
         }
 
         self.terminal
