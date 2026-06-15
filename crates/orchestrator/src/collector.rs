@@ -226,10 +226,13 @@ impl<N: ProtocolParameters, C: ProtocolParameters> Collector<N, C> {
             };
             let entry = self.results.samples.entry(key.clone()).or_default();
             for element in vector {
+                // Drop the redundant `__name__` label
+                let mut labels = element.metric().clone();
+                labels.remove("__name__");
                 entry.push(Sample {
                     timestamp: element.sample().timestamp(),
                     value: element.sample().value(),
-                    labels: element.metric().clone(),
+                    labels,
                 });
             }
         }
