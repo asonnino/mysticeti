@@ -147,7 +147,7 @@ pub struct LocalTestbedArgs {
 pub struct RemoteTestbedArgs {
     /// Path to the YAML settings file (cloud provider, regions, repository, etc.).
     /// See `crates/orchestrator/assets/settings-template.yml` for a starting point.
-    #[arg(long, value_name = "FILE", global = true)]
+    #[arg(long, value_name = "FILE")]
     pub settings_path: PathBuf,
 
     #[command(subcommand)]
