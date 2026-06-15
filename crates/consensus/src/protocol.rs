@@ -336,7 +336,7 @@ impl Protocol {
             leader_count,
             pipeline: true,
             leader_wait: true,
-            require_crypto: true,
+            require_crypto: f != 0,
         })
     }
 
