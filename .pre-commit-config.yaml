@@ -4,6 +4,9 @@ repos:
     hooks:
       - id: check-merge-conflict
       - id: check-yaml
+        # Syntax-only check: the settings templates use serde_yaml's custom
+        # `!aws`/`!custom` tags, which the default safe loader cannot resolve.
+        args: ["--unsafe"]
       - id: check-symlinks
       - id: end-of-file-fixer
       - id: mixed-line-ending
