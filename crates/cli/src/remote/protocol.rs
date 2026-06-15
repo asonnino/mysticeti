@@ -156,7 +156,7 @@ impl ProtocolCommands for ReplicaProtocol {
                 let run = [
                     &format!("./{BINARY_PATH}/replica"),
                     "run",
-                    &format!("--authority {authority}"),
+                    &format!("--authority {}", authority.index()),
                     &format!("--public-config-path {}", public_config_path.display()),
                     &format!("--private-config-path {}", private_config_path.display()),
                     &format!(
