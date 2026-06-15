@@ -332,6 +332,7 @@ impl RemoteBenchmarkDriver {
             Exporter::new(results_path).wrap_err("Failed to create results directory")?;
 
         let total = (!indefinite).then_some(benchmark_duration);
+        self.terminal.print_separator();
         self.terminal.start_progress_animation(total, &label);
         let outcome = loop {
             match session.tick(orchestrator, parameters).await {
