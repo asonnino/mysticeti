@@ -282,10 +282,6 @@ impl RemoteBenchmarkDriver {
             .await
             .wrap_err("Deploying replicas failed")?;
 
-        if parameters.settings.benchmark_duration.as_secs() == 0 {
-            return Ok(());
-        }
-
         let load_label = if parameters.load == 0 {
             "Skipping load generators (load = 0)"
         } else {
@@ -310,16 +306,18 @@ impl RemoteBenchmarkDriver {
         monitoring: Option<&MonitoringReport>,
     ) -> Result<()> {
         let benchmark_duration = parameters.settings.benchmark_duration;
-        let label = if monitoring.is_some() {
-            format!(
-                "Scraping metrics (at least {}s)",
-                benchmark_duration.as_secs()
-            )
+        // A zero duration means "run indefinitely" (until Ctrl-C); show a spinner
+        // instead of a determinate bar and never break the loop on elapsed time.
+        let indefinite = benchmark_duration.is_zero();
+        let scope = if monitoring.is_some() {
+            "Scraping metrics"
         } else {
-            format!(
-                "Running benchmark (at least {}s)",
-                benchmark_duration.as_secs()
-            )
+            "Running benchmark"
+        };
+        let label = if indefinite {
+            format!("{scope} (indefinitely, Ctrl-C to stop)")
+        } else {
+            format!("{scope} (at least {}s)", benchmark_duration.as_secs())
         };
 
         let mut session = BenchmarkSession::new(orchestrator, parameters, monitoring)
@@ -333,8 +331,8 @@ impl RemoteBenchmarkDriver {
         let exporter =
             Exporter::new(results_path).wrap_err("Failed to create results directory")?;
 
-        self.terminal
-            .start_progress_animation(Some(benchmark_duration), &label);
+        let total = (!indefinite).then_some(benchmark_duration);
+        self.terminal.start_progress_animation(total, &label);
         let outcome = loop {
             match session.tick(orchestrator, parameters).await {
                 Err(e) => break Err(e).wrap_err("Benchmark tick failed"),
@@ -357,7 +355,7 @@ impl RemoteBenchmarkDriver {
                             break Err(e).wrap_err("Failed to save benchmark results");
                         }
                     }
-                    if elapsed > benchmark_duration {
+                    if !indefinite && elapsed > benchmark_duration {
                         break Ok(());
                     }
                 }
