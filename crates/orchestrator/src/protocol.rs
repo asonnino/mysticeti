@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
-    fmt::{Debug, Display},
+    fmt::Debug,
     path::{Path, PathBuf},
 };
 
@@ -15,7 +15,7 @@ use crate::{benchmark::BenchmarkParameters, collector::MetricSpec, provider::Ins
 pub const BINARY_PATH: &str = "target/release";
 
 pub trait ProtocolParameters:
-    Default + Clone + Serialize + DeserializeOwned + Debug + Display + Send + Sync + 'static
+    Default + Clone + Serialize + DeserializeOwned + Debug + Send + Sync + 'static
 {
     /// Load the configuration from a YAML file located at the provided path.
     fn load<P: AsRef<Path>>(path: P) -> Result<Self, eyre::Error> {

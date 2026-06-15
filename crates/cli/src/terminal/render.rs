@@ -15,7 +15,7 @@ use replica::result::{Outcome, RunResult};
 use replica::testbed::TestbedConfig;
 use simulator::SimulationConfig;
 
-use std::fmt::{self, Write as _};
+use std::fmt::Write as _;
 
 use super::table::{self, ReplicaRow, SuiteRow};
 use super::{BOLD, DIM, GREEN, RED, RESET, YELLOW};
@@ -102,7 +102,7 @@ impl ConfigRender for TestbedConfig {
     }
 }
 
-impl<N: fmt::Display, C> ConfigRender for BenchmarkParameters<N, C> {
+impl<N, C> ConfigRender for BenchmarkParameters<N, C> {
     fn name(&self) -> Option<String> {
         // The suite-summary `name` column needs a per-run identity; benchmarks
         // carry theirs in the `Display` impl (`"N nodes (faults) - L tx/s"`).
@@ -125,13 +125,9 @@ impl<N: fmt::Display, C> ConfigRender for BenchmarkParameters<N, C> {
     }
 
     fn config_rows(&self) -> Vec<(&'static str, String)> {
-        // Committee size and commit are already printed in the banner; surface the
-        // per-benchmark knobs (load, fault schedule, node parameters) that vary
-        // across the suite.
         vec![
             ("Load", format!("{} tx/s", self.load)),
             ("Faults", self.settings.faults.to_string()),
-            ("Node parameters", self.node_parameters.to_string()),
         ]
     }
 }
