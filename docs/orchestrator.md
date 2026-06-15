@@ -30,21 +30,27 @@ programmatically.
 Create a `settings.yml` describing the testbed. The orchestrator reads this file (from
 `crates/orchestrator/assets/settings.yml` by default, or from any path passed via
 `--settings-path`). A minimal starting point, copied from
-[`assets/settings-template.yml`](../crates/orchestrator/assets/settings-template.yml):
+[`assets/settings-aws-template.yml`](../crates/orchestrator/assets/settings-aws-template.yml)
+(see [`assets/settings-custom-template.yml`](../crates/orchestrator/assets/settings-custom-template.yml)
+for the custom, bring-your-own-machines provider):
 
 ```yaml
 testbed_id: "${USER}-mysticeti"
-cloud_provider: aws
-token_file: "/Users/${USER}/.aws/credentials"
+cloud_provider: !aws
+  specs: m5d.8xlarge
+  token_file: "/Users/${USER}/.aws/credentials"
 ssh_private_key_file: "/Users/${USER}/.ssh/aws"
 regions:
   - us-west-1
   - eu-west-1
-specs: m5d.8xlarge
 repository:
   url: https://github.com/asonnino/mysticeti.git
   commit: main
 ```
+
+`cloud_provider` is a tagged enum: serde_yaml expects the YAML tag form
+(`!aws` / `!custom`) with the provider-specific fields nested beneath it, not a
+plain string or a `aws:`/`custom:` map.
 
 Every field in [`Settings`](../crates/orchestrator/src/settings.rs) is documented in its doc
 comments. The required fields are shown above; the rest have sensible defaults. Notable optional

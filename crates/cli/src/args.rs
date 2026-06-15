@@ -146,7 +146,8 @@ pub struct LocalTestbedArgs {
 #[derive(clap::Args)]
 pub struct RemoteTestbedArgs {
     /// Path to the YAML settings file (cloud provider, regions, repository, etc.).
-    /// See `crates/orchestrator/assets/settings-template.yml` for a starting point.
+    /// See `crates/orchestrator/assets/settings-aws-template.yml` (or
+    /// `settings-custom-template.yml`) for a starting point.
     #[arg(long, value_name = "FILE")]
     pub settings_path: PathBuf,
 
