@@ -86,6 +86,22 @@ impl Terminal {
         }
     }
 
+    /// Print a titled key/value block in the banner's dim-key / bold-value style,
+    /// preceded by a blank line so it separates cleanly from any progress line above.
+    pub(crate) fn print_details(&self, title: &str, rows: &[(&str, &str)]) {
+        if self.color {
+            println!("\n{BOLD}{title}{RESET}");
+            for (key, value) in rows {
+                println!("  {DIM}{key}:{RESET} {BOLD}{value}{RESET}");
+            }
+        } else {
+            println!("\n{title}");
+            for (key, value) in rows {
+                println!("  {key}: {value}");
+            }
+        }
+    }
+
     /// Print the live heartbeat line on stderr and advance the bar to `elapsed`.
     /// For an advance without a line (sub-heartbeat ticks), use [`Self::set_elapsed`].
     pub(crate) fn print_status(&mut self, elapsed: Duration, status: &impl StatusRender) {

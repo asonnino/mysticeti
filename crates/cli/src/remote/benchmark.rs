@@ -212,7 +212,14 @@ impl RemoteBenchmarkDriver {
                     .await
                     .wrap_err("Monitoring setup failed")?;
                 if let Some(r) = &report {
-                    eprintln!("Grafana: {}", r.grafana_address);
+                    self.terminal.print_details(
+                        "Grafana",
+                        &[
+                            ("url", r.grafana_address.as_str()),
+                            ("username", "admin"),
+                            ("password", "admin"),
+                        ],
+                    );
                 }
                 report
             } else {
@@ -263,17 +270,10 @@ impl RemoteBenchmarkDriver {
         skip_testbed_configuration: bool,
     ) -> Result<()> {
         if !skip_testbed_configuration && *latest_committee_size != parameters.nodes {
-            let configure_report = self
-                .terminal
+            self.terminal
                 .track("Configuring instances", orchestrator.configure(parameters))
                 .await
                 .wrap_err("Configure failed")?;
-            for (node_index, address) in &configure_report.nodes {
-                eprintln!("  node {node_index}: {address}");
-            }
-            for (client_index, address) in &configure_report.clients {
-                eprintln!("  client {client_index}: {address}");
-            }
             *latest_committee_size = parameters.nodes;
         }
 
