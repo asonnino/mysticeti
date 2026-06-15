@@ -5,7 +5,7 @@
 //! in the CLI crate so the orchestrator library stays protocol-agnostic.
 
 use std::{
-    fmt::{self, Debug, Display},
+    fmt::{self, Debug},
     net::IpAddr,
     ops::Deref,
     path::PathBuf,
@@ -43,12 +43,6 @@ impl Debug for NodeParameters {
     }
 }
 
-impl Display for NodeParameters {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Consensus-only mode")
-    }
-}
-
 impl ProtocolParameters for NodeParameters {}
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -66,12 +60,6 @@ impl Deref for ClientParameters {
 impl Debug for ClientParameters {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.transaction_size)
-    }
-}
-
-impl Display for ClientParameters {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}B tx", self.transaction_size)
     }
 }
 
