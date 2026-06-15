@@ -114,6 +114,27 @@ impl fmt::Display for ConsensusProtocol {
     }
 }
 
+impl fmt::Debug for ConsensusProtocol {
+    /// Compact, filesystem-friendly identifier (lowercase name plus the
+    /// distinguishing parameters), used in result filenames.
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::CordialMinersPartiallySynchronous => write!(fmt, "cordial-miners-ps"),
+            Self::CordialMinersAsynchronous => write!(fmt, "cordial-miners-async"),
+            Self::Mysticeti { leader_count } => write!(fmt, "mysticeti-l{leader_count}"),
+            Self::BlueBottle { leader_count } => write!(fmt, "blue-bottle-l{leader_count}"),
+            Self::Orcaella { leader_count, f, c } => {
+                write!(fmt, "orcaella-l{leader_count}-f{f}-c{c}")
+            }
+            Self::MahiMahi {
+                leader_count,
+                wave_length,
+            } => write!(fmt, "mahi-mahi-l{leader_count}-w{wave_length}"),
+            Self::NemoNemo { leader_count } => write!(fmt, "nemo-nemo-l{leader_count}"),
+        }
+    }
+}
+
 impl ConsensusProtocol {
     /// Build the concrete `Protocol` used by the committer.
     pub fn to_protocol(&self, committee: &Committee) -> Result<Protocol, ProtocolError> {

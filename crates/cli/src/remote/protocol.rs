@@ -39,7 +39,7 @@ impl Deref for NodeParameters {
 
 impl Debug for NodeParameters {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "c")
+        write!(f, "{:?}", self.consensus)
     }
 }
 
