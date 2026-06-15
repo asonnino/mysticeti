@@ -151,7 +151,7 @@ impl TransactionGenerator {
             }
 
             transactions_to_report += transactions_per_interval as u64;
-            if counter.is_multiple_of(10_000) {
+            if counter.is_multiple_of(100) {
                 self.metrics
                     .inc_submitted_transactions(transactions_to_report);
                 transactions_to_report = 0;
