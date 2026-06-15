@@ -82,3 +82,9 @@ With `leader_count > 1` a round elects a *cohort* of K leaders (offsets `0..K`).
 - **`dag` features:** `tempfile` is a regular dependency (it backs `Storage::ephemeral`,
   used by the `local-testbed` command and the simulator — production code paths). The
   `test-utils` feature gates extra test helpers/constructors, not ephemeral storage.
+- **Orchestrator settings format:** `cloud_provider` in the testbed `settings.yml` is a
+  serde tagged enum, and serde_yaml serializes it as a **YAML tag** — write
+  `cloud_provider: !aws` (or `!custom`) with the provider fields nested beneath, not a
+  plain string or an `aws:`/`custom:` map. Per-provider starting points live in
+  `crates/orchestrator/assets/settings-aws-template.yml` and `settings-custom-template.yml`;
+  `check-yaml` runs with `--unsafe` so its safe loader doesn't choke on the custom tags.
