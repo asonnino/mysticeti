@@ -1,0 +1,1637 @@
+parameters:
+  settings:
+    testbed_id: alberto-mysticeti
+    cloud_provider: !Aws
+      specs: m5d.8xlarge
+    ssh_public_key_file: null
+    regions:
+      - us-east-1
+      - us-east-2
+      - eu-central-1
+      - eu-west-2
+      - eu-west-3
+      - ap-northeast-1
+    repository:
+      url: https://github.com/asonnino/mysticeti.git
+      commit: orchestrator-refinements
+    node_parameters_path: crates/orchestrator/assets/node-parameters.yml
+    client_parameters_path: crates/orchestrator/assets/client-parameters.yml
+    benchmark_duration: 120
+    faults: !Permanent
+      faults: 2
+    working_dir: ~/working_dir
+    results_dir: ./results
+    logs_dir: ./logs
+    nvme: true
+    scrape_interval: 15
+    log_processing: false
+    dedicated_clients: 0
+    monitoring: true
+    ssh_timeout: 30
+    ssh_retries: 3
+    health_check_timeout: 120
+  node_parameters:
+    dag:
+      round_timeout:
+        secs: 1
+        nanos: 0
+      max_block_size: 4194304
+      enable_synchronizer: false
+      fsync: false
+    consensus:
+      protocol: mysticeti
+      leader_count: 2
+  client_parameters:
+    load: 10
+    transaction_size: 512
+    initial_delay: 30s
+  nodes: 7
+  load: 10000
+samples:
+  latency_s_count:
+    - timestamp: 1781552833.467
+      value: 172.33216000000002
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552833.467
+      value: 0.0
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552833.467
+      value: 0.0
+      labels:
+        instance: 44.200.47.128:1507
+        job: instance-node-0
+    - timestamp: 1781552833.467
+      value: 0.0
+      labels:
+        instance: 3.15.20.114:1508
+        job: instance-node-1
+    - timestamp: 1781552833.467
+      value: 112.04304222222221
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552833.467
+      value: 0.0
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552833.467
+      value: 0.0
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552848.362
+      value: 1762.48161375
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552848.362
+      value: 1806.2284451851851
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552848.362
+      value: 0.0
+      labels:
+        instance: 44.200.47.128:1507
+        job: instance-node-0
+    - timestamp: 1781552848.362
+      value: 0.0
+      labels:
+        instance: 3.15.20.114:1508
+        job: instance-node-1
+    - timestamp: 1781552848.362
+      value: 2004.1231792592594
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552848.362
+      value: 1753.8302925
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552848.362
+      value: 1879.3528920833332
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552863.362
+      value: 3679.736489
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552863.362
+      value: 3698.5455866666666
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552863.362
+      value: 0.0
+      labels:
+        job: instance-node-0
+        instance: 44.200.47.128:1507
+    - timestamp: 1781552863.362
+      value: 0.0
+      labels:
+        instance: 3.15.20.114:1508
+        job: instance-node-1
+    - timestamp: 1781552863.362
+      value: 3857.08804
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552863.362
+      value: 3661.67646
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552863.362
+      value: 3714.1811633333336
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552878.363
+      value: 5660.025418666667
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552878.363
+      value: 5635.3615500000005
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552878.363
+      value: 5675.917
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552878.363
+      value: 5602.743726666667
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552878.363
+      value: 5651.557599999999
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552893.375
+      value: 7129.9800000000005
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552893.375
+      value: 7386.599999999999
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552893.375
+      value: 7131.799999999999
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552893.375
+      value: 7360.599999999999
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552893.375
+      value: 7433.4
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552908.367
+      value: 7158.58
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552908.367
+      value: 7160.4
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552908.367
+      value: 7163.0
+      labels:
+        job: instance-node-4
+        instance: 51.44.7.81:1511
+    - timestamp: 1781552908.367
+      value: 7134.4
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552908.367
+      value: 7121.4
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552923.364
+      value: 7167.16
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552923.364
+      value: 7165.599999999999
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552923.364
+      value: 7134.4
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552923.364
+      value: 7168.2
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552923.364
+      value: 7163.0
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552938.363
+      value: 7127.12
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552938.363
+      value: 7116.2
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552938.363
+      value: 7157.799999999999
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552938.363
+      value: 7137.0
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552938.363
+      value: 7144.799999999999
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+  latency_s.p50:
+    - timestamp: 1781552833.466
+      value: .nan
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552833.466
+      value: .nan
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552833.466
+      value: 0.9333333333333333
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552833.466
+      value: .nan
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552833.466
+      value: .nan
+      labels:
+        job: instance-node-0
+        instance: 44.200.47.128:1507
+    - timestamp: 1781552833.466
+      value: .nan
+      labels:
+        instance: 3.15.20.114:1508
+        job: instance-node-1
+    - timestamp: 1781552833.466
+      value: 0.7321428571428571
+      labels:
+        job: instance-node-4
+        instance: 51.44.7.81:1511
+    - timestamp: 1781552848.362
+      value: 0.6142418032786885
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552848.362
+      value: 0.5877100840336135
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552848.362
+      value: 0.6188775510204082
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552848.362
+      value: 0.6052371541501976
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552848.362
+      value: .nan
+      labels:
+        job: instance-node-0
+        instance: 44.200.47.128:1507
+    - timestamp: 1781552848.362
+      value: .nan
+      labels:
+        instance: 3.15.20.114:1508
+        job: instance-node-1
+    - timestamp: 1781552848.362
+      value: 0.5870967741935484
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552863.358
+      value: 0.5545634920634921
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552863.358
+      value: 0.5498430141287284
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552863.358
+      value: .nan
+      labels:
+        job: instance-node-0
+        instance: 44.200.47.128:1507
+    - timestamp: 1781552863.358
+      value: .nan
+      labels:
+        job: instance-node-1
+        instance: 3.15.20.114:1508
+    - timestamp: 1781552863.358
+      value: 0.5416666666666666
+      labels:
+        job: instance-node-4
+        instance: 51.44.7.81:1511
+    - timestamp: 1781552863.358
+      value: 0.5533513097072419
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552863.358
+      value: 0.527801724137931
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552878.364
+      value: 0.5245901639344263
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552878.364
+      value: 0.533578431372549
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552878.364
+      value: 0.506860592755214
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552878.364
+      value: 0.5324773413897281
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552878.364
+      value: 0.5276236125126136
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552893.371
+      value: 0.5195029027576198
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552893.371
+      value: 0.49249964545896685
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552893.371
+      value: 0.5068015395792738
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552893.371
+      value: 0.5116354333466113
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552893.371
+      value: 0.5002491841529285
+      labels:
+        job: instance-node-4
+        instance: 51.44.7.81:1511
+    - timestamp: 1781552908.367
+      value: 0.4961644374508261
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552908.367
+      value: 0.4951923076923077
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552908.367
+      value: 0.49337455830388693
+      labels:
+        job: instance-node-4
+        instance: 51.44.7.81:1511
+    - timestamp: 1781552908.367
+      value: 0.5014524328249819
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552908.367
+      value: 0.4779852240223603
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552923.36
+      value: 0.495301487862177
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552923.36
+      value: 0.49346289752650174
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552923.36
+      value: 0.49395448079658605
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552923.36
+      value: 0.5004532269760696
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552923.36
+      value: 0.4763627187079408
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552938.358
+      value: 0.5011792452830188
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552938.358
+      value: 0.4765361242403781
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552938.358
+      value: 0.49643987341772156
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552938.358
+      value: 0.4956030150753769
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552938.358
+      value: 0.49527797576621524
+      labels:
+        job: instance-node-4
+        instance: 51.44.7.81:1511
+  latency_squared_s:
+    - timestamp: 1781552833.472
+      value: 168.94768464788348
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552833.472
+      value: 0.0
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552833.472
+      value: 0.0
+      labels:
+        job: instance-node-0
+        instance: 44.200.47.128:1507
+    - timestamp: 1781552833.472
+      value: 0.0
+      labels:
+        instance: 3.15.20.114:1508
+        job: instance-node-1
+    - timestamp: 1781552833.472
+      value: 72.41352777612796
+      labels:
+        job: instance-node-4
+        instance: 51.44.7.81:1511
+    - timestamp: 1781552833.472
+      value: 0.0
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552833.472
+      value: 0.0
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552848.367
+      value: 2053.312746248885
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552848.367
+      value: 1998.6596764433132
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552848.367
+      value: 0.0
+      labels:
+        job: instance-node-0
+        instance: 44.200.47.128:1507
+    - timestamp: 1781552848.367
+      value: 0.0
+      labels:
+        instance: 3.15.20.114:1508
+        job: instance-node-1
+    - timestamp: 1781552848.367
+      value: 1987.1194756709938
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552848.367
+      value: 2034.8174691965419
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552848.367
+      value: 1857.1567241994187
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552863.363
+      value: 2529.1906364267998
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552863.363
+      value: 2475.0393912617214
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552863.363
+      value: 0.0
+      labels:
+        instance: 44.200.47.128:1507
+        job: instance-node-0
+    - timestamp: 1781552863.363
+      value: 0.0
+      labels:
+        instance: 3.15.20.114:1508
+        job: instance-node-1
+    - timestamp: 1781552863.363
+      value: 2463.6497974641507
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552863.363
+      value: 2486.7990933371366
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552863.363
+      value: 2295.709838037958
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552878.364
+      value: 3050.745222009023
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552878.364
+      value: 2975.7906355391865
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552878.364
+      value: 2937.627265745757
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552878.364
+      value: 2983.5143334958066
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552878.364
+      value: 2783.667090627834
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552893.376
+      value: 1883.6984851141478
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552893.376
+      value: 3112.8342496851083
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552893.376
+      value: 1862.1489157558635
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552893.376
+      value: 3242.5817722171655
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552893.376
+      value: 2648.162599989523
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552908.367
+      value: 1885.546264098738
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552908.367
+      value: 1865.0471631091118
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552908.367
+      value: 1868.6675891728123
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552908.367
+      value: 1830.530706043563
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552908.367
+      value: 1799.7819421804452
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552923.366
+      value: 1893.768016771135
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552923.366
+      value: 1866.9557469375547
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552923.366
+      value: 1867.0353233572503
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552923.366
+      value: 1840.1515299213409
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552923.366
+      value: 1802.0906328288197
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552938.364
+      value: 1887.2573621008207
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552938.364
+      value: 1857.6115069329505
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552938.364
+      value: 1875.385683820693
+      labels:
+        job: instance-node-4
+        instance: 51.44.7.81:1511
+    - timestamp: 1781552938.364
+      value: 1834.2480085900218
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552938.364
+      value: 1797.0099223296338
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+  latency_s.p90:
+    - timestamp: 1781552833.467
+      value: .nan
+      labels:
+        instance: 3.15.20.114:1508
+        job: instance-node-1
+    - timestamp: 1781552833.467
+      value: 1.19
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552833.467
+      value: .nan
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552833.467
+      value: .nan
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552833.467
+      value: 1.4200000000000002
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552833.467
+      value: .nan
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552833.467
+      value: .nan
+      labels:
+        job: instance-node-0
+        instance: 44.200.47.128:1507
+    - timestamp: 1781552848.361
+      value: 2.0617647058823527
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552848.361
+      value: 2.027884615384616
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552848.361
+      value: .nan
+      labels:
+        job: instance-node-0
+        instance: 44.200.47.128:1507
+    - timestamp: 1781552848.361
+      value: .nan
+      labels:
+        instance: 3.15.20.114:1508
+        job: instance-node-1
+    - timestamp: 1781552848.361
+      value: 1.8805555555555562
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552848.361
+      value: 2.043
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552848.361
+      value: 1.8202380952380954
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552863.357
+      value: 1.095689655172414
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552863.357
+      value: 1.2098484848484865
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552863.357
+      value: 1.1852941176470595
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552863.357
+      value: .nan
+      labels:
+        job: instance-node-0
+        instance: 44.200.47.128:1507
+    - timestamp: 1781552863.357
+      value: .nan
+      labels:
+        job: instance-node-1
+        instance: 3.15.20.114:1508
+    - timestamp: 1781552863.357
+      value: 1.0933823529411764
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552863.357
+      value: 1.1929687500000004
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552878.363
+      value: 0.7497985901309164
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552878.363
+      value: 0.7487134207870838
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552878.363
+      value: 0.746383799421408
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552878.363
+      value: 0.7455392156862745
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552878.363
+      value: 0.7574626865671642
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552893.374
+      value: 0.7097102126498663
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552893.374
+      value: 0.7257695593766158
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552893.374
+      value: 0.7075756201418546
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552893.374
+      value: 0.7249455732946299
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552893.374
+      value: 0.7266516097358036
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552908.366
+      value: 0.7026018099547511
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552908.366
+      value: 0.7020690964312832
+      labels:
+        job: instance-node-4
+        instance: 51.44.7.81:1511
+    - timestamp: 1781552908.366
+      value: 0.700726216412491
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552908.366
+      value: 0.700435684647303
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552908.366
+      value: 0.7024958745874588
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552923.365
+      value: 0.703156146179402
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552923.365
+      value: 0.7025475285171103
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552923.365
+      value: 0.7028222730739894
+      labels:
+        job: instance-node-4
+        instance: 51.44.7.81:1511
+    - timestamp: 1781552923.365
+      value: 0.7003807106598985
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552923.365
+      value: 0.6998129675810474
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552938.363
+      value: 0.703233736762481
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552938.363
+      value: 0.7003809869375908
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552938.363
+      value: 0.6998751040799334
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552938.363
+      value: 0.7035773710482529
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552938.363
+      value: 0.7030159332321699
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+  latency_s_sum:
+    - timestamp: 1781552833.471
+      value: 159.15721713521316
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552833.471
+      value: 0.0
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552833.471
+      value: 0.0
+      labels:
+        instance: 44.200.47.128:1507
+        job: instance-node-0
+    - timestamp: 1781552833.471
+      value: 0.0
+      labels:
+        job: instance-node-1
+        instance: 3.15.20.114:1508
+    - timestamp: 1781552833.471
+      value: 83.9588107538087
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552833.471
+      value: 0.0
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552833.471
+      value: 0.0
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552848.363
+      value: 1523.1600800267342
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552848.363
+      value: 1518.2957878993432
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552848.363
+      value: 0.0
+      labels:
+        instance: 44.200.47.128:1507
+        job: instance-node-0
+    - timestamp: 1781552848.363
+      value: 0.0
+      labels:
+        instance: 3.15.20.114:1508
+        job: instance-node-1
+    - timestamp: 1781552848.363
+      value: 1591.3712687912823
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552848.363
+      value: 1511.4663811891826
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552848.363
+      value: 1510.5601092185523
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552863.363
+      value: 2477.9561429752653
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552863.363
+      value: 2462.601422094067
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552863.363
+      value: 0.0
+      labels:
+        job: instance-node-0
+        instance: 44.200.47.128:1507
+    - timestamp: 1781552863.363
+      value: 0.0
+      labels:
+        job: instance-node-1
+        instance: 3.15.20.114:1508
+    - timestamp: 1781552863.363
+      value: 2518.419046033751
+      labels:
+        job: instance-node-4
+        instance: 51.44.7.81:1511
+    - timestamp: 1781552863.363
+      value: 2453.1837297440893
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552863.363
+      value: 2409.811609681067
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552878.364
+      value: 3474.38124623366
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552878.364
+      value: 3428.779234259293
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552878.364
+      value: 3428.695144718548
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552878.364
+      value: 3420.845761913279
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552878.364
+      value: 3363.086957291262
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552893.375
+      value: 3589.1316460012636
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552893.375
+      value: 4151.468991092723
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552893.375
+      value: 3569.3121840354456
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552893.375
+      value: 4194.07391540378
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552893.375
+      value: 3993.4315638620724
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552908.367
+      value: 3601.4345230171016
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552908.367
+      value: 3584.280569594386
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552908.367
+      value: 3586.3244638497536
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552908.367
+      value: 3560.7800326656134
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552908.367
+      value: 3510.8807598371513
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552923.365
+      value: 3610.8385372044822
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552923.365
+      value: 3587.061295464048
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552923.365
+      value: 3577.264258673507
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552923.365
+      value: 3578.160089934915
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552923.365
+      value: 3523.1197084020955
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552938.364
+      value: 3594.118578090718
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552938.364
+      value: 3565.850264189952
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552938.364
+      value: 3590.921393715409
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552938.364
+      value: 3564.310519177945
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552938.364
+      value: 3513.4291654954677
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+  benchmark_duration:
+    - timestamp: 1781552833.461
+      value: 33.0
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552833.461
+      value: 0.0
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552833.461
+      value: 31.0
+      labels:
+        job: instance-node-4
+        instance: 51.44.7.81:1511
+    - timestamp: 1781552833.461
+      value: 0.0
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552833.461
+      value: 0.0
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552848.358
+      value: 44.0
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552848.358
+      value: 45.0
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552848.358
+      value: 47.0
+      labels:
+        job: instance-node-4
+        instance: 51.44.7.81:1511
+    - timestamp: 1781552848.358
+      value: 42.0
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552848.358
+      value: 43.0
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552863.358
+      value: 59.0
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552863.358
+      value: 59.0
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552863.358
+      value: 62.0
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552863.358
+      value: 57.0
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552863.358
+      value: 58.0
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552878.359
+      value: 74.0
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552878.359
+      value: 75.0
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552878.359
+      value: 77.0
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552878.359
+      value: 72.0
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552878.359
+      value: 73.0
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552893.371
+      value: 89.0
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552893.371
+      value: 89.0
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552893.371
+      value: 92.0
+      labels:
+        job: instance-node-4
+        instance: 51.44.7.81:1511
+    - timestamp: 1781552893.371
+      value: 87.0
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552893.371
+      value: 88.0
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552908.362
+      value: 104.0
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552908.362
+      value: 104.0
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552908.362
+      value: 107.0
+      labels:
+        job: instance-node-4
+        instance: 51.44.7.81:1511
+    - timestamp: 1781552908.362
+      value: 102.0
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552908.362
+      value: 103.0
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552923.36
+      value: 119.0
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552923.36
+      value: 120.0
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552923.36
+      value: 122.0
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552923.36
+      value: 117.0
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552923.36
+      value: 118.0
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552938.359
+      value: 134.0
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552938.359
+      value: 134.0
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552938.359
+      value: 137.0
+      labels:
+        job: instance-node-4
+        instance: 51.44.7.81:1511
+    - timestamp: 1781552938.359
+      value: 132.0
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552938.359
+      value: 133.0
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+  latency_s.p99:
+    - timestamp: 1781552833.466
+      value: 1.7049999999999998
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552833.466
+      value: .nan
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552833.466
+      value: .nan
+      labels:
+        job: instance-node-0
+        instance: 44.200.47.128:1507
+    - timestamp: 1781552833.466
+      value: .nan
+      labels:
+        job: instance-node-1
+        instance: 3.15.20.114:1508
+    - timestamp: 1781552833.466
+      value: 1.445
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552833.466
+      value: .nan
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552833.466
+      value: .nan
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552848.363
+      value: 2.9008333333333316
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552848.363
+      value: 2.8850000000000007
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552848.363
+      value: .nan
+      labels:
+        instance: 44.200.47.128:1507
+        job: instance-node-0
+    - timestamp: 1781552848.363
+      value: .nan
+      labels:
+        job: instance-node-1
+        instance: 3.15.20.114:1508
+    - timestamp: 1781552848.363
+      value: 2.8511764705882356
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552848.363
+      value: 2.8730555555555544
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552848.363
+      value: 2.799615384615387
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552863.358
+      value: .nan
+      labels:
+        job: instance-node-0
+        instance: 44.200.47.128:1507
+    - timestamp: 1781552863.358
+      value: .nan
+      labels:
+        instance: 3.15.20.114:1508
+        job: instance-node-1
+    - timestamp: 1781552863.358
+      value: 2.628529411764704
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552863.358
+      value: 2.663055555555554
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552863.358
+      value: 2.5157692307692296
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552863.358
+      value: 2.6936111111111116
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552863.358
+      value: 2.6652941176470613
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552878.364
+      value: 2.4943137254901973
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552878.364
+      value: 2.4816346153846154
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552878.364
+      value: 2.471153846153845
+      labels:
+        job: instance-node-4
+        instance: 51.44.7.81:1511
+    - timestamp: 1781552878.364
+      value: 2.4838000000000022
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552878.364
+      value: 2.414285714285715
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552893.375
+      value: 2.394875
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552893.375
+      value: 0.8724660963638614
+      labels:
+        job: instance-node-4
+        instance: 51.44.7.81:1511
+    - timestamp: 1781552893.375
+      value: 2.411595744680852
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552893.375
+      value: 2.00931818181818
+      labels:
+        instance: 13.114.208.42:1512
+        job: instance-node-5
+    - timestamp: 1781552893.375
+      value: 0.9018975514472923
+      labels:
+        instance: 18.153.209.5:1509
+        job: instance-node-2
+    - timestamp: 1781552908.366
+      value: 0.804357142857143
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552908.366
+      value: 0.7489624587458745
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552908.366
+      value: 0.7493325791855203
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552908.366
+      value: 0.7491362946089597
+      labels:
+        job: instance-node-4
+        instance: 51.44.7.81:1511
+    - timestamp: 1781552908.366
+      value: 0.7455628177196805
+      labels:
+        instance: 44.222.119.113:1513
+        job: instance-node-6
+    - timestamp: 1781552923.365
+      value: 0.7499875415282392
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552923.365
+      value: 0.7497034220532319
+      labels:
+        job: instance-node-3
+        instance: 18.134.95.55:1510
+    - timestamp: 1781552923.365
+      value: 0.7499160945842868
+      labels:
+        instance: 51.44.7.81:1511
+        job: instance-node-4
+    - timestamp: 1781552923.365
+      value: 0.74536439448876
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552923.365
+      value: 0.7974264705882362
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
+    - timestamp: 1781552938.364
+      value: 0.7603846153846139
+      labels:
+        job: instance-node-2
+        instance: 18.153.209.5:1509
+    - timestamp: 1781552938.364
+      value: 0.7497401365705615
+      labels:
+        instance: 18.134.95.55:1510
+        job: instance-node-3
+    - timestamp: 1781552938.364
+      value: 0.7541964285714247
+      labels:
+        job: instance-node-4
+        instance: 51.44.7.81:1511
+    - timestamp: 1781552938.364
+      value: 0.7452013788098695
+      labels:
+        job: instance-node-6
+        instance: 44.222.119.113:1513
+    - timestamp: 1781552938.364
+      value: 0.7979411764705865
+      labels:
+        job: instance-node-5
+        instance: 13.114.208.42:1512
