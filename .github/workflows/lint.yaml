@@ -15,7 +15,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pin@v7.0.0
         with:
           fetch-depth: 0
       - name: Check PR title
@@ -26,9 +26,9 @@ jobs:
     runs-on: ubuntu-latest
     name: Check formatting
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pin@v7.0.0
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # pin@v6.2.0
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # pin@v6.3.0
         with:
           python-version: "3.x"
       - name: Install and run editorconfig-checker
@@ -54,22 +54,22 @@ jobs:
     runs-on: ubuntu-latest
     name: Check spelling
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
-      - uses: crate-ci/typos@f8a58b6b53f2279f71eb605f03a4ae4d10608f45 # pin@v1.47.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pin@v7.0.0
+      - uses: crate-ci/typos@bee27e3a4fd1ea2111cf90ab89cd076c870fce14 # pin@v1.48.0
   shellcheck:
     name: ShellCheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pin@v7.0.0
       - name: Run ShellCheck
         run: find . -type f -name "*.sh" -exec shellcheck --severity=error {} +
   license-headers:
     runs-on: ubuntu-latest
     name: Check license headers
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pin@v7.0.0
       - name: Install licensesnip
-        uses: taiki-e/install-action@e49978b799e49ff429d162b7a30601a569ab6538 # pin@v2.81.1
+        uses: taiki-e/install-action@16b05812d776ae1dfaabc8277e421fb6d2506419 # pin@v2.82.7
         with:
           tool: licensesnip@1.7.0
       - run: licensesnip check

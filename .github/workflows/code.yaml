@@ -26,7 +26,7 @@ jobs:
       isTestConfig: ${{ steps.diff.outputs.isTestConfig }}
       isRelevantForRustTests: ${{ steps.diff.outputs.isRust == 'true' || steps.diff.outputs.isTestConfig == 'true' }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pin@v7.0.0
       - name: Detect Changes
         uses: "./.github/actions/diffs"
         id: diff
@@ -36,7 +36,7 @@ jobs:
     if: ${{ needs.diff.outputs.isRust == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pin@v7.0.0
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # pin@v2.9.1
         with:
           save-if: ${{ github.ref == 'refs/heads/main' && 'true' || 'false' }}
@@ -50,10 +50,10 @@ jobs:
     if: ${{ needs.diff.outputs.isRelevantForRustTests == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: taiki-e/install-action@e49978b799e49ff429d162b7a30601a569ab6538 # pin@v2.81.1
+      - uses: taiki-e/install-action@16b05812d776ae1dfaabc8277e421fb6d2506419 # pin@v2.82.7
         with:
           tool: cargo-nextest
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pin@v7.0.0
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # pin@v2.9.1
         with:
           save-if: ${{ github.ref == 'refs/heads/main' && 'true' || 'false' }}
@@ -65,11 +65,11 @@ jobs:
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pin@v7.0.0
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # pin@v2.9.1
         with:
           save-if: "true"
-      - uses: taiki-e/install-action@e49978b799e49ff429d162b7a30601a569ab6538 # pin@v2.81.1
+      - uses: taiki-e/install-action@16b05812d776ae1dfaabc8277e421fb6d2506419 # pin@v2.82.7
         with:
           tool: cargo-tarpaulin
       - name: Generate code coverage
@@ -90,8 +90,8 @@ jobs:
     if: ${{ needs.diff.outputs.isRust == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
-      - uses: taiki-e/install-action@e49978b799e49ff429d162b7a30601a569ab6538 # pin@v2.81.1
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pin@v7.0.0
+      - uses: taiki-e/install-action@16b05812d776ae1dfaabc8277e421fb6d2506419 # pin@v2.82.7
         with:
           tool: cargo-deny
       - name: Check bans, licenses, and sources
@@ -101,8 +101,8 @@ jobs:
     if: ${{ github.event_name == 'schedule' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6.0.2
-      - uses: taiki-e/install-action@e49978b799e49ff429d162b7a30601a569ab6538 # pin@v2.81.1
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pin@v7.0.0
+      - uses: taiki-e/install-action@16b05812d776ae1dfaabc8277e421fb6d2506419 # pin@v2.82.7
         with:
           tool: cargo-deny
       - name: Check advisories
