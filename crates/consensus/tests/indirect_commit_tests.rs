@@ -8,10 +8,14 @@
 //!   `(direct_commit_quorum - 1)` voters and the rest non-voters. That's enough
 //!   for the later anchor to reach `anchor_link_size` certificate paths while
 //!   keeping direct commit below threshold.
-//! - `wl >= 3`: `build_split_chain` to the voting round with all
-//!   `direct_commit_quorum` authorities voting (final blamers = `n - direct_commit_quorum`),
+//! - `wl >= 3`: `build_split_chain` to the voting round with enough voters to
+//!   back a certificate (`certificate_quorum`, capped one below the fast-path
+//!   commit quorum so fast-path protocols stay undecided at the voting round),
 //!   then a hand-crafted decision-round layer where only
-//!   `(direct_commit_quorum - 1)` certifiers fully link to the voters.
+//!   `(direct_commit_quorum - 1)` certifiers fully link to the voters. When the
+//!   cap keeps the voters below `certificate_quorum`, no certificate forms and
+//!   the anchor decides the target through the weak indirect rung instead —
+//!   same assertion.
 //!
 //! For multi-leader cohorts, we sweep `target_offset` over `0..K`: the targeted
 //! cohort leader is the one driven into indirect-commit, while the remaining
@@ -76,7 +80,14 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
             );
             supports.into_iter().chain(blames).collect()
         } else {
-            let blamers_count = committee.len() - protocol.direct_commit_quorum as usize;
+            // Enough voters to back a certificate, capped one below the fast-path
+            // commit quorum: fast-path protocols must stay undecided at the voting
+            // round.
+            let voters_quorum = match &protocol.fast_path {
+                Some(fast_path) => protocol.certificate_quorum.min(fast_path.commit_quorum - 1),
+                None => protocol.certificate_quorum,
+            };
+            let blamers_count = committee.len() - voters_quorum as usize;
             let (supports, blames) = build_split_chain(
                 committee,
                 &mut storage,
@@ -97,7 +108,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
             let mixed_parents: Vec<_> = blames
                 .into_iter()
                 .chain(supports)
-                .take(protocol.direct_commit_quorum as usize)
+                .take(protocol.quorum_threshold as usize)
                 .collect();
             let non_certifier_connections = committee
                 .authorities()

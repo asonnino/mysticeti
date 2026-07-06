@@ -46,7 +46,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
 
     for n in 1..=10 {
         let leader_round = template_committer.nth_leader_round(n);
-        let dag_depth = template_committer.decision_round_for(leader_round);
+        let dag_depth = template_committer.earliest_decision_round_for(leader_round);
 
         let mut storage = Storage::new_for_test(committee);
         build_dag(committee, &mut storage, None, dag_depth);
