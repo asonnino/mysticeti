@@ -33,6 +33,7 @@ replica_parameters:
   #   orcaella                             { leader_count, f, c }
   #   mahi-mahi                            { leader_count, wave_length: 4 | 5 }
   #   nemo-nemo                            { leader_count }
+  #   dag-hydrangea                        { leader_count, f, c, k }
   #   cordial-miners-partially-synchronous
   #   cordial-miners-asynchronous
   consensus:

@@ -1,7 +1,8 @@
 # Mysticeti — uncertified DAG consensus
 
 Reference implementations of several uncertified DAG-based consensus protocols
-(Mysticeti, Mahi-Mahi, Blue Bottle, Cordial Miners PS/Async, Nemo-Nemo). The codebase is
+(Mysticeti, Mahi-Mahi, Blue Bottle, Cordial Miners PS/Async, Nemo-Nemo, DagHydrangea).
+The codebase is
 deliberately small and modular, meant for benchmarking and experimentation — **not
 production** — but uses real networking, cryptography, and persistent storage. Ships with
 a discrete-event simulator and a cloud orchestrator for running the protocols under custom
@@ -46,12 +47,16 @@ bypassing the hook.
 ## Consensus model (orientation)
 
 All supported protocols share one committer; they differ only in a flat parameter set
-(`Protocol`: `direct_commit_quorum`, `direct_skip_quorum`, `anchor_link_size`,
-`wave_length`, `leader_count`, `pipeline`, `leader_wait`). `ConsensusProtocol` is the
-user-facing enum that validates inputs and builds a `Protocol`. Rounds group into *waves*
-(leader round → voting round(s) → decision round); a leader is **directly** committed/
-skipped from votes/blames in its own wave, or **indirectly** decided later via an anchor.
-With `leader_count > 1` a round elects a *cohort* of K leaders (offsets `0..K`).
+(`Protocol`: `direct_commit_quorum`, `direct_skip_quorum`, `certificate_quorum`,
+`quorum_threshold`, `fast_path`, `anchor_link_size`, `wave_length`, `leader_count`,
+`pipeline`, `leader_wait`). `ConsensusProtocol` is the user-facing enum that validates
+inputs and builds a `Protocol`. Rounds group into *waves* (leader round → voting
+round(s) → decision round); a leader is **directly** committed/skipped from votes/blames
+in its own wave, or **indirectly** decided later via an anchor. With `leader_count > 1`
+a round elects a *cohort* of K leaders (offsets `0..K`). Dual-path protocols
+(DagHydrangea) set `fast_path: Some(..)`: a fast direct commit from votes at the voting
+round, reconciled with the certified slow path by a graded indirect rule
+(certificate → weak quorum → skip).
 
 ## Conventions
 

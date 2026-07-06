@@ -240,7 +240,8 @@ the full lifetime of the process.
 
 The two regimes correspond to the two families of protocols:
 
-- **Partially-synchronous / leader-waiting** — Mysticeti, Cordial Miners (partially synchronous).
+- **Partially-synchronous / leader-waiting** — Mysticeti and every other protocol not listed
+  below.
   The committer's `get_leaders(round)` returns `Some(leaders)`. Before proposing at round `r+1`, the
   core checks that **every expected leader** at round `r` has already published its block. If not,
   the proposer waits up to the round timeout (default **1 s**) for the laggard before falling back
