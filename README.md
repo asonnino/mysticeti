@@ -19,16 +19,16 @@ This repository currently supports [Mysticeti](https://sonnino.com/papers/mystic
 [Mahi-Mahi](https://sonnino.com/papers/mahi-mahi.pdf),
 [Blue Bottle](https://sonnino.com/papers/bluebottle.pdf), [Cordial
 Miners](https://arxiv.org/abs/2205.09174) (both the partially synchronous and asynchronous
-variants), and [Nemo-Nemo](https://sonnino.com/papers/nemo-nemo.pdf).
+variants), [Nemo-Nemo](https://sonnino.com/papers/nemo-nemo.pdf), and [Orcaella](https://sonnino.com/papers/orcaella.pdf).
 
 ## Quick Start
 
 To boot a local testbed of 4 replicas with a built-in load generator on your machine:
 
-```
-$ git clone https://github.com/asonnino/mysticeti.git
-$ cd mysticeti
-$ cargo run local-testbed
+```bash
+git clone https://github.com/asonnino/mysticeti.git
+cd mysticeti
+cargo run local-testbed
 ```
 
 The testbed runs for 20 seconds by default and prints a per-replica summary on exit. Pass
