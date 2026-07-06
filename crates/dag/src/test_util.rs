@@ -131,9 +131,9 @@ pub fn build_dag_layer(
     references
 }
 
-/// Insert a hand-built test block and return its reference. The door for
-/// blocks the layer builders cannot express (e.g. an equivocating block built
-/// with [`Block::with_digest`]).
+/// Insert a hand-built test block and return its reference. Use this for
+/// blocks the layer builders cannot express, such as an equivocating block
+/// built with [`Block::with_digest`].
 pub fn insert_test_block(block: Block, storage: &mut Storage) -> BlockReference {
     let block = Data::new(block);
     let reference = *block.reference();
