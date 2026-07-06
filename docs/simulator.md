@@ -53,7 +53,7 @@ All fields are optional and fall back to the defaults shown.
 | ----------------------------------- | ------------------------------------- | ----------- |
 | `name`                              | _(unset)_                             | Optional label shown in logs and the suite summary table. |
 | `committee_size`                    | `10`                                  | Number of replicas. Stake is uniform. |
-| `latency_min_ms` / `latency_max_ms` | `50` / `100`                          | Inclusive range for per-message link latency, sampled uniformly for every delivery. |
+| `latency_min_ms` / `latency_max_ms` | `50` / `100`                          | Range for per-message link latency (min inclusive, max exclusive), sampled uniformly for every delivery. |
 | `topology`                          | `fullMesh`                            | Network topology — see below. |
 | `duration_secs`                     | `20`                                  | Simulated time for which to run the simulation. |
 | `rng_seed`                          | `0`                                   | Seed for the deterministic RNG. Change this to get different per-run noise while keeping everything else fixed. |
@@ -109,7 +109,7 @@ leaves each file either intact or absent — never half-written.
 | `<output-dir>/tracing.log` | Suite-wide tracing log (one log for the whole invocation).                                                                                                |
 | `<run>/config.yaml`        | The full `SimulationConfig` that produced the run, including any defaults filled in.                                                                      |
 | `<run>/meta.yaml`          | `{ outcome, duration_secs, kind: simulation, timestamp_unix }`.                                                                                           |
-| `<run>/metrics.prom`       | Per-replica Prometheus text exposition; each replica's block is preceded by `# replica: N`. Parseable by `promtool`, Prometheus, and most TSDB ingesters. |
+| `<run>/metrics-<replica>.prom` | One Prometheus text exposition per replica (`metrics-A.prom`, `metrics-B.prom`, …), each self-contained and parseable by `promtool` and most TSDB ingesters. |
 | `<run>/dag.ndjson`         | _(opt-in via `--export-dag`)_ every committed sub-DAG, one JSON object per line. Can be many GB; off by default.                                          |
 
 ## Programmatic Use
@@ -119,11 +119,11 @@ The simulator is also usable as a library, which is how the integration tests in
 minimal example:
 
 ```rust
-use dag::metrics::Outcome;
+use replica::result::Outcome;
 use simulator::{NetworkTopology, SimulationConfig, SimulationRunner};
 
 #[test]
-fn one_down_still_commits() {
+fn one_down_stays_consistent() {
     let config = SimulationConfig {
         committee_size: 7,
         topology: NetworkTopology::OneDown(0),
@@ -133,14 +133,14 @@ fn one_down_still_commits() {
 
     let result = SimulationRunner::new(config).run().expect("simulation");
 
-    assert_eq!(result.outcome, Outcome::Pass);
-    assert!(result.commit_count_per_replica().iter().all(|&c| c > 0));
+    assert_ne!(result.outcome, Outcome::Diverged);
+    assert!(!result.metrics.is_empty());
 }
 ```
 
-`SimulationRunner::run` returns a `RunResult<SimulationConfig>` carrying per-replica
-`MetricsSnapshot`s, the derived `Outcome`, and the original config.
+`SimulationRunner::run` returns an `io::Result<RunResult<SimulationConfig>>` carrying per-replica
+`MetricsSnapshot`s, the derived `Outcome`, the per-replica storages, and the original config.
 `SimulationRunner::from_yaml` loads a `SimulationConfig` from disk, useful when test cases share
-configuration with the CLI. To stream every committed sub-DAG to disk during the run, chain
-`.with_dag_writer(writer)` on the runner before calling `run()`. Because every run is deterministic
-in the `rng_seed`, these tests are reproducible across machines.
+configuration with the CLI. The committed sub-DAGs stay available through the returned storages —
+that is how the CLI's `--export-dag` flag produces `dag.ndjson` after the run. Because every run is
+deterministic in the `rng_seed`, these tests are reproducible across machines.
