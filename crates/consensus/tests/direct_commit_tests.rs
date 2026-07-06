@@ -39,8 +39,8 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     let protocol = spec.to_protocol(committee).expect("valid protocol");
     let k = protocol.leader_count.get();
     let l1 = committer.nth_leader_round(1);
-    let decision_round = committer.decision_round_for(l1);
-    build_dag(committee, &mut storage, None, decision_round);
+    let earliest_decision = committer.earliest_decision_round_for(l1);
+    build_dag(committee, &mut storage, None, earliest_decision);
 
     let sequence = committer.try_commit(None).collect::<Vec<_>>();
     tracing::info!("[{spec}] Commit sequence: {sequence:?}");

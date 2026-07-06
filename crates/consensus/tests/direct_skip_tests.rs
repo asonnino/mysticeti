@@ -46,8 +46,8 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
 
         let l1_votes = build_dag(committee, &mut storage, None, l1);
         let l1_blames = drop_leader(&l1_votes, target_leader);
-        let decision_round = committer.decision_round_for(l1);
-        build_dag(committee, &mut storage, Some(l1_blames), decision_round);
+        let earliest_decision = committer.earliest_decision_round_for(l1);
+        build_dag(committee, &mut storage, Some(l1_blames), earliest_decision);
 
         let sequence = committer.try_commit(None).collect::<Vec<_>>();
         tracing::info!("[{spec}] target_offset={target_offset} sequence: {sequence:?}");

@@ -52,7 +52,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
             .map(|a| (a, references_pre_leader.clone()))
             .collect();
         let references_at_leader = build_dag_layer(connections, &mut storage);
-        let decision = committer.decision_round_for(l1);
+        let decision = committer.earliest_decision_round_for(l1);
         build_dag(
             committee,
             &mut storage,

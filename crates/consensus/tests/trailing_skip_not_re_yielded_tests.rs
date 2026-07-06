@@ -48,7 +48,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
 
     let refs_at_leader = build_dag(committee, &mut storage, None, l1);
     let refs_without_target = drop_leader(&refs_at_leader, target_leader);
-    let decision = committer.decision_round_for(l1);
+    let decision = committer.earliest_decision_round_for(l1);
     build_dag(committee, &mut storage, Some(refs_without_target), decision);
 
     let first = committer.try_commit(None).collect::<Vec<_>>();

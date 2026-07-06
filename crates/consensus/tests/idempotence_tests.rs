@@ -38,7 +38,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     let protocol = spec.to_protocol(committee).expect("valid protocol");
     let k = protocol.leader_count.get();
     let l2 = committer.nth_leader_round(2);
-    let dag_depth = committer.decision_round_for(l2);
+    let dag_depth = committer.earliest_decision_round_for(l2);
     build_dag(committee, &mut storage, None, dag_depth);
 
     let committed = committer.try_commit(None).collect::<Vec<_>>();

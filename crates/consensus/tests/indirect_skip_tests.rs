@@ -13,7 +13,10 @@
 //!   uniform-blamers construction would yield an indirect-*commit* instead.
 //! - **UniformBlamers** (everyone else): `build_split_chain` to the voting
 //!   round with `(direct_skip_quorum - 1)` blamers; the chain collapses to a
-//!   single layer when `wl <= 3`. The forward DAG is left full.
+//!   single layer when `wl <= 3`. The forward DAG is left full, except for
+//!   fast-path protocols whose residual supporters reach the weak indirect
+//!   quorum: there the supporter refs are excluded from the forward DAG (as in
+//!   HideVoters) so the anchor cannot weak-commit the target.
 
 use std::sync::Arc;
 
@@ -94,7 +97,19 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
                 committer.voting_round_for(target_round),
                 blamers_count,
             );
-            let forward_refs: Vec<_> = supports.into_iter().chain(blames).collect();
+            // With a fast path, the residual supporters can reach the weak indirect
+            // quorum, and an anchor that sees them would indirect-*commit* the target
+            // through the weak rung. Exclude them from the forward DAG in that case.
+            let residual_supporters = committee.len() as Stake - protocol.direct_skip_quorum + 1;
+            let hide_supporters = protocol
+                .fast_path
+                .as_ref()
+                .is_some_and(|fast_path| residual_supporters >= fast_path.weak_indirect_quorum);
+            let forward_refs: Vec<_> = if hide_supporters {
+                blames
+            } else {
+                supports.into_iter().chain(blames).collect()
+            };
             build_dag(committee, &mut storage, Some(forward_refs), anchor_decision);
         }
 
