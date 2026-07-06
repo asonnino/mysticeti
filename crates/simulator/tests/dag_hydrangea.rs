@@ -5,8 +5,7 @@
 //!
 //! Path coverage: the `commit_type` metric label cannot tell the fast from the
 //! slow path (both `direct-commit`) nor the two indirect rungs apart (both
-//! `indirect-commit`) — see #199 —, so paths are pinned by configuration
-//! arguments instead:
+//! `indirect-commit`) — see #199.
 //!
 //! Threshold cheat-sheet for the configurations used below
 //! (n = 3f + 2c + k + 1, p = (c + k) / 2):
@@ -77,11 +76,14 @@ fn happy_path_bft_n4() {
 }
 
 #[test]
-fn fast_path_crash_slack_n4() {
+fn fast_dominant_crash_slack_n4() {
     // n=4, f=0, c=1, k=1 → p=1: fast-dominant configuration (CERT = FAST = 3).
-    // A certificate references >= CERT = FAST votes at the voting round, so the
-    // fast trigger holds whenever the slow rule could fire: in this
-    // configuration every direct commit IS a fast commit.
+    // A certificate references >= CERT = FAST votes at the voting round, so any
+    // committed DAG also satisfied the fast trigger. This pins the fast path's
+    // *condition* end to end, not the code branch: a disabled fast rule would
+    // still commit through the slow path here (indistinguishable until #199).
+    // The branch itself is covered by the consensus crate's
+    // `try_direct_decide_fast_commits_at_voting_round` unit test.
     let result = run(SimulationConfig {
         committee_size: 4,
         duration_secs: 30,
@@ -94,7 +96,7 @@ fn fast_path_crash_slack_n4() {
     assert_progress(&result, 10);
     assert!(
         max_over_replicas(&result, MetricsSnapshot::direct_commits) > 0,
-        "fast-dominant configuration must commit through the fast path"
+        "fast-dominant configuration must produce direct commits"
     );
 }
 
