@@ -166,26 +166,29 @@ entry is:
 
 ```
 ┌──────┬────────┬─────┬──────────────┐
-│ crc32│ length │ tag │   payload    │
-│  u32 │  u64   │ u32 │  bincode     │
+│ crc  │ length │ tag │   payload    │
+│ u64  │  u32   │ u32 │  bincode     │
 └──────┴────────┴─────┴──────────────┘
 ```
 
-Three tag kinds cover everything the node persists: blocks (the canonical `Data<Block>` form that's
-also sent on the wire), payloads (the transaction batches produced by the load generator and pending
-inclusion in a future proposal), and commits (the `CommitData` emitted by the committer — leader
-plus ordered sub-DAG). No separate "metadata" store: the WAL is the only source of truth.
+(The checksum itself is a crc32, stored in a 64-bit slot.) Four tag kinds cover everything the node
+persists: incoming blocks (the canonical `Data<Block>` form that's also sent on the wire), the
+replica's own proposed blocks (written with their proposal metadata under a dedicated tag), payloads
+(the transaction batches produced by the load generator and pending inclusion in a future proposal),
+and commits (the `CommitData` emitted by the committer — leader plus ordered sub-DAG). A fifth,
+legacy state tag is skipped on replay and no longer written. No separate "metadata" store: the WAL
+is the only source of truth.
 
 Reads are zero-copy. The file is memory-mapped in 256 MB segments, and `BlockReader` hands out
 `minibytes::Bytes` slices that point directly into the mmap — no deserialization until something
 actually asks for a field.
 
 **Write path.** Only the `dag` thread ever writes. When a block arrives, the core's `add_blocks`
-path serializes it and appends a `WAL_ENTRY_BLOCK`. When the load generator hands in a fresh
-transaction batch, it becomes a `WAL_ENTRY_PAYLOAD` before the block handler holds on to its
-`WalPosition`. When the committer returns a decided leader, the surrounding sub-DAG is written as
-`WAL_ENTRY_COMMIT`. All three happen on the same thread, in the same loop iteration, so ordering is
-trivial.
+path serializes it and appends a `WAL_ENTRY_BLOCK`. When the core proposes its own block, it is
+written as a `WAL_ENTRY_OWN_BLOCK`. When the load generator hands in a fresh transaction batch, it
+becomes a `WAL_ENTRY_PAYLOAD` before the block handler holds on to its `WalPosition`. When the
+committer returns a decided leader, the surrounding sub-DAG is written as `WAL_ENTRY_COMMIT`. All of
+these happen on the same thread, in the same loop iteration, so ordering is trivial.
 
 **Durability.** A second dedicated OS thread — spawned with name `wal-syncer` by the `TokioCtx` —
 calls `wal_syncer.sync()` once per second
@@ -242,9 +245,9 @@ The two regimes correspond to the two families of protocols:
 
 - **Partially-synchronous / leader-waiting** — Mysticeti, Cordial Miners (partially synchronous).
   The committer's `get_leaders(round)` returns `Some(leaders)`. Before proposing at round `r+1`, the
-  core checks that **every expected leader** at round `r` has already published its block. If not,
-  the proposer waits up to the round timeout (default **1 s**) for the laggard before falling back
-  to `ForceNewBlock`.
+  core checks that **every connected expected leader** at round `r` has already published its
+  block. If not, the proposer waits up to the round timeout (default **1 s**) for the laggard
+  before falling back to `ForceNewBlock`.
 
 - **Asynchronous-friendly / quorum-waiting** — Cordial Miners (asynchronous), Mahi-Mahi.
   `get_leaders(round)` returns `None`. Before proposing, the core instead requires **every connected

@@ -5,8 +5,12 @@ and running benchmarks against the deployed network.
 
 The instructions below walk through a full run on [Amazon Web Services
 (AWS)](https://aws.amazon.com), which is the primary supported target. Additional cloud providers
-can be added by implementing the [`ServerProviderClient`](../crates/orchestrator/src/client/mod.rs)
+can be added by implementing the [`ServerProviderClient`](../crates/orchestrator/src/provider.rs)
 trait.
+
+All orchestrator functionality is driven through the `remote-testbed` subcommand of the `replica`
+binary; every invocation takes `--settings-path` pointing at the testbed settings file described
+below.
 
 ## 1. Cloud Provider Credentials
 
@@ -27,9 +31,8 @@ programmatically.
 
 ## 2. Testbed Configuration
 
-Create a `settings.yml` describing the testbed. The orchestrator reads this file (from
-`crates/orchestrator/assets/settings.yml` by default, or from any path passed via
-`--settings-path`). A minimal starting point, copied from
+Create a `settings.yml` describing the testbed and pass its path to every command via
+`--settings-path`. A minimal starting point, copied from
 [`assets/settings-aws-template.yml`](../crates/orchestrator/assets/settings-aws-template.yml)
 (see [`assets/settings-custom-template.yml`](../crates/orchestrator/assets/settings-custom-template.yml)
 for the custom, bring-your-own-machines provider):
@@ -71,26 +74,27 @@ repository:
 
 ## 3. Managing the Testbed
 
-The `testbed` subcommand group handles the lifecycle of cloud instances:
+The `remote-testbed` subcommands handle the lifecycle of cloud instances:
 
 ```bash
 # Create N instances in each region listed in settings.yml.
-cargo run --bin orchestrator -- testbed deploy --instances 2
+cargo run remote-testbed --settings-path settings.yml create --instances 2
 
-# Show the current state of all instances (green = up, red = stopped).
-cargo run --bin orchestrator -- testbed status
+# Show the current state of all instances (green = up, red = stopped)
+# and the SSH commands to reach them.
+cargo run remote-testbed --settings-path settings.yml status
 
 # Start up to N instances per region on an existing testbed.
-cargo run --bin orchestrator -- testbed start --instances 10
+cargo run remote-testbed --settings-path settings.yml start --instances 10
 
 # Stop all instances (preserves disks; start again to resume).
-cargo run --bin orchestrator -- testbed stop
+cargo run remote-testbed --settings-path settings.yml stop
 
 # Terminate all instances and release resources.
-cargo run --bin orchestrator -- testbed destroy
+cargo run remote-testbed --settings-path settings.yml destroy
 ```
 
-`deploy` also accepts `--region` to target a single region.
+`create` also accepts `--region` to target a single region.
 
 ## 4. Running Benchmarks
 
@@ -100,11 +104,12 @@ measurements by scraping the Prometheus metrics exposed on each node.
 
 ```bash
 # Benchmark a committee of 10 replicas under a 200 tx/s load.
-cargo run --bin orchestrator -- benchmark --committee 10 --loads 200
+cargo run remote-testbed --settings-path settings.yml benchmark --committee 10 --loads 200
 ```
 
-`--loads` accepts multiple values; the orchestrator runs one benchmark per load and saves each as
-its own measurements file under `results_dir` (default: `./results`). A load of `0` is special: the
+`--loads` accepts a comma-separated list (e.g. `--loads 100,200,300`); the orchestrator runs one
+benchmark per load and saves each as its own measurements file under `results_dir` (default:
+`./results`). A load of `0` is special: the
 orchestrator boots the replicas without any load generator, which is useful for testing with
 external clients.
 
@@ -149,14 +154,10 @@ the example at
 The scrape interval is controlled by `scrape_interval` (default 15s). If `log_processing: true`, the
 orchestrator also downloads per-instance log files to `logs_dir` after each run.
 
-## 7. Inspecting Past Results
+## 7. Inspecting Results
 
-Each benchmark saves a JSON measurements collection under `results_dir`. To re-print a summary for a
-saved run:
-
-```bash
-cargo run --bin orchestrator -- summarize --path ./results/measurements-...json
-```
-
-The summary reports TPS, average latency, and latency standard deviation per workload, together with
-the node count, fault configuration, offered load, and run duration.
+At the end of a run, the printed summary table reports each benchmark's name, node count, duration,
+consistency outcome, and committed-leader counts. The detailed performance data — every Prometheus
+sample collected during the run, including throughput rates and latency percentiles — is saved as a
+YAML measurements collection under `results_dir` (one `measurements-<parameters>.yaml` file per
+benchmark), keyed by metric name with the full label map of each sample for post-hoc filtering.
