@@ -157,7 +157,7 @@ orchestrator also downloads per-instance log files to `logs_dir` after each run.
 ## 7. Inspecting Results
 
 At the end of a run, the printed summary table reports each benchmark's name, node count, duration,
-consistency outcome, and committed-leader counts. The detailed performance data — every Prometheus
-sample collected during the run, including throughput rates and latency percentiles — is saved as a
+and consistency outcome. The detailed performance data — every Prometheus sample collected during
+the run, including throughput rates and latency percentiles — is saved as a
 YAML measurements collection under `results_dir` (one `measurements-<parameters>.yaml` file per
 benchmark), keyed by metric name with the full label map of each sample for post-hoc filtering.
