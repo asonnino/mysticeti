@@ -88,6 +88,14 @@ impl BlockDigest {
     }
 }
 
+/// Test-only escape hatch to spell a digest directly.
+#[cfg(any(test, feature = "test-utils"))]
+impl From<[u8; BLOCK_DIGEST_SIZE]> for BlockDigest {
+    fn from(bytes: [u8; BLOCK_DIGEST_SIZE]) -> Self {
+        Self(bytes)
+    }
+}
+
 impl AsRef<[u8]> for BlockDigest {
     #[inline]
     fn as_ref(&self) -> &[u8] {

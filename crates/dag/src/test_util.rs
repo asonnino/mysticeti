@@ -131,6 +131,16 @@ pub fn build_dag_layer(
     references
 }
 
+/// Insert a hand-built test block and return its reference. The door for
+/// blocks the layer builders cannot express (e.g. an equivocating block built
+/// with [`Block::with_digest`]).
+pub fn insert_test_block(block: Block, storage: &mut Storage) -> BlockReference {
+    let block = Data::new(block);
+    let reference = *block.reference();
+    storage.insert_block(block);
+    reference
+}
+
 /// Return the references at a round excluding the given leader's block.
 /// Convenience for tests that need to drive a "leader missed its proposal"
 /// scenario over an existing layer of refs.

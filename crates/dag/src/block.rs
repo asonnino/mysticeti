@@ -137,6 +137,16 @@ impl Block {
         }
     }
 
+    /// Override the digest of a test block. The synthetic digest of
+    /// [`Block::new_for_test`] is keyed by `(round, authority)` alone, so two
+    /// same-slot blocks collapse into one reference; tests that need
+    /// distinguishable blocks (e.g. an equivocating pair) set their own digest.
+    #[cfg(any(test, feature = "test-utils"))]
+    pub fn with_digest(mut self, digest: BlockDigest) -> Self {
+        self.reference.digest = digest;
+        self
+    }
+
     /// Verify the integrity and validity of a block received from the network.
     pub fn verify(
         &self,
