@@ -261,12 +261,20 @@ fn infeasible_params_rejected() {
     let result = Protocol::orcaella(4, 1, 0, NonZeroUsize::new(1).unwrap());
     assert!(matches!(
         result,
-        Err(ProtocolError::OrcaellaFaultBoundViolated { n: 4, f: 1, c: 0 })
+        Err(ProtocolError::FaultBoundViolated {
+            protocol: "Orcaella",
+            n: 4,
+            min_n: 6,
+        })
     ));
     // CFT: n=2, f=0, c=1 needs n >= 2*1+1 = 3 — rejected
     let result = Protocol::orcaella(2, 0, 1, NonZeroUsize::new(1).unwrap());
     assert!(matches!(
         result,
-        Err(ProtocolError::OrcaellaFaultBoundViolated { n: 2, f: 0, c: 1 })
+        Err(ProtocolError::FaultBoundViolated {
+            protocol: "Orcaella",
+            n: 2,
+            min_n: 3,
+        })
     ));
 }
