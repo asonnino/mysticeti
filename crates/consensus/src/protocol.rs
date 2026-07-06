@@ -333,7 +333,7 @@ impl Protocol {
     /// Orcaella
     ///
     /// "Orcaella: Hybrid Fault Tolerance with Client-Selectable Finality Latency"
-    /// <TBD>
+    /// <https://sonnino.com/papers/orcaella.pdf>
     pub fn orcaella(
         total_stake: Stake,
         f: Stake,
