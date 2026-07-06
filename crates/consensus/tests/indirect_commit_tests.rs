@@ -84,7 +84,10 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
             // commit quorum: fast-path protocols must stay undecided at the voting
             // round.
             let voters_quorum = match &protocol.fast_path {
-                Some(fast_path) => protocol.certificate_quorum.min(fast_path.commit_quorum - 1),
+                Some(fast_path) => {
+                    let below_fast_commit = fast_path.commit_quorum.saturating_sub(1);
+                    protocol.certificate_quorum.min(below_fast_commit)
+                }
                 None => protocol.certificate_quorum,
             };
             let blamers_count = committee.len() - voters_quorum as usize;
