@@ -338,6 +338,10 @@ mod test {
             ),
             1.0
         );
+        // The per-commit-type accessors sum across leader authorities.
+        assert_eq!(snapshot.direct_skips(), 2);
+        assert_eq!(snapshot.indirect_skips(), 1);
+        assert_eq!(snapshot.direct_commits(), 0);
     }
 
     #[test]
