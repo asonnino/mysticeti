@@ -582,34 +582,39 @@ impl Protocol {
         k: Stake,
         leader_count: NonZeroUsize,
     ) -> Result<Self, ProtocolError> {
+        // Widen to u128 so the bound and threshold arithmetic cannot overflow;
+        // every resulting threshold is at most `total_stake`, so narrowing back
+        // to `Stake` is safe.
+        let n = total_stake as u128;
+        let (f, c, k) = (f as u128, c as u128, k as u128);
         let min_n = 3 * f + 2 * c + k + 1;
-        if min_n > total_stake {
+        if min_n > n {
             return Err(ProtocolError::FaultBoundViolated {
                 protocol: "DagHydrangea",
                 n: total_stake,
-                min_n,
+                min_n: Stake::try_from(min_n).unwrap_or(Stake::MAX),
             });
         }
 
         let p = (c + k) / 2;
         // ceil((n + f + 1) / 2): large enough that two conflicting certificates
         // cannot both form.
-        let certificate_quorum = (total_stake + f + 2) / 2;
+        let certificate_quorum = (n + f + 2) / 2;
         let fast_path = FastPath {
-            commit_quorum: total_stake - p,
-            weak_indirect_quorum: f + p + 1,
+            commit_quorum: (n - p) as Stake,
+            weak_indirect_quorum: (f + p + 1) as Stake,
         };
         // Certificate uniqueness, and a fast commit starving every conflicting
         // leader block below the weak indirect quorum. Both follow from the fault
         // bound; assert to catch arithmetic regressions.
-        assert!(2 * certificate_quorum > total_stake + f);
-        assert!(fast_path.commit_quorum + fast_path.weak_indirect_quorum > total_stake + f);
+        assert!(2 * certificate_quorum > n + f);
+        assert!((n - p) + (f + p + 1) > n + f);
 
         Ok(Self {
-            direct_commit_quorum: 2 * f + c + 1,
+            direct_commit_quorum: (2 * f + c + 1) as Stake,
             direct_skip_quorum: fast_path.commit_quorum,
-            certificate_quorum,
-            quorum_threshold: total_stake - f - c,
+            certificate_quorum: certificate_quorum as Stake,
+            quorum_threshold: (n - f - c) as Stake,
             fast_path: Some(fast_path),
             anchor_link_size: 1,
             wave_length: 3,
