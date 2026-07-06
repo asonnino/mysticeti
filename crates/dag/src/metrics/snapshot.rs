@@ -6,8 +6,9 @@ use std::time::Duration;
 use prometheus::{Encoder, TextEncoder, proto::MetricFamily};
 
 use super::names::{
-    COMMIT_TYPE_DIRECT_COMMIT, COMMIT_TYPE_INDIRECT_COMMIT, COMMITTED_LEADERS_TOTAL,
-    LABEL_COMMIT_TYPE, LATENCY_S, LEADER_TIMEOUT_TOTAL,
+    COMMIT_TYPE_DIRECT_COMMIT, COMMIT_TYPE_DIRECT_SKIP, COMMIT_TYPE_INDIRECT_COMMIT,
+    COMMIT_TYPE_INDIRECT_SKIP, COMMITTED_LEADERS_TOTAL, LABEL_COMMIT_TYPE, LATENCY_S,
+    LEADER_TIMEOUT_TOTAL,
 };
 
 /// A point-in-time snapshot of all metrics from a Prometheus
@@ -80,6 +81,39 @@ impl MetricsSnapshot {
             return None;
         }
         Some(self.total_committed_leaders() as f64 / duration.as_secs_f64())
+    }
+
+    /// Leaders committed by the direct rule (fast or slow path).
+    pub fn direct_commits(&self) -> u64 {
+        self.commit_type_total(COMMIT_TYPE_DIRECT_COMMIT)
+    }
+
+    /// Leaders skipped by the direct rule (a quorum of blames).
+    pub fn direct_skips(&self) -> u64 {
+        self.commit_type_total(COMMIT_TYPE_DIRECT_SKIP)
+    }
+
+    /// Leaders skipped by the indirect rule (via an anchor).
+    pub fn indirect_skips(&self) -> u64 {
+        self.commit_type_total(COMMIT_TYPE_INDIRECT_SKIP)
+    }
+
+    /// Decided leaders of one `commit_type`, summed across leader authorities.
+    fn commit_type_total(&self, commit_type: &str) -> u64 {
+        let Some(family) = self.find_family(COMMITTED_LEADERS_TOTAL) else {
+            return 0;
+        };
+        let mut total = 0.0;
+        for metric in family.get_metric() {
+            let type_matches = metric
+                .get_label()
+                .iter()
+                .any(|label| label.name() == LABEL_COMMIT_TYPE && label.value() == commit_type);
+            if type_matches && metric.counter.is_some() {
+                total += metric.counter.value();
+            }
+        }
+        total as u64
     }
 
     /// Render the snapshot in the Prometheus text exposition format — the same format every
