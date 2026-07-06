@@ -24,8 +24,12 @@ use dag::storage::Storage;
 pub struct Committer {
     block_reader: BlockReader,
     base_committers: Vec<BaseCommitter>,
-    direct_commit_quorum: Stake,
+    quorum_threshold: Stake,
     leader_wait: bool,
+    /// Whether the protocol has an optimistic fast path; drives the test-only
+    /// round-depth queries.
+    #[cfg(any(test, feature = "test-utils"))]
+    has_fast_path: bool,
     /// Reusable buffer for commit decisions.
     leaders: VecDeque<LeaderStatus>,
 }
@@ -56,8 +60,10 @@ impl Committer {
         Self {
             block_reader,
             base_committers,
-            direct_commit_quorum: protocol.direct_commit_quorum,
+            quorum_threshold: protocol.quorum_threshold,
             leader_wait: protocol.leader_wait,
+            #[cfg(any(test, feature = "test-utils"))]
+            has_fast_path: protocol.fast_path.is_some(),
             leaders: VecDeque::new(),
         }
     }
@@ -183,11 +189,23 @@ impl Committer {
             .expect("not a leader round");
         bc.wave.decision_round(bc.wave.number(leader_round))
     }
+
+    /// Shallowest DAG depth at which the direct rule can decide the leader at
+    /// `leader_round`: the voting round when a fast path is configured (votes
+    /// alone can commit), else the decision round.
+    /// Panics if `leader_round` is not a leader round.
+    pub fn earliest_decision_round_for(&self, leader_round: RoundNumber) -> RoundNumber {
+        if self.has_fast_path {
+            self.voting_round_for(leader_round)
+        } else {
+            self.decision_round_for(leader_round)
+        }
+    }
 }
 
 impl DagConsensus for Committer {
     fn quorum_threshold(&self) -> Stake {
-        self.direct_commit_quorum
+        self.quorum_threshold
     }
 
     fn try_commit(
@@ -207,5 +225,69 @@ impl DagConsensus for Committer {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::num::NonZeroUsize;
+
+    use dag::{consensus::DagConsensus, storage::Storage, test_util::committee};
+
+    use crate::{
+        committer::Committer,
+        protocol::{FastPath, Protocol},
+    };
+
+    fn test_protocol(fast_path: Option<FastPath>) -> Protocol {
+        Protocol {
+            direct_commit_quorum: 3,
+            direct_skip_quorum: 3,
+            certificate_quorum: 3,
+            quorum_threshold: 4,
+            fast_path,
+            anchor_link_size: 1,
+            wave_length: 3,
+            leader_count: NonZeroUsize::new(1).unwrap(),
+            pipeline: false,
+            leader_wait: true,
+            require_crypto: false,
+        }
+    }
+
+    #[test]
+    fn quorum_threshold_sourced_from_protocol_field() {
+        let committee = committee(4);
+        let storage = Storage::new_for_test(&committee);
+        let committer = Committer::new(
+            committee.clone(),
+            storage.block_reader().clone(),
+            test_protocol(None),
+        );
+        assert_eq!(committer.quorum_threshold(), 4);
+    }
+
+    /// `earliest_decision_round_for` is the decision round for single-tier protocols
+    /// and the voting round when a fast path is configured.
+    #[test]
+    fn earliest_decision_round_tracks_fast_path() {
+        let committee = committee(4);
+        let storage = Storage::new_for_test(&committee);
+        let slow_committer = Committer::new(
+            committee.clone(),
+            storage.block_reader().clone(),
+            test_protocol(None),
+        );
+        let fast_committer = Committer::new(
+            committee.clone(),
+            storage.block_reader().clone(),
+            test_protocol(Some(FastPath {
+                commit_quorum: 3,
+                weak_indirect_quorum: 2,
+            })),
+        );
+        // Wave length 3: leader round 3 → voting round 4, decision round 5.
+        assert_eq!(slow_committer.earliest_decision_round_for(3), 5);
+        assert_eq!(fast_committer.earliest_decision_round_for(3), 4);
     }
 }
