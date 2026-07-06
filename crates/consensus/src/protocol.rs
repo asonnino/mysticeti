@@ -606,9 +606,11 @@ impl Protocol {
         };
         // Certificate uniqueness, and a fast commit starving every conflicting
         // leader block below the weak indirect quorum. Both follow from the fault
-        // bound; assert to catch arithmetic regressions.
+        // bound; assert on the stored thresholds to catch formula regressions.
         assert!(2 * certificate_quorum > n + f);
-        assert!((n - p) + (f + p + 1) > n + f);
+        let fast_commit_quorum = fast_path.commit_quorum as u128;
+        let weak_indirect_quorum = fast_path.weak_indirect_quorum as u128;
+        assert!(fast_commit_quorum + weak_indirect_quorum > n + f);
 
         Ok(Self {
             direct_commit_quorum: (2 * f + c + 1) as Stake,
