@@ -236,12 +236,32 @@ pub enum ProtocolError {
     },
 }
 
+/// Optimistic fast-path parameters for dual-path protocols.
+#[derive(Clone, Copy)]
+pub struct FastPath {
+    /// The quorum of votes at the voting round to fast-commit a leader.
+    pub commit_quorum: Stake,
+    /// The quorum of anchor-linked votes to indirectly commit a leader
+    /// (second rung of the graded indirect rule).
+    pub weak_indirect_quorum: Stake,
+}
+
 /// Protocol-specific parameters for the consensus committer.
 pub struct Protocol {
-    /// The quorum threshold to directly commit a leader.
+    /// The quorum threshold to directly commit a leader: the number of
+    /// certificates required at the decision round (the outer threshold).
     pub direct_commit_quorum: Stake,
     /// The quorum threshold to directly skip a leader.
     pub direct_skip_quorum: Stake,
+    /// The quorum of votes a decision block must reference to count as a
+    /// certificate (the inner threshold).
+    pub certificate_quorum: Stake,
+    /// The quorum governing round advancement and block validity (parents /
+    /// availability). Historically implicit in `direct_commit_quorum`, with
+    /// which it coincides for all single-tier protocols.
+    pub quorum_threshold: Stake,
+    /// Optimistic fast-path parameters; `None` for single-tier protocols.
+    pub fast_path: Option<FastPath>,
     /// The stake of anchor-linked support required to indirectly decide a leader.
     pub anchor_link_size: Stake,
     /// The number of rounds to commit a leader.
@@ -266,6 +286,9 @@ impl Protocol {
         Self {
             direct_commit_quorum: quorum,
             direct_skip_quorum: total_stake,
+            certificate_quorum: quorum,
+            quorum_threshold: quorum,
+            fast_path: None,
             anchor_link_size: 1,
             wave_length: 3,
             leader_count: NonZeroUsize::new(1).unwrap(),
@@ -284,6 +307,9 @@ impl Protocol {
         Self {
             direct_commit_quorum: quorum,
             direct_skip_quorum: total_stake,
+            certificate_quorum: quorum,
+            quorum_threshold: quorum,
+            fast_path: None,
             anchor_link_size: 1,
             wave_length: 5,
             leader_count: NonZeroUsize::new(1).unwrap(),
@@ -302,6 +328,9 @@ impl Protocol {
         Self {
             direct_commit_quorum: quorum,
             direct_skip_quorum: quorum,
+            certificate_quorum: quorum,
+            quorum_threshold: quorum,
+            fast_path: None,
             anchor_link_size: 1,
             wave_length: 3,
             leader_count,
@@ -321,6 +350,9 @@ impl Protocol {
         Self {
             direct_commit_quorum: strong_quorum,
             direct_skip_quorum: strong_quorum,
+            certificate_quorum: strong_quorum,
+            quorum_threshold: strong_quorum,
+            fast_path: None,
             anchor_link_size: weak_quorum,
             wave_length: 2,
             leader_count,
@@ -352,6 +384,9 @@ impl Protocol {
         Ok(Self {
             direct_commit_quorum: total_stake - f - c,
             direct_skip_quorum: 4 * f + 2 * c + 1,
+            certificate_quorum: total_stake - f - c,
+            quorum_threshold: total_stake - f - c,
+            fast_path: None,
             anchor_link_size: total_stake - 3 * f - 2 * c,
             wave_length: 2,
             leader_count,
@@ -378,6 +413,9 @@ impl Protocol {
         Ok(Self {
             direct_commit_quorum: quorum,
             direct_skip_quorum: quorum,
+            certificate_quorum: quorum,
+            quorum_threshold: quorum,
+            fast_path: None,
             anchor_link_size: 1,
             wave_length,
             leader_count,
@@ -396,6 +434,9 @@ impl Protocol {
         Self {
             direct_commit_quorum: quorum,
             direct_skip_quorum: total_stake,
+            certificate_quorum: quorum,
+            quorum_threshold: quorum,
+            fast_path: None,
             anchor_link_size: 1,
             wave_length: 2,
             leader_count,
