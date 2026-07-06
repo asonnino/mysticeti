@@ -81,8 +81,11 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
             supports.into_iter().chain(blames).collect()
         } else {
             // Enough voters to back a certificate, capped one below the fast-path
-            // commit quorum: fast-path protocols must stay undecided at the voting
-            // round.
+            // commit quorum so fast-path protocols stay undecided at the voting
+            // round. When the cap wins (certificate quorum >= fast commit quorum),
+            // the voters intentionally fall below the certificate quorum: no
+            // certificate forms and the anchor commits the target through the
+            // weak indirect rung instead — same assertion.
             let voters_quorum = match &protocol.fast_path {
                 Some(fast_path) => {
                     let below_fast_commit = fast_path.commit_quorum.saturating_sub(1);

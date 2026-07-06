@@ -256,18 +256,16 @@ impl BaseCommitter {
         LeaderStatus::IndirectSkip(leader, leader_round)
     }
 
-    /// Check whether the specified leader has enough blames (`direct_skip_quorum` non-votes)
-    /// to be directly skipped.
+    /// Check whether the specified leader has enough blames (`direct_skip_quorum` non-votes
+    /// among the voting-round blocks) to be directly skipped.
     fn enough_leader_blame(
         &self,
-        voting_round: RoundNumber,
+        voting_blocks: &[Data<Block>],
         leader: Authority,
         leader_round: RoundNumber,
     ) -> bool {
-        let voting_blocks = self.block_reader.get_blocks_by_round(voting_round);
-
         let mut aggregator = StakeAggregator::new(self.direct_skip_quorum);
-        for voting_block in &voting_blocks {
+        for voting_block in voting_blocks {
             let voter = voting_block.reference().authority;
             if self
                 .find_support((leader, leader_round), voting_block)
@@ -306,21 +304,18 @@ impl BaseCommitter {
         false
     }
 
-    /// Check whether the specified leader has enough votes at the voting round
-    /// (`fast_path.commit_quorum`) to be fast-committed. Always false for protocols
-    /// without a fast path.
+    /// Check whether the specified leader has enough votes at the voting round to be
+    /// fast-committed. Always false for protocols without a fast path.
     fn enough_fast_path_support(
         &self,
-        voting_round: RoundNumber,
+        voting_blocks: &[Data<Block>],
         leader_block: &Data<Block>,
     ) -> bool {
         let Some(fast_path) = &self.fast_path else {
             return false;
         };
-        let voting_blocks = self.block_reader.get_blocks_by_round(voting_round);
-
         let mut votes_stake_aggregator = StakeAggregator::new(fast_path.commit_quorum);
-        for voting_block in &voting_blocks {
+        for voting_block in voting_blocks {
             let authority = voting_block.reference().authority;
             if self.is_vote(voting_block, leader_block)
                 && votes_stake_aggregator.add(authority, &self.committee)
@@ -381,10 +376,12 @@ impl BaseCommitter {
         let voting_round = self.wave.voting_round(wave);
         let decision_round = self.wave.decision_round(wave);
 
+        let voting_blocks = self.block_reader.get_blocks_by_round(voting_round);
+
         // Check whether the leader has enough blame. That is, whether there are
         // `direct_skip_quorum` non-votes for that leader (which ensure there will never
         // be a certificate for that leader).
-        if self.enough_leader_blame(voting_round, leader, leader_round) {
+        if self.enough_leader_blame(&voting_blocks, leader, leader_round) {
             return LeaderStatus::DirectSkip(leader, leader_round);
         }
 
@@ -396,7 +393,7 @@ impl BaseCommitter {
             .block_reader
             .get_blocks_at_authority_round(leader, leader_round);
         let mut supported = leader_blocks.into_iter().filter(|leader_block| {
-            self.enough_fast_path_support(voting_round, leader_block)
+            self.enough_fast_path_support(&voting_blocks, leader_block)
                 || self.enough_leader_support(decision_round, leader_block)
         });
         let first = supported.next();
@@ -612,7 +609,8 @@ mod tests {
 
         let committer =
             BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
-        assert!(committer.enough_leader_blame(4, leader, leader_round));
+        let voting_blocks = storage.block_reader().get_blocks_by_round(4);
+        assert!(committer.enough_leader_blame(&voting_blocks, leader, leader_round));
     }
 
     /// `enough_leader_support` is `true` for a fully-connected DAG.
