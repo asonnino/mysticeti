@@ -5,8 +5,8 @@ use dag::block::transaction::Transaction;
 use eyre::{Result, eyre};
 use tokio::sync::mpsc;
 
-/// Cloneable handle for submitting transactions to a running replica, independent of the
-/// [`ReplicaHandle`](crate::replica::ReplicaHandle)'s lifetime.
+/// Cloneable handle for submitting transactions to a running replica. Shutting the replica
+/// down closes the channel.
 #[derive(Clone)]
 pub struct TransactionClient {
     sender: mpsc::Sender<Vec<Transaction>>,

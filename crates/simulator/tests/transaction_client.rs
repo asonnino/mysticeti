@@ -35,7 +35,9 @@ fn submitter_task_inside_simulation() {
             .collect();
 
         SimulatorContext::sleep(Duration::from_secs(20)).await;
-        drop(submitters);
+        for submitter in &submitters {
+            SimulatorContext::abort(submitter);
+        }
 
         let syncers = join_all(replicas.into_iter().map(ReplicaHandle::shutdown)).await;
         syncers.into_iter().all(|syncer| {
