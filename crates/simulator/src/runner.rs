@@ -11,7 +11,6 @@ use std::{
 use consensus::committer::Committer;
 use dag::{
     authority::Authority,
-    committee::Committee,
     config::{ConfigError, ImportExport},
     context::Ctx,
     core::syncer::Syncer,
@@ -88,8 +87,7 @@ impl SimulatedNetwork {
         let public_config = PublicReplicaConfig::new_for_tests(committee_size);
         let latency_range = Duration::from_millis(50)..Duration::from_millis(100);
         let (network, replicas, _) =
-            SimulationState::build_replicas(committee_size, public_config, latency_range, None)
-                .await;
+            SimulationState::build_replicas(public_config, latency_range, None).await;
         network.connect_all().await;
         (network, replicas)
     }
@@ -98,7 +96,6 @@ impl SimulatedNetwork {
 impl SimulationState {
     /// Build a committee of simulated replicas wired through a [`SimulatedNetwork`].
     async fn build_replicas(
-        committee_size: usize,
         public_config: PublicReplicaConfig,
         latency_range: Range<Duration>,
         load_generator: Option<LoadGeneratorConfig>,
@@ -107,7 +104,8 @@ impl SimulationState {
         Vec<ReplicaHandle<SimulatorContext>>,
         Vec<JoinHandle<()>>,
     ) {
-        let committee = Committee::new_test(vec![1; committee_size]);
+        let committee = public_config.committee();
+        let committee_size = committee.len();
         let (network, networks) = SimulatedNetwork::new(&committee, latency_range);
 
         // The simulator doesn't touch disk; the WAL path in the private
@@ -143,7 +141,6 @@ impl SimulationState {
         let public_config = PublicReplicaConfig::new_for_tests(config.committee_size)
             .with_parameters(config.replica_parameters.clone());
         let (network, replicas, load_generators) = Self::build_replicas(
-            config.committee_size,
             public_config,
             config.latency_range(),
             config.load_generator.clone(),

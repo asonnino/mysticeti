@@ -44,7 +44,8 @@ impl Transaction {
 impl Transaction {
     const TEST_MARKER: [u8; 8] = [0xAB; 8];
 
-    /// A benchmark-shaped transaction (timestamp prefix) carrying a recognizable marker.
+    /// A transaction whose first 8 bytes decode as a (zero) timestamp, followed by a
+    /// recognizable marker.
     pub fn new_for_test() -> Self {
         let mut payload = vec![0u8; 16];
         payload[8..].copy_from_slice(&Self::TEST_MARKER);
