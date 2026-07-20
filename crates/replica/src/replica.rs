@@ -11,7 +11,7 @@ use consensus::committer::Committer;
 use dag::{
     authority::Authority,
     block::transaction::Transaction,
-    context::{Ctx, TokioCtx},
+    context::Ctx,
     core::{
         Core,
         block_handler::{CommitHandler, RealBlockHandler},
@@ -23,10 +23,10 @@ use dag::{
     sync::{net_sync::NetworkSyncer, network::Network},
 };
 use eyre::{Context, Result, eyre};
-use tokio::sync::mpsc;
 
 use crate::{
     builder::StorageKind,
+    client::TransactionClient,
     config::{LoadGeneratorConfig, PrivateReplicaConfig, PublicReplicaConfig},
     generator::TransactionGenerator,
 };
@@ -140,7 +140,7 @@ impl Replica {
             public_config,
             network_synchronizer,
             metrics,
-            transaction_sender,
+            transaction_client: TransactionClient::new(transaction_sender),
         })
     }
 }
@@ -151,10 +151,8 @@ pub struct ReplicaHandle<C: Ctx> {
     public_config: PublicReplicaConfig,
     network_synchronizer: NetworkSyncer<C, Committer>,
     metrics: Arc<Metrics>,
-    /// Channel for submitting transactions to the block handler. Cloned into the built-in load
-    /// generator when one is started (see [`ReplicaHandle::start_load_generator`]) and reachable
-    /// externally via [`ReplicaHandle::submit`] on `TokioCtx`.
-    transaction_sender: mpsc::Sender<Vec<Transaction>>,
+    /// Client over the channel for submitting transactions to the block handler.
+    transaction_client: TransactionClient,
 }
 
 impl<C: Ctx> ReplicaHandle<C> {
@@ -169,27 +167,25 @@ impl<C: Ctx> ReplicaHandle<C> {
     }
 
     /// Start the built-in load generator. Transactions from the generator and from
-    /// [`ReplicaHandle::submit`] (on `TokioCtx`) share the same channel and are interleaved
-    /// in arrival order. Returns the task handle; drop it to detach, or keep it to abort
-    /// later via `C::abort`.
+    /// [`ReplicaHandle::submit`] share the same channel and are interleaved.
     pub fn start_load_generator(&mut self, config: LoadGeneratorConfig) -> C::JoinHandle<()> {
         TransactionGenerator::start::<C>(
-            self.transaction_sender.clone(),
+            self.transaction_client.clone(),
             self.authority,
             config,
             self.public_config.parameters.dag.max_block_size,
             self.metrics.clone(),
         )
     }
-}
 
-impl ReplicaHandle<TokioCtx> {
     /// Submit transactions externally.
     pub async fn submit(&self, transactions: Vec<Transaction>) -> Result<()> {
-        self.transaction_sender
-            .send(transactions)
-            .await
-            .map_err(|_| eyre!("Transaction channel closed"))
+        self.transaction_client.submit(transactions).await
+    }
+
+    /// A cloneable client for submitting transactions; outlives borrows of the handle.
+    pub fn transaction_client(&self) -> TransactionClient {
+        self.transaction_client.clone()
     }
 
     /// Wait for the replica to finish.
@@ -197,6 +193,6 @@ impl ReplicaHandle<TokioCtx> {
         self.network_synchronizer
             .await_completion()
             .await
-            .map_err(|error| eyre!("Replica {} crashed: {error}", self.authority))
+            .map_err(|error| eyre!("Replica {} crashed: {error:?}", self.authority))
     }
 }

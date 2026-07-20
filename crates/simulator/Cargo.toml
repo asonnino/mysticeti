@@ -21,4 +21,8 @@ parking_lot = { workspace = true }
 
 [dev-dependencies]
 indoc = { workspace = true }
+simulator = { path = ".", features = ["test-utils"] }
 tempfile = { workspace = true }
+
+[features]
+test-utils = []
