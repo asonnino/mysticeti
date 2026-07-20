@@ -26,10 +26,15 @@ pub fn committee(n: usize) -> Arc<Committee> {
     Committee::new_test(vec![1; n])
 }
 
-pub async fn networks_and_addresses(metrics: &[Arc<Metrics>]) -> (Vec<Network>, Vec<SocketAddr>) {
+/// Tests running in parallel bind real sockets: each caller must pass a distinct
+/// `base_port`.
+pub async fn networks_and_addresses(
+    metrics: &[Arc<Metrics>],
+    base_port: u16,
+) -> (Vec<Network>, Vec<SocketAddr>) {
     let host = Ipv4Addr::LOCALHOST;
     let addresses: Vec<_> = (0..metrics.len())
-        .map(|i| SocketAddr::V4(SocketAddrV4::new(host, 5001 + i as u16)))
+        .map(|i| SocketAddr::V4(SocketAddrV4::new(host, base_port + i as u16)))
         .collect();
     let networks =
         addresses

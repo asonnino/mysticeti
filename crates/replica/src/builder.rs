@@ -4,7 +4,10 @@
 use std::{path::PathBuf, sync::Arc};
 
 use ::prometheus::Registry;
-use dag::{authority::Authority, metrics::Metrics, sync::network::Network};
+use dag::{
+    authority::Authority, consensus::CommittedSubDag, metrics::Metrics, sync::network::Network,
+};
+use tokio::sync::mpsc;
 
 use crate::{
     config::{PrivateReplicaConfig, PublicReplicaConfig},
@@ -30,6 +33,7 @@ pub struct ReplicaBuilder {
     metrics: Option<Arc<Metrics>>,
     network: Option<Network>,
     registry: Registry,
+    commit_consumer: Option<mpsc::Sender<CommittedSubDag>>,
 }
 
 impl ReplicaBuilder {
@@ -48,6 +52,7 @@ impl ReplicaBuilder {
             metrics: None,
             network: None,
             registry: Registry::new(),
+            commit_consumer: None,
         }
     }
 
@@ -85,6 +90,15 @@ impl ReplicaBuilder {
         self
     }
 
+    /// Stream every committed sub-dag, in commit order, into `sender` once it is durably
+    /// written to the WAL. The channel must be bounded: a slow receiver throttles the whole
+    /// replica rather than dropping or reordering commits. On restart, commits recovered
+    /// from the WAL are not re-emitted; catch up via `Storage::iter_commits` first.
+    pub fn with_commit_consumer(mut self, sender: mpsc::Sender<CommittedSubDag>) -> Self {
+        self.commit_consumer = Some(sender);
+        self
+    }
+
     /// Finalize configuration. The returned [`Replica`] holds the
     /// same intent; no tokio work has happened yet.
     pub fn build(self) -> Replica {
@@ -97,6 +111,7 @@ impl ReplicaBuilder {
             metrics: self.metrics,
             network: self.network,
             registry: self.registry,
+            commit_consumer: self.commit_consumer,
         }
     }
 }

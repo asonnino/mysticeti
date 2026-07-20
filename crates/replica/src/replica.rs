@@ -11,6 +11,7 @@ use consensus::committer::Committer;
 use dag::{
     authority::Authority,
     block::transaction::Transaction,
+    consensus::CommittedSubDag,
     context::Ctx,
     core::{
         Core,
@@ -23,6 +24,7 @@ use dag::{
     sync::{net_sync::NetworkSyncer, network::Network},
 };
 use eyre::{Context, Result, eyre};
+use tokio::sync::mpsc;
 
 use crate::{
     builder::StorageKind,
@@ -44,6 +46,7 @@ pub struct Replica {
     pub(crate) metrics: Option<Arc<Metrics>>,
     pub(crate) network: Option<Network>,
     pub(crate) registry: Registry,
+    pub(crate) commit_consumer: Option<mpsc::Sender<CommittedSubDag>>,
 }
 
 impl Replica {
@@ -61,6 +64,7 @@ impl Replica {
             metrics: metrics_override,
             network: network_override,
             registry,
+            commit_consumer,
         } = self;
 
         let committee = public_config.committee();
@@ -133,6 +137,7 @@ impl Replica {
             enable_synchronizer,
             commit_handler,
             metrics.clone(),
+            commit_consumer,
         );
 
         Ok(ReplicaHandle {
