@@ -94,6 +94,10 @@ Inside that thread, `CoreThread::run` is a `blocking_recv()` loop over an mpsc c
   proposal.
 - **`ForceNewBlock(round)`** — sent by the round-timeout task when the timer fires. The core
   produces a proposal even without a complete quorum.
+
+Both commit-producing commands forward any newly committed sub-dags to the optional commit
+consumer (see [Transaction input and commit output](#transaction-input-and-commit-output))
+**before** acking the caller's oneshot; without a consumer this is a no-op.
 - **`Cleanup`** — periodic, trims committed state.
 - **`GetMissing`** — returns the set of references the DAG is waiting for, used to drive block-fetch
   requests.
@@ -144,7 +148,7 @@ storms.
 | **Round-timeout task** | `net_sync.rs` | Sleeps for `round_timeout`. On fire, sends `ForceNewBlock` to the core. Rearmed via a `Notify` whenever the core advances the round. |
 | **Cleanup task** | `net_sync.rs` | Every 10 s, sends a `Cleanup` command to the core. |
 | **Block fetcher** | `BlockFetcher::start` (`synchronizer.rs`) | Queries the core for missing block references and issues `RequestBlocks` to peers likely to have them. |
-| **Load generator** | `TransactionGenerator::start` (`replica/src/generator.rs`) | Optional. Emits synthetic transactions at a configured rate; the first 8 bytes carry a timestamp for latency. |
+| **Load generator** | `TransactionGenerator::start` (`replica/src/generator.rs`) | Optional. Emits synthetic transactions via `TransactionClient`; the first 8 bytes carry a timestamp for latency. |
 | **Metrics server** | Prometheus server, injected via the builder | Exposes a `/metrics` endpoint for each replica. |
 
 ### From tokio to the core, and back
@@ -154,7 +158,23 @@ Any tokio task that needs to mutate consensus state calls an async method on `Sy
 [`core/core_thread.rs`](../crates/dag/src/core/core_thread.rs)). Backpressure is implicit: if the
 core thread is slow, the command channel (capacity 32) fills up, and the calling task's `.await`
 stalls — which propagates naturally to the networking buffers (capacity 16 per connection) and
-ultimately to the TCP socket.
+ultimately to the TCP socket. A configured commit consumer adds one more stage at the front of that
+chain: when its bounded channel is full, the core thread blocks in `blocking_send` (visible as
+`utilization{scope="CoreThread::forward_commits"}`), so a slow external executor throttles the
+whole replica the same way.
+
+### Transaction input and commit output
+
+The replica's external contract is ordered bytes in, ordered bytes out — both executor-agnostic:
+
+- **Input.** `ReplicaHandle::transaction_client()` returns a cloneable `TransactionClient`
+  (`replica/src/client.rs`) wrapping the bounded transaction channel; the built-in load generator
+  submits through the same client. Under the simulator, submitters must run as simulated tasks
+  (spawned via `Ctx::spawn`).
+- **Output.** `ReplicaBuilder::with_commit_consumer` accepts a bounded
+  `mpsc::Sender<CommittedSubDag>`; every committed sub-dag is emitted in commit order, strictly
+  after its WAL write. On restart, commits recovered from the WAL are **not** re-emitted —
+  embedders catch up by reading `Storage::iter_commits` before subscribing to new commits.
 
 ## Storage: the Custom WAL
 
