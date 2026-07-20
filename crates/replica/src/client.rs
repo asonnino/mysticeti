@@ -6,7 +6,7 @@ use eyre::{Result, eyre};
 use tokio::sync::mpsc;
 
 /// Cloneable handle for submitting transactions to a running replica, independent of the
-/// [`ReplicaHandle`]'s lifetime.
+/// [`ReplicaHandle`](crate::replica::ReplicaHandle)'s lifetime.
 #[derive(Clone)]
 pub struct TransactionClient {
     sender: mpsc::Sender<Vec<Transaction>>,
