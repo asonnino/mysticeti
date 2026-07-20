@@ -23,6 +23,10 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 dag = { workspace = true, features = ["test-utils"] }
+replica = { path = ".", features = ["test-utils"] }
 reqwest = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
+
+[features]
+test-utils = ["dag/test-utils"]

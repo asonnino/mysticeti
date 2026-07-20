@@ -150,6 +150,45 @@ impl Replica {
     }
 }
 
+#[cfg(any(test, feature = "test-utils"))]
+impl Replica {
+    /// A local committee with ephemeral storage and per-replica test metrics; the commit
+    /// consumer, if any, is attached to replica 0. Nothing is started: run each replica
+    /// via [`Replica::run`]. Concurrent tests must pass distinct `port_offset`s.
+    pub fn new_committee_for_test(
+        committee_size: usize,
+        port_offset: u16,
+        mut commit_consumer: Option<mpsc::Sender<CommittedSubDag>>,
+    ) -> (Vec<Self>, Vec<Arc<Metrics>>) {
+        let public_config =
+            PublicReplicaConfig::new_for_tests(committee_size).with_port_offset(port_offset);
+        // Storage is ephemeral, so the WAL path in the private configs is unused.
+        let private_configs = PrivateReplicaConfig::new_for_benchmarks(
+            &std::path::PathBuf::from("test"),
+            committee_size,
+        );
+
+        let mut replicas = Vec::with_capacity(committee_size);
+        let mut metrics = Vec::with_capacity(committee_size);
+        for (i, private_config) in private_configs.into_iter().enumerate() {
+            let replica_metrics = Metrics::new_for_test(committee_size);
+            metrics.push(replica_metrics.clone());
+            let mut builder = crate::builder::ReplicaBuilder::new(
+                Authority::from(i),
+                public_config.clone(),
+                private_config,
+            )
+            .with_storage(StorageKind::Ephemeral)
+            .with_metrics(replica_metrics);
+            if let Some(commit_consumer) = commit_consumer.take() {
+                builder = builder.with_commit_consumer(commit_consumer);
+            }
+            replicas.push(builder.build());
+        }
+        (replicas, metrics)
+    }
+}
+
 /// A running replica. Generic over the execution context.
 pub struct ReplicaHandle<C: Ctx> {
     authority: Authority,
