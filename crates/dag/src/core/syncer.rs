@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::sync::Notify;
 
 use super::{Core, block_handler::CommitHandler};
-use crate::consensus::DagConsensus;
+use crate::consensus::{CommittedSubDag, DagConsensus};
 use crate::storage::Storage;
 use crate::{
     authority::Authority,
@@ -76,28 +76,29 @@ impl<C: Ctx, D: DagConsensus> Syncer<C, D> {
         }
     }
 
-    pub fn add_blocks(&mut self, blocks: Vec<Data<Block>>) {
+    /// Add blocks to the core, returning any sub-dags newly committed as a consequence.
+    pub fn add_blocks(&mut self, blocks: Vec<Data<Block>>) -> Vec<CommittedSubDag> {
         let _timer = self.metrics.utilization_timer("Syncer::add_blocks");
         self.core.add_blocks(blocks);
-        self.try_new_block();
+        self.try_new_block()
     }
 
-    pub fn force_new_block(&mut self, round: RoundNumber) -> bool {
+    /// Force a new block proposal, returning any sub-dags newly committed as a consequence.
+    pub fn force_new_block(&mut self, round: RoundNumber) -> Vec<CommittedSubDag> {
         if self.core.last_proposed() == round {
             self.metrics.inc_leader_timeout();
             self.force_new_block = true;
-            self.try_new_block();
-            true
+            self.try_new_block()
         } else {
-            false
+            Vec::new()
         }
     }
 
-    fn try_new_block(&mut self) {
+    fn try_new_block(&mut self) -> Vec<CommittedSubDag> {
         let _timer = self.metrics.utilization_timer("Syncer::try_new_block");
         if self.force_new_block || self.core.ready_new_block(&self.connected_authorities) {
             if self.core.try_new_block().is_none() {
-                return;
+                return Vec::new();
             }
             self.signals.new_block_ready();
             self.force_new_block = false;
@@ -117,7 +118,9 @@ impl<C: Ctx, D: DagConsensus> Syncer<C, D> {
             let committed_subdag = self
                 .commit_handler
                 .handle_commit(self.core.block_reader(), newly_committed);
-            self.core.handle_committed_subdag(committed_subdag);
+            self.core.handle_committed_subdag(committed_subdag)
+        } else {
+            Vec::new()
         }
     }
 

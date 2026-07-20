@@ -487,7 +487,7 @@ mod test {
             .authorities()
             .map(|_| Metrics::new_for_test(committee.len()))
             .collect();
-        let (networks, addresses) = networks_and_addresses(&metrics).await;
+        let (networks, addresses) = networks_and_addresses(&metrics, 5001).await;
         for (mut network, address) in networks.into_iter().zip(addresses.iter()) {
             let mut waiting_peers: HashSet<_> = HashSet::from_iter(addresses.iter().copied());
             waiting_peers.remove(address);

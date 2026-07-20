@@ -4068,7 +4068,6 @@ dependencies = [
  "eyre",
  "futures",
  "indoc",
- "parking_lot",
  "rand 0.8.5",
  "replica",
  "serde",

@@ -359,10 +359,14 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
         }
     }
 
-    pub fn handle_committed_subdag(&mut self, committed: Vec<CommittedSubDag>) -> Vec<CommitData> {
+    /// Durably record the committed sub-dags, then hand them back to the caller.
+    pub fn handle_committed_subdag(
+        &mut self,
+        committed: Vec<CommittedSubDag>,
+    ) -> Vec<CommittedSubDag> {
         let commit_data: Vec<_> = committed.iter().map(CommitData::from).collect();
         self.storage.write_commits(&commit_data);
-        commit_data
+        committed
     }
 
     pub fn take_recovered_committed_blocks(&mut self) -> HashSet<BlockReference> {

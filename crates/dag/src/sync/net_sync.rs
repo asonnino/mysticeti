@@ -13,7 +13,7 @@ use crate::{
     authority::Authority,
     committee::Committee,
     committee::Stake,
-    consensus::DagConsensus,
+    consensus::{CommittedSubDag, DagConsensus},
     context::Ctx,
     core::{
         Core,
@@ -59,6 +59,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
         enable_synchronizer: bool,
         mut commit_handler: CommitHandler<C>,
         metrics: Arc<Metrics>,
+        commit_consumer: Option<mpsc::Sender<CommittedSubDag>>,
     ) -> Self {
         let authority_index = core.authority();
         let notify = Arc::new(Notify::new());
@@ -75,8 +76,8 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
             commit_handler,
             metrics.clone(),
         );
-        syncer.force_new_block(0);
-        let syncer = C::create_dispatcher(syncer);
+        let startup_commits = syncer.force_new_block(0);
+        let syncer = C::create_dispatcher(syncer, commit_consumer.clone());
         let (stop_sender, stop_receiver) = mpsc::channel(1);
         // Occupy the only available permit, so that all
         // other calls to send() will block.
@@ -102,6 +103,8 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
             inner.clone(),
             block_fetcher,
             metrics.clone(),
+            startup_commits,
+            commit_consumer,
         ));
         let syncer_task = C::start_wal_syncer(wal_syncer, stop_sender);
         Self {
@@ -128,7 +131,20 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
         inner: Arc<NetworkSyncerInner<C, D>>,
         block_fetcher: Arc<BlockFetcher<C>>,
         metrics: Arc<Metrics>,
+        startup_commits: Vec<CommittedSubDag>,
+        commit_consumer: Option<mpsc::Sender<CommittedSubDag>>,
     ) {
+        // The startup proposal runs on the raw syncer before the dispatcher exists, so its
+        // recovery-time commits are forwarded here instead. The consumer channel closes only
+        // once both this sender clone and the dispatcher's are dropped (after shutdown).
+        if let Some(consumer) = &commit_consumer {
+            for subdag in startup_commits {
+                if consumer.send(subdag).await.is_err() {
+                    break;
+                }
+            }
+        }
+
         let mut connections: HashMap<usize, C::JoinHandle<Option<()>>> = HashMap::new();
         let round_timeout_task = C::spawn(Self::round_timeout_task(inner.clone()));
         let cleanup_task = C::spawn(Self::cleanup_task(inner.clone()));
