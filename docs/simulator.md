@@ -144,3 +144,13 @@ fn one_down_stays_consistent() {
 configuration with the CLI. The committed sub-DAGs stay available through the returned storages —
 that is how the CLI's `--export-dag` flag produces `dag.ndjson` after the run. Because every run is
 deterministic in the `rng_seed`, these tests are reproducible across machines.
+
+For finer control than `SimulationRunner` offers — external transaction submission via
+`TransactionClient` and live commit streaming via `ReplicaBuilder::with_commit_consumer` —
+tests can build the committee directly with `SimulatedNetwork::new_for_test` (or
+`new_for_test_with_commit_consumers`), as
+[`crates/simulator/tests/commit_consumer.rs`](../crates/simulator/tests/commit_consumer.rs) does.
+One rule applies: **any task that awaits replica channels (submitters, commit collectors) must run
+inside the simulated world**, spawned via `SimulatorContext::spawn` — awaiting from outside the
+executor deadlocks the run. Determinism extends to the consumer streams: identical seeds yield
+byte-identical commit sequences.
