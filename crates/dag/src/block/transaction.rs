@@ -52,7 +52,8 @@ impl Transaction {
         Self::new(payload.into())
     }
 
-    /// True iff this transaction was produced by [`Transaction::new_for_test`].
+    /// True if the payload ends with the test marker written by
+    /// [`Transaction::new_for_test`].
     pub fn has_test_marker(&self) -> bool {
         self.data.ends_with(&Self::TEST_MARKER)
     }
