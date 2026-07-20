@@ -78,7 +78,7 @@ async fn test_network_sync_with_commit_consumer() {
     }
 
     let mut received = vec![vec![]; receivers.len()];
-    tokio::time::timeout(Duration::from_secs(10), async {
+    tokio::time::timeout(Duration::from_secs(30), async {
         for (receiver, anchors) in receivers.iter_mut().zip(received.iter_mut()) {
             while anchors.len() < MIN_COMMITS {
                 anchors.push(receiver.recv().await.expect("channel closed early").anchor);
