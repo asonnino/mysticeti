@@ -178,7 +178,8 @@ impl<C: Ctx> ReplicaHandle<C> {
         )
     }
 
-    /// Submit transactions externally.
+    /// Submit transactions externally. See [`TransactionClient::submit`] for the simulation
+    /// caveat.
     pub async fn submit(&self, transactions: Vec<Transaction>) -> Result<()> {
         self.transaction_client.submit(transactions).await
     }
