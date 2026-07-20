@@ -4073,6 +4073,7 @@ dependencies = [
  "replica",
  "serde",
  "serde_yaml",
+ "simulator",
  "tempfile",
  "tokio",
  "tracing",

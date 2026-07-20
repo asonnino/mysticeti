@@ -5,14 +5,13 @@ use std::{mem, sync::Arc, time::Duration};
 
 use minibytes::Bytes;
 use rand::{Rng, SeedableRng, rngs::StdRng};
-use tokio::sync::mpsc;
 
 use dag::{authority::Authority, block::transaction::Transaction, context::Ctx, metrics::Metrics};
 
-use crate::config::LoadGeneratorConfig;
+use crate::{client::TransactionClient, config::LoadGeneratorConfig};
 
 pub struct TransactionGenerator {
-    sender: mpsc::Sender<Vec<Transaction>>,
+    client: TransactionClient,
     max_block_size: usize,
     metrics: Arc<Metrics>,
 }
@@ -22,7 +21,7 @@ impl TransactionGenerator {
     const HEADER_SIZE: usize = 8 + 8; // timestamp + random
 
     pub fn start<C: Ctx>(
-        sender: mpsc::Sender<Vec<Transaction>>,
+        client: TransactionClient,
         seed: Authority,
         config: LoadGeneratorConfig,
         max_block_size: usize,
@@ -42,7 +41,7 @@ impl TransactionGenerator {
         let random = rng.r#gen();
         C::spawn(
             Self {
-                sender,
+                client,
                 max_block_size,
                 metrics,
             }
@@ -86,14 +85,14 @@ impl TransactionGenerator {
 
             if block_size >= self.max_block_size {
                 let full_block = mem::replace(&mut block, Vec::with_capacity(block_capacity));
-                if self.sender.send(full_block).await.is_err() {
+                if self.client.submit(full_block).await.is_err() {
                     return false;
                 }
                 block_size = 0;
             }
         }
         if !block.is_empty() {
-            return self.sender.send(block).await.is_ok();
+            return self.client.submit(block).await.is_ok();
         }
         true
     }

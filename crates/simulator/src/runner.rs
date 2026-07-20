@@ -3,7 +3,9 @@
 
 use std::{
     io,
+    ops::Range,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 use consensus::committer::Committer;
@@ -19,7 +21,7 @@ use dag::{
 use rand::{SeedableRng, rngs::StdRng};
 use replica::{
     builder::{ReplicaBuilder, StorageKind},
-    config::{PrivateReplicaConfig, PublicReplicaConfig},
+    config::{LoadGeneratorConfig, PrivateReplicaConfig, PublicReplicaConfig},
     replica::ReplicaHandle,
     result::{RunKind, RunResult},
 };
@@ -76,15 +78,37 @@ struct SimulationState {
     _load_generators: Vec<JoinHandle<()>>,
 }
 
+impl SimulatedNetwork {
+    /// A fully connected committee with default parameters. The returned network must be
+    /// kept alive for the duration of the run.
+    #[cfg(any(test, feature = "test-utils"))]
+    pub async fn new_for_test(
+        committee_size: usize,
+    ) -> (Self, Vec<ReplicaHandle<SimulatorContext>>) {
+        let public_config = PublicReplicaConfig::new_for_tests(committee_size);
+        let latency_range = Duration::from_millis(50)..Duration::from_millis(100);
+        let (network, replicas, _) =
+            SimulationState::build_replicas(committee_size, public_config, latency_range, None)
+                .await;
+        network.connect_all().await;
+        (network, replicas)
+    }
+}
+
 impl SimulationState {
-    async fn setup(config: SimulationConfig) -> Self {
-        let committee_size = config.committee_size;
+    /// Build a committee of simulated replicas wired through a [`SimulatedNetwork`].
+    async fn build_replicas(
+        committee_size: usize,
+        public_config: PublicReplicaConfig,
+        latency_range: Range<Duration>,
+        load_generator: Option<LoadGeneratorConfig>,
+    ) -> (
+        SimulatedNetwork,
+        Vec<ReplicaHandle<SimulatorContext>>,
+        Vec<JoinHandle<()>>,
+    ) {
         let committee = Committee::new_test(vec![1; committee_size]);
-
-        let public_config = PublicReplicaConfig::new_for_tests(committee_size)
-            .with_parameters(config.replica_parameters.clone());
-
-        let (network, networks) = SimulatedNetwork::new(&committee, config.latency_range());
+        let (network, networks) = SimulatedNetwork::new(&committee, latency_range);
 
         // The simulator doesn't touch disk; the WAL path in the private
         // configs is unused once we override storage with `InMemory`.
@@ -107,11 +131,24 @@ impl SimulationState {
                 .run::<SimulatorContext>()
                 .await
                 .expect("simulator replica build must not fail");
-            if let Some(load_generator) = config.load_generator.clone() {
+            if let Some(load_generator) = load_generator.clone() {
                 load_generators.push(handle.start_load_generator(load_generator));
             }
             replicas.push(handle);
         }
+        (network, replicas, load_generators)
+    }
+
+    async fn setup(config: SimulationConfig) -> Self {
+        let public_config = PublicReplicaConfig::new_for_tests(config.committee_size)
+            .with_parameters(config.replica_parameters.clone());
+        let (network, replicas, load_generators) = Self::build_replicas(
+            config.committee_size,
+            public_config,
+            config.latency_range(),
+            config.load_generator.clone(),
+        )
+        .await;
 
         Self {
             config,
