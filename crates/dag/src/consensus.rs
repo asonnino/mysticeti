@@ -135,6 +135,16 @@ impl CommittedSubDag {
     pub fn sort(&mut self) {
         self.blocks.sort_by_key(|x| x.round());
     }
+
+    /// Number of transactions produced by `Transaction::new_for_test` in this sub-dag.
+    #[cfg(any(test, feature = "test-utils"))]
+    pub fn count_test_transactions(&self) -> usize {
+        self.blocks
+            .iter()
+            .flat_map(|block| block.transactions())
+            .filter(|transaction| transaction.has_test_marker())
+            .count()
+    }
 }
 
 impl fmt::Debug for CommittedSubDag {

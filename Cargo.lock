@@ -3328,6 +3328,7 @@ dependencies = [
  "minibytes",
  "prometheus",
  "rand 0.8.5",
+ "replica",
  "reqwest",
  "serde",
  "serde_yaml",
