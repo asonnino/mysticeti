@@ -57,8 +57,7 @@ impl RecoveredStateBuilder {
     pub(super) fn commit_data(&mut self, commits: Vec<CommitData>) {
         for commit_data in commits {
             self.last_committed_leader = Some(commit_data.leader);
-            self.committed_blocks
-                .extend(commit_data.sub_dag.into_iter());
+            self.committed_blocks.extend(commit_data.sub_dag);
         }
     }
 

@@ -169,7 +169,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
         join_all(
             connections
                 .into_values()
-                .chain([round_timeout_task, cleanup_task].into_iter()),
+                .chain([round_timeout_task, cleanup_task]),
         )
         .await;
         Arc::try_unwrap(block_fetcher)
