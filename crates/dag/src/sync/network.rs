@@ -210,13 +210,10 @@ impl Worker {
                     work = self.connect_and_handle(delay, self.peer).boxed();
                 }
                 Either::Right((received, _work)) => {
-                    if let Some(received) = received {
-                        tracing::debug!("Replaced connection for {}", self.peer_id);
-                        work = self.handle_passive_stream(received).boxed();
-                    } else {
-                        // Channel closed, server is terminated
-                        return None;
-                    }
+                    // A closed channel means the server is terminated
+                    let received = received?;
+                    tracing::debug!("Replaced connection for {}", self.peer_id);
+                    work = self.handle_passive_stream(received).boxed();
                 }
             }
         }
