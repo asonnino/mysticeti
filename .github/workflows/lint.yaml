@@ -15,7 +15,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pin@v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # pin@v7.0.1
         with:
           fetch-depth: 0
       - name: Check PR title
@@ -26,9 +26,9 @@ jobs:
     runs-on: ubuntu-latest
     name: Check formatting
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pin@v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # pin@v7.0.1
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # pin@v6.3.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # pin@v7.0.0
         with:
           python-version: "3.x"
       - name: Install and run editorconfig-checker
@@ -54,22 +54,22 @@ jobs:
     runs-on: ubuntu-latest
     name: Check spelling
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pin@v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # pin@v7.0.1
       - uses: crate-ci/typos@bee27e3a4fd1ea2111cf90ab89cd076c870fce14 # pin@v1.48.0
   shellcheck:
     name: ShellCheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pin@v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # pin@v7.0.1
       - name: Run ShellCheck
         run: find . -type f -name "*.sh" -exec shellcheck --severity=error {} +
   license-headers:
     runs-on: ubuntu-latest
     name: Check license headers
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # pin@v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # pin@v7.0.1
       - name: Install licensesnip
-        uses: taiki-e/install-action@16b05812d776ae1dfaabc8277e421fb6d2506419 # pin@v2.82.7
+        uses: taiki-e/install-action@065d6a08a14e61e89fb0a4c10eecdbdef39c7d8e # pin@v2.85.4
         with:
           tool: licensesnip@1.7.0
       - run: licensesnip check
