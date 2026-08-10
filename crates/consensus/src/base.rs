@@ -187,8 +187,8 @@ impl BaseCommitter {
 
     /// Decide the status of a target leader from the specified anchor, applying the
     /// graded indirect rule: commit the leader block with a certified link to the
-    /// anchor (unique); else, for fast-path protocols, commit the leader block backed
-    /// by a weak quorum of anchor-linked votes; else skip the target leader.
+    /// anchor; else, for fast-path protocols, commit the leader block backed by a weak
+    /// quorum of anchor-linked votes; else skip the target leader.
     fn decide_leader_from_anchor(
         &self,
         anchor: &Data<Block>,
@@ -207,8 +207,11 @@ impl BaseCommitter {
         let decision_round = self.wave.decision_round(wave);
         let decision_blocks = self.block_reader.get_blocks_by_round(decision_round);
 
-        // Find the certified leader block (at most one).
-        let mut certified = leader_blocks.iter().filter(|leader_block| {
+        // Find the leader block with a certified link to the anchor. With a
+        // strong-quorum certificate this is unique; at `wave_length == 2` the
+        // certificate degenerates to a weak vote and two equivocating twins can both
+        // qualify, so break ties deterministically by digest.
+        let certified = leader_blocks.iter().filter(|leader_block| {
             let mut aggregator = StakeAggregator::new(self.anchor_link_size);
             decision_blocks.iter().any(|block| {
                 if !self.block_reader.linked(anchor, block) {
@@ -220,20 +223,17 @@ impl BaseCommitter {
                 aggregator.add(block.author(), &self.committee)
             })
         });
-        let first = certified.next();
-        if certified.next().is_some() {
-            panic!("More than one certified block at wave {wave} from leader {leader}")
-        }
+        let commit = certified.min_by_key(|leader_block| leader_block.reference().digest);
 
         tracing::trace!("[{self}] leader {leader} is decided by anchor {anchor:?}");
-        if let Some(block) = first {
+        if let Some(block) = commit {
             return LeaderStatus::IndirectCommit(block.clone());
         }
 
         // Second rung (fast-path protocols only): commit the leader block backed by a
-        // weak quorum of votes linked to the anchor. Unlike the certificate rung, two
+        // weak quorum of votes linked to the anchor. As on the certificate rung, two
         // equivocating leader blocks can both qualify (a slow commit does not starve
-        // conflicts of votes), so ties are broken deterministically.
+        // conflicts of votes), so ties are broken deterministically by digest.
         if let Some(fast_path) = &self.fast_path {
             let voting_round = self.wave.voting_round(wave);
             let voting_blocks = self.block_reader.get_blocks_by_round(voting_round);
@@ -424,14 +424,22 @@ impl Display for BaseCommitter {
 #[cfg(test)]
 mod tests {
 
+    use std::num::NonZeroUsize;
+
     use dag::{
         authority::Authority,
+        block::Block,
         consensus::LeaderStatus,
+        crypto::BlockDigest,
         storage::Storage,
-        test_util::{build_dag, build_dag_layer, committee},
+        test_util::{build_dag, build_dag_layer, committee, insert_test_block},
     };
 
-    use crate::{base::BaseCommitter, protocol::FastPath};
+    use crate::{
+        base::BaseCommitter,
+        leader::LeaderElector,
+        protocol::{FastPath, Protocol},
+    };
 
     /// `elect_leader` returns `None` outside leader rounds.
     #[test]
@@ -809,6 +817,84 @@ mod tests {
                 assert_eq!(round, leader_round);
             }
             other => panic!("expected IndirectSkip, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decide_leader_from_anchor_commits_min_digest_twin() {
+        let committee = committee(6);
+        let mut storage = Storage::new_for_test(&committee);
+
+        // Round 1: fully connected layer over genesis.
+        let round_1 = build_dag(&committee, &mut storage, None, 1);
+
+        // Round 2 (leader round): the leader equivocates with two twins carrying
+        // distinct digests; the other authorities propose normal blocks.
+        let leader = Authority::from(5u64);
+        let normal_round_2 = build_dag_layer(
+            (0..5u64)
+                .map(|authority| (Authority::from(authority), round_1.clone()))
+                .collect(),
+            &mut storage,
+        );
+        let twin_a_digest = BlockDigest::from([1u8; 32]);
+        let twin_b_digest = BlockDigest::from([2u8; 32]);
+        let twin_a = insert_test_block(
+            Block::new_for_test(leader, 2, round_1.clone()).with_digest(twin_a_digest),
+            &mut storage,
+        );
+        let twin_b = insert_test_block(
+            Block::new_for_test(leader, 2, round_1).with_digest(twin_b_digest),
+            &mut storage,
+        );
+
+        // Round 3 (decision round, which coincides with the voting round at
+        // `wave_length == 2`): authorities 0, 1, 2 vote for twin A; 3, 4, 5 for twin B.
+        // Each side is a weak quorum (3), so both twins pass the certificate rung.
+        let mut parents_a = normal_round_2.clone();
+        parents_a.push(twin_a);
+        let mut parents_b = normal_round_2;
+        parents_b.push(twin_b);
+        let round_3 = build_dag_layer(
+            (0..6u64)
+                .map(|authority| {
+                    let parents = if authority < 3 {
+                        parents_a.clone()
+                    } else {
+                        parents_b.clone()
+                    };
+                    (Authority::from(authority), parents)
+                })
+                .collect(),
+            &mut storage,
+        );
+
+        // Round 4 (anchor round): fully connected, so the anchor links every vote.
+        build_dag(&committee, &mut storage, Some(round_3), 4);
+        let anchor = storage
+            .block_reader()
+            .get_blocks_at_authority_round(leader, 4)
+            .into_iter()
+            .next()
+            .unwrap();
+
+        let protocol =
+            Protocol::blue_bottle(committee.total_stake(), NonZeroUsize::new(1).unwrap());
+        let committer = BaseCommitter::new(
+            committee.clone(),
+            storage.block_reader().clone(),
+            LeaderElector::new(committee.len()),
+            &protocol,
+            0,
+            0,
+        );
+
+        match committer.decide_leader_from_anchor(&anchor, leader, 2) {
+            LeaderStatus::IndirectCommit(block) => {
+                assert_eq!(block.author(), leader);
+                assert_eq!(block.reference().digest, twin_a_digest);
+            }
+            other => panic!("expected IndirectCommit, got {other:?}"),
         }
     }
 
