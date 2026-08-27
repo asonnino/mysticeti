@@ -27,7 +27,11 @@ generated, at file granularity (pattern: `joachimneu/auto-impossibility-experime
   `Optimal/Model/` trusted core, `Optimal/<Result>/Statement.lean`
   reviewed claims, `Optimal/<Result>/Proof.lean` + `Optimal/Helpers/`
   generated; witnesses in `HydrozoanTest/Optimal/`. It imports the
-  frozen Hydrozoan core and never edits it.
+  frozen Hydrozoan core and never edits it. Its `Statement.lean` files
+  may also import the Hydrozoan `Statement.lean` they mirror (to reuse
+  claim shapes such as `CertUniqueness`, `commitSeq`, `SpansEligible`) —
+  a reviewed file importing a reviewed file, the one sanctioned
+  exception to "`Statement.lean` imports `Model/` only".
 
 The audit surface is exactly: everything under `Model/`, every
 `Statement.lean`, the witness instantiations, plus `lakefile.toml`,
