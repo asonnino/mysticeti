@@ -12,6 +12,7 @@ import Hydrozoan.Optimal.SlotAgreement.Proof
 import Hydrozoan.Optimal.PrefixAgreement.Proof
 import Hydrozoan.Optimal.DirectLiveness.Proof
 import Hydrozoan.Optimal.IndirectLiveness.Proof
+import Hydrozoan.Optimal.EventualDecision.Proof
 
 /-!
 # The axioms tripwire
@@ -128,3 +129,9 @@ info: 'Hydrozoan.Optimal.IndirectLiveness.holds' depends on axioms: [propext, Cl
 -/
 #guard_msgs in
 #print axioms Hydrozoan.Optimal.IndirectLiveness.holds
+
+/--
+info: 'Hydrozoan.Optimal.EventualDecision.holds' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms Hydrozoan.Optimal.EventualDecision.holds

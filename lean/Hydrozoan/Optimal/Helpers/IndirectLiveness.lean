@@ -88,6 +88,7 @@ section ViewMono
 
 variable {B : BlockUniverse Replica BlockId}
 
+omit S in
 /-- A larger view holds every supporter the smaller one does. -/
 theorem fastCommitOptInView_mono {V V' : View B} (hsub : V.ids ⊆ V'.ids)
     {L : BlockId} {r : ℕ} (h : FastCommitOptInView B V L r) :

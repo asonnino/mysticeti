@@ -23,6 +23,7 @@ import HydrozoanTest.Optimal.SlotAgreement
 import HydrozoanTest.Optimal.PrefixAgreement
 import HydrozoanTest.Optimal.DirectLiveness
 import HydrozoanTest.Optimal.IndirectLiveness
+import HydrozoanTest.Optimal.EventualDecision
 
 /-!
 # Hydrozoan witness models

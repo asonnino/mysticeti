@@ -62,6 +62,8 @@ import Hydrozoan.Optimal.DirectLiveness.Proof
 import Hydrozoan.Optimal.Helpers.IndirectLiveness
 import Hydrozoan.Optimal.IndirectLiveness.Statement
 import Hydrozoan.Optimal.IndirectLiveness.Proof
+import Hydrozoan.Optimal.EventualDecision.Statement
+import Hydrozoan.Optimal.EventualDecision.Proof
 
 /-!
 # Hydrozoan
