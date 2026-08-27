@@ -1,0 +1,6 @@
+# typos configuration. The Lean sources under lean/ use short hypothesis
+# and universe names (`UE`, `hBA`, ...) that the identifier splitter reads
+# as misspellings; accept them as words.
+[default.extend-words]
+UE = "UE"
+BA = "BA"

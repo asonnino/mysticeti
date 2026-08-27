@@ -11,6 +11,9 @@ debug/
 # MSVC debugging info
 *.pdb
 
+# Lean build outputs (mathlib + compiled artifacts, fetched/built by lake)
+lean/.lake/
+
 # Cargo mutants
 **/mutants.out*/
 

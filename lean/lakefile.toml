@@ -1,0 +1,26 @@
+name = "hydrozoan"
+version = "0.1.0"
+defaultTargets = ["Hydrozoan", "HydrozoanTest"]
+
+[leanOptions]
+pp.unicode.fun = true                 # pretty-prints `fun a ↦ b`
+relaxedAutoImplicit = false
+weak.linter.mathlibStandardSet = true
+# The header linter wants a mathlib-style copyright block at the top of every
+# file; the project carries a repo-level LICENSE instead. The rest of the
+# standard linter set is kept.
+weak.linter.style.header = false
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+rev = "v4.33.0"
+
+[[lean_lib]]
+name = "Hydrozoan"
+
+# Concrete witness models confirming the definitions are satisfiable rather
+# than vacuously true. Built by default so a definition change that empties
+# the structures fails the build instead of silently trivialising theorems.
+[[lean_lib]]
+name = "HydrozoanTest"

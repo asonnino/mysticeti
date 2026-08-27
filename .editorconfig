@@ -17,6 +17,18 @@ trim_trailing_whitespace = true
 indent_size = unset
 max_line_length = 200
 
+[*.lean]
+indent_size = 2
+
+# The axioms tripwire quotes Lean's `#print axioms` output verbatim inside
+# `#guard_msgs` docstrings; those lines cannot be wrapped.
+[lean/HydrozoanTest/Axioms.lean]
+max_line_length = unset
+
+# The formalization's README carries wide tables (result → claim).
+[lean/README.md]
+max_line_length = unset
+
 [{*.yml,*.yaml,*.toml}]
 indent_size = 2
 max_line_length = 150
@@ -28,7 +40,7 @@ trim_trailing_whitespace = false
 max_line_length = unset
 
 # Ignore paths
-[{.git/**/*,.claude/**/*,**/*.lock,LICENSE,**/grafana-dashboard.json}]
+[{.git/**/*,.claude/**/*,**/*.lock,LICENSE,**/grafana-dashboard.json,lean/lake-manifest.json}]
 charset = unset
 end_of_line = unset
 indent_size = unset
