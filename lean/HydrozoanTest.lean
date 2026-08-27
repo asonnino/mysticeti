@@ -14,17 +14,6 @@ import HydrozoanTest.EventualDecision
 import HydrozoanTest.LivenessHardening
 import HydrozoanTest.Grounding
 import HydrozoanTest.Axioms
-import HydrozoanTest.Optimal.Thresholds
-import HydrozoanTest.Optimal.ThresholdArithmetic
-import HydrozoanTest.Optimal.Universe
-import HydrozoanTest.Optimal.Decided
-import HydrozoanTest.Optimal.DirectSafety
-import HydrozoanTest.Optimal.SlotAgreement
-import HydrozoanTest.Optimal.PrefixAgreement
-import HydrozoanTest.Optimal.DirectLiveness
-import HydrozoanTest.Optimal.IndirectLiveness
-import HydrozoanTest.Optimal.EventualDecision
-import HydrozoanTest.Optimal.Grounding
 
 /-!
 # Hydrozoan witness models

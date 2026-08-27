@@ -6,14 +6,6 @@ import Hydrozoan.DirectLiveness.Proof
 import Hydrozoan.IndirectLiveness.Proof
 import Hydrozoan.EventualDecision.Proof
 import Hydrozoan.Grounding.Proof
-import Hydrozoan.Optimal.ThresholdArithmetic.Proof
-import Hydrozoan.Optimal.DirectSafety.Proof
-import Hydrozoan.Optimal.SlotAgreement.Proof
-import Hydrozoan.Optimal.PrefixAgreement.Proof
-import Hydrozoan.Optimal.DirectLiveness.Proof
-import Hydrozoan.Optimal.IndirectLiveness.Proof
-import Hydrozoan.Optimal.EventualDecision.Proof
-import Hydrozoan.Optimal.Grounding.Proof
 
 /-!
 # The axioms tripwire
@@ -88,57 +80,3 @@ info: 'Hydrozoan.Grounding.holds' depends on axioms: [propext, Classical.choice,
 -/
 #guard_msgs in
 #print axioms Hydrozoan.Grounding.holds
-
-/--
-info: 'Hydrozoan.Optimal.ThresholdArithmetic.holds' depends on axioms: [propext, Classical.choice, Quot.sound]
--/
-#guard_msgs in
-#print axioms Hydrozoan.Optimal.ThresholdArithmetic.holds
-
-/--
-info: 'Hydrozoan.Optimal.DirectSafety.holds' depends on axioms: [propext, Classical.choice, Quot.sound]
--/
-#guard_msgs in
-#print axioms Hydrozoan.Optimal.DirectSafety.holds
-
-/--
-info: 'Hydrozoan.Optimal.SlotAgreement.holds' depends on axioms: [propext, Classical.choice, Quot.sound]
--/
-#guard_msgs in
-#print axioms Hydrozoan.Optimal.SlotAgreement.holds
-
-/--
-info: 'Hydrozoan.Optimal.PrefixAgreement.holds' depends on axioms: [propext, Classical.choice, Quot.sound]
--/
-#guard_msgs in
-#print axioms Hydrozoan.Optimal.PrefixAgreement.holds
-
-/--
-info: 'Hydrozoan.Optimal.DirectLiveness.holds' depends on axioms: [propext, Classical.choice, Quot.sound]
--/
-#guard_msgs in
-#print axioms Hydrozoan.Optimal.DirectLiveness.holds
-
-/--
-info: 'Hydrozoan.Optimal.DirectLiveness.fastLatency' depends on axioms: [propext, Classical.choice, Quot.sound]
--/
-#guard_msgs in
-#print axioms Hydrozoan.Optimal.DirectLiveness.fastLatency
-
-/--
-info: 'Hydrozoan.Optimal.IndirectLiveness.holds' depends on axioms: [propext, Classical.choice, Quot.sound]
--/
-#guard_msgs in
-#print axioms Hydrozoan.Optimal.IndirectLiveness.holds
-
-/--
-info: 'Hydrozoan.Optimal.EventualDecision.holds' depends on axioms: [propext, Classical.choice, Quot.sound]
--/
-#guard_msgs in
-#print axioms Hydrozoan.Optimal.EventualDecision.holds
-
-/--
-info: 'Hydrozoan.Optimal.Grounding.holds' depends on axioms: [propext, Classical.choice, Quot.sound]
--/
-#guard_msgs in
-#print axioms Hydrozoan.Optimal.Grounding.holds
