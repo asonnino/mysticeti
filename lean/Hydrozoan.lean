@@ -37,36 +37,6 @@ import Hydrozoan.Grounding.Statement
 import Hydrozoan.Grounding.Proof
 import Hydrozoan.ThresholdArithmetic.Statement
 import Hydrozoan.ThresholdArithmetic.Proof
-import Hydrozoan.Optimal.Model.Faults
-import Hydrozoan.Optimal.ThresholdArithmetic.Statement
-import Hydrozoan.Optimal.ThresholdArithmetic.Proof
-import Hydrozoan.Optimal.Model.Universe
-import Hydrozoan.Optimal.Helpers.Universe
-import Hydrozoan.Optimal.Model.DirectRules
-import Hydrozoan.Optimal.Model.IndirectRules
-import Hydrozoan.Optimal.Model.Decided
-import Hydrozoan.Optimal.Helpers.DirectRules
-import Hydrozoan.Optimal.Helpers.IndirectRules
-import Hydrozoan.Optimal.Helpers.Counting
-import Hydrozoan.Optimal.Helpers.Decided
-import Hydrozoan.Optimal.DirectSafety.Statement
-import Hydrozoan.Optimal.DirectSafety.Proof
-import Hydrozoan.Optimal.SlotAgreement.Statement
-import Hydrozoan.Optimal.Helpers.SlotAgreement
-import Hydrozoan.Optimal.SlotAgreement.Proof
-import Hydrozoan.Optimal.PrefixAgreement.Statement
-import Hydrozoan.Optimal.PrefixAgreement.Proof
-import Hydrozoan.Optimal.Helpers.DirectLiveness
-import Hydrozoan.Optimal.DirectLiveness.Statement
-import Hydrozoan.Optimal.DirectLiveness.Proof
-import Hydrozoan.Optimal.Helpers.IndirectLiveness
-import Hydrozoan.Optimal.IndirectLiveness.Statement
-import Hydrozoan.Optimal.IndirectLiveness.Proof
-import Hydrozoan.Optimal.EventualDecision.Statement
-import Hydrozoan.Optimal.EventualDecision.Proof
-import Hydrozoan.Optimal.Grounding.Statement
-import Hydrozoan.Optimal.Helpers.Grounding
-import Hydrozoan.Optimal.Grounding.Proof
 
 /-!
 # Hydrozoan

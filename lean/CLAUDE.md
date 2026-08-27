@@ -22,16 +22,6 @@ generated, at file granularity (pattern: `joachimneu/auto-impossibility-experime
 - `Hydrozoan/<Result>/Proof.lean` + `Proof/` — generated:
   `theorem holds : Statement` and its lemma files. Never read by the author.
 - `HydrozoanTest/` — witness models; the *instantiations* are reviewed.
-- `Hydrozoan/Optimal/` — the Optimal-Hydrozoan arc (paper
-  `sections/optimal-*.tex`), same partition one level down:
-  `Optimal/Model/` trusted core, `Optimal/<Result>/Statement.lean`
-  reviewed claims, `Optimal/<Result>/Proof.lean` + `Optimal/Helpers/`
-  generated; witnesses in `HydrozoanTest/Optimal/`. It imports the
-  frozen Hydrozoan core and never edits it. Its `Statement.lean` files
-  may also import the Hydrozoan `Statement.lean` they mirror (to reuse
-  claim shapes such as `CertUniqueness`, `commitSeq`, `SpansEligible`) —
-  a reviewed file importing a reviewed file, the one sanctioned
-  exception to "`Statement.lean` imports `Model/` only".
 
 The audit surface is exactly: everything under `Model/`, every
 `Statement.lean`, the witness instantiations, plus `lakefile.toml`,
@@ -141,14 +131,11 @@ the author's explicit go-ahead.
   global `Faults (Fin n)` instances for the same `n` with different
   parameters (`HydrozoanTest/DirectLiveness.lean`'s `fourReplicas`,
   `IndirectLiveness.lean`'s `fiveReplicas`, `LivenessHardening.lean`'s
-  `sixReplicas`, and the `OptimalFaults` instances of
-  `HydrozoanTest/Optimal/Thresholds.lean`, whose `toFaults` projections
-  are instances too). A file importing two of them resolves `qCert (Fin n)`
+  `sixReplicas`). A file importing two of them resolves `qCert (Fin n)`
   against whichever wins priority and a table can silently pin the wrong
-  configuration. Rule: an `HydrozoanTest/Optimal/` file never imports a
-  Hydrozoan liveness witness file, and whenever two instances of one type
-  are in scope, tables name the instance explicitly (`@qCert (Fin 4) _ _
-  inst.toFaults`), as `fourCrashOnlySlack` does.
+  configuration. Rule: a witness file never imports two, and whenever two
+  instances of one type are in scope, tables name the instance
+  explicitly (`@qCert (Fin 4) _ _ inst`).
 
 ## Phase plan (safety)
 
@@ -171,72 +158,9 @@ flagging it again.
 
 Liveness follows as a later phase group with its own hypothesis audit.
 
-## Phase plan (Optimal-Hydrozoan arc)
-
-Same rules as the safety phases above; "plan" marks phases that
-introduce definitions and get an explicit plan before any file is
-written, the others go straight to audit files once agreed.
-
-1. **O0** — this docs record (README arc section, this plan, the
-   decisions below).
-2. **O1** (light plan) — `Optimal/Model/Faults.lean`: `OptimalFaults`,
-   `pOpt`, `qFastOpt`, `tPlain`, `tEquiv`; thresholds witness at
-   `n = 4, f = 1, c = k = 0` (FinWhale's minimal instance), the crash-only
-   `n = 3`, the existing `n = 7` table, and the reference
-   implementation's `n = 20` mixed configuration.
-3. **O2** — `Optimal/ThresholdArithmetic`: the rows of the paper's
-   `lem:opt-thresholds`, subtraction-free, over every `OptimalFaults`.
-4. **O3** (plan) — `Optimal/Model/Universe.lean`: `WitnessesEquivocation`
-   and `OptUniverse` with the leader-exclusion clause; a positive
-   witness (an equivocating leader, witnessed and excluded) and a
-   negative one (a witnessing block referencing the leader is rejected).
-5. **O4** (plan) — `Optimal/Model/{DirectRules,IndirectRules,Decided}.lean`:
-   `FastCommitOpt`, `votesFor`, two-case `IsFastEvidence`,
-   `IsNoFastEvidence`, `SkippedLeaderOpt`, `EvidenceLinked`,
-   `DecidedOpt`; a witness exercising all six routes, in particular
-   the evidence rung with no certificate anywhere.
-6. **O5** — `Optimal/DirectSafety`: the five pairings.
-7. **O6** — `Optimal/SlotAgreement`: `DecidedUnique` for `DecidedOpt`.
-   The seam lemmas (`evidence_of_fastCommit`, `exclusive`,
-   `evidenceLinked_of_fastCommit`, `not_evidenceLinked_of_skipped`)
-   are the arc's heaviest proof work.
-8. **O7** — `Optimal/PrefixAgreement` + the axioms tripwire.
-9. **OL1** (plan) — `Optimal/DirectLiveness`: `CommitLiveness`,
-   `FastLatency` at `pOpt`, and `SkipLiveness` inside `Statement`.
-10. **OL2** — `Optimal/IndirectLiveness`; **OL3** —
-    `Optimal/EventualDecision`; **OL4** (plan) — `Optimal/Grounding`,
-    whose realizability claim must exhibit an `OptUniverse`.
-
-## Optimal-arc decisions (settled 2026-08-27)
-
-- **D1 — Parallel arc.** `Hydrozoan.Optimal` under `Hydrozoan/Optimal/`;
-  zero edits to frozen files. `OptUniverse extends BlockUniverse`, so
-  every existing lemma applies to `U.toBlockUniverse`.
-- **D2 — Non-triviality.** `1 ≤ f + c` is a field of
-  `OptimalFaults extends Faults`, not a hypothesis on statements. Where
-  a row needs `1 ≤ f` (fast/fast agreement), the row is guarded and the
-  `f = 0` case is discharged by non-equivocation.
-- **D3 — No tie-break on rung 2.** `DecidedOpt.indirectEvidence` keeps
-  the "rung 1 empty for every candidate" premise and drops the
-  least-candidate premise; uniqueness is a theorem. The Optimal
-  statements therefore need no `LinearOrder BlockId`.
-- **D4 — Explicit round guard.** `leader_excluded` is stated only for
-  blocks at the slot's decision round, even though the guard is
-  derivable from `predecessor`.
-- **D5 — the skip promoted.** In the Optimal arc the direct skip of a
-  candidate-less slot needs `q_cert ≤ q ≤ |T|` blames and vacuously
-  no-evidence decision blocks, so it is a liveness claim, `SkipLiveness`,
-  inside `DirectLiveness.Statement` (Hydrozoan's opportunistic
-  `SkipLatency` stays outside its own). Hydrozoan's own statements are
-  not touched.
-- **D6 — Fidelity gaps.** The two existing gaps carry over (direct
-  references, no weak links). Two more, stated once on the definitions:
-  `WitnessesEquivocation` and `IsFastEvidence` count direct parents'
-  votes, exactly the paper's `Votes(b, ·)`; and the paper's
-  quantification over candidates *in the local DAG* equals the
-  universe-level one because evidence for `L` references a vote for
-  `L`, hence holds `L` by completeness (`tPlain, tEquiv ≥ 1`) — proved
-  as a helper, recorded on `IsNoFastEvidence`.
+The Optimal-Hydrozoan arc lives in `gdanezis/lean-dag`
+(`LeanDag/OptimalHydrozoan/`), a peer arc of this development's mirror
+there; it is not developed here.
 
 ## Modeling decisions (settled 2026-08-14)
 

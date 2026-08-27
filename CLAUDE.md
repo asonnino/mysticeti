@@ -30,8 +30,9 @@ design notes.
 ## Lean formalization
 
 `lean/` holds a Lean 4 + mathlib formalization of the safety and liveness
-arguments of Hydrozoan (the paper name of `DagHydrangea`) and of its theory-only
-variant Optimal-Hydrozoan. It is a separate lake project, not a Cargo crate:
+arguments of Hydrozoan (the paper name of `DagHydrangea`); the paper's
+theory-only variant Optimal-Hydrozoan lives in `gdanezis/lean-dag` as a peer
+arc of this development's mirror there. It is a separate lake project, not a Cargo crate:
 `cd lean && lake build`; `python3 lean/scripts/check_no_holes.py` scans for proof
 holes. Its own `lean/CLAUDE.md` carries the working rules (trust partition, phase
 workflow, frozen core) and takes precedence inside that directory. CI runs it via

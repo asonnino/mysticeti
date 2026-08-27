@@ -2,7 +2,7 @@
 
 A Lean 4 + mathlib formalization of the safety and liveness results of the
 Hydrozoan paper — the protocol implemented here as `DagHydrangea`
-(`crates/consensus`) — and of its theory-only variant Optimal-Hydrozoan.
+(`crates/consensus`).
 References to `sections/*.tex` in the docstrings name the paper's source
 files (procedures of its Algorithm 2 and 3, and its lemma labels); the
 paper is a separate repository. Every proof is machine-checked by the Lean kernel; the human
@@ -58,50 +58,15 @@ is the tripwire: it pins every headline theorem's axioms to exactly
 any deviation — a smuggled axiom or a `sorry` anywhere in the
 dependency tree cannot land silently.
 
-## The Optimal-Hydrozoan arc
+## Optimal-Hydrozoan
 
-The paper's Optimal-Hydrozoan (`sections/optimal-protocol.tex`,
-`optimal-proof.tex`, `optimal-algorithms.tex`) is formalized as a
-**parallel arc** under `Hydrozoan/Optimal/`, namespace
-`Hydrozoan.Optimal`. It imports the frozen core above and never edits
-it: the Optimal universe _extends_ `BlockUniverse` with FinWhale's
-leader-exclusion clause, and every Hydrozoan lemma keeps applying to
-the underlying universe. The arc adds its own trusted core
-(`Hydrozoan/Optimal/Model/*.lean`, definitions only), its own
-`Statement.lean` files, and witnesses under `HydrozoanTest/Optimal/`;
-the same trust partition and audit rules apply to them.
-
-What changes relative to Hydrozoan, in the model's terms:
-
-| Hydrozoan                                    | Optimal-Hydrozoan                                                                                                               |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `p = ⌊(c+k)/2⌋`                              | `pOpt = ⌊(c+k)/2⌋ + 1` (Hydrangea's lower bound), on `OptimalFaults extends Faults` with `1 ≤ f + c`                            |
-| `q_weak = f + p + 1`                         | dropped; per-block `tPlain = n − 2f − c − pOpt` and `tEquiv = f + pOpt`                                                         |
-| `BlockUniverse`                              | `OptUniverse extends BlockUniverse`: a decision-round block that witnesses its slot's equivocation has no parent by that leader |
-| `SkippedLeader`: `q_fast` blames             | `q_cert` blames **and** `q_cert` decision-round blocks that are fast evidence for no candidate                                  |
-| rung 2 `WeakLinked`: `q_weak` anchored votes | `EvidenceLinked`: `q_cert` anchored decision-round blocks, each fast evidence for the candidate                                 |
-| `Decided` (six routes, tie-break on rung 2)  | `DecidedOpt` (six routes, no tie-break — rung 2 is provably unique)                                                             |
-
-The results, each a `Statement.lean` + generated `Proof.lean` under
-`Hydrozoan/Optimal/`, mirror the table above; where the Optimal claim
-says more than Hydrozoan's, the table says what:
-
-| Result                | Claim                                                                                                                                                                                                                                                  |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ThresholdArithmetic` | the Optimal threshold table holds for every fault configuration and all `k ≥ 0`, with `q_cert ≤ q` and `tPlain + tEquiv = q` — the rows the seam lemmas consume                                                                                        |
-| `DirectSafety`        | the per-slot exclusions among the Optimal direct rules, including that a fast commit at `q_fast = n − pOpt` makes every honest decision-round block fast evidence for the candidate                                                                    |
-| `SlotAgreement`       | `DecidedUnique` for `DecidedOpt`: the seam lemmas show a fast commit's evidence meets a skip's no-evidence quorum, and that the evidence rung is unique with no tie-break                                                                                |
-| `PrefixAgreement`     | the safety headline over `DecidedOpt`: any two correct replicas' output ledgers are prefix-consistent, for the stateful linearizer                                                                                                                      |
-| `DirectLiveness`      | a synchronised, populated wave with a correct leader slow-commits, **and** a candidate-less slot is guaranteed directly skipped (`q_cert` blames, no synchrony, no fault-count premise) — Hydrozoan's opportunistic skip made a claim; fast latency at `pOpt` faults stays outside `Statement` |
-| `IndirectLiveness`    | the graded indirect rule is total below an anchor, and a committed run decides every slot beneath it, over `DecidedOpt`                                                                                                                                |
-| `EventualDecision`    | the liveness headline over `DecidedOpt`, with Hydrozoan's schedule-only fairness reused verbatim                                                                                                                                                       |
-| `Grounding`           | the hypothesis package is realizable at every horizon, under every schedule, by a `T`-only `OptUniverse` (leader exclusion is implied by the package), and the composed conclusion is achievable by a correct-authored universe with no premise beyond the fault model |
-
-The witnesses under `HydrozoanTest/Optimal/` follow the same discipline
-as the core's, and the axioms tripwire pins every Optimal `holds`. The
-witness headers record what a four-replica committee cannot exercise
-(the quorums coincide there); a committee of five or more separating
-`q`, `q_cert`, `q_slow` and `q_fast` is the natural next witness.
+The paper's theory-only variant, Optimal-Hydrozoan
+(`sections/optimal-protocol.tex`, `optimal-proof.tex`,
+`optimal-algorithms.tex`), is formalized as a peer arc of this one in
+[`gdanezis/lean-dag`](https://github.com/gdanezis/lean-dag)
+(`LeanDag/OptimalHydrozoan/`, importing `LeanDag/Hydrozoan/` read-only),
+where this development is also mirrored as `LeanDag/Hydrozoan/`. The
+paper cites that repository for both.
 
 ## Checking it
 
