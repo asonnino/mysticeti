@@ -22,6 +22,7 @@ import HydrozoanTest.Optimal.DirectSafety
 import HydrozoanTest.Optimal.SlotAgreement
 import HydrozoanTest.Optimal.PrefixAgreement
 import HydrozoanTest.Optimal.DirectLiveness
+import HydrozoanTest.Optimal.IndirectLiveness
 
 /-!
 # Hydrozoan witness models

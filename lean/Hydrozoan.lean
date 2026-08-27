@@ -59,6 +59,9 @@ import Hydrozoan.Optimal.PrefixAgreement.Proof
 import Hydrozoan.Optimal.Helpers.DirectLiveness
 import Hydrozoan.Optimal.DirectLiveness.Statement
 import Hydrozoan.Optimal.DirectLiveness.Proof
+import Hydrozoan.Optimal.Helpers.IndirectLiveness
+import Hydrozoan.Optimal.IndirectLiveness.Statement
+import Hydrozoan.Optimal.IndirectLiveness.Proof
 
 /-!
 # Hydrozoan
