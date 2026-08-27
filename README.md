@@ -77,11 +77,12 @@ Running for 20 seconds…
 ## Formal Verification
 
 The `lean/` directory contains a Lean 4 + Mathlib formalization of the safety and
-liveness of DagHydrangea (called Hydrozoan in the paper) and of its theory-only
-variant Optimal-Hydrozoan, whose fast path meets Hydrangea's lower bound. Every
-proof is kernel-checked; the human-reviewed surface is the small set of definition
-and statement files listed in `lean/README.md`. Build it with `cd lean && lake
-build` (fetch prebuilt Mathlib first with `lake exe cache get`).
+liveness of DagHydrangea (called Hydrozoan in the paper). Every proof is
+kernel-checked; the human-reviewed surface is the small set of definition and
+statement files listed in `lean/README.md`. Build it with `cd lean && lake build`
+(fetch prebuilt Mathlib first with `lake exe cache get`). The paper's theory-only
+variant, Optimal-Hydrozoan, is formalized alongside a mirror of this development
+in [gdanezis/lean-dag](https://github.com/gdanezis/lean-dag).
 
 ## License
 

@@ -2,9 +2,11 @@ name: Check Lean proofs
 on:
   push:
     branches: [main]
-    paths: ["lean/**"]
+    paths: ["lean/**", ".github/workflows/lean.yml"]
   pull_request:
-    paths: ["lean/**"]
+    paths: ["lean/**", ".github/workflows/lean.yml"]
+permissions:
+  contents: read
 jobs:
   check:
     runs-on: ubuntu-latest
