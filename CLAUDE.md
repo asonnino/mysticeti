@@ -27,6 +27,17 @@ crate's `replica` binary.
 See `docs/architecture.md`, `docs/simulator.md`, and `docs/orchestrator.md` for deeper
 design notes.
 
+## Lean formalization
+
+`lean/` holds a Lean 4 + mathlib formalization of the safety and liveness
+arguments of Hydrozoan (the paper name of `DagHydrangea`) and of its theory-only
+variant Optimal-Hydrozoan. It is a separate lake project, not a Cargo crate:
+`cd lean && lake build`; `python3 lean/scripts/check_no_holes.py` scans for proof
+holes. Its own `lean/CLAUDE.md` carries the working rules (trust partition, phase
+workflow, frozen core) and takes precedence inside that directory. CI runs it via
+`.github/workflows/lean.yml` on changes under `lean/`. The `.lake/` build cache is
+gitignored; `lake exe cache get` fetches prebuilt mathlib.
+
 ## Common commands
 
 ```sh
@@ -36,6 +47,7 @@ cargo test -p consensus              # test one crate
 cargo test                           # test the workspace
 cargo clippy --workspace --all-targets
 cargo fmt
+(cd lean && lake build)              # kernel-check the Lean formalization
 ```
 
 A pre-commit hook chain runs on every commit: `cargo-fmt`, `clippy`, `cargo-test`,

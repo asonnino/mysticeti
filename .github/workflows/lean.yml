@@ -1,0 +1,22 @@
+name: Check Lean proofs
+on:
+  push:
+    branches: [main]
+    paths: ["lean/**"]
+  pull_request:
+    paths: ["lean/**"]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Textual scan for sorry/admit/axiom/native_decide/unsafe/partial.
+      - name: Check for proof holes
+        run: python3 lean/scripts/check_no_holes.py
+      # Fetches the toolchain from lean-toolchain, runs `lake exe cache get`
+      # (prebuilt mathlib), then `lake build` — the kernel re-checks every
+      # proof, and the witness models are default targets so they build too.
+      - name: Build with lake
+        uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: lean
