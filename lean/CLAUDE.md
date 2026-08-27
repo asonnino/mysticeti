@@ -198,7 +198,7 @@ written, the others go straight to audit files once agreed.
    are the arc's heaviest proof work.
 8. **O7** — `Optimal/PrefixAgreement` + the axioms tripwire.
 9. **OL1** (plan) — `Optimal/DirectLiveness`: `CommitLiveness`,
-   `FastLatency` at `pOpt`, and `SkipLatency` inside `Statement`.
+   `FastLatency` at `pOpt`, and `SkipLiveness` inside `Statement`.
 10. **OL2** — `Optimal/IndirectLiveness`; **OL3** —
     `Optimal/EventualDecision`; **OL4** (plan) — `Optimal/Grounding`,
     whose realizability claim must exhibit an `OptUniverse`.
@@ -219,11 +219,12 @@ written, the others go straight to audit files once agreed.
 - **D4 — Explicit round guard.** `leader_excluded` is stated only for
   blocks at the slot's decision round, even though the guard is
   derivable from `predecessor`.
-- **D5 — `SkipLatency` promoted.** In the Optimal arc the direct skip
-  of a candidate-less slot needs `q_cert ≤ q ≤ |Correct|` blames and
-  vacuously no-evidence decision blocks, so it is a liveness claim and
-  lives inside `DirectLiveness.Statement`. Hydrozoan's own statements
-  are not touched.
+- **D5 — the skip promoted.** In the Optimal arc the direct skip of a
+  candidate-less slot needs `q_cert ≤ q ≤ |T|` blames and vacuously
+  no-evidence decision blocks, so it is a liveness claim, `SkipLiveness`,
+  inside `DirectLiveness.Statement` (Hydrozoan's opportunistic
+  `SkipLatency` stays outside its own). Hydrozoan's own statements are
+  not touched.
 - **D6 — Fidelity gaps.** The two existing gaps carry over (direct
   references, no weak links). Two more, stated once on the definitions:
   `WitnessesEquivocation` and `IsFastEvidence` count direct parents'

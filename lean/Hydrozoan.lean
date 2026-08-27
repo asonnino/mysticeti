@@ -56,6 +56,9 @@ import Hydrozoan.Optimal.Helpers.SlotAgreement
 import Hydrozoan.Optimal.SlotAgreement.Proof
 import Hydrozoan.Optimal.PrefixAgreement.Statement
 import Hydrozoan.Optimal.PrefixAgreement.Proof
+import Hydrozoan.Optimal.Helpers.DirectLiveness
+import Hydrozoan.Optimal.DirectLiveness.Statement
+import Hydrozoan.Optimal.DirectLiveness.Proof
 
 /-!
 # Hydrozoan
