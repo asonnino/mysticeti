@@ -64,6 +64,9 @@ import Hydrozoan.Optimal.IndirectLiveness.Statement
 import Hydrozoan.Optimal.IndirectLiveness.Proof
 import Hydrozoan.Optimal.EventualDecision.Statement
 import Hydrozoan.Optimal.EventualDecision.Proof
+import Hydrozoan.Optimal.Grounding.Statement
+import Hydrozoan.Optimal.Helpers.Grounding
+import Hydrozoan.Optimal.Grounding.Proof
 
 /-!
 # Hydrozoan
