@@ -29,7 +29,11 @@ import sys
 from pathlib import Path
 
 FORBIDDEN = re.compile(r"\b(sorry|admit|axiom|native_decide|unsafe|partial)\b")
-STATEMENT_FORBIDDEN = re.compile(r"^\s*(theorem|lemma|example|instance)\b")
+# Modifiers and same-line attributes (`private theorem`, `@[simp] lemma`) count too.
+STATEMENT_FORBIDDEN = re.compile(
+    r"^\s*(?:(?:private|protected|noncomputable|@\[[^\]]*\])\s+)*"
+    r"(theorem|lemma|example|instance)\b"
+)
 ROOT = Path(__file__).resolve().parent.parent
 SOURCES = ["Hydrozoan.lean", "HydrozoanTest.lean", "Hydrozoan", "HydrozoanTest"]
 
