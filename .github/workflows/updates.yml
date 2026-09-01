@@ -27,16 +27,22 @@ jobs:
       - run: pre-commit run --all-files
       - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # pin@v8.1.1
         if: ${{ success() }}
+        id: pr
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.AUTOMERGE_PAT }}
           branch: chore/update-pre-commit-hooks
           title: "chore: update pre-commit hooks"
           commit-message: "chore: update pre-commit hooks"
           body: Update pre-commit hooks to latest version.
+      - name: Enable auto-merge
+        if: ${{ success() && steps.pr.outputs.pull-request-number }}
+        run: gh pr merge --auto --rebase "${{ steps.pr.outputs.pull-request-number }}"
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMERGE_PAT }}
       - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # pin@v8.1.1
         if: ${{ failure() }}
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.AUTOMERGE_PAT }}
           branch: chore/update-pre-commit-hooks
           title: "chore: update pre-commit hooks"
           commit-message: "chore: update pre-commit hooks"
