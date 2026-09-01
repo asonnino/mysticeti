@@ -134,7 +134,9 @@ example : FastCommit U7 0 0 := by decide
 -- Statement hypothesis. (Disclosure: at this configuration
 -- f + c = 1 = p, so the fault hypothesis is satisfied by every
 -- admissible fault assignment — it does no work here; U6 above p is
--- where it bites.)
+-- where it bites. Also R = 0 = slotRound 0 sits at the R-boundary,
+-- so an `R = slotRound k` strengthening survives; a strict-R kill
+-- would need a sparse-schedule fast commit like U14's.)
 example : ∃ L, IsLeaderBlock U7 0 L ∧ FastCommit U7 L 0 :=
   DirectLiveness.fastLatency (Fin 4) (Fin 9) U7 0 0 (by decide)
     u7_synchronised (by decide) (by decide) (by decide) (by decide)
