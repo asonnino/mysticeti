@@ -100,10 +100,20 @@ abbrev Synchronised (U : BlockUniverse Replica BlockId) (R : ℕ) : Prop :=
 
 /-- Every correct replica's *eventual* view: the whole universe,
 packaged as a `View`. The structural rendering of "eventually every
-correct replica holds everything" — liveness theorems conclude here,
-and decision monotonicity transports any view's verdicts into it.
-Adds no information beyond `U` itself. -/
+correct replica holds everything" — decision monotonicity transports
+any view's verdicts into it, and it discharges every `CoversUpto`
+hypothesis. Adds no information beyond `U` itself. -/
 def View.full (U : BlockUniverse Replica BlockId) : View U :=
   ⟨U.ids, Finset.Subset.rfl, U.complete⟩
+
+/-- **A view caught up to round `N`**: it holds every block of the
+universe at a round at or below `N`. What a replica that has received
+everything up to `N` holds — and the hypothesis under which a liveness
+result holds of a replica's own view rather than of the eventual view.
+The eventual view satisfies it at every `N`
+(`coversUpto_full`, `Helpers/DirectLiveness.lean`). -/
+def View.CoversUpto {U : BlockUniverse Replica BlockId}
+    (V : View U) (N : ℕ) : Prop :=
+  ∀ b ∈ U.ids, (U.block b).round ≤ N → b ∈ V.ids
 
 end Hydrozoan

@@ -54,6 +54,7 @@ example : ∃ L, IsLeaderBlock U6 0 L ∧ SlowCommit U6 L 0 ∧
   DirectLiveness.holds (Fin 7) (Fin 15) U6 (Correct : Finset (Fin 7)) 0 0
     (by decide) (by decide) u6_synchronised (by decide) (by decide)
     (by decide) (by decide) (by decide)
+    (View.full U6) (View.coversUpto_full U6 _)
 
 -- ## Fast path at low faults (Fin 4, f = 0, c = 1, k = 1)
 

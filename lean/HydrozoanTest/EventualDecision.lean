@@ -91,7 +91,7 @@ example : ∀ i, i < 2 → ∃ v, Decided U10 (View.full U10) i v :=
     (by intro i hi
         have : i = 0 ∨ i = 1 ∨ i = 2 := by omega
         rcases this with rfl | rfl | rfl <;> decide)
-    u10_populated
+    u10_populated (View.full U10) (View.coversUpto_full U10 _)
 
 -- The same run applied at R = 2 = slotRound b — the exact boundary of
 -- `R ≤ slotRound b`, killing a strengthening to strict inequality
@@ -105,7 +105,7 @@ example : ∀ i, i < 2 → ∃ v, Decided U10 (View.full U10) i v :=
     (by intro i hi
         have : i = 0 ∨ i = 1 ∨ i = 2 := by omega
         rcases this with rfl | rfl | rfl <;> decide)
-    u10_populated
+    u10_populated (View.full U10) (View.coversUpto_full U10 _)
 
 -- A fairness negative: consecutive slots never share a leader, so a
 -- singleton T is starved at c = 2 — FairRunOn is not trivially true.
@@ -146,9 +146,12 @@ example : ∃ b, 5 ≤ b ∧ 3 ≤ Slots.slotRound (Replica := Fin 4) b ∧
       (∀ r, Slots.slotRound (Replica := Fin 4) b ≤ r →
         r ≤ Slots.slotRound (Replica := Fin 4) (b + 3 - 1) + 2 →
         PopulatedOn U (Correct : Finset (Fin 4)) r) →
-      ∀ i, i < b → ∃ v, Decided U (View.full U) i v :=
-  EventualDecision.ledgerProgress (Fin 4) (Fin 24)
-    (Correct : Finset (Fin 4)) 3 5 3
-    (by decide) (by decide) (by omega) spansEligible_four fairRun_four
+      ∀ i, i < b → ∃ v, Decided U (View.full U) i v := by
+  obtain ⟨b, hk, hR, hrest⟩ :=
+    EventualDecision.ledgerProgress (Fin 4) (Fin 24)
+      (Correct : Finset (Fin 4)) 3 5 3
+      (by decide) (by decide) (by omega) spansEligible_four fairRun_four
+  exact ⟨b, hk, hR, fun U hsync hpop =>
+    hrest U hsync hpop (View.full U) (View.coversUpto_full U _)⟩
 
 end HydrozoanTest
