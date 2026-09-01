@@ -27,6 +27,10 @@ pub enum ConsensusProtocol {
         #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
     },
+    BlueBottleAsynchronous {
+        #[serde(default = "defaults::default_leader_count")]
+        leader_count: NonZeroUsize,
+    },
     Orcaella {
         #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
@@ -102,6 +106,9 @@ impl fmt::Display for ConsensusProtocol {
             Self::BlueBottlePartiallySynchronous { leader_count } => {
                 write!(fmt, "Blue Bottle PS ({} leaders/round)", leader_count)
             }
+            Self::BlueBottleAsynchronous { leader_count } => {
+                write!(fmt, "Blue Bottle Async ({} leaders/round)", leader_count)
+            }
             Self::Orcaella { leader_count, f, c } => {
                 write!(
                     fmt,
@@ -147,6 +154,9 @@ impl fmt::Debug for ConsensusProtocol {
             Self::BlueBottlePartiallySynchronous { leader_count } => {
                 write!(fmt, "blue-bottle-ps-l{leader_count}")
             }
+            Self::BlueBottleAsynchronous { leader_count } => {
+                write!(fmt, "blue-bottle-async-l{leader_count}")
+            }
             Self::Orcaella { leader_count, f, c } => {
                 write!(fmt, "orcaella-l{leader_count}-f{f}-c{c}")
             }
@@ -174,6 +184,7 @@ impl ConsensusProtocol {
             Self::CordialMinersPartiallySynchronous | Self::CordialMinersAsynchronous => None,
             Self::Mysticeti { leader_count }
             | Self::BlueBottlePartiallySynchronous { leader_count }
+            | Self::BlueBottleAsynchronous { leader_count }
             | Self::Orcaella { leader_count, .. }
             | Self::MahiMahi { leader_count, .. }
             | Self::NemoNemo { leader_count }
@@ -196,6 +207,9 @@ impl ConsensusProtocol {
             Self::Mysticeti { leader_count } => Protocol::mysticeti(total_stake, leader_count),
             Self::BlueBottlePartiallySynchronous { leader_count } => {
                 Protocol::blue_bottle_partially_synchronous(total_stake, leader_count)
+            }
+            Self::BlueBottleAsynchronous { leader_count } => {
+                Protocol::blue_bottle_asynchronous(total_stake, leader_count)
             }
             Self::Orcaella { leader_count, f, c } => {
                 Protocol::orcaella(total_stake, f, c, leader_count)?
@@ -226,6 +240,7 @@ impl ConsensusProtocol {
             let leader_count = NonZeroUsize::new(l).expect("leader_count must be non-zero");
             variants.push(Self::Mysticeti { leader_count });
             variants.push(Self::BlueBottlePartiallySynchronous { leader_count });
+            variants.push(Self::BlueBottleAsynchronous { leader_count });
             variants.push(Self::NemoNemo { leader_count });
             variants.push(Self::Orcaella {
                 leader_count,
@@ -497,6 +512,29 @@ impl Protocol {
             leader_count,
             pipeline: true,
             leader_wait: true,
+            require_crypto: true,
+        }
+    }
+
+    /// Blue Bottle (asynchronous variant)
+    ///
+    /// "BlueBottle: Fast and Robust Blockchains through Subsystem Specialization"
+    /// <https://sonnino.com/papers/bluebottle.pdf>
+    pub fn blue_bottle_asynchronous(total_stake: Stake, leader_count: NonZeroUsize) -> Self {
+        let strong_quorum = 4 * total_stake / 5 + 1;
+        let weak_quorum = 2 * total_stake / 5 + 1;
+        Self {
+            direct_commit_quorum: strong_quorum,
+            direct_skip_quorum: strong_quorum,
+            certificate_quorum: strong_quorum,
+            quorum_threshold: strong_quorum,
+            fast_path: None,
+            anchor_link_size: weak_quorum,
+            wave_length: 3,
+            merged_certificates: true,
+            leader_count,
+            pipeline: true,
+            leader_wait: false,
             require_crypto: true,
         }
     }

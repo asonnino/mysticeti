@@ -30,6 +30,7 @@ replica_parameters:
   # Consensus protocol variant. Options:
   #   mysticeti                            { leader_count }
   #   blue-bottle-partially-synchronous    { leader_count }
+  #   blue-bottle-asynchronous             { leader_count }
   #   orcaella                             { leader_count, f, c }
   #   mahi-mahi                            { leader_count, wave_length: 4 | 5 }
   #   nemo-nemo                            { leader_count }

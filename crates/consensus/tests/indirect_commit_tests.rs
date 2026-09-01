@@ -3,12 +3,14 @@
 
 //! `indirect_commit` scenario across the protocol matrix.
 //!
-//! Construction varies on `wave_length`:
-//! - `wl == 2`: a single layer at the (collapsed) voting/decision round with
-//!   `(direct_commit_quorum - 1)` voters and the rest non-voters. That's enough
-//!   for the later anchor to reach `anchor_link_size` certificate paths while
-//!   keeping direct commit below threshold.
-//! - `wl >= 3`: `build_split_chain` to the voting round with enough voters to
+//! Construction varies on the certificate geometry:
+//! - merged certificates (the `wl == 2` protocols, async Blue Bottle at
+//!   `wl == 3`): a split chain to the
+//!   (collapsed) voting/decision round with `(direct_commit_quorum - 1)` voters
+//!   and the rest non-voters. That's enough for the later anchor to reach
+//!   `anchor_link_size` certificate paths while keeping direct commit below
+//!   threshold.
+//! - vote-and-certify: `build_split_chain` to the voting round with enough voters to
 //!   back a certificate (`certificate_quorum`, capped one below the fast-path
 //!   commit quorum so fast-path protocols stay undecided at the voting round),
 //!   then a hand-crafted decision-round layer where only
@@ -67,7 +69,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
         let voting_round = committer.voting_round_for(l1);
         let decision_round = committer.decision_round_for(l1);
 
-        let top_refs = if protocol.wave_length == 2 {
+        let top_refs = if protocol.merged_certificates {
             let voters_count = (protocol.direct_commit_quorum - 1) as usize;
             let blamers_count = committee.len() - voters_count;
             let (supports, blames) = build_split_chain(
