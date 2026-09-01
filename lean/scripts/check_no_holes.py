@@ -20,10 +20,11 @@ Additionally, every file named `Statement.lean` must be proof-free
 sit outside the audit convention that Statement files are read in full and
 proof files not at all.
 
-Finally, `View.full` may appear in no `Statement.lean` and no `Model/`
-file: a liveness statement concludes on a view a replica can hold
-(gdanezis/lean-dag#12). The `def View.full` site itself is vocabulary,
-not a claim, and is exempt.
+Finally, `View.full` may appear in the code of no `Statement.lean` and
+no `Model/` file: a liveness statement concludes on a view a replica
+can hold (gdanezis/lean-dag#12). Comments are stripped first, so prose
+may mention it; the `def View.full` site itself is vocabulary, not a
+claim, and is exempt.
 
 This script is part of the trusted base: it is meant to be read once,
 top to bottom, and then believed. Keep it dumb.
@@ -95,8 +96,8 @@ def main():
                         f"{match.group(1)} (proof material in a Statement file)"
                     )
             in_model = "Model" in path.relative_to(ROOT).parts
-            if (path.name == "Statement.lean" or in_model) \
-                    and FULLVIEW.search(code) and not FULLVIEW_DEF.search(code):
+            if ((path.name == "Statement.lean" or in_model)
+                    and FULLVIEW.search(code) and not FULLVIEW_DEF.search(code)):
                 holes.append(
                     f"{path.relative_to(ROOT)}:{lineno}: "
                     "View.full (a liveness statement concludes on a view)"

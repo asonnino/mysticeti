@@ -107,7 +107,7 @@ def v10 : View U10 where
 
 /-- `v10` is caught up to the run's last decision round. -/
 theorem v10_coversUpto : v10.CoversUpto 6 := by
-  show ∀ b ∈ U10.ids, (U10.block b).round ≤ 6 → b ∈ v10.ids
+  change ∀ b ∈ U10.ids, (U10.block b).round ≤ 6 → b ∈ v10.ids
   decide
 
 -- Genuinely partial: the round-7 block 21 is outside.
