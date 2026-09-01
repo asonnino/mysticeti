@@ -7,7 +7,7 @@ experimentation — **not production** — but uses real networking, cryptograph
 persistent storage. Ships with a discrete-event simulator and a cloud orchestrator for
 running the protocols under custom scenarios.
 
-Rust **edition 2024**, toolchain pinned to **1.98** (see `rust-toolchain.toml`).
+Rust **edition 2024**, toolchain pinned to **1.92** (see `rust-toolchain.toml`).
 
 ## Workspace layout
 
@@ -76,8 +76,9 @@ the voting round, reconciled with the certified slow path by a graded indirect r
   individual commits onto `main`, keeping each clean conventional-commit step in the
   history. Squash collapses a PR into one commit and loses that. Merge commits are
   disabled on this repo (`allow_merge_commit: false`), so rebase is the history-preserving
-  option. When a branch falls behind `main`, rebase your local un-pushed work onto the
-  updated tip; don't force-push rewritten shared history.
+  option. When a branch falls behind `main`, rebase it onto the updated tip **before
+  pushing**. **Never force-push** — a pushed branch (even a PR branch Claude created)
+  counts as shared history: fix it with follow-up commits, or ask before any rewrite.
 - **Commit messages** follow Conventional Commits (`feat(consensus):`, `fix(dag):`,
   `refactor(...)`, `test(...)`, …).
 - **Test-only APIs** are gated behind `#[cfg(any(test, feature = "test-utils"))]`.
