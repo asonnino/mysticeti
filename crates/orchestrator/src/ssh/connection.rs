@@ -6,7 +6,7 @@ use std::{net::SocketAddr, path::Path, string::FromUtf8Error, sync::Arc, time::D
 use russh::{
     ChannelMsg, Sig,
     client::{self, Handle},
-    keys::{PrivateKeyWithHashAlg, PublicKey, load_secret_key},
+    keys::{PrivateKeyWithHashAlg, PublicKeyOrCertificate, load_secret_key},
 };
 use russh_sftp::client::SftpSession;
 
@@ -43,7 +43,7 @@ impl client::Handler for AcceptAllHostKeys {
 
     async fn check_server_key(
         &mut self,
-        _server_public_key: &PublicKey,
+        _server_public_key: &PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
         Ok(true)
     }
