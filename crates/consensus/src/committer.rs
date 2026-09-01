@@ -248,6 +248,7 @@ mod tests {
             fast_path,
             anchor_link_size: 1,
             wave_length: 3,
+            merged_certificates: false,
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
             leader_wait: true,

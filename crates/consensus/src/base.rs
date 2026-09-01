@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
+    borrow::Borrow,
     fmt::{self, Display},
     sync::Arc,
 };
@@ -58,7 +59,11 @@ impl BaseCommitter {
             certificate_quorum: protocol.certificate_quorum,
             fast_path: protocol.fast_path,
             anchor_link_size: protocol.anchor_link_size,
-            wave: Wave::new(protocol.wave_length, round_offset),
+            wave: Wave::new(
+                protocol.wave_length,
+                round_offset,
+                protocol.merged_certificates,
+            ),
             leader_offset,
         }
     }
@@ -80,6 +85,7 @@ impl BaseCommitter {
             fast_path: None,
             anchor_link_size: 1,
             wave_length,
+            merged_certificates: wave_length == 2,
             leader_count: std::num::NonZeroUsize::new(1).unwrap(),
             pipeline: false,
             leader_wait: false,
@@ -150,37 +156,46 @@ impl BaseCommitter {
         self.find_support((author, round), potential_vote) == Some(*leader_block.reference())
     }
 
-    /// Check whether the specified block (`potential_certificate`) is a certificate for
-    /// the specified leader (`leader_block`).
-    fn is_certificate(
-        &self,
-        potential_certificate: &Data<Block>,
-        leader_block: &Data<Block>,
-    ) -> bool {
-        // When the certificate sits exactly one round above the leader (i.e.
-        // `wave_length == 2`), votes and certificates coincide on the same round:
-        // each decision-round block that directly supports the leader is itself a
-        // certificate.
-        if potential_certificate.round() == leader_block.round() + 1 {
-            return self.is_vote(potential_certificate, leader_block);
-        }
-
-        let mut votes_stake_aggregator = StakeAggregator::new(self.certificate_quorum);
-        for reference in potential_certificate.includes() {
-            let potential_vote = self
-                .block_reader
-                .get_block(*reference)
-                .expect("We should have the whole sub-dag by now");
-
-            if self.is_vote(&potential_vote, leader_block) {
-                tracing::trace!("[{self}] {potential_vote:?} is a vote for {leader_block:?}");
-                if votes_stake_aggregator.add(reference.authority, &self.committee) {
-                    tracing::trace!(
-                        "[{self}] {potential_certificate:?} is a certificate for {leader_block:?}"
-                    );
+    /// Check whether `votes` holds a `quorum` of distinct-author votes for
+    /// `leader_block`, i.e. whether they form a certificate for it.
+    fn is_certificate<I, B>(&self, votes: I, leader_block: &Data<Block>, quorum: Stake) -> bool
+    where
+        I: IntoIterator<Item = B>,
+        B: Borrow<Data<Block>>,
+    {
+        let mut votes_stake_aggregator = StakeAggregator::new(quorum);
+        for vote in votes {
+            let vote = vote.borrow();
+            if self.is_vote(vote, leader_block) {
+                // Merged protocols never traced per vote; keep their hot path unchanged.
+                if !self.wave.merged_certificates() {
+                    tracing::trace!("[{self}] {vote:?} is a vote for {leader_block:?}");
+                }
+                if votes_stake_aggregator.add(vote.author(), &self.committee) {
                     return true;
                 }
             }
+        }
+        false
+    }
+
+    /// Check whether the specified decision-round block references a certificate for
+    /// `leader_block` (the vote-and-certify pattern).
+    fn carries_certificate(
+        &self,
+        decision_block: &Data<Block>,
+        leader_block: &Data<Block>,
+    ) -> bool {
+        let votes = decision_block.includes().iter().map(|reference| {
+            self.block_reader
+                .get_block(*reference)
+                .expect("We should have the whole sub-dag by now")
+        });
+        if self.is_certificate(votes, leader_block, self.certificate_quorum) {
+            tracing::trace!(
+                "[{self}] {decision_block:?} carries a certificate for {leader_block:?}"
+            );
+            return true;
         }
         false
     }
@@ -207,20 +222,23 @@ impl BaseCommitter {
         let decision_round = self.wave.decision_round(wave);
         let decision_blocks = self.block_reader.get_blocks_by_round(decision_round);
 
-        // Find the leader block with a certified link to the anchor. With a
-        // strong-quorum certificate this is unique; at `wave_length == 2` the
-        // certificate degenerates to a weak vote and two equivocating twins can both
-        // qualify, so break ties deterministically by digest.
+        // Find the leader block whose certificate is linked to the anchor: with
+        // merged certificates, an `anchor_link_size` quorum of anchor-linked votes;
+        // otherwise, `anchor_link_size` anchor-linked certificate-carrying blocks.
+        // A weak (sub-majority) quorum lets two equivocating twins both qualify,
+        // so break ties deterministically by digest.
         let certified = leader_blocks.iter().filter(|leader_block| {
+            if self.wave.merged_certificates() {
+                let linked_votes = decision_blocks
+                    .iter()
+                    .filter(|block| self.block_reader.linked(anchor, block));
+                return self.is_certificate(linked_votes, leader_block, self.anchor_link_size);
+            }
             let mut aggregator = StakeAggregator::new(self.anchor_link_size);
             decision_blocks.iter().any(|block| {
-                if !self.block_reader.linked(anchor, block) {
-                    return false;
-                }
-                if !self.is_certificate(block, leader_block) {
-                    return false;
-                }
-                aggregator.add(block.author(), &self.committee)
+                self.block_reader.linked(anchor, block)
+                    && self.carries_certificate(block, leader_block)
+                    && aggregator.add(block.author(), &self.committee)
             })
         });
         let commit = certified.min_by_key(|leader_block| leader_block.reference().digest);
@@ -283,8 +301,10 @@ impl BaseCommitter {
         false
     }
 
-    /// Check whether the specified leader has enough support (`direct_commit_quorum`
-    /// certificates) to be directly committed.
+    /// Check whether the specified leader has enough support to be directly
+    /// committed: with merged certificates, a `direct_commit_quorum` certificate of
+    /// decision-round votes; otherwise, `direct_commit_quorum` certificate-carrying
+    /// blocks at the decision round.
     fn enough_leader_support(
         &self,
         decision_round: RoundNumber,
@@ -292,10 +312,15 @@ impl BaseCommitter {
     ) -> bool {
         let decision_blocks = self.block_reader.get_blocks_by_round(decision_round);
 
+        if self.wave.merged_certificates() {
+            let votes = decision_blocks.iter();
+            return self.is_certificate(votes, leader_block, self.direct_commit_quorum);
+        }
+
         let mut certificate_stake_aggregator = StakeAggregator::new(self.direct_commit_quorum);
         for decision_block in &decision_blocks {
             let authority = decision_block.reference().authority;
-            if self.is_certificate(decision_block, leader_block)
+            if self.carries_certificate(decision_block, leader_block)
                 && certificate_stake_aggregator.add(authority, &self.committee)
             {
                 return true;
@@ -543,10 +568,9 @@ mod tests {
         );
     }
 
-    /// At `wave_length = 2`, votes and certificates coincide on the same round:
-    /// `is_certificate` reduces to `is_vote`.
+    /// `is_certificate` aggregates distinct-author votes against the given quorum.
     #[test]
-    fn is_certificate_wave_length_two_reduces_to_vote() {
+    fn is_certificate_counts_distinct_vote_quorum() {
         let committee = committee(4);
         let mut storage = Storage::new_for_test(&committee);
         build_dag(&committee, &mut storage, None, 3);
@@ -559,20 +583,18 @@ mod tests {
             .into_iter()
             .next()
             .unwrap();
-        let certificate_candidate = storage
-            .block_reader()
-            .get_blocks_at_authority_round(Authority::from(1u64), 3)
-            .into_iter()
-            .next()
-            .unwrap();
+        let votes = storage.block_reader().get_blocks_by_round(3);
 
-        assert!(committer.is_certificate(&certificate_candidate, &leader_block));
+        // A fully-connected round of 4 votes reaches quorum 4 but not 5.
+        assert!(committer.is_certificate(votes.iter(), &leader_block, 4));
+        assert!(!committer.is_certificate(votes.iter(), &leader_block, 5));
     }
 
     /// At `wave_length = 3`, a fully-connected DAG produces a strong-quorum of votes
-    /// under each decision-round block, so every decision-round block is a certificate.
+    /// under each decision-round block, so every decision-round block carries a
+    /// certificate.
     #[test]
-    fn is_certificate_wave_length_three_full_dag() {
+    fn carries_certificate_wave_length_three_full_dag() {
         let committee = committee(4);
         let mut storage = Storage::new_for_test(&committee);
         build_dag(&committee, &mut storage, None, 5);
@@ -592,7 +614,7 @@ mod tests {
             .next()
             .unwrap();
 
-        assert!(committer.is_certificate(&certificate_candidate, &leader_block));
+        assert!(committer.carries_certificate(&certificate_candidate, &leader_block));
     }
 
     /// `enough_leader_blame` is `true` when every non-leader voter omits the leader.
@@ -878,8 +900,10 @@ mod tests {
             .next()
             .unwrap();
 
-        let protocol =
-            Protocol::blue_bottle(committee.total_stake(), NonZeroUsize::new(1).unwrap());
+        let protocol = Protocol::blue_bottle_partially_synchronous(
+            committee.total_stake(),
+            NonZeroUsize::new(1).unwrap(),
+        );
         let committer = BaseCommitter::new(
             committee.clone(),
             storage.block_reader().clone(),

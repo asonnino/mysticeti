@@ -12,18 +12,28 @@ pub(crate) type WaveNumber = RoundNumber;
 pub(crate) struct Wave {
     wave_length: RoundNumber,
     round_offset: RoundNumber,
+    merged_certificates: bool,
 }
 
 impl Wave {
-    pub(crate) fn new(wave_length: RoundNumber, round_offset: RoundNumber) -> Self {
+    pub(crate) fn new(
+        wave_length: RoundNumber,
+        round_offset: RoundNumber,
+        merged_certificates: bool,
+    ) -> Self {
         debug_assert!(wave_length > 0, "wave_length must be positive");
         debug_assert!(
             round_offset < wave_length,
             "round_offset must be < wave_length",
         );
+        debug_assert!(
+            wave_length > 2 || merged_certificates,
+            "a wave without a certify round must merge certificates",
+        );
         Self {
             wave_length,
             round_offset,
+            merged_certificates,
         }
     }
 
@@ -35,6 +45,12 @@ impl Wave {
     #[inline]
     pub(crate) fn round_offset(&self) -> RoundNumber {
         self.round_offset
+    }
+
+    /// Whether decision-round votes are themselves the certificates (no certify round).
+    #[inline]
+    pub(crate) fn merged_certificates(&self) -> bool {
+        self.merged_certificates
     }
 
     /// Return the wave in which the specified round belongs.
@@ -55,12 +71,15 @@ impl Wave {
         self.leader_round(wave) + self.wave_length - 1
     }
 
-    /// Return the voting round of the specified wave.
+    /// Return the voting round of the specified wave; with merged certificates it
+    /// coincides with the decision round.
     #[inline]
     pub(crate) fn voting_round(&self, wave: WaveNumber) -> RoundNumber {
-        let leader_round = self.leader_round(wave);
         let decision_round = self.decision_round(wave);
-        (leader_round + 1).max(decision_round - 1)
+        if self.merged_certificates {
+            return decision_round;
+        }
+        (self.leader_round(wave) + 1).max(decision_round - 1)
     }
 
     /// True iff `round` is the leader round of some wave.
@@ -82,7 +101,7 @@ mod tests {
     #[test]
     fn leader_round_inverse_of_number() {
         for (wave_length, round_offset) in configs() {
-            let wave = Wave::new(wave_length, round_offset);
+            let wave = Wave::new(wave_length, round_offset, wave_length == 2);
             for wave_number in 0..4 {
                 let leader_round = wave.leader_round(wave_number);
                 assert_eq!(
@@ -97,7 +116,7 @@ mod tests {
     #[test]
     fn decision_round_relation() {
         for (wave_length, round_offset) in configs() {
-            let wave = Wave::new(wave_length, round_offset);
+            let wave = Wave::new(wave_length, round_offset, wave_length == 2);
             for wave_number in 0..4 {
                 assert_eq!(
                     wave.decision_round(wave_number),
@@ -110,7 +129,7 @@ mod tests {
     #[test]
     fn voting_round_collapses_when_wl_is_two() {
         for round_offset in 0..2 {
-            let wave = Wave::new(2, round_offset);
+            let wave = Wave::new(2, round_offset, true);
             for wave_number in 0..3 {
                 let leader_round = wave.leader_round(wave_number);
                 let decision_round = wave.decision_round(wave_number);
@@ -124,7 +143,7 @@ mod tests {
     #[test]
     fn is_leader_round_matches_modulo() {
         for (wave_length, round_offset) in configs() {
-            let wave = Wave::new(wave_length, round_offset);
+            let wave = Wave::new(wave_length, round_offset, wave_length == 2);
             for round in 0..20 {
                 let expected = round >= round_offset && (round - round_offset) % wave_length == 0;
                 assert_eq!(
@@ -188,7 +207,7 @@ mod tests {
             expected_voting,
         ) in TABLE
         {
-            let wave = Wave::new(wave_length, round_offset);
+            let wave = Wave::new(wave_length, round_offset, wave_length == 2);
             let wave_number = wave.number(round);
             assert_eq!(
                 wave_number, expected_wave,
@@ -212,17 +231,40 @@ mod tests {
         }
     }
 
+    /// With merged certificates the voting round coincides with the decision round
+    /// at any wave length.
+    #[test]
+    fn voting_round_merged_certificates() {
+        for (wave_length, round_offset) in configs() {
+            let wave = Wave::new(wave_length, round_offset, true);
+            for wave_number in 0..3 {
+                assert_eq!(
+                    wave.voting_round(wave_number),
+                    wave.decision_round(wave_number),
+                    "voting_round mismatch for ({wave_length}, {round_offset}, {wave_number})",
+                );
+            }
+        }
+    }
+
     #[cfg(debug_assertions)]
     #[test]
     #[should_panic(expected = "wave_length must be positive")]
     fn new_panics_on_zero_wave_length() {
-        Wave::new(0, 0);
+        Wave::new(0, 0, true);
     }
 
     #[cfg(debug_assertions)]
     #[test]
     #[should_panic(expected = "round_offset must be < wave_length")]
     fn new_panics_on_offset_ge_wave_length() {
-        Wave::new(3, 3);
+        Wave::new(3, 3, false);
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "must merge certificates")]
+    fn new_panics_on_unmerged_two_round_wave() {
+        Wave::new(2, 0, false);
     }
 }

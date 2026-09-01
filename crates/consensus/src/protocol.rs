@@ -23,7 +23,7 @@ pub enum ConsensusProtocol {
         #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
     },
-    BlueBottle {
+    BlueBottlePartiallySynchronous {
         #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
     },
@@ -99,8 +99,8 @@ impl fmt::Display for ConsensusProtocol {
             Self::Mysticeti { leader_count } => {
                 write!(fmt, "Mysticeti ({} leaders/round)", leader_count)
             }
-            Self::BlueBottle { leader_count } => {
-                write!(fmt, "Blue Bottle ({} leaders/round)", leader_count)
+            Self::BlueBottlePartiallySynchronous { leader_count } => {
+                write!(fmt, "Blue Bottle PS ({} leaders/round)", leader_count)
             }
             Self::Orcaella { leader_count, f, c } => {
                 write!(
@@ -144,7 +144,9 @@ impl fmt::Debug for ConsensusProtocol {
             Self::CordialMinersPartiallySynchronous => write!(fmt, "cordial-miners-ps"),
             Self::CordialMinersAsynchronous => write!(fmt, "cordial-miners-async"),
             Self::Mysticeti { leader_count } => write!(fmt, "mysticeti-l{leader_count}"),
-            Self::BlueBottle { leader_count } => write!(fmt, "blue-bottle-l{leader_count}"),
+            Self::BlueBottlePartiallySynchronous { leader_count } => {
+                write!(fmt, "blue-bottle-ps-l{leader_count}")
+            }
             Self::Orcaella { leader_count, f, c } => {
                 write!(fmt, "orcaella-l{leader_count}-f{f}-c{c}")
             }
@@ -171,7 +173,7 @@ impl ConsensusProtocol {
         let user_leader_count = match self {
             Self::CordialMinersPartiallySynchronous | Self::CordialMinersAsynchronous => None,
             Self::Mysticeti { leader_count }
-            | Self::BlueBottle { leader_count }
+            | Self::BlueBottlePartiallySynchronous { leader_count }
             | Self::Orcaella { leader_count, .. }
             | Self::MahiMahi { leader_count, .. }
             | Self::NemoNemo { leader_count }
@@ -192,7 +194,9 @@ impl ConsensusProtocol {
             }
             Self::CordialMinersAsynchronous => Protocol::cordial_miners_asynchronous(total_stake),
             Self::Mysticeti { leader_count } => Protocol::mysticeti(total_stake, leader_count),
-            Self::BlueBottle { leader_count } => Protocol::blue_bottle(total_stake, leader_count),
+            Self::BlueBottlePartiallySynchronous { leader_count } => {
+                Protocol::blue_bottle_partially_synchronous(total_stake, leader_count)
+            }
             Self::Orcaella { leader_count, f, c } => {
                 Protocol::orcaella(total_stake, f, c, leader_count)?
             }
@@ -221,7 +225,7 @@ impl ConsensusProtocol {
         for &l in leader_counts {
             let leader_count = NonZeroUsize::new(l).expect("leader_count must be non-zero");
             variants.push(Self::Mysticeti { leader_count });
-            variants.push(Self::BlueBottle { leader_count });
+            variants.push(Self::BlueBottlePartiallySynchronous { leader_count });
             variants.push(Self::NemoNemo { leader_count });
             variants.push(Self::Orcaella {
                 leader_count,
@@ -391,6 +395,9 @@ pub struct Protocol {
     pub anchor_link_size: Stake,
     /// The number of rounds to commit a leader.
     pub wave_length: RoundNumber,
+    /// Whether decision-round votes are themselves the certificates (no certify
+    /// round); forced by geometry at `wave_length == 2`.
+    pub merged_certificates: bool,
     /// The number of leaders per round.
     pub leader_count: NonZeroUsize,
     /// Whether the protocol commits one leader per round.
@@ -416,6 +423,7 @@ impl Protocol {
             fast_path: None,
             anchor_link_size: 1,
             wave_length: 3,
+            merged_certificates: false,
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
             leader_wait: true,
@@ -437,6 +445,7 @@ impl Protocol {
             fast_path: None,
             anchor_link_size: 1,
             wave_length: 5,
+            merged_certificates: false,
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
             leader_wait: false,
@@ -458,6 +467,7 @@ impl Protocol {
             fast_path: None,
             anchor_link_size: 1,
             wave_length: 3,
+            merged_certificates: false,
             leader_count,
             pipeline: true,
             leader_wait: true,
@@ -465,11 +475,14 @@ impl Protocol {
         }
     }
 
-    /// Blue Bottle
+    /// Blue Bottle (partially synchronous variant)
     ///
     /// "BlueBottle: Fast and Robust Blockchains through Subsystem Specialization"
     /// <https://sonnino.com/papers/bluebottle.pdf>
-    pub fn blue_bottle(total_stake: Stake, leader_count: NonZeroUsize) -> Self {
+    pub fn blue_bottle_partially_synchronous(
+        total_stake: Stake,
+        leader_count: NonZeroUsize,
+    ) -> Self {
         let strong_quorum = 4 * total_stake / 5 + 1;
         let weak_quorum = 2 * total_stake / 5 + 1;
         Self {
@@ -480,6 +493,7 @@ impl Protocol {
             fast_path: None,
             anchor_link_size: weak_quorum,
             wave_length: 2,
+            merged_certificates: true,
             leader_count,
             pipeline: true,
             leader_wait: true,
@@ -514,6 +528,7 @@ impl Protocol {
             fast_path: None,
             anchor_link_size: total_stake - 3 * f - 2 * c,
             wave_length: 2,
+            merged_certificates: true,
             leader_count,
             pipeline: true,
             leader_wait: true,
@@ -543,6 +558,7 @@ impl Protocol {
             fast_path: None,
             anchor_link_size: 1,
             wave_length,
+            merged_certificates: false,
             leader_count,
             pipeline: true,
             leader_wait: false,
@@ -564,6 +580,7 @@ impl Protocol {
             fast_path: None,
             anchor_link_size: 1,
             wave_length: 2,
+            merged_certificates: true,
             leader_count,
             pipeline: true,
             leader_wait: true,
@@ -620,6 +637,7 @@ impl Protocol {
             fast_path: Some(fast_path),
             anchor_link_size: 1,
             wave_length: 3,
+            merged_certificates: false,
             leader_count,
             pipeline: true,
             leader_wait: true,
