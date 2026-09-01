@@ -40,7 +40,9 @@ STATEMENT_FORBIDDEN = re.compile(
     r"(theorem|lemma|example|instance)\b"
 )
 FULLVIEW = re.compile(r"\bView\.full\b")
-FULLVIEW_DEF = re.compile(r"^\s*def View\.full\b")
+FULLVIEW_DEF = re.compile(
+    r"^\s*(?:(?:private|protected|noncomputable|@\[[^\]]*\])\s+)*def View\.full\b"
+)
 ROOT = Path(__file__).resolve().parent.parent
 SOURCES = ["Hydrozoan.lean", "HydrozoanTest.lean", "Hydrozoan", "HydrozoanTest"]
 
