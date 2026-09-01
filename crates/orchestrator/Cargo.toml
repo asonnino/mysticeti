@@ -9,7 +9,10 @@ edition.workspace = true
 [dependencies]
 aws-config = "1.8.17"
 aws-runtime = "1.2.3"
-aws-sdk-ec2 = "1.227.0"
+aws-sdk-ec2 = { version = "1.227.0", default-features = false, features = [
+  "default-https-client",
+  "rt-tokio",
+] }
 eyre = { workspace = true }
 futures = { workspace = true }
 dag.workspace = true
