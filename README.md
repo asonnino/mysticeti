@@ -6,7 +6,7 @@
 
 [![build
 status](https://img.shields.io/github/actions/workflow/status/asonnino/mysticeti/code.yaml?branch=main&logo=github&style=flat-square)](https://github.com/asonnino/mysticeti/actions)
-[![rustc](https://img.shields.io/badge/rustc-1.92+-blue?style=flat-square&logo=rust)](https://www.rust-lang.org)
+[![rustc](https://img.shields.io/badge/rustc-1.98+-blue?style=flat-square&logo=rust)](https://www.rust-lang.org)
 [![license](https://img.shields.io/badge/license-Apache-blue.svg?style=flat-square)](LICENSE)
 
 This repository provides reference implementations of several uncertified DAG-based consensus
