@@ -79,7 +79,9 @@ def RunDecidesBelow (U : BlockUniverse Replica BlockId) : Prop :=
     (∀ r, S.slotRound b ≤ r →            -- and T fills every round from
       r ≤ S.slotRound (b + c - 1) + 2 →  -- the run's propose round to its
       PopulatedOn U T r) →               -- last decision round:
-    ∀ i, i < b → ∃ v, Decided U (View.full U) i v  -- all below decided.
+    ∀ V : View U,                        -- then, on any view caught up
+      V.CoversUpto (S.slotRound (b + c - 1) + 2) →  -- ... to that round:
+    ∀ i, i < b → ∃ v, Decided U V i v    -- all below decided.
 
 /-- Eventual decision, over every fault configuration, schedule,
 tie-break order, and block universe the model admits. -/

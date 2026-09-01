@@ -6,8 +6,9 @@ import Hydrozoan.Helpers.DirectLiveness
 
 Generated proof layer; not part of the audit surface. Both conjuncts
 are the wave chain of `Helpers/DirectLiveness.lean`; the harvest form
-adds the eventual-view lift and `Decided.directSlow`. `fastLatency` is
-the demoted performance characterization, proven with the same care.
+adds the caught-up-view lift (`slowCommitInView_of_coversUpto`) and
+`Decided.directSlow`. `fastLatency` is the demoted performance
+characterization, proven with the same care.
 -/
 
 namespace Hydrozoan
@@ -20,11 +21,12 @@ variable {Replica BlockId : Type*} [Fintype Replica] [DecidableEq Replica]
 
 theorem holds : Statement := by
   intro Replica BlockId _ _ _ _ _ _ U T R k hT hcard hs hRk hpop0 hpop1 hpop2 hlead
+    V hcov
   obtain ⟨L, hL⟩ := exists_isLeaderBlock_of_populated hpop0 hlead
   have hslow := slowCommit_of_synchronised hcard hs hRk hpop1 hpop2 hL
     (by rw [hL.2.2]; exact hlead)
   exact ⟨L, hL, hslow,
-    Decided.directSlow hL (slowCommitInView_full_of_slowCommit hslow)⟩
+    Decided.directSlow hL (slowCommitInView_of_coversUpto hslow hcov)⟩
 
 theorem fastLatency :
     ∀ (Replica BlockId : Type) [Fintype Replica] [DecidableEq Replica]

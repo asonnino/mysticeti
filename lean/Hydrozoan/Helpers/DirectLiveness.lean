@@ -121,15 +121,30 @@ theorem certificates_subset_ids {U : BlockUniverse Replica BlockId}
     {L : BlockId} {r : ℕ} : certificates U L r ⊆ U.ids :=
   fun _ hC => (mem_certificates.mp hC).1
 
-/-- A universe-level slow commit is a slow commit at the eventual
-view. -/
-theorem slowCommitInView_full_of_slowCommit
-    {U : BlockUniverse Replica BlockId} {L : BlockId} {r : ℕ}
-    (h : SlowCommit U L r) : SlowCommitInView U (View.full U) L r := by
-  have hinter : certificatesInView U (View.full U) L r
-      = certificates U L r := by
-    simp only [certificatesInView, View.full]
-    exact Finset.inter_eq_left.mpr certificates_subset_ids
+/-- The eventual view is caught up to every horizon. -/
+theorem View.coversUpto_full (U : BlockUniverse Replica BlockId) (N : ℕ) :
+    (View.full U).CoversUpto N :=
+  fun _ hb _ => hb
+
+/-- Caught up to `N` is caught up to every lower horizon. -/
+theorem View.CoversUpto.mono {U : BlockUniverse Replica BlockId}
+    {V : View U} {M N : ℕ}
+    (h : V.CoversUpto N) (hMN : M ≤ N) : V.CoversUpto M :=
+  fun b hb hr => h b hb (le_trans hr hMN)
+
+/-- A view caught up to the decision round holds every certificate, so
+a universe-level slow commit is a slow commit in that view. -/
+theorem slowCommitInView_of_coversUpto
+    {U : BlockUniverse Replica BlockId} {V : View U} {L : BlockId} {r : ℕ}
+    (h : SlowCommit U L r) (hcov : V.CoversUpto (r + 2)) :
+    SlowCommitInView U V L r := by
+  have hsub : certificates U L r ⊆ V.ids := by
+    intro C hC
+    obtain ⟨hCids, hCr, -⟩ := mem_certificates.mp hC
+    exact hcov C hCids (le_of_eq hCr)
+  have hinter : certificatesInView U V L r = certificates U L r := by
+    simp only [certificatesInView]
+    exact Finset.inter_eq_left.mpr hsub
   simp only [SlowCommitInView, certifiersInView, hinter]
   simp only [SlowCommit, certifiers] at h
   exact h

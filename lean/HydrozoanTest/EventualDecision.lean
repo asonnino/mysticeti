@@ -15,6 +15,11 @@ schedule leader `k % 4`) on an eight-round table:
   liveness, whose slot-4 wave needs its decision round 6 populated (the
   indirect-liveness descent, by contrast, consumed the commits
   ready-made); round 7 is unconsumed headroom.
+* **The partial view `v10`** (rounds 0–6; round 7 outside):
+  `RunDecidesBelow` applied at it pins the statement's `CoversUpto`
+  horizon — every other application discharges the premise with
+  `coversUpto_full`, which proves *any* horizon, so this is the one
+  guard against a silently raised horizon constant.
 * **`fairRun_four`**: the pipelined schedule is provably fair to the
   correct set at `c = 3` — runs start at every `k' = 4k + 2` — proved
   from the definition, not by finite enumeration.
@@ -91,7 +96,36 @@ example : ∀ i, i < 2 → ∃ v, Decided U10 (View.full U10) i v :=
     (by intro i hi
         have : i = 0 ∨ i = 1 ∨ i = 2 := by omega
         rcases this with rfl | rfl | rfl <;> decide)
-    u10_populated
+    u10_populated (View.full U10) (View.coversUpto_full U10 _)
+
+/-- The partial view of `U10` holding exactly rounds 0–6 — the run's
+last decision round, with round 7 outside. -/
+def v10 : View U10 where
+  ids := Finset.univ.filter fun i => (U10.block i).round ≤ 6
+  subset_ids := Finset.filter_subset _ _
+  complete := by decide
+
+/-- `v10` is caught up to the run's last decision round. -/
+theorem v10_coversUpto : v10.CoversUpto 6 := by
+  show ∀ b ∈ U10.ids, (U10.block b).round ≤ 6 → b ∈ v10.ids
+  decide
+
+-- Genuinely partial: the round-7 block 21 is outside.
+example : ¬ v10.CoversUpto 7 := fun h =>
+  absurd (h 21 (by decide) (by decide)) (by decide)
+
+-- The same run harvested at the partial view — the guard that pins the
+-- statement's horizon at the run's last decision round: a raised
+-- horizon constant leaves `v10` short and fails this application.
+example : ∀ i, i < 2 → ∃ v, Decided U10 v10 i v :=
+  (EventualDecision.holds (Fin 4) (Fin 24)).1 U10
+    (Correct : Finset (Fin 4)) 0 2 3
+    (by decide) (by decide) u10_synchronised (by omega) spansEligible_four
+    (by decide)
+    (by intro i hi
+        have : i = 0 ∨ i = 1 ∨ i = 2 := by omega
+        rcases this with rfl | rfl | rfl <;> decide)
+    u10_populated v10 v10_coversUpto
 
 -- The same run applied at R = 2 = slotRound b — the exact boundary of
 -- `R ≤ slotRound b`, killing a strengthening to strict inequality
@@ -105,7 +139,7 @@ example : ∀ i, i < 2 → ∃ v, Decided U10 (View.full U10) i v :=
     (by intro i hi
         have : i = 0 ∨ i = 1 ∨ i = 2 := by omega
         rcases this with rfl | rfl | rfl <;> decide)
-    u10_populated
+    u10_populated (View.full U10) (View.coversUpto_full U10 _)
 
 -- A fairness negative: consecutive slots never share a leader, so a
 -- singleton T is starved at c = 2 — FairRunOn is not trivially true.
@@ -146,9 +180,12 @@ example : ∃ b, 5 ≤ b ∧ 3 ≤ Slots.slotRound (Replica := Fin 4) b ∧
       (∀ r, Slots.slotRound (Replica := Fin 4) b ≤ r →
         r ≤ Slots.slotRound (Replica := Fin 4) (b + 3 - 1) + 2 →
         PopulatedOn U (Correct : Finset (Fin 4)) r) →
-      ∀ i, i < b → ∃ v, Decided U (View.full U) i v :=
-  EventualDecision.ledgerProgress (Fin 4) (Fin 24)
-    (Correct : Finset (Fin 4)) 3 5 3
-    (by decide) (by decide) (by omega) spansEligible_four fairRun_four
+      ∀ i, i < b → ∃ v, Decided U (View.full U) i v := by
+  obtain ⟨b, hk, hR, hrest⟩ :=
+    EventualDecision.ledgerProgress (Fin 4) (Fin 24)
+      (Correct : Finset (Fin 4)) 3 5 3
+      (by decide) (by decide) (by omega) spansEligible_four fairRun_four
+  exact ⟨b, hk, hR, fun U hsync hpop =>
+    hrest U hsync hpop (View.full U) (View.coversUpto_full U _)⟩
 
 end HydrozoanTest
