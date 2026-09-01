@@ -372,4 +372,23 @@ example : ∃ L, IsLeaderBlock U14 1 L ∧ SlowCommit U14 L 3 ∧
     (by decide) (by decide) (by decide)
     (View.full U14) (View.coversUpto_full U14 _)
 
+-- End-to-end: RunDecidesBelow below a run of length ONE — the
+-- run-witness half of the c = 1 kill (the descent half is above),
+-- closing the residual gap the pipelined U10 runs disclose.
+example : ∀ i, i < 1 → ∃ v, Decided U14 (View.full U14) i v :=
+  (EventualDecision.holds (Fin 6) (Fin 30)).1 U14
+    (Correct : Finset (Fin 6)) 0 1 1
+    (by decide) (by decide) u14_synchronised (by omega) spansEligible_six
+    (by decide)
+    (by intro i hi
+        have : i = 0 := by omega
+        subst this
+        decide)
+    (by intro r h1 h2
+        change 3 * (1 / 1) ≤ r at h1
+        change r ≤ 3 * ((1 + 1 - 1) / 1) + 2 at h2
+        have : r = 3 ∨ r = 4 ∨ r = 5 := by omega
+        rcases this with rfl | rfl | rfl <;> decide)
+    (View.full U14) (View.coversUpto_full U14 _)
+
 end HydrozoanTest
