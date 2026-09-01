@@ -6,9 +6,9 @@ import Hydrozoan.DirectSafety.Proof
 # Slot agreement — proof
 
 Generated proof layer; not part of the audit surface. Structural
-induction on the first derivation (lean-dag's M6/O5 architecture): the
-motive quantifies over the second view and verdict, so the induction
-hypotheses cover any other replica's derivation. Direct-vs-direct
+induction on the first derivation: the motive quantifies over the
+second view and verdict, so the induction hypotheses cover any other
+replica's derivation. Direct-vs-direct
 pairings close by `DirectSafety`; direct-vs-indirect by the rung
 fires/starvation/skip lemmas of `Helpers/SlotAgreement.lean`;
 indirect-vs-indirect by the anchor comparison followed by the shared

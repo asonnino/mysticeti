@@ -345,7 +345,7 @@ theorem not_certifiedIn_of_skipped {k : ℕ} {L : BlockId} {A : BlockId}
 
 end Skip
 
-/-! ## The anchor comparison (abstract, per lean-dag) -/
+/-! ## The anchor comparison (abstract) -/
 
 omit [Fintype Replica] [DecidableEq Replica] [DecidableEq BlockId] in
 /-- Two searches for the nearest eligible committed slot above `k`
