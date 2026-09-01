@@ -111,7 +111,7 @@ universe at a round at or below `N`. What a replica that has received
 everything up to `N` holds — and the hypothesis under which a liveness
 result holds of a replica's own view rather than of the eventual view.
 The eventual view satisfies it at every `N`
-(`coversUpto_full`, `Helpers/DirectLiveness.lean`). -/
+(`View.coversUpto_full`, `Helpers/DirectLiveness.lean`). -/
 def View.CoversUpto {U : BlockUniverse Replica BlockId}
     (V : View U) (N : ℕ) : Prop :=
   ∀ b ∈ U.ids, (U.block b).round ≤ N → b ∈ V.ids
