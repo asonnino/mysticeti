@@ -456,6 +456,7 @@ mod tests {
         block::Block,
         consensus::LeaderStatus,
         crypto::BlockDigest,
+        data::Data,
         storage::Storage,
         test_util::{build_dag, build_dag_layer, committee, insert_test_block},
     };
@@ -919,6 +920,187 @@ mod tests {
                 assert_eq!(block.reference().digest, twin_a_digest);
             }
             other => panic!("expected IndirectCommit, got {other:?}"),
+        }
+    }
+
+    /// Async Blue Bottle committer over a 6-validator committee (strong quorum 5,
+    /// weak quorum 3), with round-robin leaders standing in for the coin.
+    fn blue_bottle_async_committer(
+        committee: &std::sync::Arc<dag::committee::Committee>,
+        storage: &Storage,
+    ) -> BaseCommitter {
+        let protocol = Protocol::blue_bottle_asynchronous(
+            committee.total_stake(),
+            NonZeroUsize::new(1).unwrap(),
+        );
+        BaseCommitter::new(
+            committee.clone(),
+            storage.block_reader().clone(),
+            LeaderElector::new(committee.len()),
+            &protocol,
+            0,
+            0,
+        )
+    }
+
+    /// Async Blue Bottle: a fully-connected DAG holds a strong certificate (5 of 6
+    /// decision-round votes) at round `r + 2`, so the leader direct-commits.
+    #[test]
+    fn blue_bottle_async_direct_commits_on_full_dag() {
+        let committee = committee(6);
+        let mut storage = Storage::new_for_test(&committee);
+        build_dag(&committee, &mut storage, None, 5);
+        let committer = blue_bottle_async_committer(&committee, &storage);
+
+        let leader = committer.elect_leader(3).unwrap();
+        match committer.try_direct_decide(leader, 3) {
+            LeaderStatus::DirectCommit(block) => assert_eq!(block.author(), leader),
+            other => panic!("expected DirectCommit, got {other:?}"),
+        }
+    }
+
+    /// Async Blue Bottle: 5 of 6 decision-round blocks without a path to the leader
+    /// form the slot-blame witness, so the leader direct-skips.
+    #[test]
+    fn blue_bottle_async_direct_skips_when_leader_omitted() {
+        let committee = committee(6);
+        let mut storage = Storage::new_for_test(&committee);
+
+        let references_at_leader = build_dag(&committee, &mut storage, None, 3);
+        // Round-robin: round 3 → authority 3.
+        let leader = committee.authorities().nth(3).unwrap();
+        let references_without_leader: Vec<_> = references_at_leader
+            .into_iter()
+            .filter(|reference| reference.authority != leader)
+            .collect();
+        let boost_connections = committee
+            .authorities()
+            .map(|authority| (authority, references_without_leader.clone()))
+            .collect();
+        let references_at_boost_round = build_dag_layer(boost_connections, &mut storage);
+        build_dag(&committee, &mut storage, Some(references_at_boost_round), 5);
+
+        let committer = blue_bottle_async_committer(&committee, &storage);
+        match committer.try_direct_decide(leader, 3) {
+            LeaderStatus::DirectSkip(skipped, round) => {
+                assert_eq!(skipped, leader);
+                assert_eq!(round, 3);
+            }
+            other => panic!("expected DirectSkip, got {other:?}"),
+        }
+    }
+
+    /// Async Blue Bottle DAG where only the first `supporter_count` authorities keep
+    /// a path to the round-3 leader through the decision round, under a fully-linked
+    /// anchor at round 6.
+    fn blue_bottle_async_partial_support(
+        committee: &std::sync::Arc<dag::committee::Committee>,
+        supporter_count: usize,
+    ) -> (Storage, Data<Block>, Authority) {
+        let mut storage = Storage::new_for_test(committee);
+
+        let leader_round = 3;
+        let references_at_leader = build_dag(committee, &mut storage, None, leader_round);
+        // Round-robin: round 3 → authority 3.
+        let leader = committee.authorities().nth(3).unwrap();
+        let references_without_leader: Vec<_> = references_at_leader
+            .iter()
+            .copied()
+            .filter(|reference| reference.authority != leader)
+            .collect();
+
+        // Boost round: only the supporters keep a path to the leader.
+        let supporters: Vec<_> = committee.authorities().take(supporter_count).collect();
+        let boost_connections = committee
+            .authorities()
+            .map(|authority| {
+                let parents = if supporters.contains(&authority) {
+                    references_at_leader.clone()
+                } else {
+                    references_without_leader.clone()
+                };
+                (authority, parents)
+            })
+            .collect();
+        let references_at_boost_round = build_dag_layer(boost_connections, &mut storage);
+        let (supporting_boost, blaming_boost): (Vec<_>, Vec<_>) = references_at_boost_round
+            .into_iter()
+            .partition(|reference| supporters.contains(&reference.authority));
+
+        // Decision round: exactly `supporter_count` votes, the rest blames.
+        let decision_connections = committee
+            .authorities()
+            .map(|authority| {
+                let parents = if supporters.contains(&authority) {
+                    supporting_boost.clone()
+                } else {
+                    blaming_boost.clone()
+                };
+                (authority, parents)
+            })
+            .collect();
+        let references_at_decision_round = build_dag_layer(decision_connections, &mut storage);
+
+        // Anchor round: fully connected, so the anchor links every decision block.
+        build_dag(
+            committee,
+            &mut storage,
+            Some(references_at_decision_round),
+            6,
+        );
+        let anchor = storage
+            .block_reader()
+            .get_blocks_at_authority_round(committee.authorities().next().unwrap(), 6)
+            .into_iter()
+            .next()
+            .unwrap();
+
+        (storage, anchor, leader)
+    }
+
+    /// Async Blue Bottle: 3 decision-round votes miss the strong quorum (5) but form
+    /// a weak certificate (3) in the anchor's history, so the leader stays undecided
+    /// directly and indirect-commits.
+    #[test]
+    fn blue_bottle_async_weak_certificate_indirect_commits() {
+        let committee = committee(6);
+        let (storage, anchor, leader) = blue_bottle_async_partial_support(&committee, 3);
+
+        let committer = blue_bottle_async_committer(&committee, &storage);
+        match committer.try_direct_decide(leader, 3) {
+            LeaderStatus::Undecided(authority, round) => {
+                assert_eq!(authority, leader);
+                assert_eq!(round, 3);
+            }
+            other => panic!("expected Undecided, got {other:?}"),
+        }
+        match committer.decide_leader_from_anchor(&anchor, leader, 3) {
+            LeaderStatus::IndirectCommit(block) => assert_eq!(block.author(), leader),
+            other => panic!("expected IndirectCommit, got {other:?}"),
+        }
+    }
+
+    /// Async Blue Bottle: 2 decision-round votes stay below the weak certificate
+    /// quorum (3), so the anchor indirect-skips the leader.
+    #[test]
+    fn blue_bottle_async_below_weak_certificate_indirect_skips() {
+        let committee = committee(6);
+        let (storage, anchor, leader) = blue_bottle_async_partial_support(&committee, 2);
+
+        let committer = blue_bottle_async_committer(&committee, &storage);
+        match committer.try_direct_decide(leader, 3) {
+            LeaderStatus::Undecided(authority, round) => {
+                assert_eq!(authority, leader);
+                assert_eq!(round, 3);
+            }
+            other => panic!("expected Undecided, got {other:?}"),
+        }
+        match committer.decide_leader_from_anchor(&anchor, leader, 3) {
+            LeaderStatus::IndirectSkip(authority, round) => {
+                assert_eq!(authority, leader);
+                assert_eq!(round, 3);
+            }
+            other => panic!("expected IndirectSkip, got {other:?}"),
         }
     }
 

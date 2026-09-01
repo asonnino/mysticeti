@@ -17,8 +17,9 @@ network and failure scenarios.
 
 This repository currently supports [Mysticeti](https://sonnino.com/papers/mysticeti.pdf),
 [Mahi-Mahi](https://sonnino.com/papers/mahi-mahi.pdf),
-[Blue Bottle](https://sonnino.com/papers/bluebottle.pdf), [Cordial
-Miners](https://arxiv.org/abs/2205.09174) (both the partially synchronous and asynchronous
+[Blue Bottle](https://sonnino.com/papers/bluebottle.pdf) (both the partially synchronous and asynchronous
+variants),
+[Cordial Miners](https://arxiv.org/abs/2205.09174) (both the partially synchronous and asynchronous
 variants), [Nemo-Nemo](https://sonnino.com/papers/nemo-nemo.pdf),
 [Orcaella](https://sonnino.com/papers/orcaella.pdf), and a DAG variant of
 [Hydrangea](https://eprint.iacr.org/2025/1112).
