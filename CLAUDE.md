@@ -7,7 +7,7 @@ experimentation — **not production** — but uses real networking, cryptograph
 persistent storage. Ships with a discrete-event simulator and a cloud orchestrator for
 running the protocols under custom scenarios.
 
-Rust **edition 2024**, toolchain pinned to **1.92** (see `rust-toolchain.toml`).
+Rust **edition 2024**, toolchain pinned to **1.98** (see `rust-toolchain.toml`).
 
 ## Workspace layout
 
