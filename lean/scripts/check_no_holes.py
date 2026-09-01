@@ -22,9 +22,8 @@ proof files not at all.
 
 Finally, `View.full` may appear in the code of no `Statement.lean` and
 no `Model/` file: a liveness statement concludes on a view a replica
-can hold (gdanezis/lean-dag#12). Comments are stripped first, so prose
-may mention it; the `def View.full` site itself is vocabulary, not a
-claim, and is exempt.
+can hold. Comments are stripped first, so prose may mention it; the
+`def View.full` site itself is vocabulary, not a claim, and is exempt.
 
 This script is part of the trusted base: it is meant to be read once,
 top to bottom, and then believed. Keep it dumb.

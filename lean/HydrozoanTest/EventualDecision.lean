@@ -84,10 +84,9 @@ theorem u10_populated : ∀ r, Slots.slotRound (Replica := Fin 4) 2 ≤ r →
 
 -- End-to-end: RunDecidesBelow applied to U10 at b = 2, c = 3 with every
 -- hypothesis discharged concretely — the mechanical guard against a
--- silently strengthened Statement hypothesis. (Known residual gap,
--- shared with the indirect-liveness descent witness: c = 3 also
--- satisfies a `3 ≤ c` strengthening; killing it needs a
--- faster-than-pipelined schedule.)
+-- silently strengthened Statement hypothesis. (A `3 ≤ c` strengthening
+-- also passes here; the c = 1 kill is U14's sparse-schedule run of
+-- length one, `LivenessHardening.lean`.)
 example : ∀ i, i < 2 → ∃ v, Decided U10 (View.full U10) i v :=
   (EventualDecision.holds (Fin 4) (Fin 24)).1 U10
     (Correct : Finset (Fin 4)) 0 2 3
