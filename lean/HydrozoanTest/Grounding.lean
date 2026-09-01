@@ -106,8 +106,9 @@ example : ∃ b, 5 ≤ b ∧ ∃ U : BlockUniverse (Fin 7) ℕ,
     (∃ L, Decided (S := Grounding.waveRobin 7 (by omega)) U
       (View.full U) b (some L)) ∧
     ∀ i, i < b → ∃ v, Decided (S := Grounding.waveRobin 7 (by omega)) U
-      (View.full U) i v :=
-  Grounding.holds.2.2 7 (by omega) 5
+      (View.full U) i v := by
+  obtain ⟨b, hk, U, h⟩ := Grounding.holds.2.2 7 (by omega) 5
+  exact ⟨b, hk, U, h (View.full U) (View.coversUpto_full U _)⟩
 
 -- ... and at the k = 0 boundary, second configuration: even with
 -- nothing below to decide, the commit clause still demands a real
@@ -116,8 +117,9 @@ example : ∃ b, 0 ≤ b ∧ ∃ U : BlockUniverse (Fin 4) ℕ,
     (∃ L, Decided (S := Grounding.waveRobin 4 (by omega)) U
       (View.full U) b (some L)) ∧
     ∀ i, i < b → ∃ v, Decided (S := Grounding.waveRobin 4 (by omega)) U
-      (View.full U) i v :=
-  Grounding.holds.2.2 4 (by omega) 0
+      (View.full U) i v := by
+  obtain ⟨b, hk, U, h⟩ := Grounding.holds.2.2 4 (by omega) 0
+  exact ⟨b, hk, U, h (View.full U) (View.coversUpto_full U _)⟩
 
 /-! ## The pigeonhole contrast: per-slot rotation starves at the bound
 

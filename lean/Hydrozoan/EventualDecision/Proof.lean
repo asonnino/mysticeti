@@ -18,7 +18,8 @@ theorem holds : Statement := by
 /-- **The ledger does not stall** (the composed corollary): under a fair
 schedule, past every slot `k` and round `R` there is a bound `b` such
 that any universe in which `T` is synchronised and fills the run's span
-has every slot below `b` decided at the eventual view. -/
+has every slot below `b` decided on any view caught up to the run's
+last decision round. -/
 theorem ledgerProgress :
     ∀ (Replica BlockId : Type) [Fintype Replica] [DecidableEq Replica]
       [DecidableEq BlockId] [LinearOrder BlockId] [Faults Replica]
@@ -32,11 +33,12 @@ theorem ledgerProgress :
           SynchronisedOn U T R →
           (∀ r, S.slotRound b ≤ r → r ≤ S.slotRound (b + c - 1) + 2 →
             PopulatedOn U T r) →
-          ∀ i, i < b → ∃ v, Decided U (View.full U) i v := by
+          ∀ V : View U, V.CoversUpto (S.slotRound (b + c - 1) + 2) →
+          ∀ i, i < b → ∃ v, Decided U V i v := by
   intro Replica BlockId _ _ _ _ _ S T R k c hT hcard hc hspan hfair
   obtain ⟨b, hkb, hRb, hlead⟩ := runsRecur Replica T c k R hfair
-  exact ⟨b, hkb, hRb, fun U hsync hpop =>
-    runDecidesBelow U T R b c hT hcard hsync hc hspan hRb hlead hpop⟩
+  exact ⟨b, hkb, hRb, fun U hsync hpop V hcov =>
+    runDecidesBelow U T R b c hT hcard hsync hc hspan hRb hlead hpop V hcov⟩
 
 end EventualDecision
 end Hydrozoan

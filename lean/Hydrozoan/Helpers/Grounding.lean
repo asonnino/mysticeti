@@ -277,15 +277,18 @@ theorem groundedProgress : GroundedProgress := by
   have hleadb : S.leader b ∈ (Correct : Finset (Fin n)) := by
     have := hlead 0 (by omega)
     rwa [Nat.add_zero] at this
+  refine ⟨b, hkb, U, ?_⟩
+  intro V hcov
   obtain ⟨L, -, -, hL⟩ :=
     DirectLiveness.holds (Fin n) ℕ U (Correct : Finset (Fin n)) 0 b
       Finset.Subset.rfl hq hsync (Nat.zero_le _) (hpop b (by omega))
       (hpop (b + 1) (by omega)) (hpop (b + 2) (by omega)) hleadb
+      V (hcov.mono (by change b + 2 ≤ b + 4; omega))
   have hbelow :=
     EventualDecision.runDecidesBelow U (Correct : Finset (Fin n)) 0 b 3
       Finset.Subset.rfl hq hsync (by omega) hspan (Nat.zero_le _) hlead
-      (fun r _ h2 => hpop r h2)
-  exact ⟨b, hkb, U, ⟨L, hL⟩, hbelow⟩
+      (fun r _ h2 => hpop r h2) V (hcov.mono (by change b + 4 ≤ b + 4; omega))
+  exact ⟨⟨L, hL⟩, hbelow⟩
 
 end Progress
 

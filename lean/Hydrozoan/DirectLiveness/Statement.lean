@@ -6,7 +6,9 @@ import Hydrozoan.Model.Decided
 
 A synchronised, populated wave with a correct leader commits. One claim
 forms `Statement`: `CommitLiveness`, concluding both the slow-commit
-threshold and its harvest as a `Decided` verdict at the eventual view.
+threshold and its harvest as a `Decided` verdict on any view caught up
+to the decision round (`View.CoversUpto`) — the eventual view is the
+special case.
 The opportunistic pair (`FastLatency`, `SkipLatency`) is
 **deliberately outside `Statement`**: both are performance
 characterizations — they fire exactly when the actual faults fit the
@@ -31,8 +33,11 @@ variable {Replica BlockId : Type*} [Fintype Replica] [DecidableEq Replica]
 /-- **Commit liveness**: a quorum-sized set of correct replicas,
 populated through the wave's three rounds and synchronised from some
 `R` at or before the wave, commits its correct leader — the slow-commit
-threshold is met, and the decision logic outputs the commit verdict at
-the eventual view (the harvest form the later phases consume).
+threshold is met, and the decision logic outputs the commit verdict on
+any view caught up to the decision round (the harvest form the later
+phases consume). The certificates sit at the decision round, so a
+caught-up view holds them; the eventual view is caught up to every
+horizon.
 
 `SlowCommit` here is a threshold fact, not a route: the fast path may
 also fire in the same universe (the rule predicates are not
@@ -47,9 +52,11 @@ def CommitLiveness (U : BlockUniverse Replica BlockId) : Prop :=
     PopulatedOn U T (S.slotRound k + 1) →  -- ... the voting round ...
     PopulatedOn U T (S.slotRound k + 2) →  -- ... and the decision round,
     S.leader k ∈ T →                     -- and the slot's leader is in T:
-    ∃ L, IsLeaderBlock U k L ∧           -- then a candidate exists,
+    ∀ V : View U,                        -- then, on any view caught up
+      V.CoversUpto (S.slotRound k + 2) → -- ... to the decision round:
+    ∃ L, IsLeaderBlock U k L ∧           -- a candidate exists,
       SlowCommit U L (S.slotRound k) ∧   -- the slow threshold is met,
-      Decided U (View.full U) k (some L)  -- and its verdict is committed
+      Decided U V k (some L)             -- and its verdict is committed
 
 /-- Direct-commit liveness over every fault configuration, schedule,
 tie-break order, and block universe the model admits. -/

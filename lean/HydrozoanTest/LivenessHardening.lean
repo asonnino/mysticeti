@@ -141,6 +141,7 @@ example : ∃ L, IsLeaderBlock U12 0 L ∧ SlowCommit U12 L 0 ∧
     ({1, 2, 3, 4, 5, 6} : Finset (Fin 8)) 0 0
     (by decide) (by decide) u12_synchronised (by decide) (by decide)
     (by decide) (by decide) (by decide)
+    (View.full U12) (View.coversUpto_full U12 _)
 
 -- ## Route diversification (U13, the frozen Fin 7 configuration)
 
@@ -369,5 +370,6 @@ example : ∃ L, IsLeaderBlock U14 1 L ∧ SlowCommit U14 L 3 ∧
   DirectLiveness.holds (Fin 6) (Fin 30) U14 (Correct : Finset (Fin 6)) 0 1
     (by decide) (by decide) u14_synchronised (by decide) (by decide)
     (by decide) (by decide) (by decide)
+    (View.full U14) (View.coversUpto_full U14 _)
 
 end HydrozoanTest

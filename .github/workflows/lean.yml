@@ -11,7 +11,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Textual scan for sorry/admit/axiom/native_decide/unsafe/partial.
       - name: Check for proof holes
         run: python3 lean/scripts/check_no_holes.py
