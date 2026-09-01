@@ -95,7 +95,10 @@ def HypothesesRealizable : Prop :=
 /-- **Grounded progress.** Under wave-aligned round-robin, the
 composed liveness conclusion is achievable with no premise at all:
 past every point, some universe commits a bound with every slot below
-it decided. An achievability claim — the statement asserts the
+it decided — on any view caught up to the bound's decision round
+(`b + 4 = slotRound (b + 2) + 2` under the wave-aligned schedule; the
+eventual view is caught up to every horizon, so it instantiates the
+claim). An achievability claim — the statement asserts the
 conclusion's satisfiability, not the route to it (a universe may reach
 these verdicts by any rule). Each horizon is witnessed by its own
 finite universe (`U.ids` is a `Finset`, so no single universe decides
@@ -105,10 +108,12 @@ qualify. -/
 def GroundedProgress : Prop :=
   ∀ (n : ℕ) (hn : 0 < n) [Faults (Fin n)],
     ∀ k : ℕ, ∃ b, k ≤ b ∧                     -- past any slot k,
-      ∃ U : BlockUniverse (Fin n) ℕ,          -- some universe commits b
-        (∃ L, Decided (S := waveRobin n hn) U (View.full U) b (some L)) ∧
+      ∃ U : BlockUniverse (Fin n) ℕ,          -- some universe commits b:
+        ∀ V : View U,                         -- on any view caught up to
+          V.CoversUpto (b + 4) →              -- ... the decision round,
+        (∃ L, Decided (S := waveRobin n hn) U V b (some L)) ∧
         ∀ i, i < b → ∃ v,                     -- with every slot below
-          Decided (S := waveRobin n hn) U (View.full U) i v  -- decided.
+          Decided (S := waveRobin n hn) U V i v  -- decided.
 
 /-- Grounding, over every replica count and fault configuration the
 model admits. -/
