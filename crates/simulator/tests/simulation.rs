@@ -113,6 +113,56 @@ fn per_link_latency_deterministic() {
     );
 }
 
+/// Targeted delay of the known leaders stalls the sync rule to timeout pace,
+/// leaves the async rule (coin leaders, off the targeted cohort) unaffected,
+/// and lets Steelhead keep committing through its async slots: the paper's
+/// attack claim, pinned as a strict throughput ordering with wide margins.
+#[test]
+fn targeted_leader_delay_ordering() {
+    let attacked = |consensus: &str| {
+        let mut config = SimulationConfig {
+            committee_size: 10,
+            duration_secs: 20,
+            conditions: serde_yaml::from_str(
+                "[{ from_secs: 0, model: { kind: targeted-leader-delay, delay_ms: 2000 } }]",
+            )
+            .unwrap(),
+            ..Default::default()
+        };
+        config.replica_parameters = ReplicaParameters {
+            consensus: serde_yaml::from_str(consensus).unwrap(),
+            ..Default::default()
+        };
+        let results = SimulationRunner::new(config).run().unwrap();
+        assert_ne!(results.outcome, Outcome::Diverged);
+        results
+            .metrics
+            .iter()
+            .map(|snapshot| snapshot.total_committed_leaders())
+            .max()
+            .unwrap()
+    };
+
+    let mysticeti = attacked("{ protocol: mysticeti, leader_count: 2 }");
+    let steelhead = attacked(indoc! {"
+        protocol: steelhead
+        pair: mysticeti-mahi-mahi
+        period: 4
+        async_wave_length: 5
+        leader_count: 2
+    "});
+    let mahi_mahi = attacked("{ protocol: mahi-mahi, wave_length: 5, leader_count: 2 }");
+
+    assert!(
+        mysticeti * 3 < steelhead,
+        "sync rule must stall under attack: mysticeti={mysticeti} steelhead={steelhead}"
+    );
+    assert!(
+        steelhead < mahi_mahi,
+        "async slots pay for stalled sync slots: steelhead={steelhead} mahi_mahi={mahi_mahi}"
+    );
+}
+
 #[test]
 fn star_topology() {
     let config = SimulationConfig {

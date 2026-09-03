@@ -5,6 +5,7 @@ use std::{
     io,
     ops::Range,
     path::{Path, PathBuf},
+    sync::Arc,
     time::Duration,
 };
 
@@ -28,6 +29,7 @@ use replica::{
 use tokio::sync::mpsc;
 
 use crate::{
+    conditions::NetworkConditions,
     config::{NetworkTopology, SimulationConfig},
     context::SimulatorContext,
     executor::{JoinHandle, SimulatorExecutor},
@@ -102,6 +104,7 @@ impl SimulatedNetwork {
             latency_range,
             None,
             None,
+            None,
             commit_consumers,
         )
         .await;
@@ -118,6 +121,7 @@ impl SimulationState {
         public_config: PublicReplicaConfig,
         latency_range: Range<Duration>,
         link_jitter: Option<Duration>,
+        conditions: Option<Arc<NetworkConditions>>,
         load_generator: Option<LoadGeneratorConfig>,
         commit_consumers: Vec<Option<mpsc::Sender<CommittedSubDag>>>,
     ) -> (
@@ -128,7 +132,8 @@ impl SimulationState {
         let committee = public_config.committee();
         let committee_size = committee.len();
         assert_eq!(commit_consumers.len(), committee_size);
-        let (network, networks) = SimulatedNetwork::new(&committee, latency_range, link_jitter);
+        let (network, networks) =
+            SimulatedNetwork::new(&committee, latency_range, link_jitter, conditions);
 
         // The simulator doesn't touch disk; the WAL path in the private
         // configs is unused once we override storage with `InMemory`.
@@ -170,10 +175,29 @@ impl SimulationState {
         let public_config = PublicReplicaConfig::new_for_tests(config.committee_size)
             .with_parameters(config.replica_parameters.clone());
         let commit_consumers = vec![None; config.committee_size];
+        let condition_phases = config.condition_phases();
+        let conditions = if condition_phases.is_empty() {
+            None
+        } else {
+            // The attacked cohort and the targetable rounds come from the
+            // protocol under test.
+            let protocol = config
+                .replica_parameters
+                .consensus
+                .to_protocol(&public_config.committee())
+                .expect("valid protocol");
+            Some(Arc::new(NetworkConditions::new(
+                condition_phases,
+                config.committee_size,
+                protocol.leader_count.get(),
+                protocol.quorum_timeout_rounds(),
+            )))
+        };
         let (network, replicas, load_generators) = Self::build_replicas(
             public_config,
             config.latency_range(),
             config.link_jitter(),
+            conditions,
             config.load_generator.clone(),
             commit_consumers,
         )

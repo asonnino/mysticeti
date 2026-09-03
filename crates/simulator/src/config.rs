@@ -16,13 +16,13 @@ use replica::config::{LoadGeneratorConfig, ReplicaParameters};
 #[serde(untagged)]
 pub enum SimulationMode {
     Suite(Vec<SimulationConfig>),
-    Single(SimulationConfig),
+    Single(Box<SimulationConfig>),
 }
 
 impl SimulationMode {
     pub fn into_configs(self) -> Vec<SimulationConfig> {
         match self {
-            SimulationMode::Single(config) => vec![config],
+            SimulationMode::Single(config) => vec![*config],
             SimulationMode::Suite(configs) => configs,
         }
     }
@@ -54,6 +54,29 @@ pub struct SimulationConfig {
     pub replica_parameters: ReplicaParameters,
     #[serde(default = "defaults::load_generator")]
     pub load_generator: Option<LoadGeneratorConfig>,
+    /// Timed network-condition schedule; empty means healthy throughout.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conditions: Vec<ConditionPhase>,
+}
+
+/// One phase of the network-condition schedule: the delay model in force from
+/// `from_secs` until the next phase begins; no `model` means healthy.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ConditionPhase {
+    pub from_secs: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<DelayModel>,
+}
+
+/// A network-condition model, adversarial or stochastic. Models add delay on
+/// top of the link latency and never drop messages (eventual delivery).
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum DelayModel {
+    /// Delay every message from and to the current known leaders (the
+    /// round-robin cohort of the adversary's tracked round). Blind to the
+    /// fake coin: async slots remain untargetable.
+    TargetedLeaderDelay { delay_ms: u64 },
 }
 
 impl Default for SimulationConfig {
@@ -69,6 +92,7 @@ impl Default for SimulationConfig {
             rng_seed: 0,
             replica_parameters: ReplicaParameters::default(),
             load_generator: Some(LoadGeneratorConfig::new_for_test()),
+            conditions: Vec::new(),
         }
     }
 }
@@ -92,6 +116,17 @@ impl SimulationConfig {
 
     pub fn link_jitter(&self) -> Option<Duration> {
         self.link_jitter_ms.map(Duration::from_millis)
+    }
+
+    /// The condition schedule as `(start, model)` pairs sorted by start time.
+    pub fn condition_phases(&self) -> Vec<(Duration, Option<DelayModel>)> {
+        let mut phases: Vec<_> = self
+            .conditions
+            .iter()
+            .map(|phase| (Duration::from_secs(phase.from_secs), phase.model.clone()))
+            .collect();
+        phases.sort_by_key(|(start, _)| *start);
+        phases
     }
 }
 

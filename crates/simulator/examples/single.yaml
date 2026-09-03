@@ -15,6 +15,16 @@ latency_max_ms: 100
 # link_jitter_ms: 10
 duration_secs: 20
 rng_seed: 0
+# Timed network-condition schedule: each phase's model applies from its start
+# time until the next phase; no model means healthy. Models add delay on top
+# of link latency and never drop messages. Available kinds:
+#   targeted-leader-delay { delay_ms }   - delay traffic from/to the current
+#                                          known leaders (hidden coin leaders
+#                                          are untargetable)
+# conditions:
+#   - from_secs: 20
+#     model: { kind: targeted-leader-delay, delay_ms: 2000 }
+#   - from_secs: 40
 # Network topology. Options:
 #   fullMesh                   - every node connected to every other
 #   oneDown: <node_index>      - one node isolated from the rest
