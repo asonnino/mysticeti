@@ -209,6 +209,7 @@ impl BaseCommitter {
         anchor: &Data<Block>,
         leader: Authority,
         leader_round: RoundNumber,
+        wave: Wave,
     ) -> LeaderStatus {
         // Get the block(s) proposed by the leader. There could be more than one leader block
         // per round (produced by a Byzantine leader).
@@ -218,8 +219,8 @@ impl BaseCommitter {
 
         // Get all blocks that could be potential certificates for the target leader. These blocks
         // are in the decision round of the target leader and are linked to the anchor.
-        let wave = self.wave.number(leader_round);
-        let decision_round = self.wave.decision_round(wave);
+        let wave_number = wave.number(leader_round);
+        let decision_round = wave.decision_round(wave_number);
         let decision_blocks = self.block_reader.get_blocks_by_round(decision_round);
 
         // Find the leader block whose certificate is linked to the anchor: with
@@ -228,7 +229,7 @@ impl BaseCommitter {
         // A weak (sub-majority) quorum lets two equivocating twins both qualify,
         // so break ties deterministically by digest.
         let certified = leader_blocks.iter().filter(|leader_block| {
-            if self.wave.merged_certificates() {
+            if wave.merged_certificates() {
                 let linked_votes = decision_blocks
                     .iter()
                     .filter(|block| self.block_reader.linked(anchor, block));
@@ -253,7 +254,7 @@ impl BaseCommitter {
         // equivocating leader blocks can both qualify (a slow commit does not starve
         // conflicts of votes), so ties are broken deterministically by digest.
         if let Some(fast_path) = &self.fast_path {
-            let voting_round = self.wave.voting_round(wave);
+            let voting_round = wave.voting_round(wave_number);
             let voting_blocks = self.block_reader.get_blocks_by_round(voting_round);
             let weak_commit = leader_blocks
                 .into_iter()
@@ -309,10 +310,11 @@ impl BaseCommitter {
         &self,
         decision_round: RoundNumber,
         leader_block: &Data<Block>,
+        wave: Wave,
     ) -> bool {
         let decision_blocks = self.block_reader.get_blocks_by_round(decision_round);
 
-        if self.wave.merged_certificates() {
+        if wave.merged_certificates() {
             let votes = decision_blocks.iter();
             return self.is_certificate(votes, leader_block, self.direct_commit_quorum);
         }
@@ -363,10 +365,11 @@ impl BaseCommitter {
         leader: Authority,
         leader_round: RoundNumber,
         leaders: impl Iterator<Item = &'a LeaderStatus>,
+        wave: Wave,
     ) -> LeaderStatus {
         // The anchor is the first committed leader with round higher than the decision round of the
         // target leader. We must stop the iteration upon encountering an undecided leader.
-        let anchors = leaders.filter(|x| leader_round + self.wave.length() <= x.round());
+        let anchors = leaders.filter(|x| leader_round + wave.length() <= x.round());
 
         for anchor in anchors {
             tracing::trace!(
@@ -375,7 +378,7 @@ impl BaseCommitter {
             );
             match anchor {
                 LeaderStatus::DirectCommit(anchor) | LeaderStatus::IndirectCommit(anchor) => {
-                    return self.decide_leader_from_anchor(anchor, leader, leader_round);
+                    return self.decide_leader_from_anchor(anchor, leader, leader_round, wave);
                 }
                 LeaderStatus::DirectSkip(..) | LeaderStatus::IndirectSkip(..) => (),
                 LeaderStatus::Undecided(..) => break,
@@ -396,10 +399,11 @@ impl BaseCommitter {
         &self,
         leader: Authority,
         leader_round: RoundNumber,
+        wave: Wave,
     ) -> LeaderStatus {
-        let wave = self.wave.number(leader_round);
-        let voting_round = self.wave.voting_round(wave);
-        let decision_round = self.wave.decision_round(wave);
+        let wave_number = wave.number(leader_round);
+        let voting_round = wave.voting_round(wave_number);
+        let decision_round = wave.decision_round(wave_number);
 
         let voting_blocks = self.block_reader.get_blocks_by_round(voting_round);
 
@@ -419,7 +423,7 @@ impl BaseCommitter {
             .get_blocks_at_authority_round(leader, leader_round);
         let mut supported = leader_blocks.into_iter().filter(|leader_block| {
             self.enough_fast_path_support(&voting_blocks, leader_block)
-                || self.enough_leader_support(decision_round, leader_block)
+                || self.enough_leader_support(decision_round, leader_block, wave)
         });
         let first = supported.next();
         if supported.next().is_some() {
@@ -660,7 +664,7 @@ mod tests {
             .into_iter()
             .next()
             .unwrap();
-        assert!(committer.enough_leader_support(5, &leader_block));
+        assert!(committer.enough_leader_support(5, &leader_block, committer.wave));
     }
 
     /// `try_direct_decide` issues `DirectCommit` on a fully-connected DAG.
@@ -673,7 +677,7 @@ mod tests {
             BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
 
         let leader = committer.elect_leader(3).unwrap();
-        match committer.try_direct_decide(leader, 3) {
+        match committer.try_direct_decide(leader, 3, committer.wave) {
             LeaderStatus::DirectCommit(block) => assert_eq!(block.author(), leader),
             other => panic!("expected DirectCommit, got {other:?}"),
         }
@@ -707,7 +711,7 @@ mod tests {
 
         let committer =
             BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
-        match committer.try_direct_decide(leader, 3) {
+        match committer.try_direct_decide(leader, 3, committer.wave) {
             LeaderStatus::DirectSkip(skipped, round) => {
                 assert_eq!(skipped, leader);
                 assert_eq!(round, 3);
@@ -727,7 +731,7 @@ mod tests {
             BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
 
         let leader = committer.elect_leader(3).unwrap();
-        match committer.try_direct_decide(leader, 3) {
+        match committer.try_direct_decide(leader, 3, committer.wave) {
             LeaderStatus::Undecided(authority, round) => {
                 assert_eq!(authority, leader);
                 assert_eq!(round, 3);
@@ -756,11 +760,11 @@ mod tests {
             BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
 
         let leader = fast_committer.elect_leader(3).unwrap();
-        match fast_committer.try_direct_decide(leader, 3) {
+        match fast_committer.try_direct_decide(leader, 3, fast_committer.wave) {
             LeaderStatus::DirectCommit(block) => assert_eq!(block.author(), leader),
             other => panic!("expected DirectCommit, got {other:?}"),
         }
-        match slow_committer.try_direct_decide(leader, 3) {
+        match slow_committer.try_direct_decide(leader, 3, slow_committer.wave) {
             LeaderStatus::Undecided(authority, round) => {
                 assert_eq!(authority, leader);
                 assert_eq!(round, 3);
@@ -830,11 +834,21 @@ mod tests {
         let slow_committer =
             BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
 
-        match fast_committer.decide_leader_from_anchor(&anchor, leader, leader_round) {
+        match fast_committer.decide_leader_from_anchor(
+            &anchor,
+            leader,
+            leader_round,
+            fast_committer.wave,
+        ) {
             LeaderStatus::IndirectCommit(block) => assert_eq!(block.author(), leader),
             other => panic!("expected IndirectCommit, got {other:?}"),
         }
-        match slow_committer.decide_leader_from_anchor(&anchor, leader, leader_round) {
+        match slow_committer.decide_leader_from_anchor(
+            &anchor,
+            leader,
+            leader_round,
+            slow_committer.wave,
+        ) {
             LeaderStatus::IndirectSkip(authority, round) => {
                 assert_eq!(authority, leader);
                 assert_eq!(round, leader_round);
@@ -914,7 +928,7 @@ mod tests {
             0,
         );
 
-        match committer.decide_leader_from_anchor(&anchor, leader, 2) {
+        match committer.decide_leader_from_anchor(&anchor, leader, 2, committer.wave) {
             LeaderStatus::IndirectCommit(block) => {
                 assert_eq!(block.author(), leader);
                 assert_eq!(block.reference().digest, twin_a_digest);
@@ -953,7 +967,7 @@ mod tests {
         let committer = blue_bottle_async_committer(&committee, &storage);
 
         let leader = committer.elect_leader(3).unwrap();
-        match committer.try_direct_decide(leader, 3) {
+        match committer.try_direct_decide(leader, 3, committer.wave) {
             LeaderStatus::DirectCommit(block) => assert_eq!(block.author(), leader),
             other => panic!("expected DirectCommit, got {other:?}"),
         }
@@ -981,7 +995,7 @@ mod tests {
         build_dag(&committee, &mut storage, Some(references_at_boost_round), 5);
 
         let committer = blue_bottle_async_committer(&committee, &storage);
-        match committer.try_direct_decide(leader, 3) {
+        match committer.try_direct_decide(leader, 3, committer.wave) {
             LeaderStatus::DirectSkip(skipped, round) => {
                 assert_eq!(skipped, leader);
                 assert_eq!(round, 3);
@@ -1067,14 +1081,14 @@ mod tests {
         let (storage, anchor, leader) = blue_bottle_async_partial_support(&committee, 3);
 
         let committer = blue_bottle_async_committer(&committee, &storage);
-        match committer.try_direct_decide(leader, 3) {
+        match committer.try_direct_decide(leader, 3, committer.wave) {
             LeaderStatus::Undecided(authority, round) => {
                 assert_eq!(authority, leader);
                 assert_eq!(round, 3);
             }
             other => panic!("expected Undecided, got {other:?}"),
         }
-        match committer.decide_leader_from_anchor(&anchor, leader, 3) {
+        match committer.decide_leader_from_anchor(&anchor, leader, 3, committer.wave) {
             LeaderStatus::IndirectCommit(block) => assert_eq!(block.author(), leader),
             other => panic!("expected IndirectCommit, got {other:?}"),
         }
@@ -1088,14 +1102,14 @@ mod tests {
         let (storage, anchor, leader) = blue_bottle_async_partial_support(&committee, 2);
 
         let committer = blue_bottle_async_committer(&committee, &storage);
-        match committer.try_direct_decide(leader, 3) {
+        match committer.try_direct_decide(leader, 3, committer.wave) {
             LeaderStatus::Undecided(authority, round) => {
                 assert_eq!(authority, leader);
                 assert_eq!(round, 3);
             }
             other => panic!("expected Undecided, got {other:?}"),
         }
-        match committer.decide_leader_from_anchor(&anchor, leader, 3) {
+        match committer.decide_leader_from_anchor(&anchor, leader, 3, committer.wave) {
             LeaderStatus::IndirectSkip(authority, round) => {
                 assert_eq!(authority, leader);
                 assert_eq!(round, 3);
@@ -1114,7 +1128,7 @@ mod tests {
             BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
 
         let leader = committer.elect_leader(3).unwrap();
-        match committer.try_indirect_decide(leader, 3, std::iter::empty()) {
+        match committer.try_indirect_decide(leader, 3, std::iter::empty(), committer.wave) {
             LeaderStatus::Undecided(authority, round) => {
                 assert_eq!(authority, leader);
                 assert_eq!(round, 3);
@@ -1135,7 +1149,7 @@ mod tests {
         let leader = committer.elect_leader(3).unwrap();
         let undecided_anchor = LeaderStatus::Undecided(Authority::from(0u64), 6);
         let anchors = [undecided_anchor];
-        match committer.try_indirect_decide(leader, 3, anchors.iter()) {
+        match committer.try_indirect_decide(leader, 3, anchors.iter(), committer.wave) {
             LeaderStatus::Undecided(authority, round) => {
                 assert_eq!(authority, leader);
                 assert_eq!(round, 3);

@@ -94,12 +94,17 @@ impl Committer {
                 );
 
                 // Try to directly decide the leader.
-                let mut status = committer.try_direct_decide(leader, round);
+                let mut status = committer.try_direct_decide(leader, round, committer.wave);
                 tracing::debug!("Outcome of direct rule: {status}");
 
                 // If we can't directly decide the leader, try to indirectly decide it.
                 if !status.is_decided() {
-                    status = committer.try_indirect_decide(leader, round, self.leaders.iter());
+                    status = committer.try_indirect_decide(
+                        leader,
+                        round,
+                        self.leaders.iter(),
+                        committer.wave,
+                    );
                     tracing::debug!("Outcome of indirect rule: {status}");
                 }
 
