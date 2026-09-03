@@ -77,6 +77,16 @@ pub enum DelayModel {
     /// round-robin cohort of the adversary's tracked round). Blind to the
     /// fake coin: async slots remain untargetable.
     TargetedLeaderDelay { delay_ms: u64 },
+    /// Adversarial scheduler: hold every message until the next burst
+    /// boundary, releasing traffic in bursts of maximal reordering.
+    ScheduledAsynchrony { burst_ms: u64 },
+    /// Stochastic model: each message independently suffers an extra delay
+    /// from the range with the given probability (in percent).
+    RandomLinkDelay {
+        percent: u8,
+        delay_min_ms: u64,
+        delay_max_ms: u64,
+    },
 }
 
 impl Default for SimulationConfig {

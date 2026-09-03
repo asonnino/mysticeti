@@ -21,6 +21,10 @@ rng_seed: 0
 #   targeted-leader-delay { delay_ms }   - delay traffic from/to the current
 #                                          known leaders (hidden coin leaders
 #                                          are untargetable)
+#   scheduled-asynchrony { burst_ms }    - hold every message until the next
+#                                          burst boundary (maximal reordering)
+#   random-link-delay { percent,         - each message independently delayed
+#     delay_min_ms, delay_max_ms }         with the given probability
 # conditions:
 #   - from_secs: 20
 #     model: { kind: targeted-leader-delay, delay_ms: 2000 }

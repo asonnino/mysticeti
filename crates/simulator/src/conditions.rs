@@ -7,6 +7,7 @@ use std::{
 };
 
 use dag::sync::{net_sync::QuorumTimeoutRounds, network::NetworkMessage};
+use rand::Rng;
 
 use crate::{config::DelayModel, context::SimulatorContext};
 
@@ -68,6 +69,23 @@ impl NetworkConditions {
                     Duration::ZERO
                 }
             }
+            Some(DelayModel::ScheduledAsynchrony { burst_ms }) => {
+                let burst = Duration::from_millis(*burst_ms);
+                let elapsed_in_burst =
+                    Duration::from_nanos((now.as_nanos() % burst.as_nanos()) as u64);
+                burst - elapsed_in_burst
+            }
+            Some(DelayModel::RandomLinkDelay {
+                percent,
+                delay_min_ms,
+                delay_max_ms,
+            }) => SimulatorContext::with_rng(|rng| {
+                if rng.gen_range(0..100u8) < *percent {
+                    Duration::from_millis(rng.gen_range(*delay_min_ms..=*delay_max_ms))
+                } else {
+                    Duration::ZERO
+                }
+            }),
         }
     }
 
