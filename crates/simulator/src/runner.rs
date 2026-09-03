@@ -26,7 +26,7 @@ use replica::{
     replica::ReplicaHandle,
     result::{RunKind, RunResult},
 };
-use tokio::sync::mpsc;
+use tokio::sync::{Mutex, mpsc};
 
 use crate::{
     conditions::NetworkConditions,
@@ -75,10 +75,19 @@ impl SimulationRunner {
 struct SimulationState {
     config: SimulationConfig,
     network: SimulatedNetwork,
-    replicas: Vec<ReplicaHandle<SimulatorContext>>,
+    /// Replica slots shared with the crash tasks, which shut replicas down
+    /// mid-run and leave their final state behind for the results.
+    replicas: Arc<Mutex<Vec<Option<ReplicaSlot>>>>,
     /// JoinHandles for any load generators we started, so they stay alive for the duration
     /// of the simulation.
     _load_generators: Vec<JoinHandle<()>>,
+    /// JoinHandles for the crash tasks, kept alive for the run.
+    _crash_tasks: Vec<JoinHandle<()>>,
+}
+
+enum ReplicaSlot {
+    Running(ReplicaHandle<SimulatorContext>),
+    Crashed(Box<Syncer<SimulatorContext, Committer>>),
 }
 
 impl SimulatedNetwork {
@@ -203,12 +212,52 @@ impl SimulationState {
         )
         .await;
 
+        let replicas = Arc::new(Mutex::new(
+            replicas
+                .into_iter()
+                .map(|handle| Some(ReplicaSlot::Running(handle)))
+                .collect::<Vec<_>>(),
+        ));
+        let crash_tasks = Self::spawn_crash_tasks(&config, &replicas);
+
         Self {
             config,
             network,
             replicas,
             _load_generators: load_generators,
+            _crash_tasks: crash_tasks,
         }
+    }
+
+    /// One task per crash spec: sleep to the crash time, then shut the replica
+    /// down — its peers observe the dropped connections — and keep its final
+    /// state for the results.
+    fn spawn_crash_tasks(
+        config: &SimulationConfig,
+        replicas: &Arc<Mutex<Vec<Option<ReplicaSlot>>>>,
+    ) -> Vec<JoinHandle<()>> {
+        config
+            .crashes
+            .iter()
+            .map(|crash| {
+                assert!(
+                    crash.replica < config.committee_size,
+                    "crash target {} outside the committee",
+                    crash.replica
+                );
+                let replicas = replicas.clone();
+                let crash = *crash;
+                SimulatorContext::spawn(async move {
+                    SimulatorContext::sleep(Duration::from_secs(crash.at_secs)).await;
+                    let mut slots = replicas.lock().await;
+                    let slot = &mut slots[crash.replica];
+                    if let Some(ReplicaSlot::Running(handle)) = slot.take() {
+                        let syncer = handle.shutdown().await;
+                        *slot = Some(ReplicaSlot::Crashed(Box::new(syncer)));
+                    }
+                })
+            })
+            .collect()
     }
 
     async fn apply_topology(&self) {
@@ -243,8 +292,13 @@ impl SimulationState {
             config, replicas, ..
         } = self;
         let duration = config.duration();
-        let syncers: Vec<Syncer<SimulatorContext, Committer>> =
-            futures::future::join_all(replicas.into_iter().map(ReplicaHandle::shutdown)).await;
+        let mut syncers: Vec<Syncer<SimulatorContext, Committer>> = Vec::new();
+        for slot in replicas.lock().await.drain(..) {
+            match slot.expect("replica slot present") {
+                ReplicaSlot::Running(handle) => syncers.push(handle.shutdown().await),
+                ReplicaSlot::Crashed(syncer) => syncers.push(*syncer),
+            }
+        }
         let metrics: Vec<_> = syncers
             .iter()
             .map(|syncer| syncer.core().metrics.collect())

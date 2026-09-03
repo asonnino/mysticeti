@@ -57,6 +57,16 @@ pub struct SimulationConfig {
     /// Timed network-condition schedule; empty means healthy throughout.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub conditions: Vec<ConditionPhase>,
+    /// Replicas to crash mid-run (their final state still appears in results).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub crashes: Vec<CrashSpec>,
+}
+
+/// Crash the given replica at the given simulated time.
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct CrashSpec {
+    pub replica: usize,
+    pub at_secs: u64,
 }
 
 /// One phase of the network-condition schedule: the delay model in force from
@@ -103,6 +113,7 @@ impl Default for SimulationConfig {
             replica_parameters: ReplicaParameters::default(),
             load_generator: Some(LoadGeneratorConfig::new_for_test()),
             conditions: Vec::new(),
+            crashes: Vec::new(),
         }
     }
 }

@@ -163,6 +163,33 @@ fn targeted_leader_delay_ordering() {
     );
 }
 
+/// A replica crashed mid-run must not stop the committee: commits continue at
+/// n-1 (the crashed authority's slots skip via blames), the run stays
+/// consistent, and the crashed replica's final state still appears in results.
+#[test]
+fn crash_fault_mid_run() {
+    let config = SimulationConfig {
+        duration_secs: 30,
+        crashes: serde_yaml::from_str("[{ replica: 3, at_secs: 10 }]").unwrap(),
+        ..Default::default()
+    };
+    let committee_size = config.committee_size;
+    let results = SimulationRunner::new(config).run().unwrap();
+
+    assert_eq!(results.outcome, Outcome::Pass);
+    assert_eq!(results.metrics.len(), committee_size);
+    let survivor_commits = results
+        .metrics
+        .iter()
+        .map(|snapshot| snapshot.total_committed_leaders())
+        .max()
+        .unwrap();
+    assert!(
+        survivor_commits > 300,
+        "commits must continue after the crash: {survivor_commits}"
+    );
+}
+
 #[test]
 fn star_topology() {
     let config = SimulationConfig {
