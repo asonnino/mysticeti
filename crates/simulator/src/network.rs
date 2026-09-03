@@ -11,15 +11,27 @@ use dag::committee::Committee;
 use dag::context::Ctx;
 use dag::sync::network::{Connection, Network};
 
+/// Latency of one link under the per-link model: a stable symmetric base plus
+/// bounded per-message jitter.
+#[derive(Clone, Copy)]
+struct LinkLatency {
+    base: Duration,
+    jitter: Duration,
+}
+
 pub struct SimulatedNetwork {
     senders: Vec<mpsc::Sender<Connection>>,
     latency_range: Range<Duration>,
+    /// Per-link model when set (WAN-like stable pairs); otherwise every
+    /// message draws independently from `latency_range`.
+    link_jitter: Option<Duration>,
 }
 
 impl SimulatedNetwork {
     pub fn new(
         committee: &Committee,
         latency_range: Range<Duration>,
+        link_jitter: Option<Duration>,
     ) -> (SimulatedNetwork, Vec<Network>) {
         let (networks, senders): (Vec<_>, Vec<_>) = committee
             .authorities()
@@ -32,6 +44,7 @@ impl SimulatedNetwork {
             Self {
                 senders,
                 latency_range,
+                link_jitter,
             },
             networks,
         )
@@ -56,8 +69,14 @@ impl SimulatedNetwork {
     }
 
     pub async fn connect(&self, a: usize, b: usize) {
-        let (a_sender, a_receiver) = self.latency_channel();
-        let (b_sender, b_receiver) = self.latency_channel();
+        // One symmetric base latency per unordered pair, drawn at setup so it
+        // is a stable property of the link rather than of message timing.
+        let link_latency = self.link_jitter.map(|jitter| LinkLatency {
+            base: SimulatorContext::with_rng(|rng| rng.gen_range(self.latency_range.clone())),
+            jitter,
+        });
+        let (a_sender, a_receiver) = self.latency_channel(link_latency);
+        let (b_sender, b_receiver) = self.latency_channel(link_latency);
         let a_connection = Connection {
             peer_id: b,
             sender: b_sender,
@@ -74,13 +93,25 @@ impl SimulatedNetwork {
         b.send(b_connection).await.ok();
     }
 
-    fn latency_channel<T: Send + 'static + Debug>(&self) -> (mpsc::Sender<T>, mpsc::Receiver<T>) {
+    fn latency_channel<T: Send + 'static + Debug>(
+        &self,
+        link_latency: Option<LinkLatency>,
+    ) -> (mpsc::Sender<T>, mpsc::Receiver<T>) {
         let (buf_sender, mut buf_receiver) = mpsc::channel(16);
         let (sender, receiver) = mpsc::channel(16);
         let range = self.latency_range.clone();
         SimulatorContext::spawn(async move {
             while let Some(message) = buf_receiver.recv().await {
-                let latency = SimulatorContext::with_rng(|rng| rng.gen_range(range.clone()));
+                let latency = match link_latency {
+                    Some(link) if link.jitter.is_zero() => link.base,
+                    Some(link) => {
+                        let jitter = SimulatorContext::with_rng(|rng| {
+                            rng.gen_range(Duration::ZERO..link.jitter)
+                        });
+                        link.base + jitter
+                    }
+                    None => SimulatorContext::with_rng(|rng| rng.gen_range(range.clone())),
+                };
                 SimulatorContext::sleep(latency).await;
                 if sender.send(message).await.is_err() {
                     return;

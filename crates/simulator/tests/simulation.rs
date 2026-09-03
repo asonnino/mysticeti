@@ -69,6 +69,50 @@ fn from_yaml() {
     assert_eq!(runner.config().duration_secs, 20);
 }
 
+/// The per-link model (stable symmetric base + jitter) commits consistently.
+#[test]
+fn per_link_latency_smoke() {
+    let config = SimulationConfig {
+        latency_min_ms: 50,
+        latency_max_ms: 200,
+        link_jitter_ms: Some(10),
+        duration_secs: 10,
+        ..Default::default()
+    };
+    let results = SimulationRunner::new(config).run().unwrap();
+
+    assert_eq!(results.outcome, Outcome::Pass);
+}
+
+/// Identical seeds and configs reproduce identical per-link runs.
+#[test]
+fn per_link_latency_deterministic() {
+    let config = || SimulationConfig {
+        committee_size: 4,
+        latency_min_ms: 50,
+        latency_max_ms: 200,
+        link_jitter_ms: Some(10),
+        duration_secs: 10,
+        rng_seed: 7,
+        ..Default::default()
+    };
+    let first = SimulationRunner::new(config()).run().unwrap();
+    let second = SimulationRunner::new(config()).run().unwrap();
+
+    assert_ne!(first.outcome, Outcome::Diverged);
+    assert_eq!(first.outcome, second.outcome);
+    let committed_leaders = |results: &[dag::metrics::MetricsSnapshot]| {
+        results
+            .iter()
+            .map(|snapshot| snapshot.total_committed_leaders())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        committed_leaders(&first.metrics),
+        committed_leaders(&second.metrics)
+    );
+}
+
 #[test]
 fn star_topology() {
     let config = SimulationConfig {

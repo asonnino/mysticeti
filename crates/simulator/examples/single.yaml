@@ -9,6 +9,10 @@
 committee_size: 10
 latency_min_ms: 50
 latency_max_ms: 100
+# Per-message jitter (ms) on top of a per-link base latency drawn once per
+# pair from [latency_min_ms, latency_max_ms] — a WAN-like model with stable
+# symmetric links. Omit to draw every message independently from the range.
+# link_jitter_ms: 10
 duration_secs: 20
 rng_seed: 0
 # Network topology. Options:

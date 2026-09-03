@@ -40,6 +40,10 @@ pub struct SimulationConfig {
     pub latency_min_ms: u64,
     #[serde(default = "defaults::latency_max_ms")]
     pub latency_max_ms: u64,
+    /// Per-message jitter on top of a per-link base latency drawn once from
+    /// the latency range; `None` draws every message independently instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link_jitter_ms: Option<u64>,
     #[serde(default)]
     pub topology: NetworkTopology,
     #[serde(default = "defaults::duration_secs")]
@@ -59,6 +63,7 @@ impl Default for SimulationConfig {
             committee_size: defaults::committee_size(),
             latency_min_ms: defaults::latency_min_ms(),
             latency_max_ms: defaults::latency_max_ms(),
+            link_jitter_ms: None,
             topology: NetworkTopology::default(),
             duration_secs: defaults::duration_secs(),
             rng_seed: 0,
@@ -83,6 +88,10 @@ impl SimulationConfig {
 
     pub fn duration(&self) -> Duration {
         Duration::from_secs(self.duration_secs)
+    }
+
+    pub fn link_jitter(&self) -> Option<Duration> {
+        self.link_jitter_ms.map(Duration::from_millis)
     }
 }
 

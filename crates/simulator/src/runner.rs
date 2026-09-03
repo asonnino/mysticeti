@@ -97,9 +97,14 @@ impl SimulatedNetwork {
     ) -> (Self, Vec<ReplicaHandle<SimulatorContext>>) {
         let public_config = PublicReplicaConfig::new_for_tests(commit_consumers.len());
         let latency_range = Duration::from_millis(50)..Duration::from_millis(100);
-        let (network, replicas, _) =
-            SimulationState::build_replicas(public_config, latency_range, None, commit_consumers)
-                .await;
+        let (network, replicas, _) = SimulationState::build_replicas(
+            public_config,
+            latency_range,
+            None,
+            None,
+            commit_consumers,
+        )
+        .await;
         network.connect_all().await;
         (network, replicas)
     }
@@ -112,6 +117,7 @@ impl SimulationState {
     async fn build_replicas(
         public_config: PublicReplicaConfig,
         latency_range: Range<Duration>,
+        link_jitter: Option<Duration>,
         load_generator: Option<LoadGeneratorConfig>,
         commit_consumers: Vec<Option<mpsc::Sender<CommittedSubDag>>>,
     ) -> (
@@ -122,7 +128,7 @@ impl SimulationState {
         let committee = public_config.committee();
         let committee_size = committee.len();
         assert_eq!(commit_consumers.len(), committee_size);
-        let (network, networks) = SimulatedNetwork::new(&committee, latency_range);
+        let (network, networks) = SimulatedNetwork::new(&committee, latency_range, link_jitter);
 
         // The simulator doesn't touch disk; the WAL path in the private
         // configs is unused once we override storage with `InMemory`.
@@ -167,6 +173,7 @@ impl SimulationState {
         let (network, replicas, load_generators) = Self::build_replicas(
             public_config,
             config.latency_range(),
+            config.link_jitter(),
             config.load_generator.clone(),
             commit_consumers,
         )
