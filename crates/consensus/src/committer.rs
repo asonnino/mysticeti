@@ -3,7 +3,12 @@
 
 use std::{collections::VecDeque, sync::Arc};
 
-use crate::{base::BaseCommitter, leader::LeaderElector, protocol::Protocol};
+use crate::{
+    base::BaseCommitter,
+    leader::LeaderElector,
+    protocol::{Protocol, SteelheadSchedule},
+    wave::Wave,
+};
 use dag::{
     authority::Authority,
     block::RoundNumber,
@@ -32,12 +37,41 @@ pub struct Committer {
     has_fast_path: bool,
     /// Reusable buffer for commit decisions.
     leaders: VecDeque<LeaderStatus>,
+    /// Steelhead's per-round wavelength mode; `None` for the base protocols.
+    steelhead: Option<SteelheadMode>,
+}
+
+/// Steelhead state: the wavelength schedule plus the leader source, which must
+/// not go through `BaseCommitter::elect_leader` (its stored wave would reject
+/// off-cycle rounds; under Steelhead every round hosts a leader slot).
+struct SteelheadMode {
+    schedule: SteelheadSchedule,
+    merged_certificates: bool,
+    leader_elector: LeaderElector,
+    leader_count: usize,
+}
+
+impl SteelheadMode {
+    /// The wave governing the slot at `round`: its own wavelength, aligned so
+    /// that `round` is a genuine leader round.
+    fn wave_for(&self, round: RoundNumber) -> Wave {
+        let wave_length = self.schedule.wavelength(round);
+        Wave::new(wave_length, round % wave_length, self.merged_certificates)
+    }
+
+    fn elect_leader(&self, round: RoundNumber, leader_offset: RoundNumber) -> Authority {
+        self.leader_elector.elect_leader(round + leader_offset)
+    }
 }
 
 impl Committer {
     pub fn new(committee: Arc<Committee>, block_reader: BlockReader, protocol: Protocol) -> Self {
         let mut base_committers = Vec::new();
-        let pipeline_stages = if protocol.pipeline {
+        // Steelhead assigns waves per round, so a single stage of base
+        // committers (one per leader offset) evaluates every slot.
+        let pipeline_stages = if protocol.steelhead.is_some() {
+            1
+        } else if protocol.pipeline {
             protocol.wave_length
         } else {
             1
@@ -57,6 +91,13 @@ impl Committer {
             }
         }
 
+        let steelhead = protocol.steelhead.map(|schedule| SteelheadMode {
+            schedule,
+            merged_certificates: protocol.merged_certificates,
+            leader_elector: LeaderElector::new(committee.len()),
+            leader_count: protocol.leader_count.get(),
+        });
+
         Self {
             block_reader,
             base_committers,
@@ -65,6 +106,7 @@ impl Committer {
             #[cfg(any(test, feature = "test-utils"))]
             has_fast_path: protocol.fast_path.is_some(),
             leaders: VecDeque::new(),
+            steelhead,
         }
     }
 
@@ -83,32 +125,47 @@ impl Committer {
         // Try to decide as many leaders as possible, starting with the highest round.
         self.leaders.clear();
         for round in (last_decided_round..=highest_known_round).rev() {
-            for committer in self.base_committers.iter().rev() {
-                // Skip committers that don't have a leader for this round.
-                let Some(leader) = committer.elect_leader(round) else {
-                    continue;
-                };
-                tracing::debug!(
-                    "Trying to decide {} with {committer}",
-                    leader.with_round(round)
-                );
-
-                // Try to directly decide the leader.
-                let mut status = committer.try_direct_decide(leader, round, committer.wave);
-                tracing::debug!("Outcome of direct rule: {status}");
-
-                // If we can't directly decide the leader, try to indirectly decide it.
-                if !status.is_decided() {
-                    status = committer.try_indirect_decide(
-                        leader,
-                        round,
-                        self.leaders.iter(),
-                        committer.wave,
-                    );
-                    tracing::debug!("Outcome of indirect rule: {status}");
+            if let Some(mode) = &self.steelhead {
+                // Steelhead: every round hosts a leader slot, decided under the
+                // wave its schedule assigns to that round.
+                let wave = mode.wave_for(round);
+                for (leader_offset, committer) in self.base_committers.iter().enumerate().rev() {
+                    let leader = mode.elect_leader(round, leader_offset as RoundNumber);
+                    let mut status = committer.try_direct_decide(leader, round, wave);
+                    if !status.is_decided() {
+                        status =
+                            committer.try_indirect_decide(leader, round, self.leaders.iter(), wave);
+                    }
+                    self.leaders.push_front(status);
                 }
+            } else {
+                for committer in self.base_committers.iter().rev() {
+                    // Skip committers that don't have a leader for this round.
+                    let Some(leader) = committer.elect_leader(round) else {
+                        continue;
+                    };
+                    tracing::debug!(
+                        "Trying to decide {} with {committer}",
+                        leader.with_round(round)
+                    );
 
-                self.leaders.push_front(status);
+                    // Try to directly decide the leader.
+                    let mut status = committer.try_direct_decide(leader, round, committer.wave);
+                    tracing::debug!("Outcome of direct rule: {status}");
+
+                    // If we can't directly decide the leader, try to indirectly decide it.
+                    if !status.is_decided() {
+                        status = committer.try_indirect_decide(
+                            leader,
+                            round,
+                            self.leaders.iter(),
+                            committer.wave,
+                        );
+                        tracing::debug!("Outcome of indirect rule: {status}");
+                    }
+
+                    self.leaders.push_front(status);
+                }
             }
         }
 
@@ -150,7 +207,11 @@ impl Committer {
     }
 
     /// True if any of this committer's base committers owns a leader at `round`.
+    /// Under Steelhead, every round hosts a leader slot.
     pub fn is_leader_round(&self, round: RoundNumber) -> bool {
+        if self.steelhead.is_some() {
+            return true;
+        }
         self.base_committers
             .iter()
             .any(|bc| bc.wave.is_leader_round(round))
@@ -173,26 +234,37 @@ impl Committer {
         round
     }
 
+    /// The wave governing the slot at `leader_round`.
+    /// Panics if `leader_round` is not a leader round.
+    fn wave_for(&self, leader_round: RoundNumber) -> Wave {
+        if let Some(mode) = &self.steelhead {
+            return mode.wave_for(leader_round);
+        }
+        self.base_committers
+            .iter()
+            .find(|bc| bc.wave.is_leader_round(leader_round))
+            .expect("not a leader round")
+            .wave
+    }
+
+    /// Wavelength of the wave governing the slot at `leader_round`.
+    /// Panics if `leader_round` is not a leader round.
+    pub fn wave_length_at(&self, leader_round: RoundNumber) -> RoundNumber {
+        self.wave_for(leader_round).length()
+    }
+
     /// Voting round for the leader at `leader_round`.
     /// Panics if `leader_round` is not a leader round.
     pub fn voting_round_for(&self, leader_round: RoundNumber) -> RoundNumber {
-        let bc = self
-            .base_committers
-            .iter()
-            .find(|bc| bc.wave.is_leader_round(leader_round))
-            .expect("not a leader round");
-        bc.wave.voting_round(bc.wave.number(leader_round))
+        let wave = self.wave_for(leader_round);
+        wave.voting_round(wave.number(leader_round))
     }
 
     /// Decision round for the leader at `leader_round`.
     /// Panics if `leader_round` is not a leader round.
     pub fn decision_round_for(&self, leader_round: RoundNumber) -> RoundNumber {
-        let bc = self
-            .base_committers
-            .iter()
-            .find(|bc| bc.wave.is_leader_round(leader_round))
-            .expect("not a leader round");
-        bc.wave.decision_round(bc.wave.number(leader_round))
+        let wave = self.wave_for(leader_round);
+        wave.decision_round(wave.number(leader_round))
     }
 
     /// Shallowest DAG depth at which the direct rule can decide the leader at
@@ -221,14 +293,47 @@ impl DagConsensus for Committer {
     }
 
     fn get_leaders(&self, round: RoundNumber) -> Option<impl Iterator<Item = Authority>> {
+        if let Some(mode) = &self.steelhead {
+            // No leader wait on async slots: their leader is meant to be hidden.
+            if mode.schedule.is_async_round(round) {
+                return None;
+            }
+            // Compute the sync-slot leaders directly: the base committers'
+            // election would yield an empty iterator on off-cycle rounds,
+            // vacuously satisfying the wait.
+            let leaders = (0..mode.leader_count as RoundNumber)
+                .map(move |leader_offset| mode.elect_leader(round, leader_offset));
+            return Some(LeaderIter::Steelhead(leaders));
+        }
         if self.leader_wait {
-            Some(
+            Some(LeaderIter::Base(
                 self.base_committers
                     .iter()
                     .filter_map(move |c| c.elect_leader(round)),
-            )
+            ))
         } else {
             None
+        }
+    }
+}
+
+/// Unifies the two `get_leaders` iterator types behind one return type.
+enum LeaderIter<A, B> {
+    Base(A),
+    Steelhead(B),
+}
+
+impl<A, B> Iterator for LeaderIter<A, B>
+where
+    A: Iterator<Item = Authority>,
+    B: Iterator<Item = Authority>,
+{
+    type Item = Authority;
+
+    fn next(&mut self) -> Option<Authority> {
+        match self {
+            Self::Base(leaders) => leaders.next(),
+            Self::Steelhead(leaders) => leaders.next(),
         }
     }
 }
@@ -254,6 +359,7 @@ mod tests {
             anchor_link_size: 1,
             wave_length: 3,
             merged_certificates: false,
+            steelhead: None,
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
             leader_wait: true,

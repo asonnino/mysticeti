@@ -86,6 +86,7 @@ impl BaseCommitter {
             anchor_link_size: 1,
             wave_length,
             merged_certificates: wave_length == 2,
+            steelhead: None,
             leader_count: std::num::NonZeroUsize::new(1).unwrap(),
             pipeline: false,
             leader_wait: false,
@@ -360,6 +361,7 @@ impl BaseCommitter {
         skip_all,
         fields(leader = %leader.with_round(leader_round))
     )]
+    #[inline]
     pub(crate) fn try_indirect_decide<'a>(
         &self,
         leader: Authority,
@@ -395,6 +397,7 @@ impl BaseCommitter {
         skip_all,
         fields(leader = %leader.with_round(leader_round))
     )]
+    #[inline]
     pub(crate) fn try_direct_decide(
         &self,
         leader: Authority,
@@ -469,6 +472,7 @@ mod tests {
         base::BaseCommitter,
         leader::LeaderElector,
         protocol::{FastPath, Protocol},
+        wave::Wave,
     };
 
     /// `elect_leader` returns `None` outside leader rounds.
@@ -1155,6 +1159,50 @@ mod tests {
                 assert_eq!(round, 3);
             }
             other => panic!("expected Undecided after undecided anchor, got {other:?}"),
+        }
+    }
+
+    /// Steelhead-style anchor floor: a five-round slot at round 4 ignores
+    /// committed anchors inside its own wave (rounds 5..=8) and is decided by
+    /// the first anchor at its floor `r + wl = 9`.
+    #[test]
+    fn try_indirect_decide_respects_per_slot_anchor_floor() {
+        let committee = committee(4);
+        let mut storage = Storage::new_for_test(&committee);
+        build_dag(&committee, &mut storage, None, 9);
+        let committer =
+            BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 5, 0);
+
+        let wave = Wave::new(5, 4, false);
+        // Round-robin: round 4 → authority 0.
+        let leader = Authority::from(0u64);
+        let anchor_block_at = |round| {
+            storage
+                .block_reader()
+                .get_blocks_at_authority_round(Authority::from(1u64), round)
+                .into_iter()
+                .next()
+                .unwrap()
+        };
+
+        for anchor_round in 5..=8 {
+            let anchors = [LeaderStatus::DirectCommit(anchor_block_at(anchor_round))];
+            match committer.try_indirect_decide(leader, 4, anchors.iter(), wave) {
+                LeaderStatus::Undecided(authority, round) => {
+                    assert_eq!(authority, leader);
+                    assert_eq!(round, 4);
+                }
+                other => panic!("anchor at round {anchor_round} is below the floor, got {other:?}"),
+            }
+        }
+
+        let anchors = [LeaderStatus::DirectCommit(anchor_block_at(9))];
+        match committer.try_indirect_decide(leader, 4, anchors.iter(), wave) {
+            LeaderStatus::IndirectCommit(block) => {
+                assert_eq!(block.author(), leader);
+                assert_eq!(block.round(), 4);
+            }
+            other => panic!("expected IndirectCommit from the floor anchor, got {other:?}"),
         }
     }
 }

@@ -35,6 +35,9 @@ replica_parameters:
   #   mahi-mahi                            { leader_count, wave_length: 4 | 5 }
   #   nemo-nemo                            { leader_count }
   #   dag-hydrangea                        { leader_count, f, c, k }
+  #   steelhead                            { pair: mysticeti-mahi-mahi | blue-bottle,
+  #                                          period (null = pure sync rule),
+  #                                          async_wave_length, leader_count }
   #   cordial-miners-partially-synchronous
   #   cordial-miners-asynchronous
   consensus:

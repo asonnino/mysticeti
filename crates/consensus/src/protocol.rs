@@ -1,7 +1,11 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{fmt, num::NonZeroUsize, time::Duration};
+use std::{
+    fmt,
+    num::{NonZeroU64, NonZeroUsize},
+    time::Duration,
+};
 
 use dag::{
     block::RoundNumber,
@@ -60,6 +64,23 @@ pub enum ConsensusProtocol {
         /// Tunable slack widening the fast path; requires `n >= 3f + 2c + k + 1`.
         k: Stake,
     },
+    Steelhead {
+        pair: SteelheadPair,
+        /// Every `period`-th round is an async slot; `None` means never (pure sync rule).
+        period: Option<NonZeroU64>,
+        /// Async-rule wave length: 4 or 5 for Mysticeti/Mahi-Mahi, exactly 3 for Blue Bottle.
+        async_wave_length: RoundNumber,
+        #[serde(default = "defaults::default_leader_count")]
+        leader_count: NonZeroUsize,
+    },
+}
+
+/// The pair of base rules a Steelhead instantiation composes.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum SteelheadPair {
+    MysticetiMahiMahi,
+    BlueBottle,
 }
 
 mod defaults {
@@ -139,6 +160,29 @@ impl fmt::Display for ConsensusProtocol {
                     leader_count
                 )
             }
+            Self::Steelhead {
+                pair,
+                period,
+                async_wave_length,
+                leader_count,
+            } => {
+                let pair_name = match pair {
+                    SteelheadPair::MysticetiMahiMahi => "Mysticeti+Mahi-Mahi",
+                    SteelheadPair::BlueBottle => "Blue Bottle",
+                };
+                match period {
+                    Some(period) => write!(
+                        fmt,
+                        "Steelhead {pair_name} (period {period}, async wave {async_wave_length}, \
+                        {leader_count} leaders/round)"
+                    ),
+                    None => write!(
+                        fmt,
+                        "Steelhead {pair_name} (period ∞, async wave {async_wave_length}, \
+                        {leader_count} leaders/round)"
+                    ),
+                }
+            }
         }
     }
 }
@@ -171,6 +215,27 @@ impl fmt::Debug for ConsensusProtocol {
                 c,
                 k,
             } => write!(fmt, "dag-hydrangea-l{leader_count}-f{f}-c{c}-k{k}"),
+            Self::Steelhead {
+                pair,
+                period,
+                async_wave_length,
+                leader_count,
+            } => {
+                let pair_tag = match pair {
+                    SteelheadPair::MysticetiMahiMahi => "mm",
+                    SteelheadPair::BlueBottle => "bb",
+                };
+                match period {
+                    Some(period) => write!(
+                        fmt,
+                        "steelhead-{pair_tag}-p{period}-w{async_wave_length}-l{leader_count}"
+                    ),
+                    None => write!(
+                        fmt,
+                        "steelhead-{pair_tag}-pinf-w{async_wave_length}-l{leader_count}"
+                    ),
+                }
+            }
         }
     }
 }
@@ -188,7 +253,8 @@ impl ConsensusProtocol {
             | Self::Orcaella { leader_count, .. }
             | Self::MahiMahi { leader_count, .. }
             | Self::NemoNemo { leader_count }
-            | Self::DagHydrangea { leader_count, .. } => Some(*leader_count),
+            | Self::DagHydrangea { leader_count, .. }
+            | Self::Steelhead { leader_count, .. } => Some(*leader_count),
         };
         if let Some(leader_count) = user_leader_count
             && leader_count.get() > committee_size
@@ -225,6 +291,12 @@ impl ConsensusProtocol {
                 c,
                 k,
             } => Protocol::dag_hydrangea(total_stake, f, c, k, leader_count)?,
+            Self::Steelhead {
+                pair,
+                period,
+                async_wave_length,
+                leader_count,
+            } => Protocol::steelhead(total_stake, pair, period, async_wave_length, leader_count)?,
         })
     }
 }
@@ -269,6 +341,24 @@ impl ConsensusProtocol {
                 leader_count,
                 wave_length: 5,
             });
+            // Degenerate-period Steelhead runs the pure base rules; finite
+            // periods are covered by the dedicated steelhead tests (an async
+            // slot between the first slot and the target can out-live the
+            // generic scenario constructions' DAG depth).
+            for pure_period in [None, NonZeroU64::new(1)] {
+                variants.push(Self::Steelhead {
+                    pair: SteelheadPair::MysticetiMahiMahi,
+                    period: pure_period,
+                    async_wave_length: 5,
+                    leader_count,
+                });
+                variants.push(Self::Steelhead {
+                    pair: SteelheadPair::BlueBottle,
+                    period: pure_period,
+                    async_wave_length: 3,
+                    leader_count,
+                });
+            }
             variants.push(Self::DagHydrangea {
                 leader_count,
                 f: 1,
@@ -373,11 +463,46 @@ pub enum ProtocolError {
     },
     #[error("Mahi-Mahi requires wave_length in {{4, 5}}, got {wave_length}")]
     MahiMahiInvalidWaveLength { wave_length: RoundNumber },
+    #[error(
+        "Steelhead async_wave_length invalid for {pair:?}: got {async_wave_length} \
+        (Mysticeti/Mahi-Mahi requires 4 or 5, Blue Bottle requires 3)"
+    )]
+    SteelheadInvalidAsyncWaveLength {
+        pair: SteelheadPair,
+        async_wave_length: RoundNumber,
+    },
     #[error("leader_count ({leader_count}) exceeds committee size ({committee_size})")]
     LeaderCountExceedsCommittee {
         leader_count: NonZeroUsize,
         committee_size: usize,
     },
+}
+
+/// Steelhead's per-round wavelength schedule.
+#[derive(Clone, Copy)]
+pub struct SteelheadSchedule {
+    /// Every `period`-th round is an async slot; `None` means never.
+    pub period: Option<NonZeroU64>,
+    pub sync_wave_length: RoundNumber,
+    pub async_wave_length: RoundNumber,
+}
+
+impl SteelheadSchedule {
+    /// The wavelength governing the slot at `round`.
+    pub(crate) fn wavelength(&self, round: RoundNumber) -> RoundNumber {
+        if self.is_async_round(round) {
+            self.async_wave_length
+        } else {
+            self.sync_wave_length
+        }
+    }
+
+    /// Whether the slot at `round` is decided by the asynchronous rule. Round 0
+    /// classifies as async for any finite period; harmless, as genesis is
+    /// filtered from the committer's output.
+    pub(crate) fn is_async_round(&self, round: RoundNumber) -> bool {
+        matches!(self.period, Some(period) if round.is_multiple_of(period.get()))
+    }
 }
 
 /// Optimistic fast-path parameters for dual-path protocols.
@@ -413,6 +538,8 @@ pub struct Protocol {
     /// Whether decision-round votes are themselves the certificates (no certify
     /// round); forced by geometry at `wave_length == 2`.
     pub merged_certificates: bool,
+    /// Per-round wavelength schedule for Steelhead; `None` for all base protocols.
+    pub steelhead: Option<SteelheadSchedule>,
     /// The number of leaders per round.
     pub leader_count: NonZeroUsize,
     /// Whether the protocol commits one leader per round.
@@ -439,6 +566,7 @@ impl Protocol {
             anchor_link_size: 1,
             wave_length: 3,
             merged_certificates: false,
+            steelhead: None,
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
             leader_wait: true,
@@ -461,6 +589,7 @@ impl Protocol {
             anchor_link_size: 1,
             wave_length: 5,
             merged_certificates: false,
+            steelhead: None,
             leader_count: NonZeroUsize::new(1).unwrap(),
             pipeline: false,
             leader_wait: false,
@@ -483,6 +612,7 @@ impl Protocol {
             anchor_link_size: 1,
             wave_length: 3,
             merged_certificates: false,
+            steelhead: None,
             leader_count,
             pipeline: true,
             leader_wait: true,
@@ -509,6 +639,7 @@ impl Protocol {
             anchor_link_size: weak_quorum,
             wave_length: 2,
             merged_certificates: true,
+            steelhead: None,
             leader_count,
             pipeline: true,
             leader_wait: true,
@@ -532,6 +663,7 @@ impl Protocol {
             anchor_link_size: weak_quorum,
             wave_length: 3,
             merged_certificates: true,
+            steelhead: None,
             leader_count,
             pipeline: true,
             leader_wait: false,
@@ -567,6 +699,7 @@ impl Protocol {
             anchor_link_size: total_stake - 3 * f - 2 * c,
             wave_length: 2,
             merged_certificates: true,
+            steelhead: None,
             leader_count,
             pipeline: true,
             leader_wait: true,
@@ -597,6 +730,7 @@ impl Protocol {
             anchor_link_size: 1,
             wave_length,
             merged_certificates: false,
+            steelhead: None,
             leader_count,
             pipeline: true,
             leader_wait: false,
@@ -619,6 +753,7 @@ impl Protocol {
             anchor_link_size: 1,
             wave_length: 2,
             merged_certificates: true,
+            steelhead: None,
             leader_count,
             pipeline: true,
             leader_wait: true,
@@ -676,11 +811,51 @@ impl Protocol {
             anchor_link_size: 1,
             wave_length: 3,
             merged_certificates: false,
+            steelhead: None,
             leader_count,
             pipeline: true,
             leader_wait: true,
             require_crypto: f != 0,
         })
+    }
+
+    /// Steelhead
+    ///
+    /// "Steelhead: Dual-Mode DAG Consensus Without Mode Switching"
+    ///
+    /// Composes the pair's sync and async rules over one DAG: every `period`-th
+    /// round is an async slot decided at `async_wave_length`, the others sync
+    /// slots at the pair's sync wave length. Both rules share the pair's quorums.
+    pub fn steelhead(
+        total_stake: Stake,
+        pair: SteelheadPair,
+        period: Option<NonZeroU64>,
+        async_wave_length: RoundNumber,
+        leader_count: NonZeroUsize,
+    ) -> Result<Self, ProtocolError> {
+        let valid_async_wave = match pair {
+            SteelheadPair::MysticetiMahiMahi => [4, 5].contains(&async_wave_length),
+            SteelheadPair::BlueBottle => async_wave_length == 3,
+        };
+        if !valid_async_wave {
+            return Err(ProtocolError::SteelheadInvalidAsyncWaveLength {
+                pair,
+                async_wave_length,
+            });
+        }
+
+        let mut protocol = match pair {
+            SteelheadPair::MysticetiMahiMahi => Self::mysticeti(total_stake, leader_count),
+            SteelheadPair::BlueBottle => {
+                Self::blue_bottle_partially_synchronous(total_stake, leader_count)
+            }
+        };
+        protocol.steelhead = Some(SteelheadSchedule {
+            period,
+            sync_wave_length: protocol.wave_length,
+            async_wave_length,
+        });
+        Ok(protocol)
     }
 }
 

@@ -57,7 +57,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
         let mut storage = Storage::new_for_test(committee);
         let mut committer = Committer::new_for_test(committee, &storage, spec);
         let l1 = committer.nth_leader_round(1);
-        let target_round = l1 + protocol.wave_length;
+        let target_round = l1 + committer.wave_length_at(l1);
         let target_leader = elector.elect_leader(target_round + target_offset as u64);
         let l1_votes = build_dag(committee, &mut storage, None, target_round);
         let l1_blames = drop_leader(&l1_votes, target_leader);
@@ -66,7 +66,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
             committer.next_leader_round_after(committer.decision_round_for(target_round)),
         );
 
-        let use_hide_voters = protocol.wave_length == 2
+        let use_hide_voters = committer.wave_length_at(target_round) == 2
             && (committee.len() as Stake - protocol.direct_skip_quorum + 1)
                 >= protocol.anchor_link_size;
         if use_hide_voters {
