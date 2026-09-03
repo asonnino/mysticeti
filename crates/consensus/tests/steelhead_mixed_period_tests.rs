@@ -11,7 +11,6 @@ use std::{
 
 use consensus::{
     committer::Committer,
-    leader::LeaderElector,
     protocol::{ConsensusProtocol, SteelheadPair},
 };
 use dag::{
@@ -27,7 +26,6 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>, leader_count: usize
     let mut storage = Storage::new_for_test(committee);
     build_dag(committee, &mut storage, None, DAG_DEPTH);
     let mut committer = Committer::new_for_test(committee, &storage, spec);
-    let elector = LeaderElector::new(committee.len());
 
     // The output stops at the first slot whose decision round exceeds the DAG.
     let last_decidable_round = (1..)
@@ -51,7 +49,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>, leader_count: usize
                 assert_eq!(block.round(), round, "[{spec:?}] round order");
                 assert_eq!(
                     block.author(),
-                    elector.elect_leader(round + offset),
+                    committer.leader_at(round, offset),
                     "[{spec:?}] leader at round {round} offset {offset}"
                 );
             }

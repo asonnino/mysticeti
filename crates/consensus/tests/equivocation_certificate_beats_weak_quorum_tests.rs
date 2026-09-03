@@ -19,7 +19,7 @@
 
 use std::sync::Arc;
 
-use consensus::{committer::Committer, leader::LeaderElector, protocol::ConsensusProtocol};
+use consensus::{committer::Committer, protocol::ConsensusProtocol};
 use dag::{
     authority::Authority,
     block::Block,
@@ -59,14 +59,13 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
         return;
     }
     let k = protocol.leader_count.get();
-    let elector = LeaderElector::new(committee.len());
 
     for target_offset in 0..k {
         let mut storage = Storage::new_for_test(committee);
         let mut committer = Committer::new_for_test(committee, &storage, spec);
         let l1 = committer.nth_leader_round(1);
         let decision_round = committer.decision_round_for(l1);
-        let target_leader = elector.elect_leader(l1 + target_offset as u64);
+        let target_leader = committer.leader_at(l1, target_offset as u64);
         if target_leader == Authority::default() {
             // The block store enforces that its own authority never equivocates
             // (one own block per round); observe equivocation from a peer, as a
@@ -158,7 +157,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
             "[{spec}] target_offset={target_offset} expected at least {k} decisions"
         );
         for (offset, decision) in sequence.iter().take(k).enumerate() {
-            let expected = elector.elect_leader(l1 + offset as u64);
+            let expected = committer.leader_at(l1, offset as u64);
             if offset == target_offset {
                 match decision {
                     LeaderStatus::IndirectCommit(block) => {

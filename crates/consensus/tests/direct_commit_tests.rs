@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use consensus::{committer::Committer, leader::LeaderElector, protocol::ConsensusProtocol};
+use consensus::{committer::Committer, protocol::ConsensusProtocol};
 use dag::{
     committee::Committee,
     consensus::LeaderStatus,
@@ -46,9 +46,8 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     tracing::info!("[{spec}] Commit sequence: {sequence:?}");
 
     assert_eq!(sequence.len(), k, "[{spec}] expected {k} decisions");
-    let elector = LeaderElector::new(committee.len());
     for (offset, decision) in sequence.iter().enumerate() {
-        let expected = elector.elect_leader(l1 + offset as u64);
+        let expected = committer.leader_at(l1, offset as u64);
         match decision {
             LeaderStatus::DirectCommit(block) => {
                 assert_eq!(block.author(), expected, "[{spec}] offset={offset}");

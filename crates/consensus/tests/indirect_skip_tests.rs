@@ -20,7 +20,7 @@
 
 use std::sync::Arc;
 
-use consensus::{committer::Committer, leader::LeaderElector, protocol::ConsensusProtocol};
+use consensus::{committer::Committer, protocol::ConsensusProtocol};
 use dag::{
     committee::{Committee, Stake},
     consensus::LeaderStatus,
@@ -51,14 +51,13 @@ fn run_for_size(n: usize) {
 fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     let protocol = spec.to_protocol(committee).expect("valid protocol");
     let k = protocol.leader_count.get();
-    let elector = LeaderElector::new(committee.len());
 
     for target_offset in 0..k {
         let mut storage = Storage::new_for_test(committee);
         let mut committer = Committer::new_for_test(committee, &storage, spec);
         let l1 = committer.nth_leader_round(1);
         let target_round = l1 + committer.wave_length_at(l1);
-        let target_leader = elector.elect_leader(target_round + target_offset as u64);
+        let target_leader = committer.leader_at(target_round, target_offset as u64);
         let l1_votes = build_dag(committee, &mut storage, None, target_round);
         let l1_blames = drop_leader(&l1_votes, target_leader);
 
@@ -117,7 +116,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
         tracing::info!("[{spec}] target_offset={target_offset} sequence: {sequence:?}");
 
         for offset in 0..k {
-            let leader = elector.elect_leader(target_round + offset as u64);
+            let leader = committer.leader_at(target_round, offset as u64);
             if offset == target_offset {
                 let expected = LeaderStatus::IndirectSkip(leader, target_round);
                 assert!(

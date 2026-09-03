@@ -39,6 +39,8 @@ pub(crate) struct BaseCommitter {
     anchor_link_size: Stake,
     pub(crate) wave: Wave,
     leader_offset: RoundNumber,
+    /// Coin-elected leaders (asynchronous protocols, `leader_wait: false`).
+    coin_leaders: bool,
 }
 
 impl BaseCommitter {
@@ -65,7 +67,13 @@ impl BaseCommitter {
                 protocol.merged_certificates,
             ),
             leader_offset,
+            coin_leaders: !protocol.leader_wait,
         }
+    }
+
+    #[cfg(any(test, feature = "test-utils"))]
+    pub(crate) fn leader_offset(&self) -> RoundNumber {
+        self.leader_offset
     }
 
     #[cfg(test)]
@@ -117,6 +125,9 @@ impl BaseCommitter {
             return None;
         }
         let offset = self.leader_offset as RoundNumber;
+        if self.coin_leaders {
+            return Some(self.leader_elector.elect_fake_coin_leader(round + offset));
+        }
         Some(self.leader_elector.elect_leader(round + offset))
     }
 

@@ -60,6 +60,11 @@ impl SteelheadMode {
     }
 
     fn elect_leader(&self, round: RoundNumber, leader_offset: RoundNumber) -> Authority {
+        if self.schedule.is_async_round(round) {
+            return self
+                .leader_elector
+                .elect_fake_coin_leader(round + leader_offset);
+        }
         self.leader_elector.elect_leader(round + leader_offset)
     }
 }
@@ -204,6 +209,20 @@ impl Committer {
             storage.block_reader().clone(),
             spec.to_protocol(committee).expect("valid protocol"),
         )
+    }
+
+    /// The leader this committer elects at `(round, leader_offset)`, following
+    /// the protocol's leader source (round-robin or the fake coin).
+    /// Panics if `round` is not a leader round or the offset has no committer.
+    pub fn leader_at(&self, round: RoundNumber, leader_offset: RoundNumber) -> Authority {
+        if let Some(mode) = &self.steelhead {
+            return mode.elect_leader(round, leader_offset);
+        }
+        self.base_committers
+            .iter()
+            .filter(|bc| bc.leader_offset() == leader_offset)
+            .find_map(|bc| bc.elect_leader(round))
+            .expect("not a leader round for this offset")
     }
 
     /// True if any of this committer's base committers owns a leader at `round`.
