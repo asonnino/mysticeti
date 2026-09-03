@@ -55,10 +55,14 @@ pub trait ImportExport: Serialize + DeserializeOwned {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DagParameters {
-    /// Override the round timeout. When `None`, the runtime falls
-    /// back to the chosen consensus protocol's default.
+    /// Override the leader round timeout (and the quorum round timeout, unless
+    /// that is overridden separately). When `None`, the runtime default applies.
     #[serde(default)]
     pub round_timeout: Option<Duration>,
+    /// Override the quorum round timeout: the cap on waiting for stragglers
+    /// past the quorum on rounds without a leader wait.
+    #[serde(default)]
+    pub quorum_round_timeout: Option<Duration>,
     #[serde(default = "dag_defaults::default_max_block_size")]
     pub max_block_size: usize,
     #[serde(default = "dag_defaults::default_enable_synchronizer")]
@@ -85,6 +89,7 @@ impl Default for DagParameters {
     fn default() -> Self {
         Self {
             round_timeout: None,
+            quorum_round_timeout: None,
             max_block_size: dag_defaults::default_max_block_size(),
             enable_synchronizer: dag_defaults::default_enable_synchronizer(),
             fsync: dag_defaults::default_fsync(),

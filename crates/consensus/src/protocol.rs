@@ -10,6 +10,7 @@ use std::{
 use dag::{
     block::RoundNumber,
     committee::{Committee, Stake},
+    sync::net_sync::QuorumTimeoutRounds,
 };
 use serde::{Deserialize, Serialize};
 
@@ -859,15 +860,22 @@ impl Protocol {
     }
 }
 
+/// Default cap on waiting for the leader block(s) of a leader-wait round.
+pub const DEFAULT_LEADER_ROUND_TIMEOUT: Duration = Duration::from_secs(1);
+/// Default cap on waiting for stragglers past the quorum on the other rounds.
+pub const DEFAULT_QUORUM_ROUND_TIMEOUT: Duration = Duration::from_millis(75);
+
 impl Protocol {
-    /// Sensible default round timeout based on whether the protocol
-    /// waits for a specific leader (slower, partially synchronous) or
-    /// for a quorum of any blocks (faster, asynchronous).
-    pub fn default_round_timeout(&self) -> Duration {
-        if self.leader_wait {
-            Duration::from_secs(1)
-        } else {
-            Duration::from_millis(75)
+    /// Which rounds advance under the quorum cap instead of the leader cap:
+    /// none for the partially synchronous protocols, all for the asynchronous
+    /// ones, and Steelhead's async slots for a finite period.
+    pub fn quorum_timeout_rounds(&self) -> QuorumTimeoutRounds {
+        if !self.leader_wait {
+            return QuorumTimeoutRounds::Every;
+        }
+        match self.steelhead.and_then(|schedule| schedule.period) {
+            Some(period) => QuorumTimeoutRounds::EveryNth(period),
+            None => QuorumTimeoutRounds::None,
         }
     }
 }

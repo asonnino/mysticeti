@@ -7,7 +7,10 @@ use std::{
 };
 
 use ::prometheus::Registry;
-use consensus::committer::Committer;
+use consensus::{
+    committer::Committer,
+    protocol::{DEFAULT_LEADER_ROUND_TIMEOUT, DEFAULT_QUORUM_ROUND_TIMEOUT},
+};
 use dag::{
     authority::Authority,
     block::transaction::Transaction,
@@ -21,7 +24,10 @@ use dag::{
     crypto::CryptoEngine,
     metrics::Metrics,
     storage::Storage,
-    sync::{net_sync::NetworkSyncer, network::Network},
+    sync::{
+        net_sync::{NetworkSyncer, RoundTimeouts},
+        network::Network,
+    },
 };
 use eyre::{Context, Result, eyre};
 use tokio::sync::mpsc;
@@ -112,10 +118,20 @@ impl Replica {
         let commit_handler =
             CommitHandler::new(block_handler.transaction_time.clone(), metrics.clone());
 
-        let round_timeout = parameters
-            .dag
-            .round_timeout
-            .unwrap_or_else(|| protocol.default_round_timeout());
+        let round_timeouts = RoundTimeouts {
+            leader: parameters
+                .dag
+                .round_timeout
+                .unwrap_or(DEFAULT_LEADER_ROUND_TIMEOUT),
+            // An explicit `round_timeout` override without a separate quorum
+            // override applies to both caps, preserving pre-split configs.
+            quorum: parameters
+                .dag
+                .quorum_round_timeout
+                .or(parameters.dag.round_timeout)
+                .unwrap_or(DEFAULT_QUORUM_ROUND_TIMEOUT),
+            quorum_rounds: protocol.quorum_timeout_rounds(),
+        };
         let enable_synchronizer = parameters.dag.enable_synchronizer;
         let fsync = parameters.dag.fsync;
         let committer = Committer::new(committee.clone(), storage.block_reader().clone(), protocol);
@@ -133,7 +149,7 @@ impl Replica {
         let network_synchronizer = NetworkSyncer::start(
             network,
             core,
-            round_timeout,
+            round_timeouts,
             enable_synchronizer,
             commit_handler,
             metrics.clone(),

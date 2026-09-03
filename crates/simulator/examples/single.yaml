@@ -22,8 +22,12 @@ topology: fullMesh
 # Replica-level tunable parameters (all optional, shown with defaults).
 replica_parameters:
   dag:
-    # Omit round_timeout to use the protocol-dependent default.
+    # Round-advance caps: round_timeout bounds the wait for leader blocks
+    # (default 1s); quorum_round_timeout bounds the wait for stragglers past
+    # the quorum on leaderless rounds (default 75ms). Omit either for the
+    # default; a round_timeout alone overrides both caps.
     round_timeout: null
+    quorum_round_timeout: null
     max_block_size: 4194304
     enable_synchronizer: false
     fsync: false

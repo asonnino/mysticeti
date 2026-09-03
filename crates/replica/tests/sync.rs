@@ -10,9 +10,18 @@ use dag::{
     context::TokioCtx,
     core::block_handler::CommitHandler,
     metrics::Metrics,
-    sync::net_sync::NetworkSyncer,
+    sync::net_sync::{NetworkSyncer, QuorumTimeoutRounds, RoundTimeouts},
     test_util::{check_commits, networks_and_addresses},
 };
+
+/// Uniform one-second caps, matching the pre-split behavior of these tests.
+fn test_round_timeouts() -> RoundTimeouts {
+    RoundTimeouts {
+        leader: Duration::from_secs(1),
+        quorum: Duration::from_secs(1),
+        quorum_rounds: QuorumTimeoutRounds::None,
+    }
+}
 use tokio::sync::mpsc;
 
 #[tokio::test]
@@ -29,7 +38,7 @@ async fn test_network_sync() {
         let network_syncer = NetworkSyncer::start(
             network,
             core,
-            Duration::from_secs(1),
+            test_round_timeouts(),
             false,
             commit_handler,
             Metrics::new_for_test(0),
@@ -68,7 +77,7 @@ async fn test_network_sync_with_commit_consumer() {
         let network_syncer = NetworkSyncer::start(
             network,
             core,
-            Duration::from_secs(1),
+            test_round_timeouts(),
             false,
             commit_handler,
             Metrics::new_for_test(0),

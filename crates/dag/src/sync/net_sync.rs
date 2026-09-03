@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, num::NonZeroU64, sync::Arc, time::Duration};
 
 use futures::future::join_all;
 use tokio::{
@@ -11,6 +11,7 @@ use tokio::{
 
 use crate::{
     authority::Authority,
+    block::RoundNumber,
     committee::Committee,
     committee::Stake,
     consensus::{CommittedSubDag, DagConsensus},
@@ -33,6 +34,40 @@ use crate::{
 /// The maximum number of blocks that can be requested in a single message.
 pub const MAXIMUM_BLOCK_REQUEST: usize = 10;
 
+/// Which rounds advance under the short quorum cap instead of the leader cap.
+#[derive(Clone, Copy)]
+pub enum QuorumTimeoutRounds {
+    None,
+    Every,
+    EveryNth(NonZeroU64),
+}
+
+/// Round-advance timeouts: a round's proposer holds the door up to `leader`
+/// for the leader block(s), or up to `quorum` for stragglers past the quorum,
+/// depending on which cap `quorum_rounds` assigns to the round.
+#[derive(Clone, Copy)]
+pub struct RoundTimeouts {
+    pub leader: Duration,
+    pub quorum: Duration,
+    pub quorum_rounds: QuorumTimeoutRounds,
+}
+
+impl RoundTimeouts {
+    pub fn for_round(&self, round: RoundNumber) -> Duration {
+        match self.quorum_rounds {
+            QuorumTimeoutRounds::None => self.leader,
+            QuorumTimeoutRounds::Every => self.quorum,
+            QuorumTimeoutRounds::EveryNth(period) => {
+                if round.is_multiple_of(period.get()) {
+                    self.quorum
+                } else {
+                    self.leader
+                }
+            }
+        }
+    }
+}
+
 pub struct NetworkSyncer<C: Ctx, D: DagConsensus> {
     inner: Arc<NetworkSyncerInner<C, D>>,
     main_task: C::JoinHandle<()>,
@@ -47,7 +82,7 @@ pub struct NetworkSyncerInner<C: Ctx, D: DagConsensus> {
     committee: Arc<Committee>,
     quorum_threshold: Stake,
     crypto: CryptoVerifier,
-    round_timeout: Duration,
+    round_timeouts: RoundTimeouts,
     stop: mpsc::Sender<()>,
 }
 
@@ -55,7 +90,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
     pub fn start(
         network: Network,
         mut core: Core<C, D>,
-        round_timeout: Duration,
+        round_timeouts: RoundTimeouts,
         enable_synchronizer: bool,
         mut commit_handler: CommitHandler<C>,
         metrics: Arc<Metrics>,
@@ -89,7 +124,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
             committee,
             quorum_threshold,
             crypto,
-            round_timeout,
+            round_timeouts,
             stop: stop_sender.clone(),
         });
         let block_fetcher = Arc::new(BlockFetcher::start(
@@ -256,7 +291,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
 
     #[tracing::instrument(level = "debug", skip_all)]
     async fn round_timeout_task(inner: Arc<NetworkSyncerInner<C, D>>) -> Option<()> {
-        let round_timeout = inner.round_timeout;
+        let round_timeouts = inner.round_timeouts;
         loop {
             let notified = inner.notify.notified();
             let round = inner
@@ -265,7 +300,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
                 .map(|b| b.round())
                 .unwrap_or_default();
             select! {
-                _sleep = C::sleep(round_timeout) => {
+                _sleep = C::sleep(round_timeouts.for_round(round)) => {
                     tracing::debug!("Timeout {round}");
                     // todo - more then one round timeout can happen, need to fix this
                     inner.syncer.force_new_block(round).await;
