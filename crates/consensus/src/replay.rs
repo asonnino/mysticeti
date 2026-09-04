@@ -41,7 +41,7 @@ use crate::protocol::Protocol;
 /// The committed window: the anchor's causal history over the last
 /// `interval` rounds, indexed per round. Collected once; the replay never
 /// touches storage afterwards.
-pub(crate) struct Window {
+pub struct Window {
     floor: RoundNumber,
     top: RoundNumber,
     /// Blocks per round (index `round - floor`), sorted for determinism.
@@ -50,7 +50,7 @@ pub(crate) struct Window {
 
 /// Everything the replay needs besides the window itself; snapshotted from
 /// [`Protocol`] at committer construction.
-pub(crate) struct ReplayParams {
+pub struct ReplayParams {
     pub committee: Arc<Committee>,
     pub direct_commit_quorum: u64,
     pub direct_skip_quorum: u64,
@@ -61,7 +61,7 @@ pub(crate) struct ReplayParams {
 }
 
 impl ReplayParams {
-    pub(crate) fn from_protocol(protocol: &Protocol, committee: Arc<Committee>) -> Option<Self> {
+    pub fn from_protocol(protocol: &Protocol, committee: Arc<Committee>) -> Option<Self> {
         let schedule = protocol.steelhead?;
         Some(Self {
             committee,
@@ -77,11 +77,7 @@ impl ReplayParams {
 
 /// Collect the anchor's causal history restricted to the last `interval`
 /// rounds. The single place the replay touches storage.
-pub(crate) fn collect_window(
-    block_reader: &BlockReader,
-    anchor: &Data<Block>,
-    interval: u64,
-) -> Window {
+pub fn collect_window(block_reader: &BlockReader, anchor: &Data<Block>, interval: u64) -> Window {
     let top = anchor.round();
     let floor = top.saturating_sub(interval).max(1);
     let mut members: HashSet<BlockReference> = HashSet::new();
@@ -160,7 +156,7 @@ type Scaled = u128;
 
 /// Replay the window under `period` and return the total expected output
 /// delay (comparable across candidates: same rounds, same scale).
-pub(crate) fn replay(window: &Window, params: &ReplayParams, period: NonZeroU64) -> Scaled {
+pub fn replay(window: &Window, params: &ReplayParams, period: NonZeroU64) -> Scaled {
     let n = params.committee.len() as u128;
     let scale = |round: RoundNumber| round as u128 * n;
     let top_scaled = scale(window.top);
@@ -340,7 +336,7 @@ fn replay_slot(
 /// Score every candidate period (powers of two up to `max_period`) and pick
 /// the argmin, keeping `current` unless the best improves by more than the
 /// hysteresis. Ties prefer the current period, then the larger candidate.
-pub(crate) fn choose_period(
+pub fn choose_period(
     window: &Window,
     params: &ReplayParams,
     current: NonZeroU64,

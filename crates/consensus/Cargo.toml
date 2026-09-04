@@ -12,9 +12,14 @@ tracing.workspace = true
 
 [dev-dependencies]
 consensus = { path = ".", features = ["test-utils"] }
+criterion.workspace = true
 dag = { workspace = true, features = ["test-utils"] }
 serde_yaml.workspace = true
 tracing-test.workspace = true
 
 [features]
 test-utils = []
+
+[[bench]]
+name = "replay_cost"
+harness = false
