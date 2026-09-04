@@ -40,6 +40,15 @@ class Job:
     def out_dir(self) -> Path:
         return DATA_DIR / self.campaign / self.name
 
+    @property
+    def disk_weight(self) -> int:
+        """Approximate transient disk (bytes) of the run's ephemeral WALs:
+        every replica stores every replica's blocks."""
+        generator = self.spec.get("load_generator", {})
+        system_load = generator.get("load", 0) * self.spec["committee_size"]
+        return (self.spec["committee_size"] * system_load
+                * generator.get("transaction_size", 0) * self.spec["duration_secs"])
+
 
 def mysticeti(leader_count=2):
     return {"protocol": "mysticeti", "leader_count": leader_count}
@@ -86,7 +95,8 @@ def run_spec(
     sample_interval_secs=None,
 ):
     """One mapping-form SimulationConfig (never a suite list: one config per
-    simulator invocation, so runs parallelize and never share a directory)."""
+    simulator invocation, so runs parallelize and never share a directory).
+    `load` is the SYSTEM tx/s, split evenly across the replicas' generators."""
     spec = {
         "committee_size": committee_size,
         "latency_min_ms": LATENCY_MIN_MS,
@@ -95,7 +105,7 @@ def run_spec(
         "rng_seed": seed,
         "replica_parameters": {"consensus": consensus},
         "load_generator": {
-            "load": load,
+            "load": max(load // committee_size, 1),
             "transaction_size": TRANSACTION_SIZE,
             "initial_delay": "0s",
         },

@@ -6,6 +6,8 @@ pipeline needs: histograms, plain counters, labeled counters, gauges)."""
 
 import re
 
+# No escaped-quote handling: every label the simulator emits is plain
+# (authority letters, commit types, bucket bounds).
 SAMPLE = re.compile(r"^([a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{(.*)\})?\s+(\S+)\s*$")
 LABEL = re.compile(r'(\w+)="([^"]*)"')
 

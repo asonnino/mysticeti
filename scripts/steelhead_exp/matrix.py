@@ -19,9 +19,17 @@ from simconfig import (
 COMMITTEES = [10, 50]
 PAIRS = ["mm", "bb"]
 SEEDS = [0, 1, 2]
-LOADS = [100, 1_000, 5_000, 10_000, 20_000, 50_000]
-REFERENCE_LOAD = {10: 10_000, 50: 10_000}
-TIMELINE_LOAD = 1_000
+# Loads are SYSTEM-wide tx/s (split evenly across replicas): the figures plot
+# measured throughput, and per-replica loads would make committee sizes
+# incomparable — and n=50 disk-infeasible (each replica's ephemeral WAL holds
+# every replica's blocks, so a run transiently writes about
+# committee * system_load * tx_size * duration bytes).
+LOADS = {
+    10: [1_000, 5_000, 10_000, 20_000, 50_000, 100_000],
+    50: [1_000, 5_000, 10_000, 20_000],
+}
+REFERENCE_LOAD = {10: 20_000, 50: 20_000}
+TIMELINE_LOAD = 10_000
 STATIC_PERIODS = [2, 4, 8, 16]
 ADAPTIVE = {"interval": 32, "max_period": 8, "epsilon_percent": 10}
 ATTACK_DELAY_MS = 2_000
@@ -71,7 +79,7 @@ def good_jobs():
     for committee in COMMITTEES:
         for pair in PAIRS:
             for slug, consensus in protocols(pair).items():
-                for load in LOADS:
+                for load in LOADS[committee]:
                     for seed in SEEDS:
                         jobs.append(Job(
                             name=f"good--n{committee}--{pair}--{slug}--L{load}--s{seed}",

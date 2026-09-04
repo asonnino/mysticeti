@@ -21,7 +21,7 @@ def percent_delta(value, reference):
     return (value - reference) / reference * 100.0
 
 
-def good_rows(rows):
+def good_rows():
     """Healthy-latency comparisons at the reference load (MM pair)."""
     jobs = matrix.good_jobs()
     for committee in matrix.COMMITTEES:
@@ -53,7 +53,6 @@ def good_rows(rows):
             yield (f"claim:good mahi4-vs-mahi5 gap (n={committee})",
                     f"{percent_delta(p50['mahi4'][0], p50['mahi5'][0]):+.1f}%",
                     "p50 gap of Mahi-Mahi-4 vs Mahi-Mahi-5", source)
-    return rows
 
 
 def attack_rows():
@@ -70,13 +69,17 @@ def attack_rows():
             columns = timeseries.load(job.out_dir)
             if columns is None:
                 continue
-            ticks = timeseries.per_tick(columns)
+            # Max across replicas: the shared leader sequence, not the
+            # replica-summed activity; the span comes from the tick times the
+            # delta actually covers.
+            ticks = timeseries.per_tick(columns, counter_mode="max")
             mask = (ticks["time_s"] > attack.start_s) & (ticks["time_s"] <= attack.end_s)
             commits = ticks["direct_commits"] + ticks["indirect_commits"]
-            window = commits[mask]
+            window, window_times = commits[mask], ticks["time_s"][mask]
             if len(window) < 2 or window[-1] <= window[0]:
                 continue
-            intervals.append((attack.end_s - attack.start_s) / (window[-1] - window[0]))
+            span = float(window_times[-1] - window_times[0])
+            intervals.append(span / (window[-1] - window[0]))
         mean, std = summary.seed_stats(intervals)
         if mean is not None:
             yield (f"claim:async Mysticeti commit interval under attack (n={committee})",
@@ -98,12 +101,14 @@ def adaptive_rows():
         times, period = merged["time_s"], merged["steelhead_period"]
 
         def settle_delay(from_s, until_s):
+            """Start of the final stable run of the period within the phase."""
             mask = (times > from_s) & (times <= until_s)
             if not mask.any():
                 return None
-            final = period[mask][-1]
-            settled = times[mask][period[mask] == final]
-            return float(settled[0] - from_s) if len(settled) else None
+            window_times, window_period = times[mask], period[mask]
+            unstable = np.where(~np.isclose(window_period, window_period[-1]))[0]
+            start = unstable[-1] + 1 if len(unstable) else 0
+            return float(window_times[start] - from_s)
 
         descent = settle_delay(attack.start_s, attack.end_s)
         recovery = settle_delay(attack.end_s, times[-1])
@@ -144,12 +149,15 @@ def replay_tracking_rows():
         columns = timeseries.load(job.out_dir)
         if not log.exists() or columns is None:
             continue
-        ticks = timeseries.per_tick(columns)
+        # Max across replicas: the shared decided sequence (commits and
+        # skips) approximates rounds once divided by the cohort size.
+        ticks = timeseries.per_tick(columns, counter_mode="max")
         scores = {}
         for top, candidate, score in REPLAY_SCORE.findall(log.read_text()):
             scores.setdefault(int(top), {})[int(candidate)] = int(score)
-        commits = ticks["direct_commits"] + ticks["indirect_commits"]
-        total_rounds = commits[-1] / 2  # leader_count = 2
+        decided = (ticks["direct_commits"] + ticks["indirect_commits"]
+                    + ticks["direct_skips"] + ticks["indirect_skips"])
+        total_rounds = decided[-1] / 2  # leader_count = 2 in every matrix spec
         round_ms = ticks["time_s"][-1] * 1000.0 / total_rounds if total_rounds else None
         if not scores or round_ms is None:
             continue
@@ -188,7 +196,7 @@ def loc_rows():
 
 def write_report():
     rows = []
-    for generator in (good_rows(None), attack_rows(), adaptive_rows(),
+    for generator in (good_rows(), attack_rows(), adaptive_rows(),
                         replay_tracking_rows(), loc_rows()):
         rows.extend(generator)
     PLOTS_DIR.mkdir(parents=True, exist_ok=True)

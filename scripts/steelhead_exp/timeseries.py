@@ -33,16 +33,18 @@ def load(run_dir):
     return columns
 
 
-def per_tick(columns):
-    """Aggregate across replicas per tick: counters are summed, the latency
-    and period columns averaged (NaN-aware). Returns {column: array} keyed on
-    a sorted `time_s` grid."""
+def per_tick(columns, counter_mode="sum"):
+    """Aggregate across replicas per tick: counters are summed (system-wide
+    activity) or maxed (`counter_mode="max"`, the most advanced replica's view
+    of the shared leader sequence); latency and period columns are averaged
+    (NaN-aware). Returns {column: array} keyed on a sorted `time_s` grid."""
     times = np.unique(columns["time_s"])
     ticks = {"time_s": times}
+    reduce = np.nansum if counter_mode == "sum" else np.nanmax
     for name in COUNTER_COLUMNS:
         if name in columns:
             ticks[name] = np.array([
-                np.nansum(columns[name][columns["time_s"] == t]) for t in times
+                reduce(columns[name][columns["time_s"] == t]) for t in times
             ])
     for name in MEAN_COLUMNS:
         if name in columns:
@@ -68,6 +70,8 @@ def seed_mean(tick_sets):
     """Mean across seeds on the common tick grid (deterministic runs share
     it); NaN-aware so empty windows don't drag the mean."""
     times = tick_sets[0]["time_s"]
+    for ticks in tick_sets[1:]:
+        assert np.array_equal(ticks["time_s"], times), "seed tick grids must match"
     merged = {"time_s": times}
     for name in tick_sets[0]:
         if name == "time_s":

@@ -27,7 +27,7 @@ def main():
 
     run_parser = commands.add_parser("run", help="run missing matrix jobs (cached)")
     run_parser.add_argument("--filter", help="fnmatch on job names, or a campaign name")
-    run_parser.add_argument("--workers", type=int, help="process pool size")
+    run_parser.add_argument("--workers", type=int, help="worker pool size")
     run_parser.add_argument("--binary", type=Path, default=BINARY)
     run_parser.add_argument("--strict", action="store_true",
                             help="exit non-zero when any run does not pass")
