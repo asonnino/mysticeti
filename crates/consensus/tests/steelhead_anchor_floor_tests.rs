@@ -29,6 +29,7 @@ fn undecided_async_slot_holds_back_committed_sync_slots() {
         pair: SteelheadPair::MysticetiMahiMahi,
         period: NonZeroU64::new(4),
         async_wave_length: 5,
+        adaptive: None,
         leader_count: NonZeroUsize::new(1).unwrap(),
     };
 

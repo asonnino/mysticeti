@@ -95,10 +95,15 @@ impl NetworkConditions {
     /// asynchronous protocols) remain untargetable.
     fn touches_current_leaders(&self, from: usize, to: usize) -> bool {
         let round = self.max_round.load(Ordering::Relaxed);
-        let known_leader_round = match self.quorum_rounds {
+        let known_leader_round = match &self.quorum_rounds {
             QuorumTimeoutRounds::None => true,
             QuorumTimeoutRounds::Every => false,
             QuorumTimeoutRounds::EveryNth(period) => !round.is_multiple_of(period.get()),
+            // The period is public: the adversary tracks the live value.
+            QuorumTimeoutRounds::Dynamic(cell) => match cell.load(Ordering::Relaxed) {
+                0 => true,
+                period => !round.is_multiple_of(period),
+            },
         };
         if !known_leader_round {
             return false;

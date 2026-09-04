@@ -1,7 +1,15 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::HashMap, num::NonZeroU64, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    num::NonZeroU64,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Duration,
+};
 
 use futures::future::join_all;
 use tokio::{
@@ -35,17 +43,20 @@ use crate::{
 pub const MAXIMUM_BLOCK_REQUEST: usize = 10;
 
 /// Which rounds advance under the short quorum cap instead of the leader cap.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub enum QuorumTimeoutRounds {
     None,
     Every,
     EveryNth(NonZeroU64),
+    /// Every multiple of the live period in the cell (adaptive Steelhead;
+    /// 0 encodes an infinite period, i.e. no quorum rounds).
+    Dynamic(Arc<AtomicU64>),
 }
 
 /// Round-advance timeouts: a round's proposer holds the door up to `leader`
 /// for the leader block(s), or up to `quorum` for stragglers past the quorum,
 /// depending on which cap `quorum_rounds` assigns to the round.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct RoundTimeouts {
     pub leader: Duration,
     pub quorum: Duration,
@@ -54,16 +65,19 @@ pub struct RoundTimeouts {
 
 impl RoundTimeouts {
     pub fn for_round(&self, round: RoundNumber) -> Duration {
-        match self.quorum_rounds {
-            QuorumTimeoutRounds::None => self.leader,
-            QuorumTimeoutRounds::Every => self.quorum,
-            QuorumTimeoutRounds::EveryNth(period) => {
-                if round.is_multiple_of(period.get()) {
-                    self.quorum
-                } else {
-                    self.leader
-                }
-            }
+        let quorum_round = match &self.quorum_rounds {
+            QuorumTimeoutRounds::None => false,
+            QuorumTimeoutRounds::Every => true,
+            QuorumTimeoutRounds::EveryNth(period) => round.is_multiple_of(period.get()),
+            QuorumTimeoutRounds::Dynamic(cell) => match cell.load(Ordering::Relaxed) {
+                0 => false,
+                period => round.is_multiple_of(period),
+            },
+        };
+        if quorum_round {
+            self.quorum
+        } else {
+            self.leader
         }
     }
 }
@@ -291,7 +305,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
 
     #[tracing::instrument(level = "debug", skip_all)]
     async fn round_timeout_task(inner: Arc<NetworkSyncerInner<C, D>>) -> Option<()> {
-        let round_timeouts = inner.round_timeouts;
+        let round_timeouts = inner.round_timeouts.clone();
         loop {
             let notified = inner.notify.notified();
             let round = inner

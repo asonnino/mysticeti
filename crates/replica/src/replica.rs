@@ -3,7 +3,7 @@
 
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    sync::Arc,
+    sync::{Arc, atomic::AtomicU64},
 };
 
 use ::prometheus::Registry;
@@ -25,7 +25,7 @@ use dag::{
     metrics::Metrics,
     storage::Storage,
     sync::{
-        net_sync::{NetworkSyncer, RoundTimeouts},
+        net_sync::{NetworkSyncer, QuorumTimeoutRounds, RoundTimeouts},
         network::Network,
     },
 };
@@ -98,6 +98,25 @@ impl Replica {
             // The period trace: 0 encodes an infinite period (pure sync rule).
             metrics.set_steelhead_period(schedule.period.map(|p| p.get()).unwrap_or(0));
         }
+        // Adaptive period: the committer publishes updates into this cell so
+        // round timeouts track the live period instead of a startup snapshot.
+        let adaptive = protocol.steelhead.and_then(|schedule| schedule.adaptive);
+        let period_cell = adaptive.map(|config| Arc::new(AtomicU64::new(config.max_period.get())));
+        // The adaptive schedule is in-memory state; a restarted committer would
+        // rebuild it as [(0, max_period)] and diverge from peers that lived
+        // through updates. Until the schedule is reconstructed deterministically
+        // from the stored commit sequence (which GC preserves), reject restarts
+        // that recovered past the first update trigger.
+        if let (Some(config), Some(leader)) = (adaptive, recovered.last_committed_leader)
+            && leader.round() > config.interval
+        {
+            return Err(eyre!(
+                "Adaptive Steelhead cannot recover storage committed past round {} \
+                (recovered leader at round {}): the period schedule would be lost",
+                config.interval,
+                leader.round(),
+            ));
+        }
         let crypto = if crypto_disabled || !protocol.require_crypto {
             CryptoEngine::disabled()
         } else {
@@ -134,11 +153,19 @@ impl Replica {
                 .quorum_round_timeout
                 .or(parameters.dag.round_timeout)
                 .unwrap_or(DEFAULT_QUORUM_ROUND_TIMEOUT),
-            quorum_rounds: protocol.quorum_timeout_rounds(),
+            quorum_rounds: match &period_cell {
+                Some(cell) => QuorumTimeoutRounds::Dynamic(cell.clone()),
+                None => protocol.quorum_timeout_rounds(),
+            },
         };
         let enable_synchronizer = parameters.dag.enable_synchronizer;
         let fsync = parameters.dag.fsync;
-        let committer = Committer::new(committee.clone(), storage.block_reader().clone(), protocol);
+        let mut committer =
+            Committer::new(committee.clone(), storage.block_reader().clone(), protocol)
+                .with_metrics(metrics.clone());
+        if let Some(cell) = period_cell {
+            committer = committer.with_period_cell(cell);
+        }
         let core = Core::open(
             block_handler,
             authority,

@@ -68,12 +68,27 @@ pub enum ConsensusProtocol {
     Steelhead {
         pair: SteelheadPair,
         /// Every `period`-th round is an async slot; `None` means never (pure sync rule).
+        /// Mutually exclusive with `adaptive`, which starts at `max_period` and adapts.
+        #[serde(default)]
         period: Option<NonZeroU64>,
         /// Async-rule wave length: 4 or 5 for Mysticeti/Mahi-Mahi, exactly 3 for Blue Bottle.
         async_wave_length: RoundNumber,
+        /// Adapt the period by counterfactual replay of the committed window.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        adaptive: Option<AdaptiveConfig>,
         #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
     },
+}
+
+/// Adaptive-period parameters: every `interval` rounds, replay the committed
+/// window under each candidate period (powers of two up to `max_period`) and
+/// adopt the argmin, with `epsilon_percent` hysteresis.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+pub struct AdaptiveConfig {
+    pub interval: u64,
+    pub max_period: NonZeroU64,
+    pub epsilon_percent: u8,
 }
 
 /// The pair of base rules a Steelhead instantiation composes.
@@ -165,19 +180,26 @@ impl fmt::Display for ConsensusProtocol {
                 pair,
                 period,
                 async_wave_length,
+                adaptive,
                 leader_count,
             } => {
                 let pair_name = match pair {
                     SteelheadPair::MysticetiMahiMahi => "Mysticeti+Mahi-Mahi",
                     SteelheadPair::BlueBottle => "Blue Bottle",
                 };
-                match period {
-                    Some(period) => write!(
+                match (adaptive, period) {
+                    (Some(adaptive), _) => write!(
+                        fmt,
+                        "Steelhead {pair_name} (adaptive to {}, interval {}, async wave \
+                        {async_wave_length}, {leader_count} leaders/round)",
+                        adaptive.max_period, adaptive.interval
+                    ),
+                    (None, Some(period)) => write!(
                         fmt,
                         "Steelhead {pair_name} (period {period}, async wave {async_wave_length}, \
                         {leader_count} leaders/round)"
                     ),
-                    None => write!(
+                    (None, None) => write!(
                         fmt,
                         "Steelhead {pair_name} (period ∞, async wave {async_wave_length}, \
                         {leader_count} leaders/round)"
@@ -220,18 +242,27 @@ impl fmt::Debug for ConsensusProtocol {
                 pair,
                 period,
                 async_wave_length,
+                adaptive,
                 leader_count,
             } => {
                 let pair_tag = match pair {
                     SteelheadPair::MysticetiMahiMahi => "mm",
                     SteelheadPair::BlueBottle => "bb",
                 };
-                match period {
-                    Some(period) => write!(
+                match (adaptive, period) {
+                    (Some(adaptive), _) => {
+                        let (max_period, interval) = (adaptive.max_period, adaptive.interval);
+                        write!(
+                            fmt,
+                            "steelhead-{pair_tag}-adaptive-m{max_period}-i{interval}\
+                            -w{async_wave_length}-l{leader_count}"
+                        )
+                    }
+                    (None, Some(period)) => write!(
                         fmt,
                         "steelhead-{pair_tag}-p{period}-w{async_wave_length}-l{leader_count}"
                     ),
-                    None => write!(
+                    (None, None) => write!(
                         fmt,
                         "steelhead-{pair_tag}-pinf-w{async_wave_length}-l{leader_count}"
                     ),
@@ -296,8 +327,16 @@ impl ConsensusProtocol {
                 pair,
                 period,
                 async_wave_length,
+                adaptive,
                 leader_count,
-            } => Protocol::steelhead(total_stake, pair, period, async_wave_length, leader_count)?,
+            } => Protocol::steelhead(
+                total_stake,
+                pair,
+                period,
+                async_wave_length,
+                adaptive,
+                leader_count,
+            )?,
         })
     }
 }
@@ -351,12 +390,14 @@ impl ConsensusProtocol {
                     pair: SteelheadPair::MysticetiMahiMahi,
                     period: pure_period,
                     async_wave_length: 5,
+                    adaptive: None,
                     leader_count,
                 });
                 variants.push(Self::Steelhead {
                     pair: SteelheadPair::BlueBottle,
                     period: pure_period,
                     async_wave_length: 3,
+                    adaptive: None,
                     leader_count,
                 });
             }
@@ -472,6 +513,8 @@ pub enum ProtocolError {
         pair: SteelheadPair,
         async_wave_length: RoundNumber,
     },
+    #[error("Steelhead adaptive config invalid: {reason}")]
+    SteelheadInvalidAdaptive { reason: &'static str },
     #[error("leader_count ({leader_count}) exceeds committee size ({committee_size})")]
     LeaderCountExceedsCommittee {
         leader_count: NonZeroUsize,
@@ -482,28 +525,13 @@ pub enum ProtocolError {
 /// Steelhead's per-round wavelength schedule.
 #[derive(Clone, Copy)]
 pub struct SteelheadSchedule {
-    /// Every `period`-th round is an async slot; `None` means never.
+    /// Every `period`-th round is an async slot; `None` means never. With
+    /// `adaptive` set, this is the initial period (`max_period`).
     pub period: Option<NonZeroU64>,
     pub sync_wave_length: RoundNumber,
     pub async_wave_length: RoundNumber,
-}
-
-impl SteelheadSchedule {
-    /// The wavelength governing the slot at `round`.
-    pub(crate) fn wavelength(&self, round: RoundNumber) -> RoundNumber {
-        if self.is_async_round(round) {
-            self.async_wave_length
-        } else {
-            self.sync_wave_length
-        }
-    }
-
-    /// Whether the slot at `round` is decided by the asynchronous rule. Round 0
-    /// classifies as async for any finite period; harmless, as genesis is
-    /// filtered from the committer's output.
-    pub(crate) fn is_async_round(&self, round: RoundNumber) -> bool {
-        matches!(self.period, Some(period) if round.is_multiple_of(period.get()))
-    }
+    /// Adaptive-period parameters; `None` keeps the period static.
+    pub adaptive: Option<AdaptiveConfig>,
 }
 
 /// Optimistic fast-path parameters for dual-path protocols.
@@ -832,6 +860,7 @@ impl Protocol {
         pair: SteelheadPair,
         period: Option<NonZeroU64>,
         async_wave_length: RoundNumber,
+        adaptive: Option<AdaptiveConfig>,
         leader_count: NonZeroUsize,
     ) -> Result<Self, ProtocolError> {
         let valid_async_wave = match pair {
@@ -844,6 +873,37 @@ impl Protocol {
                 async_wave_length,
             });
         }
+        let period = match adaptive {
+            None => period,
+            Some(adaptive) => {
+                if period.is_some() {
+                    return Err(ProtocolError::SteelheadInvalidAdaptive {
+                        reason: "period must be omitted when adaptive is set",
+                    });
+                }
+                if !adaptive.max_period.get().is_power_of_two() {
+                    return Err(ProtocolError::SteelheadInvalidAdaptive {
+                        reason: "max_period must be a power of two",
+                    });
+                }
+                if adaptive.interval < 4 * adaptive.max_period.get() {
+                    return Err(ProtocolError::SteelheadInvalidAdaptive {
+                        reason: "interval must be at least 4 * max_period",
+                    });
+                }
+                if adaptive.interval > 100 {
+                    return Err(ProtocolError::SteelheadInvalidAdaptive {
+                        reason: "interval must be at most 100 (in-memory retention)",
+                    });
+                }
+                if adaptive.epsilon_percent >= 100 {
+                    return Err(ProtocolError::SteelheadInvalidAdaptive {
+                        reason: "epsilon_percent must be below 100",
+                    });
+                }
+                Some(adaptive.max_period)
+            }
+        };
 
         let mut protocol = match pair {
             SteelheadPair::MysticetiMahiMahi => Self::mysticeti(total_stake, leader_count),
@@ -855,6 +915,7 @@ impl Protocol {
             period,
             sync_wave_length: protocol.wave_length,
             async_wave_length,
+            adaptive,
         });
         Ok(protocol)
     }

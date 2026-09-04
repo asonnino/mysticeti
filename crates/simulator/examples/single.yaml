@@ -66,6 +66,16 @@ replica_parameters:
   #   steelhead                            { pair: mysticeti-mahi-mahi | blue-bottle,
   #                                          period (null = pure sync rule),
   #                                          async_wave_length, leader_count }
+  #     Adaptive period: replace `period` with
+  #       adaptive: { interval, max_period, epsilon_percent }
+  #     to replay the committed window every `interval` rounds and adopt the
+  #     best period (powers of two up to `max_period`, starting there) unless
+  #     the improvement is below `epsilon_percent`. Requires
+  #     4 * max_period <= interval <= 100. The replay reads history paced by
+  #     the period in force: for it to see the sync rule's evidence on
+  #     async-paced rounds, `quorum_round_timeout` must cover the slowest
+  #     link (e.g. 150ms for 50-100ms latencies); a shorter cap excludes the
+  #     slow peers' blocks and pins the adaptive period at 1.
   #   cordial-miners-partially-synchronous
   #   cordial-miners-asynchronous
   consensus:

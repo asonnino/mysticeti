@@ -5,4 +5,5 @@ pub(crate) mod base;
 pub mod committer;
 pub mod leader;
 pub mod protocol;
+pub(crate) mod replay;
 pub(crate) mod wave;

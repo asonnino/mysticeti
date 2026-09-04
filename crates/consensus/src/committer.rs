@@ -1,20 +1,30 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::VecDeque,
+    num::NonZeroU64,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+};
 
 use crate::{
     base::BaseCommitter,
     leader::LeaderElector,
     protocol::{Protocol, SteelheadSchedule},
+    replay::{self, ReplayParams},
     wave::Wave,
 };
 use dag::{
     authority::Authority,
-    block::RoundNumber,
+    block::{Block, RoundNumber},
     committee::Committee,
     committee::Stake,
     consensus::{DagConsensus, LeaderStatus},
+    data::Data,
+    metrics::Metrics,
     storage::BlockReader,
 };
 
@@ -39,6 +49,11 @@ pub struct Committer {
     leaders: VecDeque<LeaderStatus>,
     /// Steelhead's per-round wavelength mode; `None` for the base protocols.
     steelhead: Option<SteelheadMode>,
+    /// Gauge target for period updates (adaptive Steelhead only).
+    metrics: Option<Arc<Metrics>>,
+    /// Live-period cell shared with the round-timeout task and, eventually,
+    /// the simulated adversary (0 encodes an infinite period).
+    period_cell: Option<Arc<AtomicU64>>,
 }
 
 /// Steelhead state: the wavelength schedule plus the leader source, which must
@@ -49,23 +64,60 @@ struct SteelheadMode {
     merged_certificates: bool,
     leader_elector: LeaderElector,
     leader_count: usize,
+    /// The period in force from each round on; a single entry unless adaptive
+    /// updates fire. Deterministic function of the consumed commit sequence.
+    period_schedule: Vec<(RoundNumber, Option<NonZeroU64>)>,
+    /// Round of the last interval anchor (adaptive).
+    last_update_round: RoundNumber,
+    /// An interval anchor yielded but not yet replayed; the update applies at
+    /// the start of the next `try_commit`. Relies on the consumer fully
+    /// consuming the yielded prefix (as `Core::try_commit` does).
+    pending_anchor: Option<Data<Block>>,
+    /// Replay inputs, present iff adaptive.
+    replay_params: Option<ReplayParams>,
 }
 
 impl SteelheadMode {
+    /// The period in force at `round`: the last schedule entry at or below it.
+    fn period_at(&self, round: RoundNumber) -> Option<NonZeroU64> {
+        self.period_schedule
+            .iter()
+            .rev()
+            .find(|(start, _)| *start <= round)
+            .map(|(_, period)| *period)
+            .expect("the period schedule covers round zero")
+    }
+
+    fn is_async_round(&self, round: RoundNumber) -> bool {
+        matches!(self.period_at(round), Some(period) if round.is_multiple_of(period.get()))
+    }
+
     /// The wave governing the slot at `round`: its own wavelength, aligned so
     /// that `round` is a genuine leader round.
     fn wave_for(&self, round: RoundNumber) -> Wave {
-        let wave_length = self.schedule.wavelength(round);
+        let wave_length = if self.is_async_round(round) {
+            self.schedule.async_wave_length
+        } else {
+            self.schedule.sync_wave_length
+        };
         Wave::new(wave_length, round % wave_length, self.merged_certificates)
     }
 
     fn elect_leader(&self, round: RoundNumber, leader_offset: RoundNumber) -> Authority {
-        if self.schedule.is_async_round(round) {
+        if self.is_async_round(round) {
             return self
                 .leader_elector
                 .elect_fake_coin_leader(round + leader_offset);
         }
         self.leader_elector.elect_leader(round + leader_offset)
+    }
+
+    /// The round past which the next yielded commit becomes the interval
+    /// anchor; `None` when the period is static.
+    fn update_threshold(&self) -> Option<RoundNumber> {
+        self.schedule
+            .adaptive
+            .map(|adaptive| self.last_update_round + adaptive.interval)
     }
 }
 
@@ -101,6 +153,12 @@ impl Committer {
             merged_certificates: protocol.merged_certificates,
             leader_elector: LeaderElector::new(committee.len()),
             leader_count: protocol.leader_count.get(),
+            period_schedule: vec![(0, schedule.period)],
+            last_update_round: 0,
+            pending_anchor: None,
+            replay_params: schedule
+                .adaptive
+                .and_then(|_| ReplayParams::from_protocol(&protocol, committee.clone())),
         });
 
         Self {
@@ -112,6 +170,61 @@ impl Committer {
             has_fast_path: protocol.fast_path.is_some(),
             leaders: VecDeque::new(),
             steelhead,
+            metrics: None,
+            period_cell: None,
+        }
+    }
+
+    /// Attach the metrics sink for the period gauge (adaptive Steelhead).
+    pub fn with_metrics(mut self, metrics: Arc<Metrics>) -> Self {
+        self.metrics = Some(metrics);
+        self
+    }
+
+    /// Attach the live-period cell shared with the round-timeout task.
+    pub fn with_period_cell(mut self, period_cell: Arc<AtomicU64>) -> Self {
+        self.period_cell = Some(period_cell);
+        self
+    }
+
+    /// Apply a pending adaptive-period update: replay the interval anchor's
+    /// window and adopt the chosen period from the round after the anchor.
+    fn apply_pending_period_update(&mut self) {
+        let Some(mode) = self.steelhead.as_mut() else {
+            return;
+        };
+        let Some(anchor) = mode.pending_anchor.take() else {
+            return;
+        };
+        let Some(adaptive) = mode.schedule.adaptive else {
+            return;
+        };
+        let anchor_round = anchor.round();
+        let current = mode
+            .period_at(anchor_round)
+            .expect("adaptive periods are finite");
+
+        let window = replay::collect_window(&self.block_reader, &anchor, adaptive.interval);
+        let mode = self.steelhead.as_mut().expect("checked above");
+        let params = mode.replay_params.as_ref().expect("adaptive has params");
+        let chosen = replay::choose_period(
+            &window,
+            params,
+            current,
+            adaptive.max_period,
+            adaptive.epsilon_percent,
+        );
+
+        if chosen != current {
+            mode.period_schedule.push((anchor_round + 1, Some(chosen)));
+            tracing::debug!("Steelhead period {current} -> {chosen} after anchor {anchor_round}");
+        }
+        mode.last_update_round = anchor_round;
+        if let Some(metrics) = &self.metrics {
+            metrics.set_steelhead_period(chosen.get());
+        }
+        if let Some(cell) = &self.period_cell {
+            cell.store(chosen.get(), Ordering::Relaxed);
         }
     }
 
@@ -124,6 +237,10 @@ impl Committer {
         &mut self,
         last_decided: Option<(RoundNumber, Authority)>,
     ) -> impl Iterator<Item = LeaderStatus> + '_ {
+        // A truncated previous pass left an interval anchor: adopt its period
+        // before re-evaluating the rounds above it.
+        self.apply_pending_period_update();
+
         let highest_known_round = self.block_reader.highest_round();
         let last_decided_round = last_decided.map(|(round, _)| round).unwrap_or(0);
 
@@ -174,7 +291,11 @@ impl Committer {
             }
         }
 
-        // The decided sequence is the longest prefix of decided leaders.
+        // The decided sequence is the longest prefix of decided leaders,
+        // truncated at an interval anchor when the adaptive period is on: the
+        // rounds above the anchor are re-evaluated next call under the period
+        // the anchor's replay chooses.
+        let steelhead = &mut self.steelhead;
         self.leaders
             .drain(..)
             // Position past the previously-yielded decision, if any. When `None`
@@ -188,6 +309,27 @@ impl Committer {
             .filter(|x| x.round() > 0)
             // Stop the sequence upon encountering an undecided leader.
             .take_while(|x| x.is_decided())
+            .scan(false, move |truncated, status| {
+                if *truncated {
+                    return None;
+                }
+                if let Some(mode) = steelhead.as_mut()
+                    && let Some(threshold) = mode.update_threshold()
+                    && status.round() > threshold
+                {
+                    let block = match &status {
+                        LeaderStatus::DirectCommit(block) | LeaderStatus::IndirectCommit(block) => {
+                            Some(block.clone())
+                        }
+                        _ => None,
+                    };
+                    if let Some(block) = block {
+                        mode.pending_anchor = Some(block);
+                        *truncated = true;
+                    }
+                }
+                Some(status)
+            })
             .inspect(|x| tracing::debug!("Decided {x}"))
     }
 }
@@ -314,7 +456,7 @@ impl DagConsensus for Committer {
     fn get_leaders(&self, round: RoundNumber) -> Option<impl Iterator<Item = Authority>> {
         if let Some(mode) = &self.steelhead {
             // No leader wait on async slots: their leader is meant to be hidden.
-            if mode.schedule.is_async_round(round) {
+            if mode.is_async_round(round) {
                 return None;
             }
             // Compute the sync-slot leaders directly: the base committers'
