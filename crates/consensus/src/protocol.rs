@@ -10,6 +10,7 @@ use std::{
 use dag::{
     block::RoundNumber,
     committee::{Committee, Stake},
+    core::RETAIN_BELOW_COMMIT_ROUNDS,
     sync::net_sync::QuorumTimeoutRounds,
 };
 use serde::{Deserialize, Serialize};
@@ -891,9 +892,10 @@ impl Protocol {
                         reason: "interval must be at least 4 * max_period",
                     });
                 }
-                if adaptive.interval > 100 {
+                if adaptive.interval > RETAIN_BELOW_COMMIT_ROUNDS {
                     return Err(ProtocolError::SteelheadInvalidAdaptive {
-                        reason: "interval must be at most 100 (in-memory retention)",
+                        reason: "interval must be at most the in-memory retention window \
+                            (dag::core::RETAIN_BELOW_COMMIT_ROUNDS)",
                     });
                 }
                 if adaptive.epsilon_percent >= 100 {

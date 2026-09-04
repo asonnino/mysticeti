@@ -32,6 +32,11 @@ use crate::{
     wal::{WalPosition, WalSyncer},
 };
 
+/// Rounds kept in memory below the last decided round; older blocks unload to
+/// the WAL. The adaptive Steelhead replay caps its window interval at this
+/// value so window collection stays on in-memory blocks.
+pub const RETAIN_BELOW_COMMIT_ROUNDS: RoundNumber = 100;
+
 pub struct Core<C: Ctx, D: DagConsensus> {
     block_manager: BlockManager,
     pending: VecDeque<(WalPosition, MetaStatement)>,
@@ -309,8 +314,6 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
     }
 
     pub fn cleanup(&self) {
-        const RETAIN_BELOW_COMMIT_ROUNDS: RoundNumber = 100;
-
         let last_decided_round = self
             .last_decided
             .map(|(round, _)| round)
