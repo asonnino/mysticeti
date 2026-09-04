@@ -26,6 +26,7 @@ pub const CORE_LOCK_UTIL: &str = "core_lock_util";
 pub const CORE_LOCK_ENQUEUED: &str = "core_lock_enqueued";
 pub const CORE_LOCK_DEQUEUED: &str = "core_lock_dequeued";
 pub const WAL_MAPPINGS: &str = "wal_mappings";
+pub const STEELHEAD_PERIOD: &str = "steelhead_period";
 pub const UTILIZATION_TIMER: &str = "utilization_timer";
 pub const GLOBAL_IN_MEMORY_BLOCKS: &str = "global_in_memory_blocks";
 pub const GLOBAL_IN_MEMORY_BLOCKS_BYTES: &str = "global_in_memory_blocks_bytes";

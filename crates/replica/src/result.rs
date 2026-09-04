@@ -124,6 +124,21 @@ pub struct RunResult<C> {
     pub duration: Duration,
     pub kind: RunKind,
     pub storages: Vec<Storage>,
+    /// Periodic in-run samples for timeline figures; empty when not sampled.
+    pub time_series: Vec<TimeSeriesRow>,
+}
+
+/// One per-replica sample of the run's cumulative counters.
+#[derive(Clone, Serialize)]
+pub struct TimeSeriesRow {
+    pub time_s: u64,
+    pub replica: usize,
+    pub direct_commits: u64,
+    pub indirect_commits: u64,
+    pub direct_skips: u64,
+    pub indirect_skips: u64,
+    pub leader_timeouts: u64,
+    pub steelhead_period: u64,
 }
 
 impl<C> RunResult<C> {
@@ -142,9 +157,16 @@ impl<C> RunResult<C> {
             outcome,
             config,
             duration,
+            time_series: Vec::new(),
             kind,
             storages,
         }
+    }
+
+    /// Attach in-run time-series samples.
+    pub fn with_time_series(mut self, time_series: Vec<TimeSeriesRow>) -> Self {
+        self.time_series = time_series;
+        self
     }
 }
 

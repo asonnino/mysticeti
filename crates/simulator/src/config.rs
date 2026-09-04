@@ -60,6 +60,10 @@ pub struct SimulationConfig {
     /// Replicas to crash mid-run (their final state still appears in results).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub crashes: Vec<CrashSpec>,
+    /// Sample per-replica counters every this many simulated seconds into the
+    /// result's time series; `None` disables sampling.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_interval_secs: Option<u64>,
 }
 
 /// Crash the given replica at the given simulated time.
@@ -114,6 +118,7 @@ impl Default for SimulationConfig {
             load_generator: Some(LoadGeneratorConfig::new_for_test()),
             conditions: Vec::new(),
             crashes: Vec::new(),
+            sample_interval_secs: None,
         }
     }
 }

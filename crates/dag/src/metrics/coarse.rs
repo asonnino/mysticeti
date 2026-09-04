@@ -14,7 +14,8 @@ use super::names::{
     BLOCK_SYNC_REQUESTS_SENT, COMMITTED_LEADERS_TOTAL, CORE_LOCK_DEQUEUED, CORE_LOCK_ENQUEUED,
     CORE_LOCK_UTIL, GLOBAL_IN_MEMORY_BLOCKS, GLOBAL_IN_MEMORY_BLOCKS_BYTES, INTER_BLOCK_LATENCY_S,
     LABEL_AUTHORITY, LABEL_COMMIT_TYPE, LABEL_FULFILLED, LABEL_PROC, LATENCY_S, LATENCY_SQUARED_S,
-    LEADER_TIMEOUT_TOTAL, MISSING_BLOCKS, SUBMITTED_TRANSACTIONS, UTILIZATION_TIMER, WAL_MAPPINGS,
+    LEADER_TIMEOUT_TOTAL, MISSING_BLOCKS, STEELHEAD_PERIOD, SUBMITTED_TRANSACTIONS,
+    UTILIZATION_TIMER, WAL_MAPPINGS,
 };
 
 const LATENCY_SEC_BUCKETS: &[f64] = &[
@@ -35,6 +36,7 @@ pub(super) struct CoarseMetrics {
     pub block_store_cleanup_util: IntCounter,
 
     pub wal_mappings: IntGauge,
+    pub steelhead_period: IntGauge,
 
     pub core_lock_util: IntCounter,
     pub core_lock_enqueued: IntCounter,
@@ -125,6 +127,12 @@ impl CoarseMetrics {
             wal_mappings: register_int_gauge_with_registry!(
                 WAL_MAPPINGS,
                 "Mappings retained by the WAL",
+                registry,
+            )
+            .unwrap(),
+            steelhead_period: register_int_gauge_with_registry!(
+                STEELHEAD_PERIOD,
+                "Steelhead period in force (0 = infinite, i.e. pure sync rule)",
                 registry,
             )
             .unwrap(),

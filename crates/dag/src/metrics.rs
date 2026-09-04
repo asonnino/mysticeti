@@ -113,6 +113,11 @@ impl Metrics {
         self.coarse.wal_mappings.set(value);
     }
 
+    /// The Steelhead period in force (0 = infinite, i.e. pure sync rule).
+    pub fn set_steelhead_period(&self, period: u64) {
+        self.coarse.steelhead_period.set(period as i64);
+    }
+
     pub fn benchmark_duration_secs(&self) -> u64 {
         self.coarse.benchmark_duration.get()
     }

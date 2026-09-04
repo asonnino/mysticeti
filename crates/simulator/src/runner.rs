@@ -24,7 +24,7 @@ use replica::{
     builder::{ReplicaBuilder, StorageKind},
     config::{LoadGeneratorConfig, PrivateReplicaConfig, PublicReplicaConfig},
     replica::ReplicaHandle,
-    result::{RunKind, RunResult},
+    result::{RunKind, RunResult, TimeSeriesRow},
 };
 use tokio::sync::{Mutex, mpsc};
 
@@ -83,6 +83,10 @@ struct SimulationState {
     _load_generators: Vec<JoinHandle<()>>,
     /// JoinHandles for the crash tasks, kept alive for the run.
     _crash_tasks: Vec<JoinHandle<()>>,
+    /// In-run samples shared with the sampler task.
+    time_series: Arc<Mutex<Vec<TimeSeriesRow>>>,
+    /// JoinHandle for the sampler, kept alive for the run.
+    _sampler_task: Option<JoinHandle<()>>,
 }
 
 enum ReplicaSlot {
@@ -108,7 +112,7 @@ impl SimulatedNetwork {
     ) -> (Self, Vec<ReplicaHandle<SimulatorContext>>) {
         let public_config = PublicReplicaConfig::new_for_tests(commit_consumers.len());
         let latency_range = Duration::from_millis(50)..Duration::from_millis(100);
-        let (network, replicas, _) = SimulationState::build_replicas(
+        let (network, replicas, _, _) = SimulationState::build_replicas(
             public_config,
             latency_range,
             None,
@@ -137,6 +141,7 @@ impl SimulationState {
         SimulatedNetwork,
         Vec<ReplicaHandle<SimulatorContext>>,
         Vec<JoinHandle<()>>,
+        Vec<Arc<Metrics>>,
     ) {
         let committee = public_config.committee();
         let committee_size = committee.len();
@@ -151,6 +156,7 @@ impl SimulationState {
 
         let mut replicas = Vec::with_capacity(committee_size);
         let mut load_generators = Vec::new();
+        let mut metrics_handles = Vec::with_capacity(committee_size);
         for (i, ((node_network, private_config), commit_consumer)) in networks
             .into_iter()
             .zip(private_configs)
@@ -159,6 +165,7 @@ impl SimulationState {
         {
             let authority = Authority::from(i);
             let metrics = Metrics::new_for_test(committee_size);
+            metrics_handles.push(metrics.clone());
             let mut builder = ReplicaBuilder::new(authority, public_config.clone(), private_config)
                 .with_storage(StorageKind::Ephemeral)
                 .with_crypto_disabled()
@@ -177,7 +184,7 @@ impl SimulationState {
             }
             replicas.push(handle);
         }
-        (network, replicas, load_generators)
+        (network, replicas, load_generators, metrics_handles)
     }
 
     async fn setup(config: SimulationConfig) -> Self {
@@ -202,7 +209,7 @@ impl SimulationState {
                 protocol.quorum_timeout_rounds(),
             )))
         };
-        let (network, replicas, load_generators) = Self::build_replicas(
+        let (network, replicas, load_generators, metrics_handles) = Self::build_replicas(
             public_config,
             config.latency_range(),
             config.link_jitter(),
@@ -219,14 +226,49 @@ impl SimulationState {
                 .collect::<Vec<_>>(),
         ));
         let crash_tasks = Self::spawn_crash_tasks(&config, &replicas);
+        let time_series = Arc::new(Mutex::new(Vec::new()));
+        let sampler_task = config
+            .sample_interval_secs
+            .map(|interval| Self::spawn_sampler(interval, metrics_handles, time_series.clone()));
 
         Self {
             config,
             network,
             replicas,
+            time_series,
             _load_generators: load_generators,
             _crash_tasks: crash_tasks,
+            _sampler_task: sampler_task,
         }
+    }
+
+    /// Periodically snapshot every replica's counters into the time series.
+    fn spawn_sampler(
+        interval_secs: u64,
+        metrics_handles: Vec<Arc<Metrics>>,
+        time_series: Arc<Mutex<Vec<TimeSeriesRow>>>,
+    ) -> JoinHandle<()> {
+        SimulatorContext::spawn(async move {
+            let interval = Duration::from_secs(interval_secs.max(1));
+            loop {
+                SimulatorContext::sleep(interval).await;
+                let time_s = SimulatorContext::time().as_secs();
+                let mut rows = time_series.lock().await;
+                for (replica, metrics) in metrics_handles.iter().enumerate() {
+                    let snapshot = metrics.collect();
+                    rows.push(TimeSeriesRow {
+                        time_s,
+                        replica,
+                        direct_commits: snapshot.direct_commits(),
+                        indirect_commits: snapshot.indirect_commits(),
+                        direct_skips: snapshot.direct_skips(),
+                        indirect_skips: snapshot.indirect_skips(),
+                        leader_timeouts: snapshot.leader_timeouts(),
+                        steelhead_period: snapshot.steelhead_period(),
+                    });
+                }
+            }
+        })
     }
 
     /// One task per crash spec: sleep to the crash time, then shut the replica
@@ -289,7 +331,10 @@ impl SimulationState {
 
     async fn collect_result(self) -> io::Result<RunResult<SimulationConfig>> {
         let Self {
-            config, replicas, ..
+            config,
+            replicas,
+            time_series,
+            ..
         } = self;
         let duration = config.duration();
         let mut syncers: Vec<Syncer<SimulatorContext, Committer>> = Vec::new();
@@ -305,12 +350,10 @@ impl SimulationState {
             .collect();
         let storages: Vec<Storage> = syncers.into_iter().map(Syncer::into_storage).collect();
 
-        Ok(RunResult::new(
-            metrics,
-            storages,
-            config,
-            duration,
-            RunKind::Simulation,
-        ))
+        let time_series = std::mem::take(&mut *time_series.lock().await);
+        Ok(
+            RunResult::new(metrics, storages, config, duration, RunKind::Simulation)
+                .with_time_series(time_series),
+        )
     }
 }

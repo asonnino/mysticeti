@@ -8,7 +8,7 @@ use prometheus::{Encoder, TextEncoder, proto::MetricFamily};
 use super::names::{
     COMMIT_TYPE_DIRECT_COMMIT, COMMIT_TYPE_DIRECT_SKIP, COMMIT_TYPE_INDIRECT_COMMIT,
     COMMIT_TYPE_INDIRECT_SKIP, COMMITTED_LEADERS_TOTAL, LABEL_COMMIT_TYPE, LATENCY_S,
-    LEADER_TIMEOUT_TOTAL,
+    LEADER_TIMEOUT_TOTAL, STEELHEAD_PERIOD,
 };
 
 /// A point-in-time snapshot of all metrics from a Prometheus
@@ -88,9 +88,27 @@ impl MetricsSnapshot {
         self.commit_type_total(COMMIT_TYPE_DIRECT_COMMIT)
     }
 
+    /// Leaders committed by the indirect rule (via an anchor).
+    pub fn indirect_commits(&self) -> u64 {
+        self.commit_type_total(COMMIT_TYPE_INDIRECT_COMMIT)
+    }
+
     /// Leaders skipped by the direct rule (a quorum of blames).
     pub fn direct_skips(&self) -> u64 {
         self.commit_type_total(COMMIT_TYPE_DIRECT_SKIP)
+    }
+
+    /// The Steelhead period in force (0 = infinite, i.e. pure sync rule).
+    pub fn steelhead_period(&self) -> u64 {
+        let Some(family) = self.find_family(STEELHEAD_PERIOD) else {
+            return 0;
+        };
+        family
+            .get_metric()
+            .first()
+            .and_then(|metric| metric.gauge.as_ref())
+            .map(|gauge| gauge.value() as u64)
+            .unwrap_or(0)
     }
 
     /// Leaders skipped by the indirect rule (via an anchor).

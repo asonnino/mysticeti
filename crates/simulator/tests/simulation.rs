@@ -190,6 +190,38 @@ fn crash_fault_mid_run() {
     );
 }
 
+/// The sampler emits one row per replica per tick, with cumulative counters.
+#[test]
+fn time_series_sampling() {
+    let config = SimulationConfig {
+        duration_secs: 10,
+        sample_interval_secs: Some(2),
+        ..Default::default()
+    };
+    let committee_size = config.committee_size;
+    let results = SimulationRunner::new(config).run().unwrap();
+
+    assert_ne!(results.outcome, Outcome::Diverged);
+    let rows = &results.time_series;
+    assert!(
+        rows.len() >= 4 * committee_size && rows.len().is_multiple_of(committee_size),
+        "expected full sampling ticks, got {} rows",
+        rows.len()
+    );
+    let replica_zero_commits: Vec<_> = rows
+        .iter()
+        .filter(|row| row.replica == 0)
+        .map(|row| row.direct_commits + row.indirect_commits)
+        .collect();
+    assert!(
+        replica_zero_commits
+            .windows(2)
+            .all(|pair| pair[0] <= pair[1]),
+        "cumulative counters must be non-decreasing: {replica_zero_commits:?}"
+    );
+    assert!(*replica_zero_commits.last().unwrap() > 0);
+}
+
 #[test]
 fn star_topology() {
     let config = SimulationConfig {

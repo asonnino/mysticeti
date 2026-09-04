@@ -47,6 +47,7 @@ use tempfile::NamedTempFile;
 /// is exposed through a dedicated accessor on [`Exporter`].
 const CONFIG_FILE: &str = "config.yaml";
 const META_FILE: &str = "meta.yaml";
+const TIME_SERIES_FILE: &str = "timeseries.csv";
 const DAG_FILE: &str = "dag.ndjson";
 const TRACING_LOG_FILE: &str = "tracing.log";
 
@@ -167,6 +168,31 @@ impl Exporter {
             let filename = Self::metrics_filename(Authority::from(i));
             Self::write_atomic(&dir, &filename, |writer| {
                 writer.write_all(snapshot.to_prometheus_text().as_bytes())
+            })?;
+        }
+
+        if !result.time_series.is_empty() {
+            Self::write_atomic(&dir, TIME_SERIES_FILE, |writer| {
+                writeln!(
+                    writer,
+                    "time_s,replica,direct_commits,indirect_commits,direct_skips,\
+                    indirect_skips,leader_timeouts,steelhead_period"
+                )?;
+                for row in &result.time_series {
+                    writeln!(
+                        writer,
+                        "{},{},{},{},{},{},{},{}",
+                        row.time_s,
+                        row.replica,
+                        row.direct_commits,
+                        row.indirect_commits,
+                        row.direct_skips,
+                        row.indirect_skips,
+                        row.leader_timeouts,
+                        row.steelhead_period,
+                    )?;
+                }
+                Ok(())
             })?;
         }
         Ok(())

@@ -94,6 +94,10 @@ impl Replica {
             .consensus
             .to_protocol(&committee)
             .wrap_err("Invalid consensus protocol configuration")?;
+        if let Some(schedule) = protocol.steelhead {
+            // The period trace: 0 encodes an infinite period (pure sync rule).
+            metrics.set_steelhead_period(schedule.period.map(|p| p.get()).unwrap_or(0));
+        }
         let crypto = if crypto_disabled || !protocol.require_crypto {
             CryptoEngine::disabled()
         } else {
