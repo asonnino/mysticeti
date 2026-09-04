@@ -4,3 +4,6 @@
 [default.extend-words]
 UE = "UE"
 BA = "BA"
+# The paper's \fillin placeholder macro, referenced by the plotting pipeline.
+fillin = "fillin"
+fillins = "fillins"

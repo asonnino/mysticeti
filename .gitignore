@@ -39,3 +39,9 @@ tarpaulin-report.html
 # OS
 .DS_Store
 Thumbs.db
+
+# Steelhead experiment pipeline (scripts/)
+data/
+plots/
+scripts/.venv/
+__pycache__/
