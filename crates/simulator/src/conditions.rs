@@ -98,12 +98,17 @@ impl NetworkConditions {
         let known_leader_round = match &self.quorum_rounds {
             QuorumTimeoutRounds::None => true,
             QuorumTimeoutRounds::Every => false,
-            QuorumTimeoutRounds::EveryNth(period) => !round.is_multiple_of(period.get()),
-            // The period is public: the adversary tracks the live value.
-            QuorumTimeoutRounds::Dynamic(cell) => match cell.load(Ordering::Relaxed) {
-                0 => true,
-                period => !round.is_multiple_of(period),
-            },
+            // The period is public: the adversary tracks the live value. A
+            // round has a known (targetable) leader iff it waits for one —
+            // sync rounds and canaried async rounds alike.
+            QuorumTimeoutRounds::Modal { period, canary } => {
+                let async_round = match period.load(Ordering::Relaxed) {
+                    0 => false,
+                    period => round.is_multiple_of(period),
+                };
+                let canaried = canary.is_some_and(|canary| round.is_multiple_of(canary.get()));
+                !async_round || canaried
+            }
         };
         if !known_leader_round {
             return false;

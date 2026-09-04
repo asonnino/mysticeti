@@ -37,6 +37,7 @@ fn spec() -> ConsensusProtocol {
             max_period: NonZeroU64::new(MAX_PERIOD).unwrap(),
             epsilon_percent: 10,
         }),
+        canary: NonZeroU64::new(1),
         leader_count: NonZeroUsize::new(1).unwrap(),
     }
 }

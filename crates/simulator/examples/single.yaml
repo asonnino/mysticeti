@@ -65,17 +65,22 @@ replica_parameters:
   #   dag-hydrangea                        { leader_count, f, c, k }
   #   steelhead                            { pair: mysticeti-mahi-mahi | blue-bottle,
   #                                          period (null = pure sync rule),
-  #                                          async_wave_length, leader_count }
+  #                                          async_wave_length, canary,
+  #                                          leader_count }
+  #     Canary: every `canary`-th async round keeps the leader wait for the
+  #     public round-robin cohort (never the coin leader), so the DAG keeps
+  #     recording sync viability at any period. Defaults to 1 (every round);
+  #     `canary: null` disables it (pure quorum pacing on async rounds — the
+  #     ablation baseline, under which an adaptive descent to period 1 is
+  #     one-way whenever the quorum cap is tighter than the latency spread).
   #     Adaptive period: replace `period` with
   #       adaptive: { interval, max_period, epsilon_percent }
   #     to replay the committed window every `interval` rounds and adopt the
   #     best period (powers of two up to `max_period`, starting there) unless
   #     the improvement is below `epsilon_percent`. Requires
-  #     4 * max_period <= interval <= 100. The replay reads history paced by
-  #     the period in force: for it to see the sync rule's evidence on
-  #     async-paced rounds, `quorum_round_timeout` must cover the slowest
-  #     link (e.g. 150ms for 50-100ms latencies); a shorter cap excludes the
-  #     slow peers' blocks and pins the adaptive period at 1.
+  #     4 * max_period <= interval <= 100. Canary values above 1 under-sample
+  #     the replay's sync evidence (conservative: it can only under-adopt
+  #     sync slots).
   #   cordial-miners-partially-synchronous
   #   cordial-miners-asynchronous
   consensus:

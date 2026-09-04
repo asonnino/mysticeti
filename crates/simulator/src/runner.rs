@@ -212,15 +212,24 @@ impl SimulationState {
                 .consensus
                 .to_protocol(&public_config.committee())
                 .expect("valid protocol");
-            // The adaptive period is public and agreed, so the adversary
-            // tracks it live through one replica's cell (any replica's view
-            // is equivalent).
-            adversary_period_cell = protocol
-                .steelhead
-                .and_then(|schedule| schedule.adaptive)
-                .map(|adaptive| Arc::new(AtomicU64::new(adaptive.max_period.get())));
-            let quorum_rounds = match &adversary_period_cell {
-                Some(cell) => QuorumTimeoutRounds::Dynamic(cell.clone()),
+            // The period is public and agreed, so the adversary classifies
+            // rounds through one replica's cell (any replica's view is
+            // equivalent); static configs never write it.
+            let quorum_rounds = match protocol.steelhead {
+                Some(schedule) => {
+                    let cell = Arc::new(AtomicU64::new(
+                        schedule.period.map(|period| period.get()).unwrap_or(0),
+                    ));
+                    // Only adaptive committers update the cell; sharing it
+                    // with a replica matters only then.
+                    if schedule.adaptive.is_some() {
+                        adversary_period_cell = Some(cell.clone());
+                    }
+                    QuorumTimeoutRounds::Modal {
+                        period: cell,
+                        canary: schedule.canary,
+                    }
+                }
                 None => protocol.quorum_timeout_rounds(),
             };
             Some(Arc::new(NetworkConditions::new(

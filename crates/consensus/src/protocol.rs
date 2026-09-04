@@ -77,6 +77,12 @@ pub enum ConsensusProtocol {
         /// Adapt the period by counterfactual replay of the committed window.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         adaptive: Option<AdaptiveConfig>,
+        /// Every `canary`-th async round waits for the round-robin cohort, so
+        /// the DAG keeps recording sync viability at any period; `null`
+        /// disables the wait (pure quorum pacing on async rounds). Values
+        /// above 1 under-sample the replay's sync evidence (conservative).
+        #[serde(default = "defaults::default_canary")]
+        canary: Option<NonZeroU64>,
         #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
     },
@@ -101,13 +107,17 @@ pub enum SteelheadPair {
 }
 
 mod defaults {
-    use std::num::NonZeroUsize;
+    use std::num::{NonZeroU64, NonZeroUsize};
 
     use dag::block::RoundNumber;
     use serde::{Deserialize, Deserializer, de::Error as _};
 
     pub fn default_leader_count() -> NonZeroUsize {
         NonZeroUsize::new(2).unwrap()
+    }
+
+    pub fn default_canary() -> Option<NonZeroU64> {
+        NonZeroU64::new(1)
     }
 
     pub fn deserialize_mahi_mahi_wave_length<'de, D: Deserializer<'de>>(
@@ -182,6 +192,7 @@ impl fmt::Display for ConsensusProtocol {
                 period,
                 async_wave_length,
                 adaptive,
+                canary,
                 leader_count,
             } => {
                 let pair_name = match pair {
@@ -194,17 +205,22 @@ impl fmt::Display for ConsensusProtocol {
                         "Steelhead {pair_name} (adaptive to {}, interval {}, async wave \
                         {async_wave_length}, {leader_count} leaders/round)",
                         adaptive.max_period, adaptive.interval
-                    ),
+                    )?,
                     (None, Some(period)) => write!(
                         fmt,
                         "Steelhead {pair_name} (period {period}, async wave {async_wave_length}, \
                         {leader_count} leaders/round)"
-                    ),
+                    )?,
                     (None, None) => write!(
                         fmt,
                         "Steelhead {pair_name} (period ∞, async wave {async_wave_length}, \
                         {leader_count} leaders/round)"
-                    ),
+                    )?,
+                }
+                match canary {
+                    Some(canary) if canary.get() == 1 => Ok(()),
+                    Some(canary) => write!(fmt, " (canary {canary})"),
+                    None => write!(fmt, " (no canary)"),
                 }
             }
         }
@@ -244,6 +260,7 @@ impl fmt::Debug for ConsensusProtocol {
                 period,
                 async_wave_length,
                 adaptive,
+                canary,
                 leader_count,
             } => {
                 let pair_tag = match pair {
@@ -257,16 +274,22 @@ impl fmt::Debug for ConsensusProtocol {
                             fmt,
                             "steelhead-{pair_tag}-adaptive-m{max_period}-i{interval}\
                             -w{async_wave_length}-l{leader_count}"
-                        )
+                        )?;
                     }
                     (None, Some(period)) => write!(
                         fmt,
                         "steelhead-{pair_tag}-p{period}-w{async_wave_length}-l{leader_count}"
-                    ),
+                    )?,
                     (None, None) => write!(
                         fmt,
                         "steelhead-{pair_tag}-pinf-w{async_wave_length}-l{leader_count}"
-                    ),
+                    )?,
+                }
+                // The default (canary 1) keeps pre-existing tags stable.
+                match canary {
+                    Some(canary) if canary.get() == 1 => Ok(()),
+                    Some(canary) => write!(fmt, "-c{canary}"),
+                    None => write!(fmt, "-cinf"),
                 }
             }
         }
@@ -329,6 +352,7 @@ impl ConsensusProtocol {
                 period,
                 async_wave_length,
                 adaptive,
+                canary,
                 leader_count,
             } => Protocol::steelhead(
                 total_stake,
@@ -336,6 +360,7 @@ impl ConsensusProtocol {
                 period,
                 async_wave_length,
                 adaptive,
+                canary,
                 leader_count,
             )?,
         })
@@ -392,6 +417,7 @@ impl ConsensusProtocol {
                     period: pure_period,
                     async_wave_length: 5,
                     adaptive: None,
+                    canary: defaults::default_canary(),
                     leader_count,
                 });
                 variants.push(Self::Steelhead {
@@ -399,6 +425,7 @@ impl ConsensusProtocol {
                     period: pure_period,
                     async_wave_length: 3,
                     adaptive: None,
+                    canary: defaults::default_canary(),
                     leader_count,
                 });
             }
@@ -533,6 +560,9 @@ pub struct SteelheadSchedule {
     pub async_wave_length: RoundNumber,
     /// Adaptive-period parameters; `None` keeps the period static.
     pub adaptive: Option<AdaptiveConfig>,
+    /// Async rounds that are multiples of `canary` keep the leader wait for
+    /// the round-robin cohort; `None` disables it (pure quorum pacing).
+    pub canary: Option<NonZeroU64>,
 }
 
 /// Optimistic fast-path parameters for dual-path protocols.
@@ -862,6 +892,7 @@ impl Protocol {
         period: Option<NonZeroU64>,
         async_wave_length: RoundNumber,
         adaptive: Option<AdaptiveConfig>,
+        canary: Option<NonZeroU64>,
         leader_count: NonZeroUsize,
     ) -> Result<Self, ProtocolError> {
         let valid_async_wave = match pair {
@@ -918,6 +949,7 @@ impl Protocol {
             sync_wave_length: protocol.wave_length,
             async_wave_length,
             adaptive,
+            canary,
         });
         Ok(protocol)
     }
@@ -932,22 +964,24 @@ impl Protocol {
     /// Which rounds advance under the quorum cap instead of the leader cap:
     /// none for the partially synchronous protocols, all for the asynchronous
     /// ones, and Steelhead's async slots for a finite period.
+    /// Round-timeout classification for the base protocols. Steelhead builds
+    /// its own [`QuorumTimeoutRounds::Modal`] at the wiring sites (it needs
+    /// the shared period cell).
     pub fn quorum_timeout_rounds(&self) -> QuorumTimeoutRounds {
-        if !self.leader_wait {
-            return QuorumTimeoutRounds::Every;
-        }
-        match self.steelhead.and_then(|schedule| schedule.period) {
-            Some(period) => QuorumTimeoutRounds::EveryNth(period),
-            None => QuorumTimeoutRounds::None,
+        debug_assert!(self.steelhead.is_none(), "Steelhead classifies via Modal");
+        if self.leader_wait {
+            QuorumTimeoutRounds::None
+        } else {
+            QuorumTimeoutRounds::Every
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroUsize;
+    use std::num::{NonZeroU64, NonZeroUsize};
 
-    use crate::protocol::{Protocol, ProtocolError};
+    use crate::protocol::{ConsensusProtocol, Protocol, ProtocolError, SteelheadPair};
 
     /// Reference thresholds from the design note at the mixed configuration
     /// n = 20, f = 3, c = 4, k = 2 (p = 3), where the certificate, slow-commit,
@@ -987,5 +1021,48 @@ mod tests {
                 min_n: 5,
             })
         ));
+    }
+
+    /// The canary defaults to every round; an explicit null disables it.
+    #[test]
+    fn steelhead_canary_serde() {
+        let base = "protocol: steelhead\npair: mysticeti-mahi-mahi\n\
+            period: 4\nasync_wave_length: 5\n";
+        let parse = |yaml: &str| -> ConsensusProtocol {
+            serde_yaml::from_str(yaml).expect("valid steelhead config")
+        };
+        let canary_of = |spec: &ConsensusProtocol| match spec {
+            ConsensusProtocol::Steelhead { canary, .. } => *canary,
+            other => panic!("expected steelhead, got {other:?}"),
+        };
+        assert_eq!(canary_of(&parse(base)), NonZeroU64::new(1));
+        assert_eq!(canary_of(&parse(&format!("{base}canary: null\n"))), None);
+        assert_eq!(
+            canary_of(&parse(&format!("{base}canary: 8\n"))),
+            NonZeroU64::new(8)
+        );
+    }
+
+    /// The default canary keeps pre-existing result-file tags stable; other
+    /// values are distinguishable.
+    #[test]
+    fn steelhead_canary_debug_tags() {
+        let spec = |canary| ConsensusProtocol::Steelhead {
+            pair: SteelheadPair::MysticetiMahiMahi,
+            period: NonZeroU64::new(4),
+            async_wave_length: 5,
+            adaptive: None,
+            canary,
+            leader_count: NonZeroUsize::new(2).unwrap(),
+        };
+        assert_eq!(
+            format!("{:?}", spec(NonZeroU64::new(1))),
+            "steelhead-mm-p4-w5-l2"
+        );
+        assert_eq!(
+            format!("{:?}", spec(NonZeroU64::new(8))),
+            "steelhead-mm-p4-w5-l2-c8"
+        );
+        assert_eq!(format!("{:?}", spec(None)), "steelhead-mm-p4-w5-l2-cinf");
     }
 }

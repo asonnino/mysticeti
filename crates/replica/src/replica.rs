@@ -100,14 +100,17 @@ impl Replica {
             // The period trace: 0 encodes an infinite period (pure sync rule).
             metrics.set_steelhead_period(schedule.period.map(|p| p.get()).unwrap_or(0));
         }
-        // Adaptive period: the committer publishes updates into this cell so
-        // round timeouts track the live period instead of a startup snapshot.
+        // The period cell backs the round-timeout classification for every
+        // Steelhead config; adaptive committers publish period updates into
+        // it (static configs never write it, 0 encodes an infinite period).
         // An injected cell (simulator) lets outside observers read it too.
         let adaptive = protocol.steelhead.and_then(|schedule| schedule.adaptive);
-        let period_cell = adaptive.map(|config| {
-            period_cell_override
-                .clone()
-                .unwrap_or_else(|| Arc::new(AtomicU64::new(config.max_period.get())))
+        let period_cell = protocol.steelhead.map(|schedule| {
+            period_cell_override.clone().unwrap_or_else(|| {
+                Arc::new(AtomicU64::new(
+                    schedule.period.map(|period| period.get()).unwrap_or(0),
+                ))
+            })
         });
         // The adaptive schedule is in-memory state; a restarted committer would
         // rebuild it as [(0, max_period)] and diverge from peers that lived
@@ -160,9 +163,12 @@ impl Replica {
                 .quorum_round_timeout
                 .or(parameters.dag.round_timeout)
                 .unwrap_or(DEFAULT_QUORUM_ROUND_TIMEOUT),
-            quorum_rounds: match &period_cell {
-                Some(cell) => QuorumTimeoutRounds::Dynamic(cell.clone()),
-                None => protocol.quorum_timeout_rounds(),
+            quorum_rounds: match (&period_cell, protocol.steelhead) {
+                (Some(cell), Some(schedule)) => QuorumTimeoutRounds::Modal {
+                    period: cell.clone(),
+                    canary: schedule.canary,
+                },
+                _ => protocol.quorum_timeout_rounds(),
             },
         };
         let enable_synchronizer = parameters.dag.enable_synchronizer;

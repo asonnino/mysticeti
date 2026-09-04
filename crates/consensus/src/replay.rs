@@ -17,6 +17,10 @@
 //! window (the window is the real anchor's history) instead of within the
 //! replayed anchor's own history, and a skipping candidate contributes the
 //! window top as its commit round (deferring its rounds' output upward).
+//!
+//! The canary leader wait writes the sync rule's evidence into the DAG on
+//! async rounds; a canary above 1 under-samples that evidence, so the replay
+//! scores sync candidates conservatively (it can only under-adopt them).
 
 use std::{
     collections::{HashMap, HashSet},
@@ -410,6 +414,7 @@ mod tests {
                 max_period: NonZeroU64::new(MAX_PERIOD).unwrap(),
                 epsilon_percent: 10,
             }),
+            canary: NonZeroU64::new(1),
             leader_count: NonZeroUsize::new(1).unwrap(),
         };
         let protocol = spec.to_protocol(committee).expect("valid protocol");

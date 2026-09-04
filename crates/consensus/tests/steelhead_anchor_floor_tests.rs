@@ -30,6 +30,7 @@ fn undecided_async_slot_holds_back_committed_sync_slots() {
         period: NonZeroU64::new(4),
         async_wave_length: 5,
         adaptive: None,
+        canary: NonZeroU64::new(1),
         leader_count: NonZeroUsize::new(1).unwrap(),
     };
 

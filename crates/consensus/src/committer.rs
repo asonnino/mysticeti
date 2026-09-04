@@ -455,15 +455,19 @@ impl DagConsensus for Committer {
 
     fn get_leaders(&self, round: RoundNumber) -> Option<impl Iterator<Item = Authority>> {
         if let Some(mode) = &self.steelhead {
-            // No leader wait on async slots: their leader is meant to be hidden.
-            if mode.is_async_round(round) {
+            // The wait always targets the public round-robin cohort — the
+            // coin leader stays hidden. Async rounds wait only when canaried,
+            // keeping the sync rule's evidence in the DAG at any period.
+            if mode.is_async_round(round)
+                && !mode
+                    .schedule
+                    .canary
+                    .is_some_and(|canary| round.is_multiple_of(canary.get()))
+            {
                 return None;
             }
-            // Compute the sync-slot leaders directly: the base committers'
-            // election would yield an empty iterator on off-cycle rounds,
-            // vacuously satisfying the wait.
             let leaders = (0..mode.leader_count as RoundNumber)
-                .map(move |leader_offset| mode.elect_leader(round, leader_offset));
+                .map(move |leader_offset| mode.leader_elector.elect_leader(round + leader_offset));
             return Some(LeaderIter::Steelhead(leaders));
         }
         if self.leader_wait {

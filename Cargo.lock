@@ -1015,6 +1015,7 @@ dependencies = [
  "consensus",
  "dag",
  "serde",
+ "serde_yaml",
  "thiserror 2.0.20",
  "tracing",
  "tracing-test",

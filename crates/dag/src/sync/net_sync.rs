@@ -47,10 +47,13 @@ pub const MAXIMUM_BLOCK_REQUEST: usize = 10;
 pub enum QuorumTimeoutRounds {
     None,
     Every,
-    EveryNth(NonZeroU64),
-    /// Every multiple of the live period in the cell (adaptive Steelhead;
-    /// 0 encodes an infinite period, i.e. no quorum rounds).
-    Dynamic(Arc<AtomicU64>),
+    /// Steelhead: quorum cap on async rounds that are not canaried. The cell
+    /// holds the (possibly live) period, 0 encoding infinity; static configs
+    /// never write it.
+    Modal {
+        period: Arc<AtomicU64>,
+        canary: Option<NonZeroU64>,
+    },
 }
 
 /// Round-advance timeouts: a round's proposer holds the door up to `leader`
@@ -68,11 +71,14 @@ impl RoundTimeouts {
         let quorum_round = match &self.quorum_rounds {
             QuorumTimeoutRounds::None => false,
             QuorumTimeoutRounds::Every => true,
-            QuorumTimeoutRounds::EveryNth(period) => round.is_multiple_of(period.get()),
-            QuorumTimeoutRounds::Dynamic(cell) => match cell.load(Ordering::Relaxed) {
-                0 => false,
-                period => round.is_multiple_of(period),
-            },
+            QuorumTimeoutRounds::Modal { period, canary } => {
+                let async_round = match period.load(Ordering::Relaxed) {
+                    0 => false,
+                    period => round.is_multiple_of(period),
+                };
+                let canaried = canary.is_some_and(|canary| round.is_multiple_of(canary.get()));
+                async_round && !canaried
+            }
         };
         if quorum_round {
             self.quorum
@@ -366,5 +372,84 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncerInner<C, D> {
     async fn stopped(&self) {
         let stopped = self.stop.send(()).await;
         assert!(stopped.is_err());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        num::NonZeroU64,
+        sync::{Arc, atomic::AtomicU64, atomic::Ordering},
+        time::Duration,
+    };
+
+    use super::{QuorumTimeoutRounds, RoundTimeouts};
+
+    const LEADER: Duration = Duration::from_secs(1);
+    const QUORUM: Duration = Duration::from_millis(75);
+
+    fn timeouts(period: u64, canary: Option<u64>) -> (RoundTimeouts, Arc<AtomicU64>) {
+        let cell = Arc::new(AtomicU64::new(period));
+        let timeouts = RoundTimeouts {
+            leader: LEADER,
+            quorum: QUORUM,
+            quorum_rounds: QuorumTimeoutRounds::Modal {
+                period: cell.clone(),
+                canary: canary.and_then(NonZeroU64::new),
+            },
+        };
+        (timeouts, cell)
+    }
+
+    #[test]
+    fn infinite_period_always_leader_capped() {
+        let (timeouts, _cell) = timeouts(0, None);
+        for round in 0..16 {
+            assert_eq!(timeouts.for_round(round), LEADER, "round {round}");
+        }
+    }
+
+    #[test]
+    fn default_canary_leader_caps_every_round() {
+        let (timeouts, _cell) = timeouts(4, Some(1));
+        for round in 0..16 {
+            assert_eq!(timeouts.for_round(round), LEADER, "round {round}");
+        }
+    }
+
+    #[test]
+    fn disabled_canary_quorum_caps_async_rounds() {
+        let (timeouts, _cell) = timeouts(4, None);
+        for round in 1..16u64 {
+            let expected = if round.is_multiple_of(4) {
+                QUORUM
+            } else {
+                LEADER
+            };
+            assert_eq!(timeouts.for_round(round), expected, "round {round}");
+        }
+    }
+
+    #[test]
+    fn sampled_canary_splits_async_rounds() {
+        // Period 1: every round is async; only even (canaried) rounds keep
+        // the leader cap.
+        let (timeouts, _cell) = timeouts(1, Some(2));
+        for round in 1..16u64 {
+            let expected = if round.is_multiple_of(2) {
+                LEADER
+            } else {
+                QUORUM
+            };
+            assert_eq!(timeouts.for_round(round), expected, "round {round}");
+        }
+    }
+
+    #[test]
+    fn live_period_update_flips_the_classification() {
+        let (timeouts, cell) = timeouts(8, None);
+        assert_eq!(timeouts.for_round(9), LEADER);
+        cell.store(1, Ordering::Relaxed);
+        assert_eq!(timeouts.for_round(9), QUORUM);
     }
 }
