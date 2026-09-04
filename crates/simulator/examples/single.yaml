@@ -26,9 +26,9 @@ rng_seed: 0
 #   random-link-delay { percent,         - each message independently delayed
 #     delay_min_ms, delay_max_ms }         with the given probability
 # conditions:
-#   - from_secs: 20
+#   - from_secs: 5
 #     model: { kind: targeted-leader-delay, delay_ms: 2000 }
-#   - from_secs: 40
+#   - from_secs: 15
 # Replicas to crash mid-run; their final state still appears in the results.
 # crashes:
 #   - { replica: 3, at_secs: 10 }

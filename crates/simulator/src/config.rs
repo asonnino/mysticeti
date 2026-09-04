@@ -103,6 +103,29 @@ pub enum DelayModel {
     },
 }
 
+impl DelayModel {
+    /// Panic on parameters the model cannot run with.
+    fn validate(&self) {
+        match self {
+            Self::TargetedLeaderDelay { .. } => {}
+            Self::ScheduledAsynchrony { burst_ms } => {
+                assert!(*burst_ms > 0, "burst_ms must be positive");
+            }
+            Self::RandomLinkDelay {
+                percent,
+                delay_min_ms,
+                delay_max_ms,
+            } => {
+                assert!(*percent <= 100, "percent ({percent}) must be at most 100");
+                assert!(
+                    delay_min_ms <= delay_max_ms,
+                    "delay_min_ms ({delay_min_ms}) must not exceed delay_max_ms ({delay_max_ms})"
+                );
+            }
+        }
+    }
+}
+
 impl Default for SimulationConfig {
     fn default() -> Self {
         Self {
@@ -149,7 +172,12 @@ impl SimulationConfig {
         let mut phases: Vec<_> = self
             .conditions
             .iter()
-            .map(|phase| (Duration::from_secs(phase.from_secs), phase.model.clone()))
+            .map(|phase| {
+                if let Some(model) = &phase.model {
+                    model.validate();
+                }
+                (Duration::from_secs(phase.from_secs), phase.model.clone())
+            })
             .collect();
         phases.sort_by_key(|(start, _)| *start);
         phases

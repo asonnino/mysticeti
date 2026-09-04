@@ -5,7 +5,7 @@ use std::{
     io,
     ops::Range,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, atomic::AtomicU64},
     time::Duration,
 };
 
@@ -18,6 +18,7 @@ use dag::{
     core::syncer::Syncer,
     metrics::Metrics,
     storage::Storage,
+    sync::net_sync::QuorumTimeoutRounds,
 };
 use rand::{SeedableRng, rngs::StdRng};
 use replica::{
@@ -118,6 +119,7 @@ impl SimulatedNetwork {
             None,
             None,
             None,
+            None,
             commit_consumers,
         )
         .await;
@@ -135,6 +137,7 @@ impl SimulationState {
         latency_range: Range<Duration>,
         link_jitter: Option<Duration>,
         conditions: Option<Arc<NetworkConditions>>,
+        period_cell: Option<Arc<AtomicU64>>,
         load_generator: Option<LoadGeneratorConfig>,
         commit_consumers: Vec<Option<mpsc::Sender<CommittedSubDag>>>,
     ) -> (
@@ -174,6 +177,12 @@ impl SimulationState {
             if let Some(commit_consumer) = commit_consumer {
                 builder = builder.with_commit_consumer(commit_consumer);
             }
+            // The adversary reads replica 0's live period.
+            if i == 0
+                && let Some(cell) = &period_cell
+            {
+                builder = builder.with_period_cell(cell.clone());
+            }
             let mut handle = builder
                 .build()
                 .run::<SimulatorContext>()
@@ -192,6 +201,7 @@ impl SimulationState {
             .with_parameters(config.replica_parameters.clone());
         let commit_consumers = vec![None; config.committee_size];
         let condition_phases = config.condition_phases();
+        let mut adversary_period_cell = None;
         let conditions = if condition_phases.is_empty() {
             None
         } else {
@@ -202,11 +212,22 @@ impl SimulationState {
                 .consensus
                 .to_protocol(&public_config.committee())
                 .expect("valid protocol");
+            // The adaptive period is public and agreed, so the adversary
+            // tracks it live through one replica's cell (any replica's view
+            // is equivalent).
+            adversary_period_cell = protocol
+                .steelhead
+                .and_then(|schedule| schedule.adaptive)
+                .map(|adaptive| Arc::new(AtomicU64::new(adaptive.max_period.get())));
+            let quorum_rounds = match &adversary_period_cell {
+                Some(cell) => QuorumTimeoutRounds::Dynamic(cell.clone()),
+                None => protocol.quorum_timeout_rounds(),
+            };
             Some(Arc::new(NetworkConditions::new(
                 condition_phases,
                 config.committee_size,
                 protocol.leader_count.get(),
-                protocol.quorum_timeout_rounds(),
+                quorum_rounds,
             )))
         };
         let (network, replicas, load_generators, metrics_handles) = Self::build_replicas(
@@ -214,6 +235,7 @@ impl SimulationState {
             config.latency_range(),
             config.link_jitter(),
             conditions,
+            adversary_period_cell,
             config.load_generator.clone(),
             commit_consumers,
         )
@@ -287,15 +309,28 @@ impl SimulationState {
                     "crash target {} outside the committee",
                     crash.replica
                 );
+                assert!(
+                    crash.at_secs < config.duration_secs,
+                    "crash at {}s must land before the run ends at {}s",
+                    crash.at_secs,
+                    config.duration_secs
+                );
                 let replicas = replicas.clone();
                 let crash = *crash;
                 SimulatorContext::spawn(async move {
                     SimulatorContext::sleep(Duration::from_secs(crash.at_secs)).await;
                     let mut slots = replicas.lock().await;
-                    let slot = &mut slots[crash.replica];
-                    if let Some(ReplicaSlot::Running(handle)) = slot.take() {
-                        let syncer = handle.shutdown().await;
-                        *slot = Some(ReplicaSlot::Crashed(Box::new(syncer)));
+                    // Result collection may already have drained the slots.
+                    let Some(slot) = slots.get_mut(crash.replica) else {
+                        return;
+                    };
+                    match slot.take() {
+                        Some(ReplicaSlot::Running(handle)) => {
+                            let syncer = handle.shutdown().await;
+                            *slot = Some(ReplicaSlot::Crashed(Box::new(syncer)));
+                        }
+                        // Crashed by an earlier spec: keep that state.
+                        other => *slot = other,
                     }
                 })
             })

@@ -1,7 +1,10 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::PathBuf,
+    sync::{Arc, atomic::AtomicU64},
+};
 
 use ::prometheus::Registry;
 use dag::{
@@ -34,6 +37,7 @@ pub struct ReplicaBuilder {
     network: Option<Network>,
     registry: Registry,
     commit_consumer: Option<mpsc::Sender<CommittedSubDag>>,
+    period_cell: Option<Arc<AtomicU64>>,
 }
 
 impl ReplicaBuilder {
@@ -53,6 +57,7 @@ impl ReplicaBuilder {
             network: None,
             registry: Registry::new(),
             commit_consumer: None,
+            period_cell: None,
         }
     }
 
@@ -99,6 +104,14 @@ impl ReplicaBuilder {
         self
     }
 
+    /// Share the adaptive-period cell instead of creating one internally, so
+    /// an observer (e.g. the simulated adversary) can read the live period.
+    /// Ignored unless the protocol has an adaptive Steelhead period.
+    pub fn with_period_cell(mut self, period_cell: Arc<AtomicU64>) -> Self {
+        self.period_cell = Some(period_cell);
+        self
+    }
+
     /// Finalize configuration. The returned [`Replica`] holds the
     /// same intent; no tokio work has happened yet.
     pub fn build(self) -> Replica {
@@ -112,6 +125,7 @@ impl ReplicaBuilder {
             network: self.network,
             registry: self.registry,
             commit_consumer: self.commit_consumer,
+            period_cell: self.period_cell,
         }
     }
 }

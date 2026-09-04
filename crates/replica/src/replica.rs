@@ -53,6 +53,7 @@ pub struct Replica {
     pub(crate) network: Option<Network>,
     pub(crate) registry: Registry,
     pub(crate) commit_consumer: Option<mpsc::Sender<CommittedSubDag>>,
+    pub(crate) period_cell: Option<Arc<AtomicU64>>,
 }
 
 impl Replica {
@@ -71,6 +72,7 @@ impl Replica {
             network: network_override,
             registry,
             commit_consumer,
+            period_cell: period_cell_override,
         } = self;
 
         let committee = public_config.committee();
@@ -100,8 +102,13 @@ impl Replica {
         }
         // Adaptive period: the committer publishes updates into this cell so
         // round timeouts track the live period instead of a startup snapshot.
+        // An injected cell (simulator) lets outside observers read it too.
         let adaptive = protocol.steelhead.and_then(|schedule| schedule.adaptive);
-        let period_cell = adaptive.map(|config| Arc::new(AtomicU64::new(config.max_period.get())));
+        let period_cell = adaptive.map(|config| {
+            period_cell_override
+                .clone()
+                .unwrap_or_else(|| Arc::new(AtomicU64::new(config.max_period.get())))
+        });
         // The adaptive schedule is in-memory state; a restarted committer would
         // rebuild it as [(0, max_period)] and diverge from peers that lived
         // through updates. Until the schedule is reconstructed deterministically
