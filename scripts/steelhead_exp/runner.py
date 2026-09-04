@@ -7,7 +7,6 @@ import os
 import shutil
 import subprocess
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import yaml
 
@@ -21,23 +20,33 @@ SIMULATION_TIMEOUT_S = 2 * 60 * 60
 DISK_BUDGET_BYTES = 60 * 1024**3
 
 
-class DiskGate:
-    """Admits jobs while the sum of their disk weights stays under budget."""
+class Scheduler:
+    """Weight-aware work queue: each idle worker takes the heaviest pending
+    job that fits the remaining disk budget, so light jobs fill in around
+    heavy ones instead of queueing behind them."""
 
-    def __init__(self, budget):
+    def __init__(self, jobs, budget):
+        self.pending = sorted(jobs, key=lambda job: job.disk_weight, reverse=True)
         self.budget = budget
         self.in_flight = 0
         self.condition = threading.Condition()
 
-    def acquire(self, weight):
+    def take(self):
+        """The next job that fits, or None when the queue is exhausted."""
         with self.condition:
-            self.condition.wait_for(
-                lambda: self.in_flight == 0 or self.in_flight + weight <= self.budget)
-            self.in_flight += weight
+            while True:
+                if not self.pending:
+                    return None
+                for index, job in enumerate(self.pending):
+                    fits = self.in_flight + job.disk_weight <= self.budget
+                    if fits or self.in_flight == 0:
+                        self.in_flight += job.disk_weight
+                        return self.pending.pop(index)
+                self.condition.wait()
 
-    def release(self, weight):
+    def release(self, job):
         with self.condition:
-            self.in_flight -= weight
+            self.in_flight -= job.disk_weight
             self.condition.notify_all()
 
 
@@ -60,12 +69,10 @@ def is_cached(job):
     return outcome_of(job) == "pass"
 
 
-def run_one(job, binary, gate=None):
+def run_one(job, binary):
     """Run one job to completion; returns its outcome string. Never raises —
     any environment failure (disk full, killed binary) records as 'error' so
     one bad job cannot take the pool down."""
-    if gate is not None:
-        gate.acquire(job.disk_weight)
     try:
         if job.out_dir.exists():
             shutil.rmtree(job.out_dir)
@@ -90,9 +97,6 @@ def run_one(job, binary, gate=None):
     except (OSError, subprocess.TimeoutExpired) as error:
         print(f"error: {job.name}: {error}")
         return "error"
-    finally:
-        if gate is not None:
-            gate.release(job.disk_weight)
 
 
 def run_jobs(jobs, workers=None, binary=BINARY):
@@ -106,17 +110,27 @@ def run_jobs(jobs, workers=None, binary=BINARY):
     if not pending:
         return []
     workers = workers or max(1, (os.cpu_count() or 4) - 2)
-    # Heaviest first, so big runs hold the disk gate while light ones fill in.
-    pending.sort(key=lambda job: job.disk_weight, reverse=True)
-    gate = DiskGate(DISK_BUDGET_BYTES)
+    scheduler = Scheduler(pending, DISK_BUDGET_BYTES)
     results = []
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(run_one, job, binary, gate): job for job in pending}
-        for index, future in enumerate(as_completed(futures), start=1):
-            job = futures[future]
-            outcome = future.result()
-            results.append((job, outcome))
-            print(f"[{index}/{len(pending)}] {outcome.upper():12} {job.name}")
+    results_lock = threading.Lock()
+
+    def worker():
+        while True:
+            job = scheduler.take()
+            if job is None:
+                return
+            outcome = run_one(job, binary)
+            scheduler.release(job)
+            with results_lock:
+                results.append((job, outcome))
+                index = len(results)
+            print(f"[{index}/{len(pending)}] {outcome.upper():12} {job.name}", flush=True)
+
+    threads = [threading.Thread(target=worker) for _ in range(workers)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
     failed = [(job, outcome) for job, outcome in results if outcome != "pass"]
     if failed:
         print(f"\n{len(failed)} runs did not pass:")
