@@ -16,7 +16,7 @@ use dag::{
     consensus::CommittedSubDag,
     context::Ctx,
     core::syncer::Syncer,
-    metrics::Metrics,
+    metrics::{Metrics, MetricsSnapshot},
     storage::Storage,
     sync::net_sync::QuorumTimeoutRounds,
 };
@@ -281,12 +281,27 @@ impl SimulationState {
     ) -> JoinHandle<()> {
         SimulatorContext::spawn(async move {
             let interval = Duration::from_secs(interval_secs.max(1));
+            // Previous snapshots, for the windowed latency columns; the first
+            // tick's window spans everything since startup.
+            let mut previous: Vec<Option<MetricsSnapshot>> = std::iter::repeat_with(|| None)
+                .take(metrics_handles.len())
+                .collect();
             loop {
                 SimulatorContext::sleep(interval).await;
                 let time_s = SimulatorContext::time().as_secs();
                 let mut rows = time_series.lock().await;
                 for (replica, metrics) in metrics_handles.iter().enumerate() {
                     let snapshot = metrics.collect();
+                    let (latency_p50_ms, latency_avg_ms) = match &previous[replica] {
+                        Some(earlier) => (
+                            snapshot.latency_window_percentile_ms(earlier, 0.5),
+                            snapshot.latency_window_mean_ms(earlier),
+                        ),
+                        None => (
+                            snapshot.latency_percentile_ms(0.5),
+                            snapshot.latency_mean_ms(),
+                        ),
+                    };
                     rows.push(TimeSeriesRow {
                         time_s,
                         replica,
@@ -296,7 +311,10 @@ impl SimulationState {
                         indirect_skips: snapshot.indirect_skips(),
                         leader_timeouts: snapshot.leader_timeouts(),
                         steelhead_period: snapshot.steelhead_period(),
+                        latency_p50_ms,
+                        latency_avg_ms,
                     });
+                    previous[replica] = Some(snapshot);
                 }
             }
         })

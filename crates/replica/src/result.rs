@@ -139,6 +139,10 @@ pub struct TimeSeriesRow {
     pub indirect_skips: u64,
     pub leader_timeouts: u64,
     pub steelhead_period: u64,
+    /// Windowed committed-transaction latency since the previous sample;
+    /// `None` when no transaction committed in the window.
+    pub latency_p50_ms: Option<f64>,
+    pub latency_avg_ms: Option<f64>,
 }
 
 impl<C> RunResult<C> {

@@ -176,12 +176,16 @@ impl Exporter {
                 writeln!(
                     writer,
                     "time_s,replica,direct_commits,indirect_commits,direct_skips,\
-                    indirect_skips,leader_timeouts,steelhead_period"
+                    indirect_skips,leader_timeouts,steelhead_period,\
+                    latency_p50_ms,latency_avg_ms"
                 )?;
+                // The latency columns are blank when nothing committed in the window.
+                let cell =
+                    |value: Option<f64>| value.map(|ms| format!("{ms:.1}")).unwrap_or_default();
                 for row in &result.time_series {
                     writeln!(
                         writer,
-                        "{},{},{},{},{},{},{},{}",
+                        "{},{},{},{},{},{},{},{},{},{}",
                         row.time_s,
                         row.replica,
                         row.direct_commits,
@@ -190,6 +194,8 @@ impl Exporter {
                         row.indirect_skips,
                         row.leader_timeouts,
                         row.steelhead_period,
+                        cell(row.latency_p50_ms),
+                        cell(row.latency_avg_ms),
                     )?;
                 }
                 Ok(())

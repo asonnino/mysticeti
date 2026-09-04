@@ -11,6 +11,10 @@ use super::names::{
     LEADER_TIMEOUT_TOTAL, STEELHEAD_PERIOD,
 };
 
+/// Cumulative `(upper_bound, count)` buckets plus a histogram's sample sum
+/// and count.
+type HistogramBuckets = (Vec<(f64, u64)>, f64, u64);
+
 /// A point-in-time snapshot of all metrics from a Prometheus
 /// registry. Test-only — no production cost.
 #[derive(Debug)]
@@ -33,6 +37,28 @@ impl MetricsSnapshot {
     pub fn latency_percentile_ms(&self, p: f64) -> Option<f64> {
         self.histogram_percentile(LATENCY_S, p)
             .map(|seconds| seconds * 1000.0)
+    }
+
+    /// Windowed latency percentile in milliseconds: percentile `p` over the
+    /// observations recorded between `previous` and this snapshot. `None` when
+    /// the window is empty or the histograms are absent or inconsistent.
+    pub fn latency_window_percentile_ms(&self, previous: &Self, p: f64) -> Option<f64> {
+        self.histogram_window_percentile(previous, LATENCY_S, p)
+            .map(|seconds| seconds * 1000.0)
+    }
+
+    /// Windowed mean latency in milliseconds over the observations recorded
+    /// between `previous` and this snapshot; `None` on an empty window.
+    pub fn latency_window_mean_ms(&self, previous: &Self) -> Option<f64> {
+        self.histogram_window_mean(previous, LATENCY_S)
+            .map(|seconds| seconds * 1000.0)
+    }
+
+    /// Mean committed-transaction latency in milliseconds since startup;
+    /// `None` when the histogram is absent or empty.
+    pub fn latency_mean_ms(&self) -> Option<f64> {
+        let (sum, count) = self.histogram_sum_and_count(LATENCY_S)?;
+        (count > 0).then(|| sum / count as f64 * 1000.0)
     }
 
     /// Total committed transactions observed by this replica, taken from the
@@ -181,54 +207,71 @@ impl MetricsSnapshot {
     /// zero observations. When the selected bucket is the `+Inf` terminal, falls back to the
     /// previous finite upper bound so the result stays plottable.
     pub(super) fn histogram_percentile(&self, name: &str, p: f64) -> Option<f64> {
-        let p = p.clamp(0.0, 1.0);
+        let (buckets, _, total) = self.histogram_buckets(name)?;
+        percentile_from_buckets(name, &buckets, total, p)
+    }
+
+    /// Percentile `p` over the observations recorded between `previous` and
+    /// this snapshot, computed from the bucket-count deltas. `None` when the
+    /// window is empty or the two histograms are absent or inconsistent
+    /// (mismatched bounds, decreasing counts).
+    pub(super) fn histogram_window_percentile(
+        &self,
+        previous: &Self,
+        name: &str,
+        p: f64,
+    ) -> Option<f64> {
+        let (current, _, current_total) = self.histogram_buckets(name)?;
+        let (earlier, _, earlier_total) = previous.histogram_buckets(name)?;
+        let total = current_total.checked_sub(earlier_total)?;
+        if total == 0 || current.len() != earlier.len() {
+            return None;
+        }
+        let mut window = Vec::with_capacity(current.len());
+        for (&(upper, count), &(earlier_upper, earlier_count)) in current.iter().zip(&earlier) {
+            let same_bound = upper == earlier_upper || (upper.is_nan() && earlier_upper.is_nan());
+            if !same_bound {
+                return None;
+            }
+            window.push((upper, count.checked_sub(earlier_count)?));
+        }
+        percentile_from_buckets(name, &window, total, p)
+    }
+
+    /// Mean of the observations recorded between `previous` and this snapshot,
+    /// in the histogram's native unit; `None` on an empty window.
+    pub(super) fn histogram_window_mean(&self, previous: &Self, name: &str) -> Option<f64> {
+        let (sum, count) = self.histogram_sum_and_count(name)?;
+        let (earlier_sum, earlier_count) = previous.histogram_sum_and_count(name)?;
+        let window_count = count.checked_sub(earlier_count)?;
+        if window_count == 0 {
+            return None;
+        }
+        Some((sum - earlier_sum) / window_count as f64)
+    }
+
+    /// A histogram's cumulative `(upper_bound, count)` buckets plus its sample
+    /// sum and count; `None` when the metric is absent or has no buckets.
+    fn histogram_buckets(&self, name: &str) -> Option<HistogramBuckets> {
         let family = self.find_family(name)?;
         for metric in family.get_metric() {
             if metric.histogram.is_none() {
                 continue;
             }
             let histogram = metric.get_histogram();
-            let total = histogram.get_sample_count();
-            if total == 0 {
-                return None;
-            }
-            let buckets = histogram.get_bucket();
+            let buckets: Vec<_> = histogram
+                .get_bucket()
+                .iter()
+                .map(|bucket| (bucket.upper_bound(), bucket.cumulative_count()))
+                .collect();
             if buckets.is_empty() {
                 return None;
             }
-            let target = p * total as f64;
-            let mut prev_bound = 0.0_f64;
-            let mut prev_count = 0_u64;
-            let mut last_finite_bound = 0.0_f64;
-            for bucket in buckets {
-                let upper = bucket.upper_bound();
-                let count = bucket.cumulative_count();
-                if count as f64 >= target {
-                    let high = if upper.is_finite() {
-                        upper
-                    } else {
-                        last_finite_bound
-                    };
-                    if count == prev_count {
-                        return Some(prev_bound);
-                    }
-                    let fraction = (target - prev_count as f64) / (count - prev_count) as f64;
-                    return Some(prev_bound + fraction * (high - prev_bound));
-                }
-                if upper.is_finite() {
-                    last_finite_bound = upper;
-                }
-                prev_bound = if upper.is_finite() { upper } else { prev_bound };
-                prev_count = count;
-            }
-            // The `+Inf` bucket's cumulative_count should always equal total, so the
-            // `count >= target` branch must fire before falling out of the loop. If we
-            // still get here the metric data is malformed — log and treat as unavailable
-            // rather than panic in the reporting path.
-            tracing::error!(
-                "malformed histogram {name:?}: cumulative_count never reaches sample_count"
-            );
-            return None;
+            return Some((
+                buckets,
+                histogram.get_sample_sum(),
+                histogram.get_sample_count(),
+            ));
         }
         None
     }
@@ -251,6 +294,47 @@ impl MetricsSnapshot {
     fn find_family(&self, name: &str) -> Option<&MetricFamily> {
         self.families.iter().find(|f| f.name() == name)
     }
+}
+
+/// Percentile `p` (clamped to `[0, 1]`) over cumulative `(upper_bound, count)`
+/// buckets totaling `total` observations, in the histogram's native unit. Uses
+/// the Prometheus `histogram_quantile` idiom: linear interpolation between the
+/// upper bounds of adjacent buckets. When the selected bucket is the `+Inf`
+/// terminal, falls back to the previous finite upper bound so the result stays
+/// plottable.
+fn percentile_from_buckets(name: &str, buckets: &[(f64, u64)], total: u64, p: f64) -> Option<f64> {
+    if total == 0 || buckets.is_empty() {
+        return None;
+    }
+    let target = p.clamp(0.0, 1.0) * total as f64;
+    let mut prev_bound = 0.0_f64;
+    let mut prev_count = 0_u64;
+    let mut last_finite_bound = 0.0_f64;
+    for &(upper, count) in buckets {
+        if count as f64 >= target {
+            let high = if upper.is_finite() {
+                upper
+            } else {
+                last_finite_bound
+            };
+            if count == prev_count {
+                return Some(prev_bound);
+            }
+            let fraction = (target - prev_count as f64) / (count - prev_count) as f64;
+            return Some(prev_bound + fraction * (high - prev_bound));
+        }
+        if upper.is_finite() {
+            last_finite_bound = upper;
+        }
+        prev_bound = if upper.is_finite() { upper } else { prev_bound };
+        prev_count = count;
+    }
+    // The `+Inf` bucket's cumulative_count should always equal total, so the
+    // `count >= target` branch must fire before falling out of the loop. If we
+    // still get here the metric data is malformed — log and treat as unavailable
+    // rather than panic in the reporting path.
+    tracing::error!("malformed histogram {name:?}: cumulative_count never reaches sample_count");
+    None
 }
 
 #[cfg(test)]
@@ -398,6 +482,77 @@ mod test {
                 .unwrap();
         let snapshot = collect_snapshot(&registry);
         assert_eq!(snapshot.histogram_percentile("demo_empty_s", 0.5), None);
+    }
+
+    #[test]
+    fn histogram_window_percentile_uses_only_the_window() {
+        // 100 observations land in the first bucket before the earlier snapshot;
+        // 100 more land in the third bucket afterwards. The windowed p50 must
+        // interpolate inside the third bucket (0.5..0.75 -> 0.625), while the
+        // cumulative p50 over all 200 sits at the first bucket edge.
+        let registry = Registry::new();
+        let histogram = register_histogram_with_registry!(
+            "demo_window_s",
+            "help",
+            vec![0.25, 0.5, 0.75, 1.0],
+            registry
+        )
+        .unwrap();
+        for _ in 0..100 {
+            histogram.observe(0.1);
+        }
+        let earlier = collect_snapshot(&registry);
+        for _ in 0..100 {
+            histogram.observe(0.6);
+        }
+        let snapshot = collect_snapshot(&registry);
+        assert_eq!(
+            snapshot.histogram_window_percentile(&earlier, "demo_window_s", 0.5),
+            Some(0.625)
+        );
+        assert_eq!(
+            snapshot.histogram_percentile("demo_window_s", 0.5),
+            Some(0.25)
+        );
+    }
+
+    #[test]
+    fn histogram_window_empty_returns_none() {
+        let registry = Registry::new();
+        let histogram =
+            register_histogram_with_registry!("demo_idle_s", "help", vec![0.25, 0.5], registry)
+                .unwrap();
+        histogram.observe(0.1);
+        let earlier = collect_snapshot(&registry);
+        let snapshot = collect_snapshot(&registry);
+        assert_eq!(
+            snapshot.histogram_window_percentile(&earlier, "demo_idle_s", 0.5),
+            None
+        );
+        assert_eq!(
+            snapshot.histogram_window_mean(&earlier, "demo_idle_s"),
+            None
+        );
+    }
+
+    #[test]
+    fn latency_window_wrappers_convert_to_ms() {
+        let registry = Registry::new();
+        let histogram =
+            register_histogram_with_registry!("latency_s", "help", vec![0.25, 0.5, 1.0], registry)
+                .unwrap();
+        histogram.observe(0.1);
+        let earlier = collect_snapshot(&registry);
+        for _ in 0..10 {
+            histogram.observe(0.6);
+        }
+        let snapshot = collect_snapshot(&registry);
+        let mean = snapshot.latency_window_mean_ms(&earlier).unwrap();
+        assert!((mean - 600.0).abs() < 1e-9, "window mean {mean}");
+        let p50 = snapshot
+            .latency_window_percentile_ms(&earlier, 0.5)
+            .unwrap();
+        assert!((500.0..=1000.0).contains(&p50), "window p50 {p50}");
     }
 
     #[test]
