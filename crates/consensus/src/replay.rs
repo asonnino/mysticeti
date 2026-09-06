@@ -19,8 +19,12 @@
 //! window top as its commit round (deferring its rounds' output upward).
 //!
 //! The canary leader wait writes the sync rule's evidence into the DAG on
-//! async rounds; a canary above 1 under-samples that evidence, so the replay
-//! scores sync candidates conservatively (it can only under-adopt them).
+//! async rounds, so only canaried rounds carry manufactured evidence. The
+//! replay probes a candidate's canaried sync slots exactly and extrapolates
+//! the probes' success rate to its remaining sync slots; probe successes are
+//! certificates, so an adversary can only suppress them (under-adopting
+//! sync, never over-adopting it). With no probes in the window the replay
+//! falls back to exact whole-window evidence.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -58,6 +62,10 @@ pub struct ReplayParams {
     pub merged_certificates: bool,
     pub sync_wave_length: RoundNumber,
     pub async_wave_length: RoundNumber,
+    /// The execution-side canary schedule: only canaried rounds carry
+    /// manufactured sync evidence, so the replay probes those and
+    /// extrapolates to the rest (see [`replay`]).
+    pub canary: Option<NonZeroU64>,
 }
 
 impl ReplayParams {
@@ -71,7 +79,15 @@ impl ReplayParams {
             merged_certificates: protocol.merged_certificates,
             sync_wave_length: schedule.sync_wave_length,
             async_wave_length: schedule.async_wave_length,
+            canary: schedule.canary,
         })
+    }
+
+    /// Whether execution held the leader wait on `round` when it was an
+    /// async slot — i.e. whether the round carries manufactured evidence.
+    fn is_canaried(&self, round: RoundNumber) -> bool {
+        self.canary
+            .is_some_and(|canary| round.is_multiple_of(canary.get()))
     }
 }
 
@@ -161,6 +177,8 @@ pub fn replay(window: &Window, params: &ReplayParams, period: NonZeroU64) -> Sca
     let scale = |round: RoundNumber| round as u128 * n;
     let top_scaled = scale(window.top);
     let span = (window.top - window.floor + 1) as usize;
+    let probes = probe_rate(window, params, period)
+        .map(|(succeeded, total)| (succeeded, total - succeeded, total));
 
     // Pass 1, top-down: expected decision and commit rounds per slot.
     let mut decisions: Vec<Scaled> = vec![top_scaled; span];
@@ -183,6 +201,21 @@ pub fn replay(window: &Window, params: &ReplayParams, period: NonZeroU64) -> Sca
         } else {
             decision_round - 1
         };
+
+        if !is_async
+            && !params.is_canaried(round)
+            && let Some((succeeded, failed, total)) = probes
+        {
+            // Un-probed sync slot: only canaried rounds carry manufactured
+            // evidence, so extrapolate from the probes — commit at the
+            // decision round with the probes' success rate, otherwise read
+            // as a direct skip (decided at the voting round, output
+            // deferred upward).
+            decisions[index] =
+                (succeeded * scale(decision_round) + failed * scale(voting_round)) / total;
+            commits[index] = (succeeded * scale(decision_round) + failed * top_scaled) / total;
+            continue;
+        }
 
         // The replayed anchor: the earliest higher slot with commit mass.
         let anchor = (round + wave_length..=window.top)
@@ -284,31 +317,20 @@ fn replay_slot(
     };
 
     // Direct commit evidence at the decision round.
-    let is_vote = |block: &Data<Block>| support.get(block.reference()) == Some(&leader_reference);
-    let direct_commit = if params.merged_certificates {
-        let mut votes = StakeAggregator::new(params.direct_commit_quorum);
-        window
-            .blocks_at(decision_round)
-            .iter()
-            .any(|block| is_vote(block) && votes.add(block.author(), &params.committee))
-    } else {
-        let mut carriers = StakeAggregator::new(params.direct_commit_quorum);
-        window.blocks_at(decision_round).iter().any(|block| {
-            let mut votes = StakeAggregator::new(params.certificate_quorum);
-            let carries = block.includes().iter().any(|include| {
-                include.round() == voting_round
-                    && support.get(include) == Some(&leader_reference)
-                    && votes.add(include.authority, &params.committee)
-            });
-            carries && carriers.add(block.author(), &params.committee)
-        })
-    };
-    if direct_commit {
+    if direct_commit_evidence(
+        window,
+        params,
+        &support,
+        leader_reference,
+        voting_round,
+        decision_round,
+    ) {
         return (scale(decision_round), scale(decision_round));
     }
 
     // Indirect: the anchor decides; committed iff the window holds a
     // certificate for this leader (the window is the real anchor's history).
+    let is_vote = |block: &Data<Block>| support.get(block.reference()) == Some(&leader_reference);
     let certified = if params.merged_certificates {
         let mut votes = StakeAggregator::new(params.certificate_quorum);
         window
@@ -331,6 +353,85 @@ fn replay_slot(
     } else {
         (anchor_decision, top_scaled)
     }
+}
+
+/// Whether the window holds the direct-commit pattern for `leader_reference`:
+/// a `direct_commit_quorum` of decision-round blocks that are votes (merged
+/// certificates) or that carry a `certificate_quorum` of votes.
+fn direct_commit_evidence(
+    window: &Window,
+    params: &ReplayParams,
+    support: &HashMap<BlockReference, BlockReference>,
+    leader_reference: BlockReference,
+    voting_round: RoundNumber,
+    decision_round: RoundNumber,
+) -> bool {
+    let is_vote = |block: &Data<Block>| support.get(block.reference()) == Some(&leader_reference);
+    if params.merged_certificates {
+        let mut votes = StakeAggregator::new(params.direct_commit_quorum);
+        window
+            .blocks_at(decision_round)
+            .iter()
+            .any(|block| is_vote(block) && votes.add(block.author(), &params.committee))
+    } else {
+        let mut carriers = StakeAggregator::new(params.direct_commit_quorum);
+        window.blocks_at(decision_round).iter().any(|block| {
+            let mut votes = StakeAggregator::new(params.certificate_quorum);
+            let carries = block.includes().iter().any(|include| {
+                include.round() == voting_round
+                    && support.get(include) == Some(&leader_reference)
+                    && votes.add(include.authority, &params.committee)
+            });
+            carries && carriers.add(block.author(), &params.committee)
+        })
+    }
+}
+
+/// Probe the canaried sync slots of candidate `period`: those rounds carried
+/// the execution-side leader wait, so their direct-commit evidence is honest.
+/// Returns `(succeeded, total)` probes, or `None` when the window holds no
+/// probe for this candidate (no canary, or every canaried round lands on the
+/// candidate's async slots).
+fn probe_rate(window: &Window, params: &ReplayParams, period: NonZeroU64) -> Option<(u128, u128)> {
+    let n = params.committee.len() as u64;
+    let mut succeeded: u128 = 0;
+    let mut total: u128 = 0;
+    for round in window.floor..=window.top {
+        if round.is_multiple_of(period.get()) || !params.is_canaried(round) {
+            continue;
+        }
+        let decision_round = round + params.sync_wave_length - 1;
+        if decision_round > window.top {
+            continue;
+        }
+        let voting_round = if params.merged_certificates {
+            decision_round
+        } else {
+            decision_round - 1
+        };
+        let author = Authority::new(round % n);
+        let support = window.support_map(author, round, decision_round);
+        let leader_reference = window
+            .blocks_at(round)
+            .iter()
+            .filter(|block| block.author() == author)
+            .min_by_key(|block| block.reference().digest)
+            .map(|block| *block.reference());
+        total += 1;
+        if let Some(leader_reference) = leader_reference
+            && direct_commit_evidence(
+                window,
+                params,
+                &support,
+                leader_reference,
+                voting_round,
+                decision_round,
+            )
+        {
+            succeeded += 1;
+        }
+    }
+    (total > 0).then_some((succeeded, total))
 }
 
 /// Score every candidate period (powers of two up to `max_period`) and pick
@@ -401,6 +502,10 @@ mod tests {
     const MAX_PERIOD: u64 = 8;
 
     fn params(committee: &Arc<Committee>) -> ReplayParams {
+        params_with_canary(committee, NonZeroU64::new(1))
+    }
+
+    fn params_with_canary(committee: &Arc<Committee>, canary: Option<NonZeroU64>) -> ReplayParams {
         let spec = ConsensusProtocol::Steelhead {
             pair: SteelheadPair::MysticetiMahiMahi,
             period: None,
@@ -410,7 +515,7 @@ mod tests {
                 max_period: NonZeroU64::new(MAX_PERIOD).unwrap(),
                 epsilon_percent: 10,
             }),
-            canary: NonZeroU64::new(1),
+            canary,
             leader_count: NonZeroUsize::new(1).unwrap(),
         };
         let protocol = spec.to_protocol(committee).expect("valid protocol");
@@ -577,6 +682,63 @@ mod tests {
             replay(&window, &params, period(candidate));
         }
         choose_period(&window, &params, period(MAX_PERIOD), period(MAX_PERIOD), 10);
+    }
+
+    /// Sparse-canary DAG: the previous round's leader is referenced only
+    /// when that round was canaried (multiple of `canary`); starved
+    /// otherwise. Models execution at period 1 with a sampled canary.
+    fn build_sampled_canary_dag(
+        committee: &Arc<Committee>,
+        storage: &mut Storage,
+        depth: RoundNumber,
+        canary: u64,
+    ) -> Vec<BlockReference> {
+        let n = committee.len() as u64;
+        let mut references = build_dag(committee, storage, None, 0);
+        for round in 1..=depth {
+            let previous = round - 1;
+            let parents = if previous == 0 || previous.is_multiple_of(canary) {
+                references.clone()
+            } else {
+                drop_leader(&references, Authority::new(previous % n))
+            };
+            references = build_dag_layer(
+                committee
+                    .authorities()
+                    .map(|authority| (authority, parents.clone()))
+                    .collect(),
+                storage,
+            );
+        }
+        references
+    }
+
+    #[test]
+    fn sparse_canary_probes_enable_the_climb() {
+        // Healthy network executed with canary 5: only every 5th round's
+        // leader is referenced, yet the probe-aware replay must adopt the
+        // largest period from those probes alone.
+        let committee = committee(4);
+        let mut storage = Storage::new_for_test(&committee);
+        let top = build_sampled_canary_dag(&committee, &mut storage, 33, 5);
+        let window = window_at(&storage, top[0]);
+
+        let probed = params_with_canary(&committee, NonZeroU64::new(5));
+        let chosen = choose_period(&window, &probed, period(1), period(MAX_PERIOD), 10);
+        assert_eq!(chosen, period(MAX_PERIOD), "probes must certify the climb");
+    }
+
+    #[test]
+    fn starved_probes_stay_async() {
+        // Fully starved DAG (no leader ever referenced): probes fail, so the
+        // sampled canary must not climb.
+        let committee = committee(4);
+        let mut storage = Storage::new_for_test(&committee);
+        let top = build_leader_starved_dag(&committee, &mut storage, 33);
+        let window = window_at(&storage, top[0]);
+        let probed = params_with_canary(&committee, NonZeroU64::new(5));
+        let chosen = choose_period(&window, &probed, period(MAX_PERIOD), period(MAX_PERIOD), 10);
+        assert_eq!(chosen, period(1));
     }
 
     #[test]

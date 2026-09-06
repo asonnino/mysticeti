@@ -918,9 +918,9 @@ impl Protocol {
                         reason: "max_period must be a power of two",
                     });
                 }
-                if adaptive.interval < 4 * adaptive.max_period.get() {
+                if adaptive.interval < 2 * adaptive.max_period.get() {
                     return Err(ProtocolError::SteelheadInvalidAdaptive {
-                        reason: "interval must be at least 4 * max_period",
+                        reason: "interval must be at least 2 * max_period",
                     });
                 }
                 if adaptive.interval > RETAIN_BELOW_COMMIT_ROUNDS {
