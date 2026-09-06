@@ -28,11 +28,18 @@ LOADS = {
     10: [1_000, 5_000, 10_000, 20_000, 50_000, 100_000],
     50: [1_000, 5_000, 10_000, 20_000],
 }
+# Real-deployment leader timeout for every timeline campaign.
+LEADER_TIMEOUT_MS = 200
 REFERENCE_LOAD = {10: 20_000, 50: 20_000}
-TIMELINE_LOAD = 10_000
+TIMELINE_LOAD = 1_000
 STATIC_PERIODS = [2, 4, 8, 16]
-ADAPTIVE = {"interval": 32, "max_period": 8, "epsilon_percent": 10}
-ATTACK_DELAY_MS = 2_000
+# The derived default: pick the interval (reaction horizon); max_period and
+# canary follow their laws (largest power of two <= interval/2; largest odd
+# <= interval/4).
+ADAPTIVE = {"interval": 96, "max_period": 32, "epsilon_percent": 10}
+# Just past the leader timeout + grace + slack: enough to defeat every
+# sync wait without a large constant.
+ATTACK_DELAY_MS = 300
 
 PAIR_TAG = {"mm": "mysticeti-mahi-mahi", "bb": "blue-bottle"}
 
@@ -46,7 +53,7 @@ def protocols(pair):
         grid = {"bbps": blue_bottle_ps(), "bbasync": blue_bottle_async()}
     for period in STATIC_PERIODS:
         grid[f"sh-p{period}"] = steelhead(tag, period=period)
-    grid["sh-ada"] = steelhead(tag, adaptive=ADAPTIVE)
+    grid["sh-ada"] = steelhead(tag, adaptive=ADAPTIVE, canary=5)
     return grid
 
 
@@ -104,7 +111,8 @@ def attack_jobs():
                                     load=TIMELINE_LOAD, seed=seed),
                         spec=run_spec(committee, seed, 90, TIMELINE_LOAD, consensus,
                                         conditions=attack_conditions(30, 60),
-                                        sample_interval_secs=2),
+                                        sample_interval_secs=2,
+                                      leader_timeout_ms=LEADER_TIMEOUT_MS),
                         phases=attack_phases(30, 60, 90),
                     ))
     return jobs
@@ -127,24 +135,34 @@ def sched_jobs():
                     params=dict(committee=10, pair=pair, proto=slug,
                                 load=TIMELINE_LOAD, seed=seed),
                     spec=run_spec(10, seed, 90, TIMELINE_LOAD, consensus,
-                                    conditions=conditions, sample_interval_secs=2),
+                                    conditions=conditions, sample_interval_secs=2,
+                                      leader_timeout_ms=LEADER_TIMEOUT_MS),
                     phases=attack_phases(30, 60, 90),
                 ))
     return jobs
 
 
 def adaptive_jobs():
-    """Adaptive timeline plus the static references used for the overhead
-    fillin; adaptive runs log at debug so tracing.log carries replay scores."""
+    """The phase timeline: adaptive Steelhead vs the pure sync and async
+    baselines across good -> bad -> good, plus the static references for the
+    overhead fillin. The attack must outlast the descent (interval rounds at
+    the crawling leader cap), hence the long degraded window. Adaptive runs
+    log at debug so tracing.log carries replay scores."""
     jobs = []
     for committee in COMMITTEES:
         for pair in PAIRS:
             tag = PAIR_TAG[pair]
             grid = {
-                "sh-ada": steelhead(tag, adaptive=ADAPTIVE),
+                "sh-ada": steelhead(tag, adaptive=ADAPTIVE, canary=23),
                 "sh-p16": steelhead(tag, period=16),
                 "sh-p1": steelhead(tag, period=1),
             }
+            if pair == "mm":
+                grid["myst"] = mysticeti()
+                grid["mahi5"] = mahi(5)
+            else:
+                grid["bbps"] = blue_bottle_ps()
+                grid["bbasync"] = blue_bottle_async()
             for slug, consensus in grid.items():
                 for seed in SEEDS:
                     jobs.append(Job(
@@ -152,12 +170,271 @@ def adaptive_jobs():
                         campaign="adaptive",
                         params=dict(committee=committee, pair=pair, proto=slug,
                                     load=TIMELINE_LOAD, seed=seed),
-                        spec=run_spec(committee, seed, 150, TIMELINE_LOAD, consensus,
-                                        conditions=attack_conditions(30, 100),
-                                        sample_interval_secs=2),
-                        phases=attack_phases(30, 100, 150),
+                        spec=run_spec(committee, seed, 210, TIMELINE_LOAD, consensus,
+                                        conditions=attack_conditions(30, 150),
+                                        sample_interval_secs=2,
+                                      leader_timeout_ms=LEADER_TIMEOUT_MS),
+                        phases=attack_phases(30, 150, 210),
                         debug_log=(slug == "sh-ada"),
                     ))
+    return jobs
+
+
+PROFILES = {
+    "sh-sync": {"interval": 64, "max_period": 32, "epsilon_percent": 10, "canary": 3},
+    "sh-bal": {"interval": 32, "max_period": 16, "epsilon_percent": 10, "canary": 5},
+    "sh-tumult": {"interval": 16, "max_period": 4, "epsilon_percent": 10, "canary": 3},
+}
+
+
+def profile_grid():
+    grid = {}
+    for slug, config in PROFILES.items():
+        adaptive = {key: config[key] for key in ("interval", "max_period", "epsilon_percent")}
+        grid[slug] = steelhead(PAIR_TAG["mm"], adaptive=adaptive, canary=config["canary"])
+    grid["myst"] = mysticeti()
+    grid["mahi5"] = mahi(5)
+    return grid
+
+
+def profile_jobs():
+    """The parameter-space profiles under the single-attack timeline."""
+    jobs = []
+    for slug, consensus in profile_grid().items():
+        for seed in SEEDS:
+            jobs.append(Job(
+                name=f"profiles--n10--mm--{slug}--L{TIMELINE_LOAD}--s{seed}",
+                campaign="profiles",
+                params=dict(committee=10, pair="mm", proto=slug,
+                            load=TIMELINE_LOAD, seed=seed),
+                spec=run_spec(10, seed, 210, TIMELINE_LOAD, consensus,
+                                conditions=attack_conditions(30, 150),
+                                sample_interval_secs=2,
+                                leader_timeout_ms=LEADER_TIMEOUT_MS),
+                phases=attack_phases(30, 150, 210),
+            ))
+    return jobs
+
+
+STORM_CYCLE_S = 15
+
+
+def storm_jobs():
+    """The same profiles under a tumultuous network: alternating 30s
+    good/bad phases."""
+    duration = 210
+    conditions = []
+    phases = [Phase("healthy", 0, STORM_CYCLE_S)]
+    start = STORM_CYCLE_S
+    while start + STORM_CYCLE_S <= duration - STORM_CYCLE_S:
+        conditions.append({
+            "from_secs": start,
+            "model": {"kind": "targeted-leader-delay", "delay_ms": ATTACK_DELAY_MS},
+        })
+        conditions.append({"from_secs": start + STORM_CYCLE_S})
+        phases.append(Phase("attack", start, start + STORM_CYCLE_S))
+        phases.append(Phase("healthy", start + STORM_CYCLE_S, start + 2 * STORM_CYCLE_S))
+        start += 2 * STORM_CYCLE_S
+    jobs = []
+    for slug, consensus in profile_grid().items():
+        for seed in SEEDS:
+            jobs.append(Job(
+                name=f"storm--n10--mm--{slug}--L{TIMELINE_LOAD}--s{seed}",
+                campaign="storm",
+                params=dict(committee=10, pair="mm", proto=slug,
+                            load=TIMELINE_LOAD, seed=seed),
+                spec=run_spec(10, seed, duration, TIMELINE_LOAD, consensus,
+                                conditions=conditions, sample_interval_secs=2,
+                                leader_timeout_ms=LEADER_TIMEOUT_MS),
+                phases=phases,
+            ))
+    return jobs
+
+
+# Interval 96 gives every canary >= 3 probes/window, so failures isolate
+# alignment (canary a multiple of max_period -> its probes all land on the
+# top candidate's async slots) from probe scarcity. 15/31 are odd (coprime
+# to the power-of-two candidates); 16/32 are aligned to max_period 16.
+CANARY_SWEEP = [15, 16, 31, 32]
+CANARY_INTERVAL = 96
+
+
+def canary_jobs():
+    """Fixed window (interval 96, max 16); vary only the canary spacing to
+    separate red-premium, probe scarcity, and alignment."""
+    adaptive = {"interval": CANARY_INTERVAL, "max_period": 16, "epsilon_percent": 10}
+    jobs = []
+    for canary in CANARY_SWEEP:
+        consensus = steelhead(PAIR_TAG["mm"], adaptive=adaptive, canary=canary)
+        for seed in SEEDS:
+            jobs.append(Job(
+                name=f"canary--n10--mm--c{canary}--L{TIMELINE_LOAD}--s{seed}",
+                campaign="canary",
+                params=dict(committee=10, pair="mm", proto=f"c{canary}",
+                            canary=canary, load=TIMELINE_LOAD, seed=seed),
+                spec=run_spec(10, seed, 210, TIMELINE_LOAD, consensus,
+                                conditions=attack_conditions(30, 150),
+                                sample_interval_secs=2,
+                                leader_timeout_ms=LEADER_TIMEOUT_MS),
+                phases=attack_phases(30, 150, 210),
+            ))
+    return jobs
+
+
+# Fixed green premium (max_period 8); interval is the transition dial, with
+# canary = largest odd <= interval/4 (coprime to the power-of-two candidates).
+INTERVAL_SWEEP = [(16, 3), (32, 7), (64, 15)]
+
+
+def interval_jobs():
+    grid = {"myst": mysticeti(), "mahi5": mahi(5)}
+    for interval, canary in INTERVAL_SWEEP:
+        adaptive = {"interval": interval, "max_period": 8, "epsilon_percent": 10}
+        grid[f"i{interval}"] = steelhead(PAIR_TAG["mm"], adaptive=adaptive, canary=canary)
+    jobs = []
+    for slug, consensus in grid.items():
+        for seed in SEEDS:
+            jobs.append(Job(
+                name=f"interval--n10--mm--{slug}--L{TIMELINE_LOAD}--s{seed}",
+                campaign="interval",
+                params=dict(committee=10, pair="mm", proto=slug,
+                            load=TIMELINE_LOAD, seed=seed),
+                spec=run_spec(10, seed, 210, TIMELINE_LOAD, consensus,
+                                conditions=attack_conditions(30, 150),
+                                sample_interval_secs=2,
+                                leader_timeout_ms=LEADER_TIMEOUT_MS),
+                phases=attack_phases(30, 150, 210),
+            ))
+    return jobs
+
+
+# One-knob-at-a-time ablations; every config runs against shared baselines.
+ABLATION = (
+    [(i, 8, 3) for i in (16, 32, 64, 96)]              # interval sweep
+    + [(64, m, 3) for m in (4, 16, 32)]                # max_period sweep (64,8,3 shared)
+    + [(64, 8, c) for c in (5, 7, 11, 15)]             # canary sweep
+    + [(96, 8, 23)]                                    # today's ceiling
+)
+
+
+def ablation_jobs():
+    grid = {"myst": mysticeti(), "mahi5": mahi(5)}
+    for interval, max_period, canary in ABLATION:
+        adaptive = {"interval": interval, "max_period": max_period, "epsilon_percent": 10}
+        slug = f"i{interval}-m{max_period}-c{canary}"
+        grid[slug] = steelhead(PAIR_TAG["mm"], adaptive=adaptive, canary=canary)
+    jobs = []
+    for slug, consensus in grid.items():
+        for seed in SEEDS:
+            jobs.append(Job(
+                name=f"abl--n10--mm--{slug}--L{TIMELINE_LOAD}--s{seed}",
+                campaign="abl",
+                params=dict(committee=10, pair="mm", proto=slug,
+                            load=TIMELINE_LOAD, seed=seed),
+                spec=run_spec(10, seed, 210, TIMELINE_LOAD, consensus,
+                                conditions=attack_conditions(30, 150),
+                                sample_interval_secs=2,
+                                leader_timeout_ms=LEADER_TIMEOUT_MS),
+                phases=attack_phases(30, 150, 210),
+            ))
+    return jobs
+
+
+# Red-zone network models ("internet weather"), all on the standard 210s
+# timeline. Every model applies identically to all protocols.
+WEATHER = {
+    # Sub-threshold fluctuation: leader delay below the 200ms cap; sync
+    # survives, so Steelhead must NOT descend (false-alarm robustness).
+    "subthresh": {"kind": "targeted-leader-delay", "delay_ms": 50},
+    # Random network, increasing severity: each message independently
+    # delayed with probability p (the graded-descent sweep).
+    "rand20": {"kind": "random-link-delay", "percent": 20,
+                "delay_min_ms": 100, "delay_max_ms": 400},
+    "rand50": {"kind": "random-link-delay", "percent": 50,
+                "delay_min_ms": 100, "delay_max_ms": 400},
+    "rand80": {"kind": "random-link-delay", "percent": 80,
+                "delay_min_ms": 100, "delay_max_ms": 400},
+    # Scheduled asynchrony: everything held to burst boundaries.
+    # Burst must exceed the 200ms leader timeout to disrupt sync at all;
+    # 300ms keeps rounds near the other models' pace rather than crawling.
+    "sched": {"kind": "scheduled-asynchrony", "burst_ms": 300},
+    # Very jittery network: universal per-message jitter (probability 100%).
+    "jitter": {"kind": "random-link-delay", "percent": 100,
+                "delay_min_ms": 0, "delay_max_ms": 400},
+    # Global slowdown: every message +200ms (congestion, not asynchrony).
+    "slow": {"kind": "random-link-delay", "percent": 100,
+                "delay_min_ms": 200, "delay_max_ms": 200},
+}
+# (a structured-partial model that could park at an intermediate period is a
+# candidate follow-up; the delay models here are all uniform-severity.)
+
+
+def weather_jobs():
+    fast = {"interval": 16, "max_period": 4, "epsilon_percent": 10}
+    grid = {
+        "sh-ada": steelhead(PAIR_TAG["mm"], adaptive=ADAPTIVE, canary=23),
+        "sh-fast": steelhead(PAIR_TAG["mm"], adaptive=fast, canary=3),
+        "myst": mysticeti(),
+        "mahi5": mahi(5),
+    }
+    jobs = []
+    for model_slug, model in WEATHER.items():
+        conditions = [{"from_secs": 30, "model": model}, {"from_secs": 150}]
+        for proto_slug, consensus in grid.items():
+            for seed in SEEDS:
+                jobs.append(Job(
+                    name=f"weather--{model_slug}--{proto_slug}--s{seed}",
+                    campaign="weather",
+                    params=dict(committee=10, pair="mm", proto=proto_slug,
+                                model=model_slug, load=TIMELINE_LOAD, seed=seed),
+                    spec=run_spec(10, seed, 210, TIMELINE_LOAD, consensus,
+                                    conditions=conditions, sample_interval_secs=2,
+                                    leader_timeout_ms=LEADER_TIMEOUT_MS),
+                    phases=attack_phases(30, 150, 210),
+                ))
+    # Crash faults are permanent: replicas die at 30s, no recovery zone.
+    for proto_slug, consensus in grid.items():
+        for seed in SEEDS:
+            jobs.append(Job(
+                name=f"weather--crash--{proto_slug}--s{seed}",
+                campaign="weather",
+                params=dict(committee=10, pair="mm", proto=proto_slug,
+                            model="crash", load=TIMELINE_LOAD, seed=seed),
+                spec=run_spec(10, seed, 210, TIMELINE_LOAD, consensus,
+                                crashes=[{"replica": r, "at_secs": 30} for r in (7, 8, 9)],
+                                sample_interval_secs=2,
+                                leader_timeout_ms=LEADER_TIMEOUT_MS),
+                phases=[Phase("healthy", 0, 30), Phase("attack", 30, 210)],
+            ))
+    return jobs
+
+
+# Recovery stress test: a ~1% steady-state overhead config (max 64) under a
+# sustained scheduled-asynchrony period, long enough for s->a to complete and
+# a->s afterward. Needs retention > interval (bumped to 512).
+def recovery_jobs():
+    adaptive = {"interval": 128, "max_period": 64, "epsilon_percent": 10}
+    consensus = steelhead(PAIR_TAG["mm"], adaptive=adaptive, canary=31)
+    grid = {"sh-1pct": consensus, "mahi5": mahi(5), "myst": mysticeti()}
+    conditions = [
+        {"from_secs": 30, "model": {"kind": "random-link-delay", "percent": 100,
+                                    "delay_min_ms": 400, "delay_max_ms": 400}},
+        {"from_secs": 330},
+    ]
+    jobs = []
+    for slug, c in grid.items():
+        for seed in SEEDS:
+            jobs.append(Job(
+                name=f"recovery--n10--mm--{slug}--s{seed}",
+                campaign="recovery",
+                params=dict(committee=10, pair="mm", proto=slug,
+                            load=TIMELINE_LOAD, seed=seed),
+                spec=run_spec(10, seed, 450, TIMELINE_LOAD, c,
+                                conditions=conditions, sample_interval_secs=5,
+                                leader_timeout_ms=LEADER_TIMEOUT_MS),
+                phases=[Phase("healthy", 0, 30), Phase("attack", 30, 330),
+                        Phase("healthy", 330, 450)],
+            ))
     return jobs
 
 
@@ -186,7 +463,8 @@ def async_jobs():
                             load=TIMELINE_LOAD, seed=seed),
                 spec=run_spec(10, seed, 60, TIMELINE_LOAD, consensus,
                                 conditions=conditions, crashes=crashes,
-                                sample_interval_secs=2),
+                                sample_interval_secs=2,
+                                      leader_timeout_ms=LEADER_TIMEOUT_MS),
             ))
     return jobs
 
@@ -205,7 +483,8 @@ def smoke_jobs():
             campaign="smoke",
             params=dict(committee=10, pair="mm", proto="sh-p4", load=100, seed=0),
             spec=run_spec(10, 0, 30, 100, steelhead(PAIR_TAG["mm"], period=4),
-                            conditions=attack_conditions(10, 20), sample_interval_secs=2),
+                            conditions=attack_conditions(10, 20), sample_interval_secs=2,
+                                      leader_timeout_ms=LEADER_TIMEOUT_MS),
             phases=attack_phases(10, 20, 30),
         ),
     ]
@@ -213,7 +492,8 @@ def smoke_jobs():
 
 def all_jobs():
     jobs = (smoke_jobs() + good_jobs() + attack_jobs() + sched_jobs()
-            + adaptive_jobs() + async_jobs())
+            + adaptive_jobs() + async_jobs() + profile_jobs() + storm_jobs()
+            + canary_jobs() + interval_jobs() + ablation_jobs() + weather_jobs() + recovery_jobs())
     names = [job.name for job in jobs]
     assert len(names) == len(set(names)), "job names must be unique"
     return jobs

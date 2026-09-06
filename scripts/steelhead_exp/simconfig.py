@@ -50,23 +50,23 @@ class Job:
                 * generator.get("transaction_size", 0) * self.spec["duration_secs"])
 
 
-def mysticeti(leader_count=2):
+def mysticeti(leader_count=1):
     return {"protocol": "mysticeti", "leader_count": leader_count}
 
 
-def mahi(wave_length, leader_count=2):
+def mahi(wave_length, leader_count=1):
     return {"protocol": "mahi-mahi", "wave_length": wave_length, "leader_count": leader_count}
 
 
-def blue_bottle_ps(leader_count=2):
+def blue_bottle_ps(leader_count=1):
     return {"protocol": "blue-bottle-partially-synchronous", "leader_count": leader_count}
 
 
-def blue_bottle_async(leader_count=2):
+def blue_bottle_async(leader_count=1):
     return {"protocol": "blue-bottle-asynchronous", "leader_count": leader_count}
 
 
-def steelhead(pair, period=None, adaptive=None, canary=1, leader_count=2):
+def steelhead(pair, period=None, adaptive=None, canary=1, leader_count=1):
     """Steelhead config; `canary=1` (the default) is omitted, `canary=None`
     emits an explicit null (pure quorum pacing on async rounds)."""
     consensus = {
@@ -84,6 +84,11 @@ def steelhead(pair, period=None, adaptive=None, canary=1, leader_count=2):
     return consensus
 
 
+def duration_ms(milliseconds):
+    """serde-friendly std::time::Duration mapping."""
+    return {"secs": milliseconds // 1000, "nanos": (milliseconds % 1000) * 1_000_000}
+
+
 def run_spec(
     committee_size,
     seed,
@@ -93,6 +98,7 @@ def run_spec(
     conditions=None,
     crashes=None,
     sample_interval_secs=None,
+    leader_timeout_ms=None,
 ):
     """One mapping-form SimulationConfig (never a suite list: one config per
     simulator invocation, so runs parallelize and never share a directory).
@@ -110,6 +116,13 @@ def run_spec(
             "initial_delay": "0s",
         },
     }
+    if leader_timeout_ms is not None:
+        # A bare round_timeout override applies to both caps; pin the quorum
+        # cap at its default explicitly.
+        spec["replica_parameters"]["dag"] = {
+            "round_timeout": duration_ms(leader_timeout_ms),
+            "quorum_round_timeout": duration_ms(75),
+        }
     if conditions:
         spec["conditions"] = conditions
     if crashes:

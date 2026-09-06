@@ -21,6 +21,7 @@ from style import (
     seconds_formatter,
     shade_phases,
     throughput_formatter,
+    trim_spines,
 )
 
 
@@ -61,7 +62,7 @@ def fig_good(jobs):
             for slug in matrix.protocols(pair):
                 label, color, marker = PROTO_STYLE[slug]
                 points = []
-                for load in matrix.LOADS:
+                for load in matrix.LOADS[committee]:
                     group = by_params(jobs, committee=committee, pair=pair,
                                         proto=slug, load=load)
                     summaries = seed_summaries(group)
@@ -97,74 +98,80 @@ def timeline_axes(figure_height=TIMELINE_HEIGHT_IN):
     figure, axes = plt.subplots(figsize=(plt.rcParams["figure.figsize"][0], figure_height))
     axes.set_xlabel("Time (s)")
     axes.set_ylabel("Latency (s)")
-    axes.set_ylim(bottom=0)
     axes.yaxis.set_major_formatter(FuncFormatter(seconds_formatter))
     return figure, axes
 
 
-def fig_attack(jobs):
-    """Windowed-p50 latency timelines under targeted delay."""
+def fig_phase(jobs):
+    """The Barnacle-style figure: latency over time across the good -> bad ->
+    good phases; adaptive Steelhead (solid) must track the best of the pure
+    sync (dashed) and pure async (dotted) baselines in every phase."""
     for committee in matrix.COMMITTEES:
         for pair in matrix.PAIRS:
+            sync_slug = "myst" if pair == "mm" else "bbps"
+            async_slug = "mahi5" if pair == "mm" else "bbasync"
             figure, axes = timeline_axes()
             phases = None
             plotted = False
-            for slug in matrix.timeline_protocols(pair):
+            for slug, line_style in [(sync_slug, "--"), (async_slug, ":"), ("sh-ada", "-")]:
                 label, color, _marker = PROTO_STYLE[slug]
                 group = by_params(jobs, committee=committee, pair=pair, proto=slug)
                 merged = seed_timelines(group)
                 if merged is None:
                     continue
                 phases = phases or (group[0].phases if group else None)
-                axes.plot(merged["time_s"], merged["latency_p50_ms"] / 1000.0,
-                            label=label, color=color, linewidth=1)
+                width = 1.4
+                axes.plot(merged["time_s"], merged["latency_avg_ms"] / 1000.0,
+                    line_style, label=label, color=color, linewidth=width)
                 plotted = True
             if not plotted:
                 plt.close(figure)
                 continue
             if phases:
                 shade_phases(axes, phases)
-            axes.set_xlim(left=0)
-            legend_above(axes, ncol=2)
-            save(figure, f"attack-n{committee}-{pair}")
+                axes.set_xlim(0, phases[-1].end_s)
+            # Clip the recovery backlog spikes; the story is near the floor.
+            axes.set_ylim(0, 1.5)
+            trim_spines(axes)
+            legend_above(axes, ncol=3)
+            save(figure, f"phase-n{committee}-{pair}")
 
 
-def fig_adaptive(jobs):
-    """Adaptive Steelhead: latency (left axis) + period in force (right)."""
+def fig_period(jobs):
+    """The adaptive knob trace (Barnacle's leaders figure): the period in
+    force over time, one step line per seed, with the static bounds as
+    horizontal guides."""
     for committee in matrix.COMMITTEES:
         for pair in matrix.PAIRS:
-            adaptive = by_params(jobs, committee=committee, pair=pair, proto="sh-ada")
-            merged = seed_timelines(adaptive)
-            if merged is None:
+            group = by_params(jobs, committee=committee, pair=pair, proto="sh-ada")
+            tick_sets = []
+            for job in group:
+                columns = timeseries.load(job.out_dir)
+                if columns is not None:
+                    tick_sets.append(timeseries.per_tick(columns))
+            if not tick_sets:
                 continue
             figure, axes = timeline_axes()
-            for slug, line_style in [("sh-p16", (0, (4, 2))), ("sh-p1", (0, (1, 2)))]:
-                reference = seed_timelines(
-                    by_params(jobs, committee=committee, pair=pair, proto=slug))
-                if reference is None:
-                    continue
-                label, color, _marker = PROTO_STYLE[slug]
-                axes.plot(reference["time_s"], reference["latency_p50_ms"] / 1000.0,
-                            label=label, color=color, linewidth=0.8, linestyle=line_style,
-                            alpha=0.7)
+            axes.set_ylabel("Period in force")
             label, color, _marker = PROTO_STYLE["sh-ada"]
-            axes.plot(merged["time_s"], merged["latency_p50_ms"] / 1000.0,
-                        label=label, color=color, linewidth=1.2)
-            period_axes = axes.twinx()
-            period_axes.step(merged["time_s"], merged["steelhead_period"], where="post",
-                                color="C3", linewidth=1.2, label="period in force")
-            period_axes.set_ylabel("Period")
-            period_axes.set_ylim(bottom=0)
-            period_axes.yaxis.set_major_locator(MaxNLocator(integer=True))
-            period_axes.grid(False)
-            if adaptive:
-                shade_phases(axes, adaptive[0].phases)
-            axes.set_xlim(left=0)
-            latency_handles, latency_labels = axes.get_legend_handles_labels()
-            period_handles, period_labels = period_axes.get_legend_handles_labels()
-            legend_above(axes, ncol=2, handles=latency_handles + period_handles,
-                            labels=latency_labels + period_labels)
-            save(figure, f"adaptive-n{committee}-{pair}")
+            for index, ticks in enumerate(tick_sets):
+                axes.step(ticks["time_s"], ticks["steelhead_period"], where="post",
+                    color=color, linewidth=1.4 if index == 0 else 0.6,
+                    alpha=1.0 if index == 0 else 0.35)
+            max_period = matrix.ADAPTIVE["max_period"]
+            axes.axhline(max_period, linestyle="--", color="C3", linewidth=0.9,
+                label=f"max period ({max_period})")
+            axes.axhline(1, linestyle=":", color="C2", linewidth=0.9, label="period 1")
+            axes.plot([], [], "-", color=color, label=label)
+            axes.set_ylim(0, max_period + 1)
+            axes.yaxis.set_major_locator(MaxNLocator(integer=True))
+            axes.yaxis.set_major_formatter(FuncFormatter(lambda v, _p: f"{v:.0f}"))
+            if group:
+                shade_phases(axes, group[0].phases)
+                axes.set_xlim(0, group[0].phases[-1].end_s)
+            trim_spines(axes)
+            legend_above(axes, ncol=3)
+            save(figure, f"period-n{committee}-{pair}")
 
 
 def fig_async(jobs):
@@ -183,15 +190,120 @@ def fig_async(jobs):
         plt.close(figure)
         return
     axes.set_xlim(left=0)
+    axes.set_ylim(bottom=0)
+    trim_spines(axes)
     legend_above(axes, ncol=3)
     save(figure, "async-n10-mm")
 
 
+def fig_profiles(jobs, campaign, filename):
+    """Three-panel profile comparison: one panel per parameter profile, the
+    baselines faint behind the bold adaptive line."""
+    profiles = ["sh-sync", "sh-bal", "sh-tumult"]
+    figure, panels = plt.subplots(
+        1, 3, figsize=(plt.rcParams["figure.figsize"][0], 1.9), sharey=True)
+    plotted = False
+    for panel, slug in zip(panels, profiles):
+        phases = None
+        for base_slug, line_style in [("myst", "--"), ("mahi5", ":")]:
+            label, color, _marker = PROTO_STYLE[base_slug]
+            merged = seed_timelines(by_params(jobs, proto=base_slug))
+            if merged is None:
+                continue
+            panel.plot(merged["time_s"], merged["latency_avg_ms"] / 1000.0,
+                line_style, label=label, color=color, linewidth=0.9, alpha=0.8)
+        group = by_params(jobs, proto=slug)
+        merged = seed_timelines(group)
+        if merged is None:
+            continue
+        phases = group[0].phases if group else None
+        panel.plot(merged["time_s"], merged["latency_avg_ms"] / 1000.0,
+            label="Steelhead", color="black", linewidth=1.3)
+        plotted = True
+        if phases:
+            shade_phases(panel, phases)
+            panel.set_xlim(0, phases[-1].end_s)
+        panel.set_title(PROTO_STYLE[slug][0], fontsize=8, pad=3)
+        panel.set_xlabel("Time (s)")
+        trim_spines(panel)
+    if not plotted:
+        plt.close(figure)
+        return
+    panels[0].set_ylabel("Latency (s)")
+    panels[0].set_ylim(0, 1.5)
+    panels[0].yaxis.set_major_formatter(FuncFormatter(seconds_formatter))
+    handles, labels = panels[0].get_legend_handles_labels()
+    figure.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 0.98),
+        ncol=3, frameon=False)
+    figure.tight_layout(pad=0.4)
+    save(figure, filename)
+
+
+def fig_profiles_attack(jobs):
+    fig_profiles(jobs, "profiles", "profiles-attack")
+
+
+def fig_profiles_storm(jobs):
+    fig_profiles(jobs, "storm", "profiles-storm")
+
+
+WEATHER_PANELS = [
+    ("subthresh", "Mild fluctuation (sync holds)"),
+    ("rand50", "Random delays"),
+    ("slow", "Global slowdown"),
+    ("jitter", "High jitter"),
+    ("sched", "Scheduled asynchrony"),
+    ("crash", "Crash faults"),
+]
+
+
+def fig_weather(jobs):
+    """One panel per network model (3x2); the two baselines faint, Steelhead
+    adaptive bold."""
+    figure, panels = plt.subplots(2, 3, figsize=(plt.rcParams["figure.figsize"][0], 3.2),
+        sharex=True, sharey=True)
+    for panel, (model, title) in zip(panels.flat, WEATHER_PANELS):
+        sub = [j for j in jobs if j.params["model"] == model]
+        phases = sub[0].phases if sub else None
+        for base_slug, ls in [("myst", "--"), ("mahi5", ":")]:
+            merged = seed_timelines(by_params(sub, proto=base_slug))
+            if merged is None:
+                continue
+            label, color, _m = PROTO_STYLE[base_slug]
+            panel.plot(merged["time_s"], merged["latency_avg_ms"] / 1000.0, ls,
+                label=label, color=color, linewidth=0.9, alpha=0.8)
+        merged = seed_timelines(by_params(sub, proto="sh-ada"))
+        if merged is not None:
+            panel.plot(merged["time_s"], merged["latency_avg_ms"] / 1000.0,
+                label="Steelhead", color="black", linewidth=1.2)
+        if phases:
+            shade_phases(panel, phases)
+            panel.set_xlim(0, phases[-1].end_s)
+        panel.set_title(title, fontsize=8, pad=3)
+        panel.set_ylim(0, 1.5)
+        panel.yaxis.set_major_formatter(FuncFormatter(seconds_formatter))
+        trim_spines(panel)
+    for panel in panels[-1]:
+        panel.set_xlabel("Time (s)")
+    for panel in panels[:, 0]:
+        panel.set_ylabel("Latency (s)")
+    handles, labels = panels.flat[0].get_legend_handles_labels()
+    figure.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 1.0),
+        ncol=3, frameon=False)
+    figure.tight_layout(pad=0.4)
+    save(figure, "weather")
+
+
 FIGURES = {
-    "good": (fig_good, matrix.good_jobs),
-    "attack": (fig_attack, matrix.attack_jobs),
-    "adaptive": (fig_adaptive, matrix.adaptive_jobs),
+    "phase": (fig_phase, matrix.adaptive_jobs),
+    "weather": (fig_weather, matrix.weather_jobs),
+    "period": (fig_period, matrix.adaptive_jobs),
     "async": (fig_async, matrix.async_jobs),
+    "profiles": (fig_profiles_attack, matrix.profile_jobs),
+    "storm": (fig_profiles_storm, matrix.storm_jobs),
+    # Latency-vs-load L-graphs: kept for reference, not a headline figure
+    # (the simulator's saturation is not hardware-real).
+    "good": (fig_good, matrix.good_jobs),
 }
 
 

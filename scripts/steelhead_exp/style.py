@@ -31,6 +31,9 @@ PROTO_STYLE = {
     "sh-p16": ("Steelhead p=16", "C6", "X"),
     "sh-p1": ("Steelhead p=1", "C7", "^"),
     "sh-ada": ("Steelhead adaptive", "black", "*"),
+    "sh-sync": ("sync-optimized", "black", "*"),
+    "sh-bal": ("balanced", "black", "*"),
+    "sh-tumult": ("tumult-optimized", "black", "*"),
     "sh-p1-canary": ("Steelhead p=1 (canary)", "C4", "D"),
     "sh-p1-nocanary": ("Steelhead p=1 (no canary)", "C7", "^"),
 }
@@ -69,10 +72,20 @@ def legend_above(axes, ncol=3, handles=None, labels=None):
         axes.legend(**arguments)
 
 
+# Phase shading colors (the Barnacle style): green healthy, red degraded.
+PHASE_COLORS = {"healthy": "#d9f0d3", "attack": "#fde0dd"}
+
+
 def shade_phases(axes, phases):
     for phase in phases:
-        if phase.label == "attack":
-            axes.axvspan(phase.start_s, phase.end_s, color="grey", alpha=0.15, zorder=0)
+        color = PHASE_COLORS.get(phase.label)
+        if color:
+            axes.axvspan(phase.start_s, phase.end_s, color=color, alpha=0.5, lw=0, zorder=0)
+
+
+def trim_spines(axes):
+    for side in ("top", "right"):
+        axes.spines[side].set_visible(False)
 
 
 def save(figure, name):
