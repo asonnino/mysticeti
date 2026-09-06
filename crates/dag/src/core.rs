@@ -34,8 +34,11 @@ use crate::{
 
 /// Rounds kept in memory below the last decided round; older blocks unload to
 /// the WAL. The adaptive Steelhead replay caps its window interval at this
-/// value so window collection stays on in-memory blocks.
-pub const RETAIN_BELOW_COMMIT_ROUNDS: RoundNumber = 100;
+/// value so window collection stays on in-memory blocks. Memory cost is
+/// `rounds * committee * block_size` (tens of MB at benchmark loads); raise
+/// it to allow larger adaptation intervals (lower steady-state overhead) at
+/// the cost of slower transitions.
+pub const RETAIN_BELOW_COMMIT_ROUNDS: RoundNumber = 512;
 
 pub struct Core<C: Ctx, D: DagConsensus> {
     block_manager: BlockManager,
