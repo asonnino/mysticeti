@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use dag::sync::{net_sync::QuorumTimeoutRounds, network::NetworkMessage};
+use dag::sync::network::NetworkMessage;
 use rand::Rng;
 
 use crate::{config::DelayModel, context::SimulatorContext};
@@ -19,12 +19,8 @@ pub struct NetworkConditions {
     /// Phases sorted by start time; the active one is the last started.
     phases: Vec<(Duration, Option<DelayModel>)>,
     committee_size: usize,
-    /// Leaders per round of the protocol under test (the attacked cohort).
+    /// Size of the attacked round-robin cohort per round.
     leader_count: usize,
-    /// Which rounds have NO known leader (the quorum-cap rounds): the
-    /// adversary cannot target those — the coin is hidden even though the
-    /// period is public. `Every` means the protocol is never targetable.
-    quorum_rounds: QuorumTimeoutRounds,
     /// Highest block round seen on any link: the adversary's round tracker.
     max_round: AtomicU64,
 }
@@ -34,21 +30,21 @@ impl NetworkConditions {
         phases: Vec<(Duration, Option<DelayModel>)>,
         committee_size: usize,
         leader_count: usize,
-        quorum_rounds: QuorumTimeoutRounds,
     ) -> Self {
         debug_assert!(phases.windows(2).all(|pair| pair[0].0 <= pair[1].0));
         Self {
             phases,
             committee_size,
             leader_count,
-            quorum_rounds,
             max_round: AtomicU64::new(0),
         }
     }
 
     /// Extra delay the active model imposes on a message from `from` to `to`,
-    /// on top of the link latency. Also feeds the round tracker.
-    pub fn extra_delay(&self, from: usize, to: usize, message: &NetworkMessage) -> Duration {
+    /// on top of the link latency. Also feeds the round tracker. `to` is
+    /// currently unused (the leader-delay model targets outbound traffic
+    /// only) but kept for models that key on the destination.
+    pub fn extra_delay(&self, from: usize, _to: usize, message: &NetworkMessage) -> Duration {
         if let NetworkMessage::Block(block) = message {
             self.max_round.fetch_max(block.round(), Ordering::Relaxed);
         }
@@ -63,7 +59,10 @@ impl NetworkConditions {
         match model {
             None => Duration::ZERO,
             Some(DelayModel::TargetedLeaderDelay { delay_ms }) => {
-                if self.touches_current_leaders(from, to) {
+                // Mute, don't eclipse: only the cohort's outbound traffic is
+                // delayed, so a targeted node still hears the network and
+                // recovers the moment the schedule rotates past it.
+                if self.sent_by_current_leader(from) {
                     Duration::from_millis(*delay_ms)
                 } else {
                     Duration::ZERO
@@ -89,32 +88,15 @@ impl NetworkConditions {
         }
     }
 
-    /// Whether either endpoint is a current known leader: the round-robin
-    /// cohort of the tracked round, on rounds that have a known leader at
-    /// all. Deliberately blind to the fake coin, so async slots (and fully
-    /// asynchronous protocols) remain untargetable.
-    fn touches_current_leaders(&self, from: usize, to: usize) -> bool {
+    /// Whether the sender is in the round-robin cohort of the tracked round.
+    /// The adversary's strategy is protocol-independent: the public
+    /// round-robin schedule is attacked whether or not the protocol under
+    /// test relies on it, so every protocol faces the exact same adversary.
+    /// Deliberately blind to the fake coin: hidden leaders stay hidden.
+    fn sent_by_current_leader(&self, from: usize) -> bool {
         let round = self.max_round.load(Ordering::Relaxed);
-        let known_leader_round = match &self.quorum_rounds {
-            QuorumTimeoutRounds::None => true,
-            QuorumTimeoutRounds::Every => false,
-            // The period is public: the adversary tracks the live value. A
-            // round has a known (targetable) leader iff it waits for one —
-            // sync rounds and canaried async rounds alike.
-            QuorumTimeoutRounds::Modal { period, canary } => {
-                let async_round = match period.load(Ordering::Relaxed) {
-                    0 => false,
-                    period => round.is_multiple_of(period),
-                };
-                let canaried = canary.is_some_and(|canary| round.is_multiple_of(canary.get()));
-                !async_round || canaried
-            }
-        };
-        if !known_leader_round {
-            return false;
-        }
         (0..self.leader_count as u64)
             .map(|offset| ((round + offset) % self.committee_size as u64) as usize)
-            .any(|leader| leader == from || leader == to)
+            .any(|leader| leader == from)
     }
 }

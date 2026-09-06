@@ -18,7 +18,6 @@ use dag::{
     core::syncer::Syncer,
     metrics::{Metrics, MetricsSnapshot},
     storage::Storage,
-    sync::net_sync::QuorumTimeoutRounds,
 };
 use rand::{SeedableRng, rngs::StdRng};
 use replica::{
@@ -201,42 +200,22 @@ impl SimulationState {
             .with_parameters(config.replica_parameters.clone());
         let commit_consumers = vec![None; config.committee_size];
         let condition_phases = config.condition_phases();
-        let mut adversary_period_cell = None;
+        let adversary_period_cell = None;
         let conditions = if condition_phases.is_empty() {
             None
         } else {
-            // The attacked cohort and the targetable rounds come from the
-            // protocol under test.
+            // The adversary's strategy is protocol-independent (it attacks
+            // the public round-robin schedule); only the cohort size comes
+            // from the configuration.
             let protocol = config
                 .replica_parameters
                 .consensus
                 .to_protocol(&public_config.committee())
                 .expect("valid protocol");
-            // The period is public and agreed, so the adversary classifies
-            // rounds through one replica's cell (any replica's view is
-            // equivalent); static configs never write it.
-            let quorum_rounds = match protocol.steelhead {
-                Some(schedule) => {
-                    let cell = Arc::new(AtomicU64::new(
-                        schedule.period.map(|period| period.get()).unwrap_or(0),
-                    ));
-                    // Only adaptive committers update the cell; sharing it
-                    // with a replica matters only then.
-                    if schedule.adaptive.is_some() {
-                        adversary_period_cell = Some(cell.clone());
-                    }
-                    QuorumTimeoutRounds::Modal {
-                        period: cell,
-                        canary: schedule.canary,
-                    }
-                }
-                None => protocol.quorum_timeout_rounds(),
-            };
             Some(Arc::new(NetworkConditions::new(
                 condition_phases,
                 config.committee_size,
                 protocol.leader_count.get(),
-                quorum_rounds,
             )))
         };
         let (network, replicas, load_generators, metrics_handles) = Self::build_replicas(
