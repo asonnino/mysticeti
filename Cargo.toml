@@ -35,7 +35,7 @@ indoc = "2.0"
 memmap2 = "0.9.10"
 parking_lot = "0.12.5"
 prometheus = "0.14.0"
-rand = "0.8.5"
+rand = "0.10.2"
 reqwest = { version = "0.13", default-features = false, features = [
   "json",
   "rustls",
