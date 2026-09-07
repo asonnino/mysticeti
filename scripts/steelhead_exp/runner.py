@@ -16,8 +16,10 @@ from simconfig import BINARY
 SIMULATION_TIMEOUT_S = 2 * 60 * 60
 
 # Concurrent runs' transient WALs must fit on disk (see Job.disk_weight);
-# a single oversized job still runs, alone.
-DISK_BUDGET_BYTES = 60 * 1024**3
+# a single oversized job still runs, alone. Overridable for large-disk hosts
+# via STEELHEAD_DISK_BUDGET_GB (e.g. a cloud box provisioned for full n=50
+# parallelism).
+DISK_BUDGET_BYTES = int(os.environ.get("STEELHEAD_DISK_BUDGET_GB", "60")) * 1024**3
 
 
 class Scheduler:
