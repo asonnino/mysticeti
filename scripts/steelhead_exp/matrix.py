@@ -364,9 +364,10 @@ WEATHER = {
     # the timeout is of no help).
     "full": {"kind": "random-link-delay", "percent": 100,
                 "delay_min_ms": 100, "delay_max_ms": 150},
-    # High jitter: universal per-message jitter (unstable network).
-    "jitter": {"kind": "random-link-delay", "percent": 100,
-                "delay_min_ms": 0, "delay_max_ms": 150},
+    # High jitter: an unstable network -- every message suffers an
+    # exponentially distributed delay (heavy tail), most small, a few large.
+    "jitter": {"kind": "exponential-jitter", "percent": 100,
+                "base_ms": 0, "mean_ms": 75, "cap_ms": 400},
 }
 # (a structured-partial model that could park at an intermediate period is a
 # candidate follow-up; the delay models here are all uniform-severity.)

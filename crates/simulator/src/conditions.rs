@@ -85,6 +85,21 @@ impl NetworkConditions {
                     Duration::ZERO
                 }
             }),
+            Some(DelayModel::ExponentialJitter {
+                percent,
+                base_ms,
+                mean_ms,
+                cap_ms,
+            }) => SimulatorContext::with_rng(|rng| {
+                if rng.gen_range(0..100u8) < *percent {
+                    // Inverse-CDF sample of an exponential of mean `mean_ms`.
+                    let uniform: f64 = rng.gen_range(0.0..1.0);
+                    let jitter = (-(*mean_ms as f64) * (1.0 - uniform).ln()) as u64;
+                    Duration::from_millis((*base_ms + jitter).min(*cap_ms))
+                } else {
+                    Duration::ZERO
+                }
+            }),
         }
     }
 

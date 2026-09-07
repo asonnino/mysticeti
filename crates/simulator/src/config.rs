@@ -101,6 +101,16 @@ pub enum DelayModel {
         delay_min_ms: u64,
         delay_max_ms: u64,
     },
+    /// Jitter model: each message suffers `base_ms` plus an exponentially
+    /// distributed delay of mean `mean_ms` (a heavy right tail), truncated at
+    /// `cap_ms`. Applies to `percent` of messages; most are small, a few are
+    /// very large, as on an unstable network.
+    ExponentialJitter {
+        percent: u8,
+        base_ms: u64,
+        mean_ms: u64,
+        cap_ms: u64,
+    },
 }
 
 impl DelayModel {
@@ -120,6 +130,19 @@ impl DelayModel {
                 assert!(
                     delay_min_ms <= delay_max_ms,
                     "delay_min_ms ({delay_min_ms}) must not exceed delay_max_ms ({delay_max_ms})"
+                );
+            }
+            Self::ExponentialJitter {
+                percent,
+                base_ms,
+                mean_ms,
+                cap_ms,
+            } => {
+                assert!(*percent <= 100, "percent ({percent}) must be at most 100");
+                assert!(*mean_ms > 0, "mean_ms must be positive");
+                assert!(
+                    base_ms <= cap_ms,
+                    "base_ms ({base_ms}) must not exceed cap_ms ({cap_ms})"
                 );
             }
         }
