@@ -130,8 +130,9 @@ def fig_phase(jobs):
             if phases:
                 shade_phases(axes, phases)
                 axes.set_xlim(0, phases[-1].end_s)
-            # Clip the recovery backlog spikes; the story is near the floor.
-            axes.set_ylim(0, 1.5)
+            # Clip the transition backlog off-frame; the steady states and the
+            # settled async level are the story, the transient is text.
+            axes.set_ylim(0, 4)
             trim_spines(axes)
             legend_above(axes, ncol=3)
             save(figure, f"phase-n{committee}-{pair}")
@@ -247,51 +248,106 @@ def fig_profiles_storm(jobs):
     fig_profiles(jobs, "storm", "profiles-storm")
 
 
+# Two rows with distinct y-scales: sync-ish cases (sub-second) on top, the
+# async-plateau cases (multi-second) below.
 WEATHER_PANELS = [
-    ("subthresh", "Mild fluctuation (sync holds)"),
+    ("subthresh", "Mild fluctuations (sync)"),
+    ("targeted", "Targeted leader delay"),
+    ("crash", "Permanent crash faults"),
     ("rand50", "Random delays"),
     ("slow", "Global slowdown"),
     ("jitter", "High jitter"),
-    ("sched", "Scheduled asynchrony"),
-    ("crash", "Crash faults"),
 ]
+WEATHER_ROW_YLIM = [0.5, 1.2]  # top row, bottom row (baseline ~0.2s)
+WEATHER_SETTLE_MODELS = {"rand50", "slow", "jitter"}  # switching panels get a settle guide
+
+
+def _settle_time(merged, phases):
+    """The tick where Steelhead first reaches (and holds) its async plateau
+    after the sync->async transition; None if it never settles."""
+    attack = next((p for p in phases if p.label == "attack"), None)
+    if attack is None:
+        return None
+    t = merged["time_s"]
+    lat = merged["latency_avg_ms"] / 1000.0
+    window = (t > attack.start_s + 20) & (t <= attack.end_s)
+    plateau = np.nanmedian(lat[window])
+    idx = np.where((t > attack.start_s) & (t <= attack.end_s))[0]
+    for k, i in enumerate(idx):
+        if np.all(np.abs(lat[idx[k:]] - plateau) <= 0.2 * plateau):
+            return float(t[i])
+    return None
+
+
+def _denoise(y, window=3):
+    """Nan-aware rolling median over a plotted latency timeline: drops isolated
+    single-window spikes/dips (loose commits from a backlogged protocol) while
+    leaving plateaus and the phase transitions in place. Only non-NaN samples
+    are rewritten, so no-commit gaps stay gaps."""
+    y = np.asarray(y, dtype=float)
+    half = window // 2
+    out = y.copy()
+    for i in range(len(y)):
+        if np.isnan(y[i]):
+            continue
+        out[i] = np.nanmedian(y[max(0, i - half):i + half + 1])
+    return out
 
 
 def fig_weather(jobs):
-    """One panel per network model (3x2); the two baselines faint, Steelhead
-    adaptive bold."""
+    """One 6-panel figure per protocol pair; each panel a network model, with
+    the two pure baselines and adaptive Steelhead bold."""
+    for pair in matrix.PAIRS:
+        _fig_weather_pair([j for j in jobs if j.params["pair"] == pair], pair)
+
+
+def _fig_weather_pair(jobs, pair):
+    sync_slug, async_slug = ("myst", "mahi5") if pair == "mm" else ("bbps", "bbasync")
     figure, panels = plt.subplots(2, 3, figsize=(plt.rcParams["figure.figsize"][0], 3.2),
-        sharex=True, sharey=True)
-    for panel, (model, title) in zip(panels.flat, WEATHER_PANELS):
+        sharex=True, sharey="row")
+    for index, (panel, (model, title)) in enumerate(zip(panels.flat, WEATHER_PANELS)):
         sub = [j for j in jobs if j.params["model"] == model]
         phases = sub[0].phases if sub else None
-        for base_slug, ls in [("myst", "--"), ("mahi5", ":")]:
+        for base_slug, ls in [(sync_slug, "--"), (async_slug, ":")]:
             merged = seed_timelines(by_params(sub, proto=base_slug))
             if merged is None:
                 continue
             label, color, _m = PROTO_STYLE[base_slug]
-            panel.plot(merged["time_s"], merged["latency_avg_ms"] / 1000.0, ls,
-                label=label, color=color, linewidth=0.9, alpha=0.8)
+            panel.plot(merged["time_s"], _denoise(merged["latency_avg_ms"]) / 1000.0, ls,
+                label=label, color=color, linewidth=1.2)
         merged = seed_timelines(by_params(sub, proto="sh-ada"))
         if merged is not None:
-            panel.plot(merged["time_s"], merged["latency_avg_ms"] / 1000.0,
+            panel.plot(merged["time_s"], _denoise(merged["latency_avg_ms"]) / 1000.0,
                 label="Steelhead", color="black", linewidth=1.2)
         if phases:
             shade_phases(panel, phases)
             panel.set_xlim(0, phases[-1].end_s)
+            # A tick at each network transition (into and out of async).
+            transitions = sorted({p.start_s for p in phases if p.label == "attack"}
+                                | {p.end_s for p in phases if p.label == "attack"
+                                    and p.end_s < phases[-1].end_s})
+            # On the switching panels, mark where Steelhead settles in the
+            # async phase (the sync->async transition completes).
+            if model in WEATHER_SETTLE_MODELS and merged is not None:
+                settle = _settle_time(merged, phases)
+                if settle is not None:
+                    panel.axvline(settle, color="0.4", linewidth=0.7, linestyle=(0, (3, 2)))
+            panel.set_xticks(transitions)
         panel.set_title(title, fontsize=8, pad=3)
-        panel.set_ylim(0, 1.5)
+        panel.set_ylim(0, WEATHER_ROW_YLIM[index // 3])
         panel.yaxis.set_major_formatter(FuncFormatter(seconds_formatter))
         trim_spines(panel)
-    for panel in panels[-1]:
-        panel.set_xlabel("Time (s)")
+    for panel in panels.flat[len(WEATHER_PANELS):]:
+        panel.set_visible(False)
+    # A single centered x-axis label.
+    figure.supxlabel("Time (s)", fontsize=8, fontweight="bold")
     for panel in panels[:, 0]:
         panel.set_ylabel("Latency (s)")
     handles, labels = panels.flat[0].get_legend_handles_labels()
     figure.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 1.0),
         ncol=3, frameon=False)
     figure.tight_layout(pad=0.4)
-    save(figure, "weather")
+    save(figure, f"weather-{pair}")
 
 
 FIGURES = {

@@ -17,7 +17,7 @@ pub struct TransactionGenerator {
 }
 
 impl TransactionGenerator {
-    const TARGET_BLOCK_INTERVAL: Duration = Duration::from_millis(100);
+    const TARGET_BLOCK_INTERVAL: Duration = Duration::from_millis(50);
     const HEADER_SIZE: usize = 8 + 8; // timestamp + random
 
     pub fn start<C: Ctx>(

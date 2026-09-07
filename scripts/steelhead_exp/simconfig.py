@@ -11,8 +11,8 @@ DATA_DIR = ROOT / "data" / "steelhead"
 PLOTS_DIR = ROOT / "plots"
 BINARY = ROOT / "target" / "release" / "replica"
 
-LATENCY_MIN_MS = 50
-LATENCY_MAX_MS = 100
+LATENCY_MIN_MS = 25
+LATENCY_MAX_MS = 50
 TRANSACTION_SIZE = 512
 
 
@@ -121,7 +121,7 @@ def run_spec(
         # cap at its default explicitly.
         spec["replica_parameters"]["dag"] = {
             "round_timeout": duration_ms(leader_timeout_ms),
-            "quorum_round_timeout": duration_ms(75),
+            "quorum_round_timeout": duration_ms(40),
         }
     if conditions:
         spec["conditions"] = conditions

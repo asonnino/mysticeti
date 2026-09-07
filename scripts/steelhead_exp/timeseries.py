@@ -67,8 +67,10 @@ def window_rate(ticks, name):
 
 
 def seed_mean(tick_sets):
-    """Mean across seeds on the common tick grid (deterministic runs share
-    it); NaN-aware so empty windows don't drag the mean."""
+    """Median across seeds on the common tick grid (deterministic runs share
+    it); NaN-aware. Median, not mean, so one seed whose transition lands late
+    doesn't paint a spurious backlog spike at its switch time into the
+    aggregate — the seed spread is reported separately as a number."""
     times = tick_sets[0]["time_s"]
     for ticks in tick_sets[1:]:
         assert np.array_equal(ticks["time_s"], times), "seed tick grids must match"
@@ -78,5 +80,5 @@ def seed_mean(tick_sets):
             continue
         stack = np.vstack([ticks[name] for ticks in tick_sets])
         with np.errstate(invalid="ignore"):
-            merged[name] = np.nanmean(stack, axis=0)
+            merged[name] = np.nanmedian(stack, axis=0)
     return merged

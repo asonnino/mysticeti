@@ -23,7 +23,7 @@ PROTO_STYLE = {
     "myst": ("Mysticeti", "C0", "o"),
     "bbps": ("BlueBottle-PS", "C0", "o"),
     "mahi4": ("Mahi-Mahi-4", "C1", "v"),
-    "mahi5": ("Mahi-Mahi-5", "C2", "s"),
+    "mahi5": ("Mahi-Mahi", "C2", "s"),
     "bbasync": ("BlueBottle-Async", "C2", "s"),
     "sh-p2": ("Steelhead p=2", "C3", "p"),
     "sh-p4": ("Steelhead p=4", "C4", "D"),

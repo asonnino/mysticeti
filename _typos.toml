@@ -7,3 +7,5 @@ BA = "BA"
 # The paper's \fillin placeholder macro, referenced by the plotting pipeline.
 fillin = "fillin"
 fillins = "fillins"
+# The ablation campaign's short slug in the experiment matrix.
+abl = "abl"

@@ -29,14 +29,16 @@ LOADS = {
     50: [1_000, 5_000, 10_000, 20_000],
 }
 # Real-deployment leader timeout for every timeline campaign.
-LEADER_TIMEOUT_MS = 200
+LEADER_TIMEOUT_MS = 100
 REFERENCE_LOAD = {10: 20_000, 50: 20_000}
 TIMELINE_LOAD = 1_000
 STATIC_PERIODS = [2, 4, 8, 16]
 # The derived default: pick the interval (reaction horizon); max_period and
 # canary follow their laws (largest power of two <= interval/2; largest odd
 # <= interval/4).
-ADAPTIVE = {"interval": 96, "max_period": 32, "epsilon_percent": 10}
+# The headline default: ~1% green overhead, ~0 red, graceful ~2min recovery
+# from a fully asynchronous period (needs retention >= interval).
+ADAPTIVE = {"interval": 128, "max_period": 64, "epsilon_percent": 10}
 # Just past the leader timeout + grace + slack: enough to defeat every
 # sync wait without a large constant.
 ATTACK_DELAY_MS = 300
@@ -112,7 +114,7 @@ def attack_jobs():
                         spec=run_spec(committee, seed, 90, TIMELINE_LOAD, consensus,
                                         conditions=attack_conditions(30, 60),
                                         sample_interval_secs=2,
-                                      leader_timeout_ms=LEADER_TIMEOUT_MS),
+                                        leader_timeout_ms=LEADER_TIMEOUT_MS),
                         phases=attack_phases(30, 60, 90),
                     ))
     return jobs
@@ -136,7 +138,7 @@ def sched_jobs():
                                 load=TIMELINE_LOAD, seed=seed),
                     spec=run_spec(10, seed, 90, TIMELINE_LOAD, consensus,
                                     conditions=conditions, sample_interval_secs=2,
-                                      leader_timeout_ms=LEADER_TIMEOUT_MS),
+                                        leader_timeout_ms=LEADER_TIMEOUT_MS),
                     phases=attack_phases(30, 60, 90),
                 ))
     return jobs
@@ -153,7 +155,7 @@ def adaptive_jobs():
         for pair in PAIRS:
             tag = PAIR_TAG[pair]
             grid = {
-                "sh-ada": steelhead(tag, adaptive=ADAPTIVE, canary=23),
+                "sh-ada": steelhead(tag, adaptive=ADAPTIVE, canary=31),
                 "sh-p16": steelhead(tag, period=16),
                 "sh-p1": steelhead(tag, period=1),
             }
@@ -170,11 +172,14 @@ def adaptive_jobs():
                         campaign="adaptive",
                         params=dict(committee=committee, pair=pair, proto=slug,
                                     load=TIMELINE_LOAD, seed=seed),
-                        spec=run_spec(committee, seed, 210, TIMELINE_LOAD, consensus,
-                                        conditions=attack_conditions(30, 150),
-                                        sample_interval_secs=2,
-                                      leader_timeout_ms=LEADER_TIMEOUT_MS),
-                        phases=attack_phases(30, 150, 210),
+                        spec=run_spec(committee, seed, 450, TIMELINE_LOAD, consensus,
+                                        conditions=[{"from_secs": 30, "model": {
+                                            "kind": "random-link-delay", "percent": 100,
+                                            "delay_min_ms": 400, "delay_max_ms": 400}},
+                                            {"from_secs": 330}],
+                                        sample_interval_secs=5,
+                                        leader_timeout_ms=LEADER_TIMEOUT_MS),
+                        phases=attack_phases(30, 330, 450),
                         debug_log=(slug == "sh-ada"),
                     ))
     return jobs
@@ -342,70 +347,76 @@ def ablation_jobs():
 
 # Red-zone network models ("internet weather"), all on the standard 210s
 # timeline. Every model applies identically to all protocols.
+# The weather panels, each isolating one condition (crash is added separately
+# in weather_jobs). The leader timeout is LEADER_TIMEOUT_MS = 100.
 WEATHER = {
-    # Sub-threshold fluctuation: leader delay below the 200ms cap; sync
-    # survives, so Steelhead must NOT descend (false-alarm robustness).
-    "subthresh": {"kind": "targeted-leader-delay", "delay_ms": 50},
-    # Random network, increasing severity: each message independently
-    # delayed with probability p (the graded-descent sweep).
-    "rand20": {"kind": "random-link-delay", "percent": 20,
-                "delay_min_ms": 100, "delay_max_ms": 400},
+    # Sub-threshold fluctuation: leader delay below the timeout; sync survives,
+    # so Steelhead must not switch (false-alarm robustness).
+    "subthresh": {"kind": "targeted-leader-delay", "delay_ms": 30},
+    # Targeted leader delay: the round-robin leader delayed past the timeout;
+    # sync loses liveness and Steelhead switches to the asynchronous rule.
+    "targeted": {"kind": "targeted-leader-delay", "delay_ms": 125},
+    # Random delays: a fraction of links delayed each round.
     "rand50": {"kind": "random-link-delay", "percent": 50,
-                "delay_min_ms": 100, "delay_max_ms": 400},
-    "rand80": {"kind": "random-link-delay", "percent": 80,
-                "delay_min_ms": 100, "delay_max_ms": 400},
-    # Scheduled asynchrony: everything held to burst boundaries.
-    # Burst must exceed the 200ms leader timeout to disrupt sync at all;
-    # 300ms keeps rounds near the other models' pace rather than crawling.
-    "sched": {"kind": "scheduled-asynchrony", "burst_ms": 300},
-    # Very jittery network: universal per-message jitter (probability 100%).
-    "jitter": {"kind": "random-link-delay", "percent": 100,
-                "delay_min_ms": 0, "delay_max_ms": 400},
-    # Global slowdown: every message +200ms (congestion, not asynchrony).
+                "delay_min_ms": 75, "delay_max_ms": 125},
+    # Global slowdown: every message delayed by a constant amount (congestion).
     "slow": {"kind": "random-link-delay", "percent": 100,
-                "delay_min_ms": 200, "delay_max_ms": 200},
+                "delay_min_ms": 75, "delay_max_ms": 75},
+    # High jitter: universal per-message jitter (unstable network).
+    "jitter": {"kind": "random-link-delay", "percent": 100,
+                "delay_min_ms": 0, "delay_max_ms": 150},
 }
 # (a structured-partial model that could park at an intermediate period is a
 # candidate follow-up; the delay models here are all uniform-severity.)
 
 
+WEATHER_SEEDS = list(range(7))
+
+
+def weather_grid(pair):
+    """Per-pair protocol set: the two pure baselines plus adaptive Steelhead."""
+    tag = PAIR_TAG[pair]
+    if pair == "mm":
+        grid = {"myst": mysticeti(), "mahi5": mahi(5)}
+    else:
+        grid = {"bbps": blue_bottle_ps(), "bbasync": blue_bottle_async()}
+    grid["sh-ada"] = steelhead(tag, adaptive=ADAPTIVE, canary=31)
+    return grid
+
+
 def weather_jobs():
-    fast = {"interval": 16, "max_period": 4, "epsilon_percent": 10}
-    grid = {
-        "sh-ada": steelhead(PAIR_TAG["mm"], adaptive=ADAPTIVE, canary=23),
-        "sh-fast": steelhead(PAIR_TAG["mm"], adaptive=fast, canary=3),
-        "myst": mysticeti(),
-        "mahi5": mahi(5),
-    }
     jobs = []
-    for model_slug, model in WEATHER.items():
-        conditions = [{"from_secs": 30, "model": model}, {"from_secs": 150}]
-        for proto_slug, consensus in grid.items():
-            for seed in SEEDS:
+    for pair in PAIRS:
+        for proto_slug, consensus in weather_grid(pair).items():
+            for model_slug, model in WEATHER.items():
+                conditions = [{"from_secs": 30, "model": model}, {"from_secs": 330}]
+                for seed in WEATHER_SEEDS:
+                    jobs.append(Job(
+                        name=f"weather--{pair}--{model_slug}--{proto_slug}--s{seed}",
+                        campaign="weather",
+                        params=dict(committee=10, pair=pair, proto=proto_slug,
+                                    model=model_slug, load=TIMELINE_LOAD, seed=seed),
+                        spec=run_spec(10, seed, 450, TIMELINE_LOAD, consensus,
+                                        conditions=conditions, sample_interval_secs=5,
+                                        leader_timeout_ms=LEADER_TIMEOUT_MS),
+                        phases=attack_phases(30, 330, 450),
+                    ))
+            # Crash faults are permanent: replicas die at 30s, no recovery.
+            # Crash up to each family's fault tolerance at n=10: f=3 for the
+            # 3f+1 pair (Mysticeti/Mahi), f=1 for the 5f+1 pair (Blue Bottle).
+            crashed = (7, 8, 9) if pair == "mm" else (9,)
+            for seed in WEATHER_SEEDS:
                 jobs.append(Job(
-                    name=f"weather--{model_slug}--{proto_slug}--s{seed}",
+                    name=f"weather--{pair}--crash--{proto_slug}--s{seed}",
                     campaign="weather",
-                    params=dict(committee=10, pair="mm", proto=proto_slug,
-                                model=model_slug, load=TIMELINE_LOAD, seed=seed),
-                    spec=run_spec(10, seed, 210, TIMELINE_LOAD, consensus,
-                                    conditions=conditions, sample_interval_secs=2,
+                    params=dict(committee=10, pair=pair, proto=proto_slug,
+                                model="crash", load=TIMELINE_LOAD, seed=seed),
+                    spec=run_spec(10, seed, 450, TIMELINE_LOAD, consensus,
+                                    crashes=[{"replica": r, "at_secs": 30} for r in crashed],
+                                    sample_interval_secs=5,
                                     leader_timeout_ms=LEADER_TIMEOUT_MS),
-                    phases=attack_phases(30, 150, 210),
+                    phases=[Phase("healthy", 0, 30), Phase("attack", 30, 450)],
                 ))
-    # Crash faults are permanent: replicas die at 30s, no recovery zone.
-    for proto_slug, consensus in grid.items():
-        for seed in SEEDS:
-            jobs.append(Job(
-                name=f"weather--crash--{proto_slug}--s{seed}",
-                campaign="weather",
-                params=dict(committee=10, pair="mm", proto=proto_slug,
-                            model="crash", load=TIMELINE_LOAD, seed=seed),
-                spec=run_spec(10, seed, 210, TIMELINE_LOAD, consensus,
-                                crashes=[{"replica": r, "at_secs": 30} for r in (7, 8, 9)],
-                                sample_interval_secs=2,
-                                leader_timeout_ms=LEADER_TIMEOUT_MS),
-                phases=[Phase("healthy", 0, 30), Phase("attack", 30, 210)],
-            ))
     return jobs
 
 
@@ -438,6 +449,7 @@ def recovery_jobs():
     return jobs
 
 
+
 def async_jobs():
     """Appendix: random asynchrony with f crashed — canary on/off vs the Mahi
     baseline."""
@@ -464,7 +476,7 @@ def async_jobs():
                 spec=run_spec(10, seed, 60, TIMELINE_LOAD, consensus,
                                 conditions=conditions, crashes=crashes,
                                 sample_interval_secs=2,
-                                      leader_timeout_ms=LEADER_TIMEOUT_MS),
+                                        leader_timeout_ms=LEADER_TIMEOUT_MS),
             ))
     return jobs
 
@@ -484,7 +496,7 @@ def smoke_jobs():
             params=dict(committee=10, pair="mm", proto="sh-p4", load=100, seed=0),
             spec=run_spec(10, 0, 30, 100, steelhead(PAIR_TAG["mm"], period=4),
                             conditions=attack_conditions(10, 20), sample_interval_secs=2,
-                                      leader_timeout_ms=LEADER_TIMEOUT_MS),
+                                        leader_timeout_ms=LEADER_TIMEOUT_MS),
             phases=attack_phases(10, 20, 30),
         ),
     ]
