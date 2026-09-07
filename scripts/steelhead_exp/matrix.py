@@ -356,12 +356,14 @@ WEATHER = {
     # Targeted leader delay: the round-robin leader delayed past the timeout;
     # sync loses liveness and Steelhead switches to the asynchronous rule.
     "targeted": {"kind": "targeted-leader-delay", "delay_ms": 125},
-    # Random delays: a fraction of links delayed each round.
-    "rand50": {"kind": "random-link-delay", "percent": 50,
-                "delay_min_ms": 75, "delay_max_ms": 125},
-    # Global slowdown: every message delayed by a constant amount (congestion).
-    "slow": {"kind": "random-link-delay", "percent": 100,
-                "delay_min_ms": 75, "delay_max_ms": 75},
+    # Partial random network: a fraction of links delayed past the timeout
+    # (the DISC'25 random model at f/n asynchronous participation).
+    "partial": {"kind": "random-link-delay", "percent": 30,
+                "delay_min_ms": 100, "delay_max_ms": 150},
+    # Full random network: every link delayed past the timeout (pure DISC'25;
+    # the timeout is of no help).
+    "full": {"kind": "random-link-delay", "percent": 100,
+                "delay_min_ms": 100, "delay_max_ms": 150},
     # High jitter: universal per-message jitter (unstable network).
     "jitter": {"kind": "random-link-delay", "percent": 100,
                 "delay_min_ms": 0, "delay_max_ms": 150},

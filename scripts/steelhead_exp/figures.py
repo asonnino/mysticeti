@@ -251,15 +251,15 @@ def fig_profiles_storm(jobs):
 # Two rows with distinct y-scales: sync-ish cases (sub-second) on top, the
 # async-plateau cases (multi-second) below.
 WEATHER_PANELS = [
-    ("subthresh", "Mild fluctuations (sync)"),
-    ("targeted", "Targeted leader delay"),
+    ("subthresh", "Small leader delay"),
+    ("targeted", "Large leader delay"),
     ("crash", "Permanent crash faults"),
-    ("rand50", "Random delays"),
-    ("slow", "Global slowdown"),
+    ("partial", "Partial random network"),
+    ("full", "Full random network"),
     ("jitter", "High jitter"),
 ]
 WEATHER_ROW_YLIM = [0.5, 1.2]  # top row, bottom row (baseline ~0.2s)
-WEATHER_SETTLE_MODELS = {"rand50", "slow", "jitter"}  # switching panels get a settle guide
+WEATHER_SETTLE_MODELS = {"partial", "full", "jitter"}  # switching panels get a settle guide
 
 
 def _settle_time(merged, phases):
