@@ -396,9 +396,14 @@ def weather_jobs():
             # (n-1)/5 for the 5f+1 pair; the last f replicas are crashed.
             f = (committee - 1) // 3 if pair == "mm" else (committee - 1) // 5
             crashed = tuple(range(committee - f, committee))
+            # n=50 runs a shorter timeline: its sims are ~25x heavier (the
+            # discrete-event cost scales with n^2), so the full n=10 timeline is
+            # impractical; the transitions still show clearly at 210s.
+            start, cond_end, dur = (30, 330, 450) if committee == 10 else (30, 150, 210)
             for proto_slug, consensus in weather_grid(pair).items():
                 for model_slug, model in WEATHER.items():
-                    conditions = [{"from_secs": 30, "model": model}, {"from_secs": 330}]
+                    conditions = [{"from_secs": start, "model": model},
+                                    {"from_secs": cond_end}]
                     for seed in WEATHER_SEEDS:
                         jobs.append(Job(
                             name=f"weather--n{committee}--{pair}--{model_slug}"
@@ -406,10 +411,10 @@ def weather_jobs():
                             campaign="weather",
                             params=dict(committee=committee, pair=pair, proto=proto_slug,
                                         model=model_slug, load=TIMELINE_LOAD, seed=seed),
-                            spec=run_spec(committee, seed, 450, TIMELINE_LOAD, consensus,
+                            spec=run_spec(committee, seed, dur, TIMELINE_LOAD, consensus,
                                             conditions=conditions, sample_interval_secs=5,
                                             leader_timeout_ms=LEADER_TIMEOUT_MS),
-                            phases=attack_phases(30, 330, 450),
+                            phases=attack_phases(start, cond_end, dur),
                         ))
                 for seed in WEATHER_SEEDS:
                     jobs.append(Job(
@@ -417,11 +422,11 @@ def weather_jobs():
                         campaign="weather",
                         params=dict(committee=committee, pair=pair, proto=proto_slug,
                                     model="crash", load=TIMELINE_LOAD, seed=seed),
-                        spec=run_spec(committee, seed, 450, TIMELINE_LOAD, consensus,
+                        spec=run_spec(committee, seed, dur, TIMELINE_LOAD, consensus,
                                         crashes=[{"replica": r, "at_secs": 30} for r in crashed],
                                         sample_interval_secs=5,
                                         leader_timeout_ms=LEADER_TIMEOUT_MS),
-                        phases=[Phase("healthy", 0, 30), Phase("attack", 30, 450)],
+                        phases=[Phase("healthy", 0, start), Phase("attack", start, dur)],
                     ))
     return jobs
 
