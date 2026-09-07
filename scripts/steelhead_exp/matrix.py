@@ -513,10 +513,69 @@ def smoke_jobs():
     ]
 
 
+# Appendix D (commit probability under a mistimed leader timeout): the two
+# sync rules alone, condition held from 30s to the end of a 210s run.
+APPENDIX_DURATION_S = 210
+
+
+def _appendix_job(campaign, slug, consensus, model_slug, model, seed, committee=10):
+    return Job(
+        name=f"{campaign}--n{committee}--{model_slug}--{slug}--s{seed}",
+        campaign=campaign,
+        params=dict(committee=committee, pair="mm" if slug == "myst" else "bb",
+                    proto=slug, model=model_slug, load=TIMELINE_LOAD, seed=seed),
+        spec=run_spec(committee, seed, APPENDIX_DURATION_S, TIMELINE_LOAD, consensus,
+                        conditions=[{"from_secs": 30, "model": model}],
+                        sample_interval_secs=5, leader_timeout_ms=LEADER_TIMEOUT_MS),
+        phases=[Phase("healthy", 0, 30), Phase("attack", 30, APPENDIX_DURATION_S)],
+    )
+
+
+SYNC_RULES = {"myst": mysticeti, "bbps": blue_bottle_ps}
+
+# Reference truncation: every link delayed by a fixed 800ms, far past the
+# 100ms leader timeout, so every proposer references exactly n-f blocks.
+TRUNC_DELAY_MS = 800
+TRUNC_COMMITTEES = [10, 50]
+
+
+def trunc_jobs():
+    model = {"kind": "random-link-delay", "percent": 100,
+                "delay_min_ms": TRUNC_DELAY_MS, "delay_max_ms": TRUNC_DELAY_MS}
+    return [
+        _appendix_job("trunc", slug, make(), f"d{TRUNC_DELAY_MS}", model, seed, committee)
+        for committee in TRUNC_COMMITTEES
+        for slug, make in SYNC_RULES.items()
+        for seed in SEEDS
+    ]
+
+
+# Partial asynchrony: a fraction phi of links delayed past the timeout, the
+# weather figure's ]100, 150]ms range; the grid is dense around f/n (0.1 for
+# the 5f+1 pair, 0.3 for the 3f+1 pair). n=10 only: a stalled Mysticeti run
+# at n=50 takes over an hour of wall time.
+PHI_PERCENTS = [5, 10, 15, 20, 25, 30, 40, 50, 75, 100]
+PHI_COMMITTEES = [10]
+
+
+def phi_jobs():
+    jobs = []
+    for committee in PHI_COMMITTEES:
+        for percent in PHI_PERCENTS:
+            model = {"kind": "random-link-delay", "percent": percent,
+                        "delay_min_ms": 100, "delay_max_ms": 150}
+            for slug, make in SYNC_RULES.items():
+                for seed in SEEDS:
+                    jobs.append(_appendix_job("phi", slug, make(), f"p{percent}", model,
+                            seed, committee))
+    return jobs
+
+
 def all_jobs():
     jobs = (smoke_jobs() + good_jobs() + attack_jobs() + sched_jobs()
             + adaptive_jobs() + async_jobs() + profile_jobs() + storm_jobs()
-            + canary_jobs() + interval_jobs() + ablation_jobs() + weather_jobs() + recovery_jobs())
+            + canary_jobs() + interval_jobs() + ablation_jobs() + weather_jobs() + recovery_jobs()
+            + trunc_jobs() + phi_jobs())
     names = [job.name for job in jobs]
     assert len(names) == len(set(names)), "job names must be unique"
     return jobs
