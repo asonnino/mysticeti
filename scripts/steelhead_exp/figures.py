@@ -301,52 +301,125 @@ def fig_weather(jobs):
         _fig_weather_pair([j for j in jobs if j.params["pair"] == pair], pair)
 
 
+# The bottom row breaks its y-axis: a short upper band catches the sync
+# protocol's degraded plateau (~3s) while the lower band keeps the async
+# plateaus legible. The sync protocol's full stall (Full random network, ~19s)
+# still runs off the top of the upper band, which reads as "shoots off".
+WEATHER_BREAK_LO = 1.2
+WEATHER_BREAK_HI = (2.0, 4.5)
+
+
+def _draw_weather_lines(axes, sub, sync_slug, async_slug, phases):
+    """Plot the two baselines and Steelhead (denoised) on one axis; shade the
+    phases. Returns Steelhead's merged timeline (or None)."""
+    for base_slug, ls in [(sync_slug, "--"), (async_slug, ":")]:
+        merged = seed_timelines(by_params(sub, proto=base_slug))
+        if merged is None:
+            continue
+        label, color, _m = PROTO_STYLE[base_slug]
+        axes.plot(merged["time_s"], _denoise(merged["latency_avg_ms"]) / 1000.0, ls,
+            label=label, color=color, linewidth=1.2)
+    merged = seed_timelines(by_params(sub, proto="sh-ada"))
+    if merged is not None:
+        axes.plot(merged["time_s"], _denoise(merged["latency_avg_ms"]) / 1000.0,
+            label="Steelhead", color="black", linewidth=1.2)
+    if phases:
+        shade_phases(axes, phases)
+        axes.set_xlim(0, phases[-1].end_s)
+    return merged
+
+
+def _weather_transitions(phases):
+    return sorted({p.start_s for p in phases if p.label == "attack"}
+                | {p.end_s for p in phases if p.label == "attack"
+                    and p.end_s < phases[-1].end_s})
+
+
+def _weather_settle(axeslist, model, merged, phases):
+    if phases and model in WEATHER_SETTLE_MODELS and merged is not None:
+        settle = _settle_time(merged, phases)
+        if settle is not None:
+            for axes in axeslist:
+                axes.axvline(settle, color="0.4", linewidth=0.7, linestyle=(0, (3, 2)))
+
+
+def _break_marks(ax_hi, ax_lo):
+    """Draw the // break marks between an upper and lower band (point-sized, so
+    they stay square despite the two bands' different heights)."""
+    kwargs = dict(marker=[(-1, -0.6), (1, 0.6)], markersize=6, linestyle="none",
+        color="k", mec="k", mew=0.8, clip_on=False)
+    ax_hi.plot([0, 1], [0, 0], transform=ax_hi.transAxes, **kwargs)
+    ax_lo.plot([0, 1], [1, 1], transform=ax_lo.transAxes, **kwargs)
+
+
 def _fig_weather_pair(jobs, pair):
     sync_slug, async_slug = ("myst", "mahi5") if pair == "mm" else ("bbps", "bbasync")
-    figure, panels = plt.subplots(2, 3, figsize=(plt.rcParams["figure.figsize"][0], 3.2),
-        sharex=True, sharey="row")
-    for index, (panel, (model, title)) in enumerate(zip(panels.flat, WEATHER_PANELS)):
+    width = plt.rcParams["figure.figsize"][0]
+    figure = plt.figure(figsize=(width, 3.5))
+    # Row 1 is an empty spacer so the bottom panels' titles clear the top row
+    # without widening the break gap (rows 2/3) between the two bottom bands.
+    grid = figure.add_gridspec(4, 3, height_ratios=[1.0, 0.16, 0.32, 1.0],
+        hspace=0.06, wspace=0.13)
+    top, hi, lo = [], [], []
+    for col in range(3):
+        t = figure.add_subplot(grid[0, col], sharey=top[0] if top else None)
+        h = figure.add_subplot(grid[2, col], sharex=t, sharey=hi[0] if hi else None)
+        low = figure.add_subplot(grid[3, col], sharex=t, sharey=lo[0] if lo else None)
+        t.tick_params(labelbottom=False)  # only the bottom band carries the x-axis
+        top.append(t)
+        hi.append(h)
+        lo.append(low)
+
+    for index, (model, title) in enumerate(WEATHER_PANELS):
         sub = [j for j in jobs if j.params["model"] == model]
         phases = sub[0].phases if sub else None
-        for base_slug, ls in [(sync_slug, "--"), (async_slug, ":")]:
-            merged = seed_timelines(by_params(sub, proto=base_slug))
-            if merged is None:
-                continue
-            label, color, _m = PROTO_STYLE[base_slug]
-            panel.plot(merged["time_s"], _denoise(merged["latency_avg_ms"]) / 1000.0, ls,
-                label=label, color=color, linewidth=1.2)
-        merged = seed_timelines(by_params(sub, proto="sh-ada"))
-        if merged is not None:
-            panel.plot(merged["time_s"], _denoise(merged["latency_avg_ms"]) / 1000.0,
-                label="Steelhead", color="black", linewidth=1.2)
+        col = index % 3
+        if index < 3:
+            axes = top[col]
+            merged = _draw_weather_lines(axes, sub, sync_slug, async_slug, phases)
+            axes.set_ylim(0, WEATHER_ROW_YLIM[0])
+            axes.set_title(title, fontsize=8, pad=3)
+            axes.yaxis.set_major_formatter(FuncFormatter(seconds_formatter))
+            if phases:
+                _weather_settle([axes], model, merged, phases)
+                axes.set_xticks(_weather_transitions(phases))
+            trim_spines(axes)
+            continue
+        # Bottom row: broken axis (upper band over lower band).
+        ax_hi, ax_lo = hi[col], lo[col]
+        merged = _draw_weather_lines(ax_hi, sub, sync_slug, async_slug, phases)
+        _draw_weather_lines(ax_lo, sub, sync_slug, async_slug, phases)
+        ax_lo.set_ylim(0, WEATHER_BREAK_LO)
+        ax_hi.set_ylim(*WEATHER_BREAK_HI)
+        ax_hi.set_yticks([3, 4])
+        ax_hi.set_title(title, fontsize=8, pad=3)
+        for axes in (ax_hi, ax_lo):
+            axes.yaxis.set_major_formatter(FuncFormatter(seconds_formatter))
+        ax_hi.spines["bottom"].set_visible(False)
+        ax_lo.spines["top"].set_visible(False)
+        ax_hi.tick_params(bottom=False, labelbottom=False)
+        _break_marks(ax_hi, ax_lo)
         if phases:
-            shade_phases(panel, phases)
-            panel.set_xlim(0, phases[-1].end_s)
-            # A tick at each network transition (into and out of async).
-            transitions = sorted({p.start_s for p in phases if p.label == "attack"}
-                                | {p.end_s for p in phases if p.label == "attack"
-                                    and p.end_s < phases[-1].end_s})
-            # On the switching panels, mark where Steelhead settles in the
-            # async phase (the sync->async transition completes).
-            if model in WEATHER_SETTLE_MODELS and merged is not None:
-                settle = _settle_time(merged, phases)
-                if settle is not None:
-                    panel.axvline(settle, color="0.4", linewidth=0.7, linestyle=(0, (3, 2)))
-            panel.set_xticks(transitions)
-        panel.set_title(title, fontsize=8, pad=3)
-        panel.set_ylim(0, WEATHER_ROW_YLIM[index // 3])
-        panel.yaxis.set_major_formatter(FuncFormatter(seconds_formatter))
-        trim_spines(panel)
-    for panel in panels.flat[len(WEATHER_PANELS):]:
-        panel.set_visible(False)
-    # A single centered x-axis label.
-    figure.supxlabel("Time (s)", fontsize=8, fontweight="bold")
-    for panel in panels[:, 0]:
-        panel.set_ylabel("Latency (s)")
-    handles, labels = panels.flat[0].get_legend_handles_labels()
-    figure.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 1.0),
+            _weather_settle([ax_hi, ax_lo], model, merged, phases)
+            ax_lo.set_xticks(_weather_transitions(phases))
+        trim_spines(ax_lo)
+        ax_hi.spines["right"].set_visible(False)
+        ax_hi.spines["top"].set_visible(False)
+
+    # Hide y-tick labels on the inner columns.
+    for col in (1, 2):
+        for axes in (top[col], hi[col], lo[col]):
+            axes.tick_params(labelleft=False)
+    top[0].set_ylabel("Latency (s)")
+    lo[0].set_ylabel("Latency (s)")
+    figure.supxlabel("Time (s)", fontsize=8, fontweight="bold", y=0.015)
+    handles, labels = top[0].get_legend_handles_labels()
+    figure.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 0.925),
         ncol=3, frameon=False)
-    figure.tight_layout(pad=0.4)
+    # Explicit margins (tight_layout ignores the figure legend and over-reserves
+    # the top, and warns on the broken-axis sub-axes).
+    figure.subplots_adjust(left=0.1, right=0.99, top=0.90, bottom=0.11,
+        hspace=0.06, wspace=0.13)
     save(figure, f"weather-{pair}")
 
 
