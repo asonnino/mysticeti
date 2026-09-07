@@ -16,8 +16,9 @@ from simconfig import BINARY
 def filtered_jobs(pattern):
     jobs = matrix.all_jobs()
     if pattern:
-        jobs = [job for job in jobs if fnmatch(job.name, pattern)
-                or job.campaign == pattern]
+        patterns = pattern.split(",")
+        jobs = [job for job in jobs
+                if any(fnmatch(job.name, p) or job.campaign == p for p in patterns)]
     return jobs
 
 
