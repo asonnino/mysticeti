@@ -389,37 +389,40 @@ def weather_grid(pair):
 
 def weather_jobs():
     jobs = []
-    for pair in PAIRS:
-        for proto_slug, consensus in weather_grid(pair).items():
-            for model_slug, model in WEATHER.items():
-                conditions = [{"from_secs": 30, "model": model}, {"from_secs": 330}]
+    for committee in COMMITTEES:
+        for pair in PAIRS:
+            # Crash faults are permanent (replicas die at 30s, no recovery), up
+            # to each family's fault tolerance: f = (n-1)/3 for the 3f+1 pair,
+            # (n-1)/5 for the 5f+1 pair; the last f replicas are crashed.
+            f = (committee - 1) // 3 if pair == "mm" else (committee - 1) // 5
+            crashed = tuple(range(committee - f, committee))
+            for proto_slug, consensus in weather_grid(pair).items():
+                for model_slug, model in WEATHER.items():
+                    conditions = [{"from_secs": 30, "model": model}, {"from_secs": 330}]
+                    for seed in WEATHER_SEEDS:
+                        jobs.append(Job(
+                            name=f"weather--n{committee}--{pair}--{model_slug}"
+                                f"--{proto_slug}--s{seed}",
+                            campaign="weather",
+                            params=dict(committee=committee, pair=pair, proto=proto_slug,
+                                        model=model_slug, load=TIMELINE_LOAD, seed=seed),
+                            spec=run_spec(committee, seed, 450, TIMELINE_LOAD, consensus,
+                                            conditions=conditions, sample_interval_secs=5,
+                                            leader_timeout_ms=LEADER_TIMEOUT_MS),
+                            phases=attack_phases(30, 330, 450),
+                        ))
                 for seed in WEATHER_SEEDS:
                     jobs.append(Job(
-                        name=f"weather--{pair}--{model_slug}--{proto_slug}--s{seed}",
+                        name=f"weather--n{committee}--{pair}--crash--{proto_slug}--s{seed}",
                         campaign="weather",
-                        params=dict(committee=10, pair=pair, proto=proto_slug,
-                                    model=model_slug, load=TIMELINE_LOAD, seed=seed),
-                        spec=run_spec(10, seed, 450, TIMELINE_LOAD, consensus,
-                                        conditions=conditions, sample_interval_secs=5,
+                        params=dict(committee=committee, pair=pair, proto=proto_slug,
+                                    model="crash", load=TIMELINE_LOAD, seed=seed),
+                        spec=run_spec(committee, seed, 450, TIMELINE_LOAD, consensus,
+                                        crashes=[{"replica": r, "at_secs": 30} for r in crashed],
+                                        sample_interval_secs=5,
                                         leader_timeout_ms=LEADER_TIMEOUT_MS),
-                        phases=attack_phases(30, 330, 450),
+                        phases=[Phase("healthy", 0, 30), Phase("attack", 30, 450)],
                     ))
-            # Crash faults are permanent: replicas die at 30s, no recovery.
-            # Crash up to each family's fault tolerance at n=10: f=3 for the
-            # 3f+1 pair (Mysticeti/Mahi), f=1 for the 5f+1 pair (Blue Bottle).
-            crashed = (7, 8, 9) if pair == "mm" else (9,)
-            for seed in WEATHER_SEEDS:
-                jobs.append(Job(
-                    name=f"weather--{pair}--crash--{proto_slug}--s{seed}",
-                    campaign="weather",
-                    params=dict(committee=10, pair=pair, proto=proto_slug,
-                                model="crash", load=TIMELINE_LOAD, seed=seed),
-                    spec=run_spec(10, seed, 450, TIMELINE_LOAD, consensus,
-                                    crashes=[{"replica": r, "at_secs": 30} for r in crashed],
-                                    sample_interval_secs=5,
-                                    leader_timeout_ms=LEADER_TIMEOUT_MS),
-                    phases=[Phase("healthy", 0, 30), Phase("attack", 30, 450)],
-                ))
     return jobs
 
 

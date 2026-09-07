@@ -295,10 +295,14 @@ def _denoise(y, window=3):
 
 
 def fig_weather(jobs):
-    """One 6-panel figure per protocol pair; each panel a network model, with
-    the two pure baselines and adaptive Steelhead bold."""
-    for pair in matrix.PAIRS:
-        _fig_weather_pair([j for j in jobs if j.params["pair"] == pair], pair)
+    """One 6-panel figure per protocol pair and committee size; each panel a
+    network model, with the two pure baselines and adaptive Steelhead bold."""
+    for committee in matrix.COMMITTEES:
+        for pair in matrix.PAIRS:
+            sub = [j for j in jobs
+                if j.params["pair"] == pair and j.params["committee"] == committee]
+            if sub:
+                _fig_weather_pair(sub, pair, committee)
 
 
 # The bottom row breaks its y-axis: a short upper band catches the sync
@@ -380,7 +384,7 @@ def _needs_break(jobs, sync_slug):
     return False
 
 
-def _fig_weather_pair(jobs, pair):
+def _fig_weather_pair(jobs, pair, committee=10):
     sync_slug, async_slug = ("myst", "mahi5") if pair == "mm" else ("bbps", "bbasync")
     broken = _needs_break(jobs, sync_slug)
     width = plt.rcParams["figure.figsize"][0]
@@ -453,7 +457,8 @@ def _fig_weather_pair(jobs, pair):
     # top, and warns on the broken-axis sub-axes.
     figure.subplots_adjust(left=0.1, right=0.99, top=0.90, bottom=0.11,
         hspace=0.06 if broken else 0.18, wspace=0.13)
-    save(figure, f"weather-{pair}")
+    name = f"weather-{pair}" if committee == 10 else f"weather-{pair}-{committee}"
+    save(figure, name)
 
 
 FIGURES = {
