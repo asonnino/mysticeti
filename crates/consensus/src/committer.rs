@@ -47,6 +47,11 @@ pub struct Committer {
     has_fast_path: bool,
     /// Reusable buffer for commit decisions.
     leaders: VecDeque<LeaderStatus>,
+    /// Reusable buffer for chain verdicts (adaptive Steelhead), ascending by
+    /// round from `chain_floor`.
+    chain: VecDeque<LeaderStatus>,
+    /// Round of the first entry of `chain`.
+    chain_floor: RoundNumber,
     /// Steelhead's per-round wavelength mode; `None` for the base protocols.
     steelhead: Option<SteelheadMode>,
     /// Gauge target for period updates (adaptive Steelhead only).
@@ -65,14 +70,14 @@ struct SteelheadMode {
     leader_elector: LeaderElector,
     leader_count: usize,
     /// The period in force from each round on; a single entry unless adaptive
-    /// updates fire. Deterministic function of the consumed commit sequence.
+    /// updates fire. Entries start at interval boundaries, so the schedule is
+    /// a deterministic function of the DAG alone, whatever the consumer's
+    /// cadence.
     period_schedule: Vec<(RoundNumber, Option<NonZeroU64>)>,
-    /// Round of the last interval anchor (adaptive).
-    last_update_round: RoundNumber,
-    /// An interval anchor yielded but not yet replayed; the update applies at
-    /// the start of the next `try_commit`. Relies on the consumer fully
-    /// consuming the yielded prefix (as `Core::try_commit` does).
-    pending_anchor: Option<Data<Block>>,
+    /// Number of completed interval scans (adaptive): the scan of interval `j`
+    /// (rounds `j * interval + 1 ..= (j + 1) * interval`) fixes the period of
+    /// interval `j + 1`.
+    scans_done: u64,
     /// Replay inputs, present iff adaptive.
     replay_params: Option<ReplayParams>,
 }
@@ -112,12 +117,33 @@ impl SteelheadMode {
         self.leader_elector.elect_leader(round + leader_offset)
     }
 
-    /// The round past which the next yielded commit becomes the interval
-    /// anchor; `None` when the period is static.
-    fn update_threshold(&self) -> Option<RoundNumber> {
-        self.schedule
-            .adaptive
-            .map(|adaptive| self.last_update_round + adaptive.interval)
+    /// The wave of the chain verdict at `round`: the asynchronous wavelength
+    /// at every round, whatever the round's own slot type.
+    fn chain_wave(&self, round: RoundNumber) -> Wave {
+        let wave_length = self.schedule.async_wave_length;
+        Wave::new(wave_length, round % wave_length, self.merged_certificates)
+    }
+
+    /// The chain leader at `round`: the coin leader, so no known-leader slot
+    /// lies on the chain.
+    fn chain_leader(&self, round: RoundNumber) -> Authority {
+        self.leader_elector.elect_fake_coin_leader(round)
+    }
+
+    /// The interval length; `None` when the period is static.
+    fn interval(&self) -> Option<u64> {
+        self.schedule.adaptive.map(|adaptive| adaptive.interval)
+    }
+
+    /// The highest round whose slot can be evaluated: the period is fixed up
+    /// to the boundary of the interval under scan and unknown above it until
+    /// that scan completes. Slots whose anchor search reaches above this
+    /// round stay undecided until it moves.
+    fn evaluation_top(&self, highest_known_round: RoundNumber) -> RoundNumber {
+        match self.interval() {
+            Some(interval) => highest_known_round.min((self.scans_done + 1) * interval),
+            None => highest_known_round,
+        }
     }
 }
 
@@ -154,8 +180,7 @@ impl Committer {
             leader_elector: LeaderElector::new(committee.len()),
             leader_count: protocol.leader_count.get(),
             period_schedule: vec![(0, schedule.period)],
-            last_update_round: 0,
-            pending_anchor: None,
+            scans_done: 0,
             replay_params: schedule
                 .adaptive
                 .and_then(|_| ReplayParams::from_protocol(&protocol, committee.clone())),
@@ -169,6 +194,8 @@ impl Committer {
             #[cfg(any(test, feature = "test-utils"))]
             has_fast_path: protocol.fast_path.is_some(),
             leaders: VecDeque::new(),
+            chain: VecDeque::new(),
+            chain_floor: 0,
             steelhead,
             metrics: None,
             period_cell: None,
@@ -187,39 +214,100 @@ impl Committer {
         self
     }
 
-    /// Apply a pending adaptive-period update: replay the interval anchor's
-    /// window and adopt the chosen period from the round after the anchor.
-    fn apply_pending_period_update(&mut self) {
-        let Some(mode) = self.steelhead.as_mut() else {
+    /// Chain verdicts (adaptive Steelhead): the asynchronous rule read on every
+    /// round from the interval under scan upward, with the round's coin leader
+    /// and anchored on chain commits only. They never enter the output; the
+    /// interval scan reads them to find the interval's anchor, which is why
+    /// the period update keeps moving under asynchrony while known-leader
+    /// slots are held undecided.
+    fn compute_chain(&mut self) {
+        self.chain.clear();
+        let Some(mode) = &self.steelhead else {
             return;
         };
-        let Some(anchor) = mode.pending_anchor.take() else {
+        let Some(interval) = mode.interval() else {
             return;
         };
-        let Some(adaptive) = mode.schedule.adaptive else {
-            return;
-        };
-        let anchor_round = anchor.round();
+        let highest_known_round = self.block_reader.highest_round();
+        self.chain_floor = mode.scans_done * interval + 1;
+        // Quorums are the pair's; wave and leader are per-call arguments.
+        let committer = &self.base_committers[0];
+        for round in (self.chain_floor..=highest_known_round).rev() {
+            let wave = mode.chain_wave(round);
+            let leader = mode.chain_leader(round);
+            let mut status = committer.try_direct_decide(leader, round, wave);
+            if !status.is_decided() {
+                status = committer.try_indirect_decide(leader, round, self.chain.iter(), wave);
+            }
+            self.chain.push_front(status);
+        }
+    }
+
+    /// Complete every interval scan the chain allows, in order. A scan walks
+    /// the interval's rounds upward over chain verdicts, passing skips, until
+    /// a chain commit (the interval's anchor) or the interval's end (no
+    /// anchor: the period is kept); an undecided round leaves it incomplete.
+    /// Each completed scan fixes the period of the next interval.
+    fn complete_scans(&mut self) {
+        loop {
+            let Some(mode) = &self.steelhead else {
+                return;
+            };
+            let Some(interval) = mode.interval() else {
+                return;
+            };
+            let floor = mode.scans_done * interval + 1;
+            let boundary = floor + interval - 1;
+            let mut anchor = None;
+            for round in floor..=boundary {
+                let Some(status) = self.chain.get((round - self.chain_floor) as usize) else {
+                    // The DAG does not reach this round yet.
+                    return;
+                };
+                match status {
+                    LeaderStatus::DirectCommit(block) | LeaderStatus::IndirectCommit(block) => {
+                        anchor = Some(block.clone());
+                        break;
+                    }
+                    LeaderStatus::DirectSkip(..) | LeaderStatus::IndirectSkip(..) => continue,
+                    LeaderStatus::Undecided(..) => return,
+                }
+            }
+            self.apply_period_update(anchor, boundary);
+        }
+    }
+
+    /// Fix the period of the interval above `boundary` from the window of the
+    /// completed scan's anchor, if any, and record the scan as done.
+    fn apply_period_update(&mut self, anchor: Option<Data<Block>>, boundary: RoundNumber) {
+        let mode = self.steelhead.as_mut().expect("adaptive Steelhead");
+        let adaptive = mode.schedule.adaptive.expect("adaptive Steelhead");
         let current = mode
-            .period_at(anchor_round)
+            .period_at(boundary)
             .expect("adaptive periods are finite");
 
-        let window = replay::collect_window(&self.block_reader, &anchor, adaptive.interval);
-        let mode = self.steelhead.as_mut().expect("checked above");
-        let params = mode.replay_params.as_ref().expect("adaptive has params");
-        let chosen = replay::choose_period(
-            &window,
-            params,
-            current,
-            adaptive.max_period,
-            adaptive.epsilon_percent,
-        );
+        let chosen = match anchor {
+            Some(anchor) => {
+                let window = replay::collect_window(&self.block_reader, &anchor, adaptive.interval);
+                let mode = self.steelhead.as_ref().expect("checked above");
+                let params = mode.replay_params.as_ref().expect("adaptive has params");
+                replay::choose_period(
+                    &window,
+                    params,
+                    current,
+                    adaptive.max_period,
+                    adaptive.epsilon_percent,
+                )
+            }
+            None => current,
+        };
 
+        let mode = self.steelhead.as_mut().expect("checked above");
         if chosen != current {
-            mode.period_schedule.push((anchor_round + 1, Some(chosen)));
-            tracing::debug!("Steelhead period {current} -> {chosen} after anchor {anchor_round}");
+            mode.period_schedule.push((boundary + 1, Some(chosen)));
+            tracing::debug!("Steelhead period {current} -> {chosen} above round {boundary}");
         }
-        mode.last_update_round = anchor_round;
+        mode.scans_done += 1;
         if let Some(metrics) = &self.metrics {
             metrics.set_steelhead_period(chosen.get());
         }
@@ -237,16 +325,22 @@ impl Committer {
         &mut self,
         last_decided: Option<(RoundNumber, Authority)>,
     ) -> impl Iterator<Item = LeaderStatus> + '_ {
-        // A truncated previous pass left an interval anchor: adopt its period
-        // before re-evaluating the rounds above it.
-        self.apply_pending_period_update();
+        // Adaptive Steelhead: refresh the chain verdicts and complete the
+        // interval scans they allow, fixing the periods of the intervals ahead.
+        self.compute_chain();
+        self.complete_scans();
 
         let highest_known_round = self.block_reader.highest_round();
+        let top = match &self.steelhead {
+            Some(mode) => mode.evaluation_top(highest_known_round),
+            None => highest_known_round,
+        };
         let last_decided_round = last_decided.map(|(round, _)| round).unwrap_or(0);
 
-        // Try to decide as many leaders as possible, starting with the highest round.
+        // Try to decide as many leaders as possible, starting with the highest
+        // evaluable round.
         self.leaders.clear();
-        for round in (last_decided_round..=highest_known_round).rev() {
+        for round in (last_decided_round..=top).rev() {
             if let Some(mode) = &self.steelhead {
                 // Steelhead: every round hosts a leader slot, decided under the
                 // wave its schedule assigns to that round.
@@ -291,11 +385,7 @@ impl Committer {
             }
         }
 
-        // The decided sequence is the longest prefix of decided leaders,
-        // truncated at an interval anchor when the adaptive period is on: the
-        // rounds above the anchor are re-evaluated next call under the period
-        // the anchor's replay chooses.
-        let steelhead = &mut self.steelhead;
+        // The decided sequence is the longest prefix of decided leaders.
         self.leaders
             .drain(..)
             // Position past the previously-yielded decision, if any. When `None`
@@ -309,27 +399,6 @@ impl Committer {
             .filter(|x| x.round() > 0)
             // Stop the sequence upon encountering an undecided leader.
             .take_while(|x| x.is_decided())
-            .scan(false, move |truncated, status| {
-                if *truncated {
-                    return None;
-                }
-                if let Some(mode) = steelhead.as_mut()
-                    && let Some(threshold) = mode.update_threshold()
-                    && status.round() > threshold
-                {
-                    let block = match &status {
-                        LeaderStatus::DirectCommit(block) | LeaderStatus::IndirectCommit(block) => {
-                            Some(block.clone())
-                        }
-                        _ => None,
-                    };
-                    if let Some(block) = block {
-                        mode.pending_anchor = Some(block);
-                        *truncated = true;
-                    }
-                }
-                Some(status)
-            })
             .inspect(|x| tracing::debug!("Decided {x}"))
     }
 }

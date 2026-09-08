@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Adaptive Steelhead: the period schedule is a deterministic function of the
-//! consumed commit sequence, so committers consuming the same DAG at different
-//! cadences must produce identical verdict sequences and period schedules.
+//! DAG (through the chain verdicts of each interval), so committers consuming
+//! the same DAG at different cadences must produce identical verdict sequences
+//! and period schedules, and every period change lands at an interval boundary.
 
 use std::{
     num::{NonZeroU64, NonZeroUsize},
@@ -154,4 +155,21 @@ fn cadence_independent_schedules_and_verdicts() {
         sequence.last().unwrap().round() >= 30,
         "sequence too short: {sequence:?}"
     );
+
+    // The switch lands at an interval boundary. The scan of interval 0 anchors
+    // at round 1, whose one-round window keeps the period, so interval 1
+    // (rounds 33..=64) still runs at period 8: its round-robin sync slots skip
+    // and only its fake-coin async slots commit. The scan of interval 1
+    // anchors at round 33, whose window shows the starved sync slots, so
+    // interval 2 (rounds 65..) runs at period 1: every round commits.
+    for status in sequence {
+        let round = status.round();
+        let committed = matches!(status, LeaderStatus::DirectCommit(..));
+        if (33..=64).contains(&round) {
+            assert_eq!(committed, round % MAX_PERIOD == 0, "round {round}");
+        } else if round >= 65 {
+            assert!(committed, "round {round}: {status:?}");
+        }
+    }
+    assert!(sequence.iter().any(|status| status.round() == 65));
 }

@@ -88,9 +88,12 @@ pub enum ConsensusProtocol {
     },
 }
 
-/// Adaptive-period parameters: every `interval` rounds, replay the committed
-/// window under each candidate period (powers of two up to `max_period`) and
-/// adopt the argmin, with `epsilon_percent` hysteresis.
+/// Adaptive-period parameters: rounds are grouped into intervals of `interval`
+/// rounds, each run under one period. At each interval the window of the
+/// interval's chain anchor (the earliest round the asynchronous rule commits
+/// when read on every round) is replayed under each candidate period (powers
+/// of two up to `max_period`) and the argmin, with `epsilon_percent`
+/// hysteresis, becomes the next interval's period.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub struct AdaptiveConfig {
     pub interval: u64,

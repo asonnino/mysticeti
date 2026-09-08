@@ -1,13 +1,15 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Counterfactual replay of the committed window for the adaptive period.
+//! Counterfactual replay of the agreed window for the adaptive period.
 //!
-//! The window is the interval anchor's causal history restricted to the last
-//! `interval` rounds — agreed data at every honest validator. Each candidate
-//! period reinterprets the window (`wl'(r) = w_async` iff `r % p' == 0`) and is
-//! scored by the expected delay from a round to the output of its blocks; the
-//! committer adopts the argmin with hysteresis.
+//! The window is the causal history of the interval's chain anchor (the
+//! earliest chain-committed round of the interval, `Committer::complete_scans`)
+//! restricted to the last `interval` rounds — agreed data at every honest
+//! validator, whether or not the output has reached it. Each candidate period
+//! reinterprets the window (`wl'(r) = w_async` iff `r % p' == 0`) and is scored
+//! by the expected delay from a round to the output of its blocks; the
+//! committer adopts the argmin with hysteresis for the next interval.
 //!
 //! Purity is load-bearing: everything here is a function of the collected
 //! [`Window`] alone — no [`BlockReader`] access after collection — so all
