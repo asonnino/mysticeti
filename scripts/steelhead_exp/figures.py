@@ -259,24 +259,15 @@ WEATHER_PANELS = [
     ("jitter", "High jitter"),
 ]
 WEATHER_ROW_YLIM = [0.5, 1.2]  # top row, bottom row (baseline ~0.2s)
-WEATHER_SETTLE_MODELS = {"partial", "full", "jitter"}  # switching panels get a settle guide
+# Per-pane reference tags for the paper text, drawn bold at one fixed
+# axes-fraction position (top-right) so every pane tags identically.
+WEATHER_PANE_TAGS = ["(i)", "(ii)", "(iii)", "(iv)", "(v)", "(vi)"]
+WEATHER_TAG_XY = (0.96, 0.92)
 
 
-def _settle_time(merged, phases):
-    """The tick where Steelhead first reaches (and holds) its async plateau
-    after the sync->async transition; None if it never settles."""
-    attack = next((p for p in phases if p.label == "attack"), None)
-    if attack is None:
-        return None
-    t = merged["time_s"]
-    lat = merged["latency_avg_ms"] / 1000.0
-    window = (t > attack.start_s + 20) & (t <= attack.end_s)
-    plateau = np.nanmedian(lat[window])
-    idx = np.where((t > attack.start_s) & (t <= attack.end_s))[0]
-    for k, i in enumerate(idx):
-        if np.all(np.abs(lat[idx[k:]] - plateau) <= 0.2 * plateau):
-            return float(t[i])
-    return None
+def _pane_tag(axes, index):
+    axes.text(*WEATHER_TAG_XY, WEATHER_PANE_TAGS[index], transform=axes.transAxes,
+        ha="right", va="top", fontsize=7, fontweight="bold", color="black")
 
 
 def _denoise(y, window=3):
@@ -339,14 +330,6 @@ def _weather_transitions(phases):
                     and p.end_s < phases[-1].end_s})
 
 
-def _weather_settle(axeslist, model, merged, phases):
-    if phases and model in WEATHER_SETTLE_MODELS and merged is not None:
-        settle = _settle_time(merged, phases)
-        if settle is not None:
-            for axes in axeslist:
-                axes.axvline(settle, color="0.4", linewidth=0.7, linestyle=(0, (3, 2)))
-
-
 def _break_marks(ax_hi, ax_lo):
     """Draw the // break marks between an upper and lower band (point-sized, so
     they stay square despite the two bands' different heights)."""
@@ -364,7 +347,6 @@ def _draw_full_panel(axes, sub, sync_slug, async_slug, phases, ylim, title, mode
     axes.set_title(title, fontsize=8, pad=3)
     axes.yaxis.set_major_formatter(FuncFormatter(seconds_formatter))
     if phases:
-        _weather_settle([axes], model, merged, phases)
         axes.set_xticks(_weather_transitions(phases))
     trim_spines(axes)
     return merged
@@ -419,12 +401,14 @@ def _fig_weather_pair(jobs, pair, committee=10):
         if index < 3:
             _draw_full_panel(top[col], sub, sync_slug, async_slug, phases,
                 WEATHER_ROW_YLIM[0], title, model)
+            _pane_tag(top[col], index)
         elif not broken:
             _draw_full_panel(lo[col], sub, sync_slug, async_slug, phases,
                 WEATHER_ROW_YLIM[1], title, model)
+            _pane_tag(lo[col], index)
         else:
             ax_hi, ax_lo = hi[col], lo[col]
-            merged = _draw_weather_lines(ax_hi, sub, sync_slug, async_slug, phases)
+            _draw_weather_lines(ax_hi, sub, sync_slug, async_slug, phases)
             _draw_weather_lines(ax_lo, sub, sync_slug, async_slug, phases)
             ax_lo.set_ylim(0, WEATHER_BREAK_LO)
             ax_hi.set_ylim(*WEATHER_BREAK_HI)
@@ -439,9 +423,9 @@ def _fig_weather_pair(jobs, pair, committee=10):
             ax_hi.tick_params(bottom=False, labelbottom=False)
             _break_marks(ax_hi, ax_lo)
             if phases:
-                _weather_settle([ax_hi, ax_lo], model, merged, phases)
                 ax_lo.set_xticks(_weather_transitions(phases))
             trim_spines(ax_lo)
+            _pane_tag(ax_hi, index)
 
     rows = [top, lo] + ([hi] if broken else [])
     for col in (1, 2):
@@ -457,8 +441,7 @@ def _fig_weather_pair(jobs, pair, committee=10):
     # top, and warns on the broken-axis sub-axes.
     figure.subplots_adjust(left=0.1, right=0.99, top=0.90, bottom=0.11,
         hspace=0.06 if broken else 0.18, wspace=0.13)
-    name = f"weather-{pair}" if committee == 10 else f"weather-{pair}-{committee}"
-    save(figure, name)
+    save(figure, f"weather-{pair}-{committee}")
 
 
 FIGURES = {
