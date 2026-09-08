@@ -431,6 +431,37 @@ def weather_jobs():
     return jobs
 
 
+# Feasibility diagnostic: the two heavy weather panes (full, partial) at n=50 on
+# a short 60s timeline, so the runs actually complete and reveal whether
+# Steelhead adapts under sustained delay (few no-commit ticks) rather than merely
+# being too slow to simulate at 210s. Finer sampling and debug logs on sh-ada.
+DIAG_MODELS = {"full": WEATHER["full"], "partial": WEATHER["partial"]}
+DIAG_SEEDS = list(range(3))
+
+
+def diag_jobs():
+    jobs = []
+    committee, pair = 50, "mm"
+    start, cond_end, dur = 10, 40, 60
+    for proto_slug, consensus in weather_grid(pair).items():
+        for model_slug, model in DIAG_MODELS.items():
+            conditions = [{"from_secs": start, "model": model},
+                            {"from_secs": cond_end}]
+            for seed in DIAG_SEEDS:
+                jobs.append(Job(
+                    name=f"diag--n{committee}--{pair}--{model_slug}--{proto_slug}--s{seed}",
+                    campaign="diag",
+                    params=dict(committee=committee, pair=pair, proto=proto_slug,
+                                model=model_slug, load=TIMELINE_LOAD, seed=seed),
+                    spec=run_spec(committee, seed, dur, TIMELINE_LOAD, consensus,
+                                    conditions=conditions, sample_interval_secs=2,
+                                    leader_timeout_ms=LEADER_TIMEOUT_MS),
+                    phases=attack_phases(start, cond_end, dur),
+                    debug_log=(proto_slug == "sh-ada"),
+                ))
+    return jobs
+
+
 # Recovery stress test: a ~1% steady-state overhead config (max 64) under a
 # sustained scheduled-asynchrony period, long enough for s->a to complete and
 # a->s afterward. Needs retention > interval (bumped to 512).
@@ -575,7 +606,7 @@ def all_jobs():
     jobs = (smoke_jobs() + good_jobs() + attack_jobs() + sched_jobs()
             + adaptive_jobs() + async_jobs() + profile_jobs() + storm_jobs()
             + canary_jobs() + interval_jobs() + ablation_jobs() + weather_jobs() + recovery_jobs()
-            + trunc_jobs() + phi_jobs())
+            + trunc_jobs() + phi_jobs() + diag_jobs())
     names = [job.name for job in jobs]
     assert len(names) == len(set(names)), "job names must be unique"
     return jobs
