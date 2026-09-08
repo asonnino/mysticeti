@@ -297,11 +297,21 @@ def fig_weather(jobs):
 
 
 # The bottom row breaks its y-axis: a short upper band catches the sync
-# protocol's degraded plateau (~3s) while the lower band keeps the async
-# plateaus legible. The sync protocol's full stall (Full random network, ~19s)
-# still runs off the top of the upper band, which reads as "shoots off".
-WEATHER_BREAK_LO = 1.2
-WEATHER_BREAK_HI = (2.0, 4.5)
+# protocol's degraded plateau while the lower band keeps the async plateaus
+# legible; the sync protocol's full stall still runs off the top, reading as
+# "shoots off". The n=50 latency scale is higher (async plateaus ~1.3-2.6s),
+# so its lower band and gap start higher than n=10's.
+# (break_lo, (upper_lo, upper_hi), upper_yticks): lower band is 0..break_lo,
+# the // cut spans break_lo..upper_lo, the upper band catches the degraded sync
+# plateau. n=50's higher latency scale gets a higher lower band and a wider cut.
+WEATHER_BREAK = {
+    10: (1.2, (2.0, 4.5), (3, 4)),
+    50: (1.5, (4.0, 8.0), (4, 6)),
+}
+
+
+def _weather_break(committee):
+    return WEATHER_BREAK.get(committee, WEATHER_BREAK[10])
 
 
 def _draw_weather_lines(axes, sub, sync_slug, async_slug, phases):
@@ -352,7 +362,7 @@ def _draw_full_panel(axes, sub, sync_slug, async_slug, phases, ylim, title, mode
     return merged
 
 
-def _needs_break(jobs, sync_slug):
+def _needs_break(jobs, sync_slug, break_lo):
     """Whether any bottom-row panel's sync baseline runs off the lower band --
     only then is the broken axis worth its cost. A robust sync rule (which
     never leaves the band) keeps a plain axis."""
@@ -361,14 +371,15 @@ def _needs_break(jobs, sync_slug):
         merged = seed_timelines(by_params(sub, proto=sync_slug))
         if merged is not None:
             values = _denoise(merged["latency_avg_ms"]) / 1000.0
-            if np.nanmax(values) > WEATHER_BREAK_LO:
+            if np.nanmax(values) > break_lo:
                 return True
     return False
 
 
 def _fig_weather_pair(jobs, pair, committee=10):
     sync_slug, async_slug = ("myst", "mahi5") if pair == "mm" else ("bbps", "bbasync")
-    broken = _needs_break(jobs, sync_slug)
+    break_lo, break_hi, break_ticks = _weather_break(committee)
+    broken = _needs_break(jobs, sync_slug, break_lo)
     width = plt.rcParams["figure.figsize"][0]
     top, hi, lo = [], [], []
     if broken:
@@ -410,9 +421,9 @@ def _fig_weather_pair(jobs, pair, committee=10):
             ax_hi, ax_lo = hi[col], lo[col]
             _draw_weather_lines(ax_hi, sub, sync_slug, async_slug, phases)
             _draw_weather_lines(ax_lo, sub, sync_slug, async_slug, phases)
-            ax_lo.set_ylim(0, WEATHER_BREAK_LO)
-            ax_hi.set_ylim(*WEATHER_BREAK_HI)
-            ax_hi.set_yticks([3, 4])
+            ax_lo.set_ylim(0, break_lo)
+            ax_hi.set_ylim(*break_hi)
+            ax_hi.set_yticks(list(break_ticks))
             ax_hi.set_title(title, fontsize=8, pad=3)
             for axes in (ax_hi, ax_lo):
                 axes.yaxis.set_major_formatter(FuncFormatter(seconds_formatter))
