@@ -12,8 +12,9 @@ import yaml
 
 from simconfig import BINARY
 
-# One hung simulator run must not wedge the pool forever.
-SIMULATION_TIMEOUT_S = 2 * 60 * 60
+# One hung simulator run must not wedge the pool forever. Overridable for
+# heavy n=50 stalling-protocol runs that legitimately need more wall time.
+SIMULATION_TIMEOUT_S = int(os.environ.get("STEELHEAD_SIM_TIMEOUT_H", "2")) * 60 * 60
 
 # Concurrent runs' transient WALs must fit on disk (see Job.disk_weight);
 # a single oversized job still runs, alone. Overridable for large-disk hosts
