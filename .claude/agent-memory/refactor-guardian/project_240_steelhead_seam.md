@@ -30,6 +30,18 @@ constructor.
   Same source, bounded call overhead vs their DAG-walking bodies — accepted, but a
   future third call site could flip more inlining; re-check if `try_commit` grows.
 
+**`SteelheadMode::decide_rounds` extraction (2026-09-11, reviewed SAFE):** the Steelhead slot
+loop moved out of `try_commit` with the `Option` check hoisted above the round loop. Release
+rlib: `decide_rounds` has no symbol (fully inlined), try_commit call profile identical
+(try_direct/indirect still out-of-line, same `Iter<LeaderStatus>` monomorph), 1204→1247
+static instr purely from loop unswitching (range loop duplicated per branch + an unreachable
+empty-committers copy); per-round discriminant reload gone on both paths. Audit method:
+`git archive HEAD` into two scratch dirs, patch one; with a shared CARGO_TARGET_DIR you must
+`touch` the patched file (workspace metadata hash is path-independent, mtime older than rlib).
+Superseded by f9ce51f: the stall fix added `advance_agreed_output` as a second caller, so
+`decide_rounds` became an out-of-line symbol (~232 instr) at cgu16 and cgu1; the closure
+parameter in [[direct-verdict-cache-seam]] re-inlines it (one monomorph per caller).
+
 **Mode invariants (break these and Steelhead is wrong):**
 - `BaseCommitter::elect_leader` (and its `self.wave`) is NEVER used in steelhead mode —
   `mode.elect_leader(round, offset)` = `elector.elect_leader(round + offset)`, same

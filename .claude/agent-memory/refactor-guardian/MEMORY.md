@@ -10,7 +10,9 @@
 - [#208 commit-consumer seam](project_208_commit_consumer_seam.md) — opt-in CommittedSubDag output channel; None-path inertness, two-sender drain, single-threaded simulator determinism
 - [#239 wave-param seam](project_239_wave_param_seam.md) — Copy Wave threaded through decision rules; codegen-neutral, plus the self.wave reads deliberately left behind
 - [merged-certificates seam](project_merged_certificates_seam.md) — why the flag reproduces the old wl==2 special case, and its one trace-emission asymmetry
-- [#240 Steelhead seam](project_240_steelhead_seam.md) — per-round wavelength mode; base-path inertness proof, asm parity evidence, quorum-sharing conservativity invariant
+- [#240 Steelhead seam](project_240_steelhead_seam.md) — per-round wavelength mode; base-path inertness proof, asm parity evidence (incl. decide_rounds extraction), conservativity
 - [#243 adaptive-period seam](project_243_adaptive_period_seam.md) — adaptive-off inertness, drain-truncation invariants, interval<=RETAIN_BELOW_COMMIT_ROUNDS coupling
 - [#261 canary seam](project_261_canary_seam.md) — Modal timeout variant replaces EveryNth/Dynamic; canary:null equivalence proofs; period=Some(max_period) rewrite is load-bearing for cell init
 - [#237 probe-replay seam](project_237_probe_replay_seam.md) — probe-aware replay + retention 512; canary-1/None inertness, wasted probe pass at canary=1, unenforced coprimality
+- [Direct-verdict cache seam](project_direct_verdict_cache.md) — scan reuses try_commit direct verdicts; exact under <=f equivocators, 0% hits on starved DAGs, nm-based asm audit method
+- [Benchmark codegen-units](feedback_codegen_units_benchmarks.md) — fix cgu on both sides and name it; default 16 CGU swings replay ~40% on unrelated edits
