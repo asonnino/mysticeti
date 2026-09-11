@@ -4,6 +4,7 @@
 use std::{
     collections::VecDeque,
     num::NonZeroU64,
+    ops::RangeInclusive,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -115,6 +116,26 @@ impl SteelheadMode {
                 .elect_fake_coin_leader(round + leader_offset);
         }
         self.leader_elector.elect_leader(round + leader_offset)
+    }
+
+    /// Decide `rounds` highest first (anchors lie above), prepending verdicts to `statuses`.
+    fn decide_rounds(
+        &self,
+        committers: &[BaseCommitter],
+        rounds: RangeInclusive<RoundNumber>,
+        statuses: &mut VecDeque<LeaderStatus>,
+    ) {
+        for round in rounds.rev() {
+            let wave = self.wave_for(round);
+            for (leader_offset, committer) in committers.iter().enumerate().rev() {
+                let leader = self.elect_leader(round, leader_offset as RoundNumber);
+                let mut status = committer.try_direct_decide(leader, round, wave);
+                if !status.is_decided() {
+                    status = committer.try_indirect_decide(leader, round, statuses.iter(), wave);
+                }
+                statuses.push_front(status);
+            }
+        }
     }
 
     /// The wave of the chain verdict at `round`: the asynchronous wavelength
@@ -340,21 +361,14 @@ impl Committer {
         // Try to decide as many leaders as possible, starting with the highest
         // evaluable round.
         self.leaders.clear();
-        for round in (last_decided_round..=top).rev() {
-            if let Some(mode) = &self.steelhead {
-                // Steelhead: every round hosts a leader slot, decided under the
-                // wave its schedule assigns to that round.
-                let wave = mode.wave_for(round);
-                for (leader_offset, committer) in self.base_committers.iter().enumerate().rev() {
-                    let leader = mode.elect_leader(round, leader_offset as RoundNumber);
-                    let mut status = committer.try_direct_decide(leader, round, wave);
-                    if !status.is_decided() {
-                        status =
-                            committer.try_indirect_decide(leader, round, self.leaders.iter(), wave);
-                    }
-                    self.leaders.push_front(status);
-                }
-            } else {
+        if let Some(mode) = &self.steelhead {
+            mode.decide_rounds(
+                &self.base_committers,
+                last_decided_round..=top,
+                &mut self.leaders,
+            );
+        } else {
+            for round in (last_decided_round..=top).rev() {
                 for committer in self.base_committers.iter().rev() {
                     // Skip committers that don't have a leader for this round.
                     let Some(leader) = committer.elect_leader(round) else {
