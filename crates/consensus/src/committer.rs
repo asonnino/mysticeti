@@ -459,9 +459,6 @@ impl Committer {
         if let Some(metrics) = &self.metrics {
             metrics.set_steelhead_period(chosen.get());
         }
-        if let Some(cell) = &self.period_cell {
-            cell.store(chosen.get(), Ordering::Relaxed);
-        }
     }
 
     /// Try to commit part of the dag. This function is idempotent and returns a list of
@@ -479,6 +476,16 @@ impl Committer {
         self.complete_scans();
 
         let highest_known_round = self.block_reader.highest_round();
+        // The round timeouts follow the period in force, which changes only at
+        // interval boundaries, not when a scan decides the next interval's.
+        if let (Some(mode), Some(cell)) = (&self.steelhead, &self.period_cell)
+            && mode.interval().is_some()
+        {
+            let period = mode
+                .period_at(highest_known_round)
+                .expect("adaptive periods are finite");
+            cell.store(period.get(), Ordering::Relaxed);
+        }
         let top = match &self.steelhead {
             Some(mode) => mode.evaluation_top(highest_known_round),
             None => highest_known_round,

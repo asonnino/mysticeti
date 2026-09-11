@@ -54,7 +54,11 @@ fn adaptive_spec() -> ConsensusProtocol {
 /// while the rounds after an asynchronous round are fully connected. Every
 /// synchronous slot is therefore directly undecided, forever; the fake-coin
 /// leader of any round is a different author whose block everyone references.
-fn build_held_undecided_dag(committee: &Arc<Committee>, storage: &mut Storage, depth: u64) {
+fn build_held_undecided_dag(
+    committee: &Arc<Committee>,
+    storage: &mut Storage,
+    depth: u64,
+) -> Vec<BlockReference> {
     let n = committee.len() as u64;
     let mut references = build_dag(committee, storage, None, 0);
     for round in 1..=depth {
@@ -75,6 +79,7 @@ fn build_held_undecided_dag(committee: &Arc<Committee>, storage: &mut Storage, d
             .collect();
         references = build_dag_layer(connections, storage);
     }
+    references
 }
 
 /// Drain a committer to exhaustion, consuming at most `chunk` decisions per
@@ -106,7 +111,8 @@ fn reference_of(status: &LeaderStatus) -> Option<BlockReference> {
 /// slot at round 2 waits on the undecided synchronous slot at 6, which waits
 /// on 10, and so on, while the asynchronous slots at 4, 8, ... commit directly
 /// and are never output. The chain still finds every interval's anchor, so
-/// the period for the interval above the DAG's top is already 1.
+/// the switch to period 1 is decided (one stall fallback) though not yet in
+/// force at the DAG's top.
 #[test]
 fn held_undecided_sync_slots_stall_the_output() {
     let committee = committee(4);
@@ -121,6 +127,33 @@ fn held_undecided_sync_slots_stall_the_output() {
     assert_eq!(sequence.len(), 1, "{sequence:?}");
     assert_eq!(sequence[0].round(), 1);
     assert!(matches!(sequence[0], LeaderStatus::IndirectSkip(..)));
+    assert_eq!(committer.stall_fallbacks(), 1);
+    assert_eq!(cell.load(Ordering::Relaxed), MAX_PERIOD);
+}
+
+/// The scan of interval 2 decides period 1 for the interval above, but the
+/// cell keeps the period in force until the DAG reaches the boundary.
+#[test]
+fn period_cell_switches_at_the_boundary() {
+    let committee = committee(4);
+    let mut storage = Storage::new_for_test(&committee);
+    let references = build_held_undecided_dag(&committee, &mut storage, 2 * INTERVAL);
+
+    let cell = Arc::new(AtomicU64::new(MAX_PERIOD));
+    let mut committer = Committer::new_for_test(&committee, &storage, &adaptive_spec())
+        .with_period_cell(cell.clone());
+    consume(&mut committer, usize::MAX, 4 * INTERVAL as usize);
+    assert_eq!(committer.stall_fallbacks(), 1, "the switch is decided");
+    assert_eq!(cell.load(Ordering::Relaxed), MAX_PERIOD, "not in force yet");
+
+    // One fully connected layer at the boundary round puts the DAG's top in
+    // the interval the switch governs.
+    let connections = committee
+        .authorities()
+        .map(|authority| (authority, references.clone()))
+        .collect();
+    build_dag_layer(connections, &mut storage);
+    let _ = committer.try_commit(None).count();
     assert_eq!(cell.load(Ordering::Relaxed), 1);
 }
 
