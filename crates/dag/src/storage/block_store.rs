@@ -93,6 +93,10 @@ impl BlockStore {
             .collect()
     }
 
+    pub(super) fn count_blocks_by_round(&self, round: RoundNumber) -> usize {
+        self.index.get(&round).map_or(0, |blocks| blocks.len())
+    }
+
     pub(super) fn get_blocks_by_round(&self, round: RoundNumber) -> Vec<IndexEntry> {
         let Some(blocks) = self.index.get(&round) else {
             return vec![];

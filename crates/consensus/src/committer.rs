@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     num::NonZeroU64,
     ops::RangeInclusive,
     sync::{
@@ -86,6 +86,8 @@ struct SteelheadMode {
     agreed_next: (RoundNumber, RoundNumber),
     /// Round of the agreed output's last committed leader.
     agreed_last_commit_round: RoundNumber,
+    /// Direct verdicts of the output, from the agreed cursor up (adaptive).
+    direct_verdicts: HashMap<(RoundNumber, Authority), LeaderStatus>,
     #[cfg(any(test, feature = "test-utils"))]
     agreed_output: Vec<LeaderStatus>,
     /// Scans that fell back to period 1 on a stalled output.
@@ -134,17 +136,35 @@ impl SteelheadMode {
         committers: &[BaseCommitter],
         rounds: RangeInclusive<RoundNumber>,
         statuses: &mut VecDeque<LeaderStatus>,
+        direct: impl Fn(&BaseCommitter, Authority, RoundNumber, Wave) -> LeaderStatus,
     ) {
         for round in rounds.rev() {
             let wave = self.wave_for(round);
             for (leader_offset, committer) in committers.iter().enumerate().rev() {
                 let leader = self.elect_leader(round, leader_offset as RoundNumber);
-                let mut status = committer.try_direct_decide(leader, round, wave);
+                let mut status = direct(committer, leader, round, wave);
                 if !status.is_decided() {
                     status = committer.try_indirect_decide(leader, round, statuses.iter(), wave);
                 }
                 statuses.push_front(status);
             }
+        }
+    }
+
+    /// Keep the direct verdicts of `statuses` the agreed output may still reuse.
+    fn record_direct_verdicts(&mut self, statuses: &VecDeque<LeaderStatus>) {
+        for status in statuses {
+            if status.round() < self.agreed_next.0
+                || !matches!(
+                    status,
+                    LeaderStatus::DirectCommit(..) | LeaderStatus::DirectSkip(..)
+                )
+            {
+                continue;
+            }
+            self.direct_verdicts
+                .entry((status.round(), status.authority()))
+                .or_insert_with(|| status.clone());
         }
     }
 
@@ -217,6 +237,7 @@ impl Committer {
                 .and_then(|_| ReplayParams::from_protocol(&protocol, committee.clone())),
             agreed_next: (1, 0),
             agreed_last_commit_round: 0,
+            direct_verdicts: HashMap::new(),
             #[cfg(any(test, feature = "test-utils"))]
             agreed_output: Vec::new(),
             #[cfg(any(test, feature = "test-utils"))]
@@ -321,14 +342,47 @@ impl Committer {
         if anchor.round() < floor {
             return;
         }
-        let view = Arc::new(causal_history(&self.block_reader, anchor, floor));
+        let top = anchor.round();
+        let view = causal_history(&self.block_reader, anchor, floor);
+        let mut view_counts = vec![0; (top - floor + 1) as usize];
+        for reference in &view {
+            view_counts[(reference.round() - floor) as usize] += 1;
+        }
+        let complete: Vec<bool> = (floor..=top)
+            .zip(view_counts)
+            .map(|(round, count)| count == self.block_reader.count_blocks_by_round(round))
+            .collect();
+        let is_complete = |round: RoundNumber| {
+            (floor..=top).contains(&round) && complete[(round - floor) as usize]
+        };
+
+        let view = Arc::new(view);
         let committers: Vec<BaseCommitter> = self
             .base_committers
             .iter()
             .map(|committer| committer.restricted_to(view.clone()))
             .collect();
+        // A view holding every local block of a slot's rounds gives the local direct
+        // verdict, and with at most f Byzantine a direct verdict never changes as the
+        // DAG grows (quorum intersection): reuse them.
+        let direct = |committer: &BaseCommitter, leader, round, wave: Wave| {
+            let number = wave.number(round);
+            let slot_rounds = [
+                round,
+                wave.voting_round(number),
+                wave.decision_round(number),
+            ];
+            if slot_rounds
+                .iter()
+                .all(|&slot_round| is_complete(slot_round))
+                && let Some(status) = mode.direct_verdicts.get(&(round, leader))
+            {
+                return status.clone();
+            }
+            committer.try_direct_decide(leader, round, wave)
+        };
         let mut statuses = VecDeque::new();
-        mode.decide_rounds(&committers, floor..=anchor.round(), &mut statuses);
+        mode.decide_rounds(&committers, floor..=top, &mut statuses, direct);
 
         let mode = self.steelhead.as_mut().expect("checked above");
         let leader_count = mode.leader_count as RoundNumber;
@@ -351,6 +405,9 @@ impl Committer {
             #[cfg(any(test, feature = "test-utils"))]
             mode.agreed_output.push(status);
         }
+        let next_round = mode.agreed_next.0;
+        mode.direct_verdicts
+            .retain(|(round, _), _| *round >= next_round);
     }
 
     /// Fix the period of the interval above `boundary` from the window of the
@@ -431,12 +488,16 @@ impl Committer {
         // Try to decide as many leaders as possible, starting with the highest
         // evaluable round.
         self.leaders.clear();
-        if let Some(mode) = &self.steelhead {
+        if let Some(mode) = &mut self.steelhead {
             mode.decide_rounds(
                 &self.base_committers,
                 last_decided_round..=top,
                 &mut self.leaders,
+                |committer, leader, round, wave| committer.try_direct_decide(leader, round, wave),
             );
+            if mode.interval().is_some() {
+                mode.record_direct_verdicts(&self.leaders);
+            }
         } else {
             for round in (last_decided_round..=top).rev() {
                 for committer in self.base_committers.iter().rev() {

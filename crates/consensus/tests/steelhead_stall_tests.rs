@@ -53,8 +53,13 @@ fn spec(interval: u64, epsilon_percent: u8) -> ConsensusProtocol {
 
 /// Build `DEPTH` rounds in which `author` omits the previous round's
 /// round-robin leader block iff `omits(previous_round, author)`; a leader never
-/// omits its own block.
-fn build_omitting(committee: &Arc<Committee>, storage: &mut Storage, omits: Omits) {
+/// omits its own block. `after_round` runs once each round is in storage.
+fn build_omitting(
+    committee: &Arc<Committee>,
+    storage: &mut Storage,
+    omits: Omits,
+    mut after_round: impl FnMut(),
+) {
     let n = committee.len() as u64;
     let mut references = build_dag(committee, storage, None, 0);
     for round in 1..=DEPTH {
@@ -72,12 +77,18 @@ fn build_omitting(committee: &Arc<Committee>, storage: &mut Storage, omits: Omit
             })
             .collect();
         references = build_dag_layer(connections, storage);
+        after_round();
     }
 }
 
 /// The authority that references every held leader block besides its author.
 fn is_helper(author: Authority) -> bool {
     author == Authority::new(0)
+}
+
+/// Nobody omits anything: a healthy, fully connected DAG.
+fn no_omissions(_previous: RoundNumber, _author: Authority) -> bool {
+    false
 }
 
 /// Every known leader is held: only the helper references it besides itself.
@@ -161,6 +172,29 @@ fn run(
     }
 }
 
+/// Grow the DAG one round at a time and run the committer after each round, as a
+/// replica does: its cached direct verdicts are warm at every scan.
+fn run_incrementally(committee: &Arc<Committee>, omits: Omits, spec: &ConsensusProtocol) -> Run {
+    let mut storage = Storage::new_for_test(committee);
+    let cell = Arc::new(AtomicU64::new(MAX_PERIOD));
+    let mut committer =
+        Committer::new_for_test(committee, &storage, spec).with_period_cell(cell.clone());
+    let mut output = Vec::new();
+    let mut last_decided = None;
+    build_omitting(committee, &mut storage, omits, || {
+        for status in committer.try_commit(last_decided) {
+            last_decided = Some((status.round(), status.authority()));
+            output.push(verdict(&status));
+        }
+    });
+    Run {
+        output,
+        agreed: committer.agreed_output().iter().map(verdict).collect(),
+        stall_fallbacks: committer.stall_fallbacks(),
+        period: cell.load(Ordering::Relaxed),
+    }
+}
+
 /// Without the fallback these configurations stall at round 1 or 2 forever
 /// (the replay keeps period 4); with it the output reaches the DAG's top.
 #[test]
@@ -173,7 +207,7 @@ fn stalled_output_falls_back_to_period_one() {
     for (name, omits, interval, epsilon_percent) in cases {
         let committee = committee(4);
         let mut storage = Storage::new_for_test(&committee);
-        build_omitting(&committee, &mut storage, omits);
+        build_omitting(&committee, &mut storage, omits, || {});
         let outcome = run(
             &storage,
             &committee,
@@ -203,7 +237,7 @@ fn flowing_output_never_falls_back() {
         assert_agreed_prefix(&healthy.agreed, &healthy.output);
 
         let mut storage = Storage::new_for_test(&committee);
-        build_omitting(&committee, &mut storage, byzantine_split_leader);
+        build_omitting(&committee, &mut storage, byzantine_split_leader, || {});
         let split = run(&storage, &committee, &spec(interval, 10), usize::MAX);
         assert_eq!(
             split.stall_fallbacks, 0,
@@ -213,13 +247,41 @@ fn flowing_output_never_falls_back() {
     }
 }
 
+/// Reusing cached direct verdicts must not change the agreed output: a replica
+/// growing the DAG (warm cache) agrees with a fresh drain of it (nothing cached).
+#[test]
+fn verdict_reuse_preserves_the_agreed_output() {
+    let cases: [(&str, Omits, u64, u8); 5] = [
+        ("healthy", no_omissions, 8, 10),
+        ("healthy", no_omissions, 32, 10),
+        ("split leader", byzantine_split_leader, 8, 10),
+        ("held known leaders", held_known_leaders, 8, 50),
+        ("partial commits", partial_commits, 8, 10),
+    ];
+    for (name, omits, interval, epsilon_percent) in cases {
+        let committee = committee(4);
+        let spec = spec(interval, epsilon_percent);
+        let warm = run_incrementally(&committee, omits, &spec);
+
+        let mut storage = Storage::new_for_test(&committee);
+        build_omitting(&committee, &mut storage, omits, || {});
+        let cold = run(&storage, &committee, &spec, usize::MAX);
+
+        let case = format!("{name}, interval {interval}");
+        assert_eq!(warm.agreed, cold.agreed, "{case}");
+        assert_eq!(warm.stall_fallbacks, cold.stall_fallbacks, "{case}");
+        assert_eq!(warm.period, cold.period, "{case}");
+        assert_eq!(warm.output, cold.output, "{case}");
+    }
+}
+
 /// The agreed output and the fallbacks are functions of the DAG alone, not of
 /// the consumer's cadence.
 #[test]
 fn fallback_is_cadence_independent() {
     let committee = committee(4);
     let mut storage = Storage::new_for_test(&committee);
-    build_omitting(&committee, &mut storage, partial_commits);
+    build_omitting(&committee, &mut storage, partial_commits, || {});
     let spec = spec(8, 10);
 
     let reference = run(&storage, &committee, &spec, usize::MAX);

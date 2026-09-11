@@ -2,15 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Cost of one adaptive-period update (paper claim:replay): collecting the
-//! interval anchor's window and scoring every candidate period. Run with
+//! interval anchor's window and scoring every candidate period; and the
+//! committer's cost as a replica runs it, interval scans included. Run with
 //! `cargo bench -p consensus`.
 
 use std::{
     num::{NonZeroU64, NonZeroUsize},
     sync::Arc,
+    time::{Duration, Instant},
 };
 
 use consensus::{
+    committer::Committer,
     protocol::{AdaptiveConfig, ConsensusProtocol, SteelheadPair},
     replay::{ReplayParams, choose_period, collect_window},
 };
@@ -98,5 +101,55 @@ fn bench_update(criterion: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_update);
+/// The committer as a replica runs it (the `sh-ada` profile): the DAG grows one
+/// round at a time and only the `try_commit` call after each round is timed.
+fn bench_incremental(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("committer_incremental");
+    group.sample_size(10);
+    let interval = 128;
+    for n in [10, 50] {
+        let members = committee(n);
+        let spec = ConsensusProtocol::Steelhead {
+            pair: SteelheadPair::MysticetiMahiMahi,
+            period: None,
+            async_wave_length: 5,
+            adaptive: Some(AdaptiveConfig {
+                interval,
+                max_period: NonZeroU64::new(64).unwrap(),
+                epsilon_percent: 10,
+            }),
+            canary: NonZeroU64::new(5),
+            leader_count: NonZeroUsize::new(1).unwrap(),
+        };
+        group.bench_function(format!("n{n}-i{interval}"), |bencher| {
+            bencher.iter_custom(|iterations| {
+                let mut total = Duration::ZERO;
+                for _ in 0..iterations {
+                    let mut storage = Storage::new_for_test(&members);
+                    let mut committer = Committer::new_for_test(&members, &storage, &spec);
+                    let mut references = build_dag(&members, &mut storage, None, 0);
+                    let mut last_decided = None;
+                    for _ in 0..3 * interval {
+                        references = build_dag_layer(
+                            members
+                                .authorities()
+                                .map(|authority| (authority, references.clone()))
+                                .collect(),
+                            &mut storage,
+                        );
+                        let start = Instant::now();
+                        for status in committer.try_commit(last_decided) {
+                            last_decided = Some((status.round(), status.authority()));
+                        }
+                        total += start.elapsed();
+                    }
+                }
+                total
+            })
+        });
+    }
+    group.finish();
+}
+
+criterion_group!(benches, bench_update, bench_incremental);
 criterion_main!(benches);

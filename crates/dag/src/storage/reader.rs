@@ -119,6 +119,11 @@ impl BlockReader {
         entry.map(|pos| self.read_index(pos))
     }
 
+    /// The number of blocks at `round`, without loading them.
+    pub fn count_blocks_by_round(&self, round: RoundNumber) -> usize {
+        self.inner.read().count_blocks_by_round(round)
+    }
+
     pub fn get_blocks_by_round(&self, round: RoundNumber) -> Vec<Data<Block>> {
         let entries = self.inner.read().get_blocks_by_round(round);
         self.read_index_vec(entries)
