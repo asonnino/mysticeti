@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
-    collections::VecDeque,
+    collections::{HashSet, VecDeque},
     num::NonZeroU64,
     ops::RangeInclusive,
     sync::{
@@ -20,7 +20,7 @@ use crate::{
 };
 use dag::{
     authority::Authority,
-    block::{Block, RoundNumber},
+    block::{Block, BlockReference, RoundNumber},
     committee::Committee,
     committee::Stake,
     consensus::{DagConsensus, LeaderStatus},
@@ -81,6 +81,16 @@ struct SteelheadMode {
     scans_done: u64,
     /// Replay inputs, present iff adaptive.
     replay_params: Option<ReplayParams>,
+    /// Next slot `(round, leader_offset)` of the agreed output: the output rule
+    /// read over each scan anchor's causal history, identical at every validator.
+    agreed_next: (RoundNumber, RoundNumber),
+    /// Round of the agreed output's last committed leader.
+    agreed_last_commit_round: RoundNumber,
+    #[cfg(any(test, feature = "test-utils"))]
+    agreed_output: Vec<LeaderStatus>,
+    /// Scans that fell back to period 1 on a stalled output.
+    #[cfg(any(test, feature = "test-utils"))]
+    stall_fallbacks: u64,
 }
 
 impl SteelheadMode {
@@ -205,6 +215,12 @@ impl Committer {
             replay_params: schedule
                 .adaptive
                 .and_then(|_| ReplayParams::from_protocol(&protocol, committee.clone())),
+            agreed_next: (1, 0),
+            agreed_last_commit_round: 0,
+            #[cfg(any(test, feature = "test-utils"))]
+            agreed_output: Vec::new(),
+            #[cfg(any(test, feature = "test-utils"))]
+            stall_fallbacks: 0,
         });
 
         Self {
@@ -298,8 +314,48 @@ impl Committer {
         }
     }
 
+    /// Extend the agreed output over the slots `anchor`'s causal history decides.
+    fn advance_agreed_output(&mut self, anchor: &Data<Block>) {
+        let mode = self.steelhead.as_ref().expect("adaptive Steelhead");
+        let (floor, floor_offset) = mode.agreed_next;
+        if anchor.round() < floor {
+            return;
+        }
+        let view = Arc::new(causal_history(&self.block_reader, anchor, floor));
+        let committers: Vec<BaseCommitter> = self
+            .base_committers
+            .iter()
+            .map(|committer| committer.restricted_to(view.clone()))
+            .collect();
+        let mut statuses = VecDeque::new();
+        mode.decide_rounds(&committers, floor..=anchor.round(), &mut statuses);
+
+        let mode = self.steelhead.as_mut().expect("checked above");
+        let leader_count = mode.leader_count as RoundNumber;
+        for status in statuses.into_iter().skip(floor_offset as usize) {
+            if !status.is_decided() {
+                break;
+            }
+            if matches!(
+                status,
+                LeaderStatus::DirectCommit(..) | LeaderStatus::IndirectCommit(..)
+            ) {
+                mode.agreed_last_commit_round = status.round();
+            }
+            let (round, offset) = mode.agreed_next;
+            mode.agreed_next = if offset + 1 == leader_count {
+                (round + 1, 0)
+            } else {
+                (round, offset + 1)
+            };
+            #[cfg(any(test, feature = "test-utils"))]
+            mode.agreed_output.push(status);
+        }
+    }
+
     /// Fix the period of the interval above `boundary` from the window of the
-    /// completed scan's anchor, if any, and record the scan as done.
+    /// completed scan's anchor, if any, and record the scan as done. An agreed
+    /// output with no commit in the anchor's window forces period 1.
     fn apply_period_update(&mut self, anchor: Option<Data<Block>>, boundary: RoundNumber) {
         let mode = self.steelhead.as_mut().expect("adaptive Steelhead");
         let adaptive = mode.schedule.adaptive.expect("adaptive Steelhead");
@@ -309,16 +365,30 @@ impl Committer {
 
         let chosen = match anchor {
             Some(anchor) => {
-                let window = replay::collect_window(&self.block_reader, &anchor, adaptive.interval);
-                let mode = self.steelhead.as_ref().expect("checked above");
-                let params = mode.replay_params.as_ref().expect("adaptive has params");
-                replay::choose_period(
-                    &window,
-                    params,
-                    current,
-                    adaptive.max_period,
-                    adaptive.epsilon_percent,
-                )
+                self.advance_agreed_output(&anchor);
+                let mode = self.steelhead.as_mut().expect("checked above");
+                if mode.agreed_last_commit_round + adaptive.interval < anchor.round() {
+                    tracing::debug!(
+                        "Steelhead output stalled below round {}: period 1 above round {boundary}",
+                        anchor.round()
+                    );
+                    #[cfg(any(test, feature = "test-utils"))]
+                    {
+                        mode.stall_fallbacks += 1;
+                    }
+                    NonZeroU64::MIN
+                } else {
+                    let window =
+                        replay::collect_window(&self.block_reader, &anchor, adaptive.interval);
+                    let params = mode.replay_params.as_ref().expect("adaptive has params");
+                    replay::choose_period(
+                        &window,
+                        params,
+                        current,
+                        adaptive.max_period,
+                        adaptive.epsilon_percent,
+                    )
+                }
             }
             None => current,
         };
@@ -450,6 +520,20 @@ impl Committer {
             .expect("not a leader round for this offset")
     }
 
+    /// The agreed output's verdicts so far (adaptive Steelhead).
+    pub fn agreed_output(&self) -> &[LeaderStatus] {
+        self.steelhead
+            .as_ref()
+            .map_or(&[], |mode| mode.agreed_output.as_slice())
+    }
+
+    /// Scans that fell back to period 1 on a stalled output (adaptive Steelhead).
+    pub fn stall_fallbacks(&self) -> u64 {
+        self.steelhead
+            .as_ref()
+            .map_or(0, |mode| mode.stall_fallbacks)
+    }
+
     /// True if any of this committer's base committers owns a leader at `round`.
     /// Under Steelhead, every round hosts a leader slot.
     pub fn is_leader_round(&self, round: RoundNumber) -> bool {
@@ -563,6 +647,28 @@ impl DagConsensus for Committer {
             None
         }
     }
+}
+
+/// The blocks of `anchor`'s causal history at rounds `floor` and above.
+fn causal_history(
+    block_reader: &BlockReader,
+    anchor: &Data<Block>,
+    floor: RoundNumber,
+) -> HashSet<BlockReference> {
+    let mut members = HashSet::from([*anchor.reference()]);
+    let mut stack = vec![anchor.clone()];
+    while let Some(block) = stack.pop() {
+        for reference in block.includes() {
+            if reference.round() < floor || !members.insert(*reference) {
+                continue;
+            }
+            let include = block_reader
+                .get_block(*reference)
+                .expect("The anchor's causal history must be complete");
+            stack.push(include);
+        }
+    }
+    members
 }
 
 /// Unifies the two `get_leaders` iterator types behind one return type.

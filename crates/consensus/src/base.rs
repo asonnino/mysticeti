@@ -3,6 +3,7 @@
 
 use std::{
     borrow::Borrow,
+    collections::HashSet,
     fmt::{self, Display},
     sync::Arc,
 };
@@ -41,6 +42,8 @@ pub(crate) struct BaseCommitter {
     leader_offset: RoundNumber,
     /// Coin-elected leaders (asynchronous protocols, `leader_wait: false`).
     coin_leaders: bool,
+    /// Causally closed block set the round queries are restricted to; `None` reads the DAG.
+    view: Option<Arc<HashSet<BlockReference>>>,
 }
 
 impl BaseCommitter {
@@ -68,7 +71,50 @@ impl BaseCommitter {
             ),
             leader_offset,
             coin_leaders: !protocol.leader_wait,
+            view: None,
         }
+    }
+
+    /// A copy of this committer deciding over `view` alone.
+    pub(crate) fn restricted_to(&self, view: Arc<HashSet<BlockReference>>) -> Self {
+        Self {
+            committee: self.committee.clone(),
+            block_reader: self.block_reader.clone(),
+            leader_elector: LeaderElector::new(self.committee.len()),
+            direct_commit_quorum: self.direct_commit_quorum,
+            direct_skip_quorum: self.direct_skip_quorum,
+            certificate_quorum: self.certificate_quorum,
+            fast_path: self.fast_path,
+            anchor_link_size: self.anchor_link_size,
+            wave: self.wave,
+            leader_offset: self.leader_offset,
+            coin_leaders: self.coin_leaders,
+            view: Some(view),
+        }
+    }
+
+    // Only the round queries need the view: `get_block` and `linked` follow
+    // includes, which never leave a causally closed view.
+    fn blocks_by_round(&self, round: RoundNumber) -> Vec<Data<Block>> {
+        let mut blocks = self.block_reader.get_blocks_by_round(round);
+        if let Some(view) = &self.view {
+            blocks.retain(|block| view.contains(block.reference()));
+        }
+        blocks
+    }
+
+    fn blocks_at_authority_round(
+        &self,
+        authority: Authority,
+        round: RoundNumber,
+    ) -> Vec<Data<Block>> {
+        let mut blocks = self
+            .block_reader
+            .get_blocks_at_authority_round(authority, round);
+        if let Some(view) = &self.view {
+            blocks.retain(|block| view.contains(block.reference()));
+        }
+        blocks
     }
 
     #[cfg(any(test, feature = "test-utils"))]
@@ -225,15 +271,13 @@ impl BaseCommitter {
     ) -> LeaderStatus {
         // Get the block(s) proposed by the leader. There could be more than one leader block
         // per round (produced by a Byzantine leader).
-        let leader_blocks = self
-            .block_reader
-            .get_blocks_at_authority_round(leader, leader_round);
+        let leader_blocks = self.blocks_at_authority_round(leader, leader_round);
 
         // Get all blocks that could be potential certificates for the target leader. These blocks
         // are in the decision round of the target leader and are linked to the anchor.
         let wave_number = wave.number(leader_round);
         let decision_round = wave.decision_round(wave_number);
-        let decision_blocks = self.block_reader.get_blocks_by_round(decision_round);
+        let decision_blocks = self.blocks_by_round(decision_round);
 
         // Find the leader block whose certificate is linked to the anchor: with
         // merged certificates, an `anchor_link_size` quorum of anchor-linked votes;
@@ -267,7 +311,7 @@ impl BaseCommitter {
         // conflicts of votes), so ties are broken deterministically by digest.
         if let Some(fast_path) = &self.fast_path {
             let voting_round = wave.voting_round(wave_number);
-            let voting_blocks = self.block_reader.get_blocks_by_round(voting_round);
+            let voting_blocks = self.blocks_by_round(voting_round);
             let weak_commit = leader_blocks
                 .into_iter()
                 .filter(|leader_block| {
@@ -324,7 +368,7 @@ impl BaseCommitter {
         leader_block: &Data<Block>,
         wave: Wave,
     ) -> bool {
-        let decision_blocks = self.block_reader.get_blocks_by_round(decision_round);
+        let decision_blocks = self.blocks_by_round(decision_round);
 
         if wave.merged_certificates() {
             let votes = decision_blocks.iter();
@@ -419,7 +463,7 @@ impl BaseCommitter {
         let voting_round = wave.voting_round(wave_number);
         let decision_round = wave.decision_round(wave_number);
 
-        let voting_blocks = self.block_reader.get_blocks_by_round(voting_round);
+        let voting_blocks = self.blocks_by_round(voting_round);
 
         // Check whether the leader has enough blame. That is, whether there are
         // `direct_skip_quorum` non-votes for that leader (which ensure there will never
@@ -432,9 +476,7 @@ impl BaseCommitter {
         // votes at the voting round (fast path, when configured) or
         // `direct_commit_quorum` certificates at the decision round. Note that there
         // could be more than one leader block (created by Byzantine leaders).
-        let leader_blocks = self
-            .block_reader
-            .get_blocks_at_authority_round(leader, leader_round);
+        let leader_blocks = self.blocks_at_authority_round(leader, leader_round);
         let mut supported = leader_blocks.into_iter().filter(|leader_block| {
             self.enough_fast_path_support(&voting_blocks, leader_block)
                 || self.enough_leader_support(decision_round, leader_block, wave)

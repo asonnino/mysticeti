@@ -9,7 +9,8 @@
 //! validator, whether or not the output has reached it. Each candidate period
 //! reinterprets the window (`wl'(r) = w_async` iff `r % p' == 0`) and is scored
 //! by the expected delay from a round to the output of its blocks; the
-//! committer adopts the argmin with hysteresis for the next interval.
+//! committer adopts the argmin with hysteresis for the next interval. The
+//! score only ranks periods: the committer forces period 1 on a stalled output.
 //!
 //! Purity is load-bearing: everything here is a function of the collected
 //! [`Window`] alone — no [`BlockReader`] access after collection — so all
