@@ -1,5 +1,6 @@
 name: Automerge
-on: pull_request
+# Dependabot `pull_request` runs can't read repo secrets; the job never checks out PR code.
+on: pull_request_target
 permissions:
   pull-requests: read
 jobs:
@@ -8,6 +9,10 @@ jobs:
     if: github.actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
+      - name: Check AUTOMERGE_PAT
+        run: gh auth status
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMERGE_PAT }}
       - uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # pin@v3.1.0
         id: metadata
         with:
