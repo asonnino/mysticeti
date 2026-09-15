@@ -12,3 +12,9 @@ regions:
 repository:
   url: https://github.com/asonnino/mysticeti.git
   commit: main
+# Fault injection (see docs/orchestrator.md, "Faults"). `crash_order` picks the
+# victims in selection order (`round-robin`, the default) or region by region
+# in the order of `regions` (`region-order`).
+# faults: !Permanent
+#   faults: 1
+# crash_order: region-order
