@@ -13,11 +13,14 @@ use super::names::{
     BENCHMARK_DURATION, BLOCK_HANDLER_CLEANUP_UTIL, BLOCK_LATENCY_S, BLOCK_LATENCY_SQUARED_S,
     BLOCK_STORE_CLEANUP_UTIL, BLOCK_STORE_ENTRIES, BLOCK_STORE_LOADED_BLOCKS,
     BLOCK_STORE_UNLOADED_BLOCKS, BLOCK_SYNC_REQUESTS_RECEIVED, BLOCK_SYNC_REQUESTS_SENT, BlockKind,
+    COMMIT_TYPE_DIRECT_SKIP, COMMIT_TYPE_FAST_COMMIT, COMMIT_TYPE_INDIRECT_COMMIT_CERTIFICATE,
+    COMMIT_TYPE_INDIRECT_COMMIT_WEAK, COMMIT_TYPE_INDIRECT_SKIP, COMMIT_TYPE_SLOW_COMMIT,
     COMMITTED_LEADERS_TOTAL, CORE_LOCK_DEQUEUED, CORE_LOCK_ENQUEUED, CORE_LOCK_UTIL,
     GLOBAL_IN_MEMORY_BLOCKS, GLOBAL_IN_MEMORY_BLOCKS_BYTES, INTER_BLOCK_LATENCY_S, LABEL_AUTHORITY,
     LABEL_COMMIT_TYPE, LABEL_FULFILLED, LABEL_KIND, LABEL_PROC, LATENCY_S, LATENCY_SQUARED_S,
     LEADER_TIMEOUT_TOTAL, MISSING_BLOCKS, SUBMITTED_TRANSACTIONS, UTILIZATION_TIMER, WAL_MAPPINGS,
 };
+use crate::authority::Authority;
 
 const LATENCY_SEC_BUCKETS: &[f64] = &[
     0.1, 0.2, 0.3, 0.35, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1., 1.25, 1.5, 1.75, 2., 3.0, 5., 10.,
@@ -37,6 +40,16 @@ impl LatencyMetrics {
     }
 }
 
+/// The `committed_leaders_total` series of one leader authority, one per `commit_type`.
+pub(super) struct DecidedLeaderCounters {
+    pub fast_commit: IntCounter,
+    pub slow_commit: IntCounter,
+    pub indirect_commit_certificate: IntCounter,
+    pub indirect_commit_weak: IntCounter,
+    pub direct_skip: IntCounter,
+    pub indirect_skip: IntCounter,
+}
+
 pub(super) struct CoarseMetrics {
     pub benchmark_duration: IntCounter,
     /// Submission-to-commit latency of every committed transaction.
@@ -45,7 +58,9 @@ pub(super) struct CoarseMetrics {
     /// resolved once here so the commit path never hashes label values.
     pub leader_block_latency: LatencyMetrics,
     pub non_leader_block_latency: LatencyMetrics,
-    pub committed_leaders_total: IntCounterVec,
+    /// Decided leaders, indexed by leader authority. Resolved once here so deciding a leader
+    /// neither allocates nor hashes label values.
+    pub committed_leaders: Vec<DecidedLeaderCounters>,
     pub leader_timeout_total: IntCounter,
     pub inter_block_latency_s: Histogram,
 
@@ -71,7 +86,31 @@ pub(super) struct CoarseMetrics {
 }
 
 impl CoarseMetrics {
-    pub fn new(registry: &Registry) -> Self {
+    pub fn new(registry: &Registry, committee_size: usize) -> Self {
+        let committed_leaders_total = register_int_counter_vec_with_registry!(
+            COMMITTED_LEADERS_TOTAL,
+            "Committed leaders per authority",
+            &[LABEL_AUTHORITY, LABEL_COMMIT_TYPE],
+            registry,
+        )
+        .unwrap();
+        let committed_leaders = (0..committee_size)
+            .map(|authority| {
+                let authority = Authority::from(authority).to_string();
+                let counter = |commit_type: &str| {
+                    committed_leaders_total.with_label_values(&[&authority, commit_type])
+                };
+                DecidedLeaderCounters {
+                    fast_commit: counter(COMMIT_TYPE_FAST_COMMIT),
+                    slow_commit: counter(COMMIT_TYPE_SLOW_COMMIT),
+                    indirect_commit_certificate: counter(COMMIT_TYPE_INDIRECT_COMMIT_CERTIFICATE),
+                    indirect_commit_weak: counter(COMMIT_TYPE_INDIRECT_COMMIT_WEAK),
+                    direct_skip: counter(COMMIT_TYPE_DIRECT_SKIP),
+                    indirect_skip: counter(COMMIT_TYPE_INDIRECT_SKIP),
+                }
+            })
+            .collect();
+
         let block_latency_s = register_histogram_vec_with_registry!(
             BLOCK_LATENCY_S,
             "Block proposal-to-commit latency (s), subject to cross-replica clock skew",
@@ -116,13 +155,7 @@ impl CoarseMetrics {
             },
             leader_block_latency: block_latency(BlockKind::Leader),
             non_leader_block_latency: block_latency(BlockKind::NonLeader),
-            committed_leaders_total: register_int_counter_vec_with_registry!(
-                COMMITTED_LEADERS_TOTAL,
-                "Committed leaders per authority",
-                &[LABEL_AUTHORITY, LABEL_COMMIT_TYPE],
-                registry,
-            )
-            .unwrap(),
+            committed_leaders,
             inter_block_latency_s: register_histogram_with_registry!(
                 INTER_BLOCK_LATENCY_S,
                 "Inter-block latency (s)",
