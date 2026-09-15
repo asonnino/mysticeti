@@ -17,7 +17,7 @@ use std::sync::Arc;
 use consensus::{committer::Committer, leader::LeaderElector, protocol::ConsensusProtocol};
 use dag::{
     committee::Committee,
-    consensus::LeaderStatus,
+    consensus::{IndirectCommitPath, LeaderStatus},
     storage::Storage,
     test_util::{build_dag, build_dag_layer, committee, drop_leader},
 };
@@ -92,10 +92,15 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
             let expected = elector.elect_leader(l1 + offset as u64);
             if offset == target_offset {
                 match decision {
-                    LeaderStatus::IndirectCommit(block) => {
+                    LeaderStatus::IndirectCommit(block, path) => {
                         assert_eq!(
                             block.author(),
                             expected,
+                            "[{spec}] target_offset={target_offset}"
+                        );
+                        assert_eq!(
+                            *path,
+                            IndirectCommitPath::WeakQuorum,
                             "[{spec}] target_offset={target_offset}"
                         );
                     }
@@ -106,7 +111,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
                 }
             } else {
                 match decision {
-                    LeaderStatus::DirectCommit(block) => {
+                    LeaderStatus::DirectCommit(block, _) => {
                         assert_eq!(
                             block.author(),
                             expected,

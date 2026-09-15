@@ -83,7 +83,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
                 }
             } else {
                 match decision {
-                    LeaderStatus::DirectCommit(block) => {
+                    LeaderStatus::DirectCommit(block, _) => {
                         assert_eq!(
                             block.author(),
                             expected,

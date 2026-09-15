@@ -3,10 +3,6 @@
 
 //! DagHydrangea simulation tests.
 //!
-//! Path coverage: the `commit_type` metric label cannot tell the fast from the
-//! slow path (both `direct-commit`) nor the two indirect rungs apart (both
-//! `indirect-commit`) — see #199.
-//!
 //! Threshold cheat-sheet for the configurations used below
 //! (n = 3f + 2c + k + 1, p = (c + k) / 2):
 //!
@@ -78,12 +74,8 @@ fn happy_path_bft_n4() {
 #[test]
 fn fast_dominant_crash_slack_n4() {
     // n=4, f=0, c=1, k=1 → p=1: fast-dominant configuration (CERT = FAST = 3).
-    // A certificate references >= CERT = FAST votes at the voting round, so any
-    // committed DAG also satisfied the fast trigger. This pins the fast path's
-    // *condition* end to end, not the code branch: a disabled fast rule would
-    // still commit through the slow path here (indistinguishable until #199).
-    // The branch itself is covered by the consensus crate's
-    // `try_direct_decide_fast_commits_at_voting_round` unit test.
+    // A certificate references >= CERT = FAST votes at the voting round, so the
+    // fast rule fires before any certificate can: every direct commit is fast.
     let result = run(SimulationConfig {
         committee_size: 4,
         duration_secs: 30,
@@ -95,8 +87,13 @@ fn fast_dominant_crash_slack_n4() {
     });
     assert_progress(&result, 10);
     assert!(
-        max_over_replicas(&result, MetricsSnapshot::direct_commits) > 0,
-        "fast-dominant configuration must produce direct commits"
+        max_over_replicas(&result, MetricsSnapshot::fast_commits) > 0,
+        "fast-dominant configuration must commit through the fast path"
+    );
+    assert_eq!(
+        max_over_replicas(&result, MetricsSnapshot::slow_commits),
+        0,
+        "the fast path fires before any certificate forms"
     );
 }
 
@@ -151,6 +148,10 @@ fn crash_one_node_n4() {
     });
     assert_progress(&result, 10);
     assert!(
+        max_over_replicas(&result, MetricsSnapshot::fast_commits) > 0,
+        "the live nodes must still reach the fast quorum"
+    );
+    assert!(
         max_over_replicas(&result, MetricsSnapshot::direct_skips) > 0,
         "the crashed node's slots must be directly skipped"
     );
@@ -180,7 +181,7 @@ fn crash_one_node_n20() {
 fn slow_path_partition_n20() {
     // n=20, f=0, c=9, k=1: the majority size pins every leader's support at 14.
     // - 14 ∈ [CERT=11, FAST=15): the fast path is unreachable, so every direct
-    //   commit is provably a slow-path (certified) commit;
+    //   commit is a slow-path (certified) commit;
     // - the 6 isolated leaders draw 14 blames < SKIP=15: never directly
     //   skipped, resolved as indirect skips via later anchors;
     // - 14 < SKIP=15 also means no direct skip can occur at all;
@@ -204,8 +205,13 @@ fn slow_path_partition_n20() {
         });
         assert_progress(&result, 10);
         assert!(
-            max_over_replicas(&result, MetricsSnapshot::direct_commits) > 0,
+            max_over_replicas(&result, MetricsSnapshot::slow_commits) > 0,
             "[seed={rng_seed}] the majority must commit through the slow path"
+        );
+        assert_eq!(
+            max_over_replicas(&result, MetricsSnapshot::fast_commits),
+            0,
+            "[seed={rng_seed}] the fast quorum (15) is unreachable with 14 connected nodes"
         );
         assert!(
             max_over_replicas(&result, MetricsSnapshot::indirect_skips) > 0,

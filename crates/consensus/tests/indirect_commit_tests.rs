@@ -142,7 +142,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
             let expected = elector.elect_leader(l1 + offset as u64);
             if offset == target_offset {
                 match decision {
-                    LeaderStatus::IndirectCommit(block) => {
+                    LeaderStatus::IndirectCommit(block, _) => {
                         assert_eq!(
                             block.author(),
                             expected,
@@ -156,7 +156,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
                 }
             } else {
                 match decision {
-                    LeaderStatus::DirectCommit(block) => {
+                    LeaderStatus::DirectCommit(block, _) => {
                         assert_eq!(
                             block.author(),
                             expected,

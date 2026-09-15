@@ -66,7 +66,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
         let offset = i + 1;
         let expected = elector.elect_leader(l1 + offset as u64);
         match decision {
-            LeaderStatus::DirectCommit(block) => {
+            LeaderStatus::DirectCommit(block, _) => {
                 assert_eq!(block.author(), expected, "[{spec}] offset={offset}");
             }
             other => panic!("[{spec}] offset={offset} expected commit, got {other:?}"),

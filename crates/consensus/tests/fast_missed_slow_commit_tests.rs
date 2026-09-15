@@ -16,7 +16,7 @@ use std::sync::Arc;
 use consensus::{committer::Committer, leader::LeaderElector, protocol::ConsensusProtocol};
 use dag::{
     committee::Committee,
-    consensus::LeaderStatus,
+    consensus::{DirectCommitPath, LeaderStatus},
     storage::Storage,
     test_util::{build_dag, build_dag_layer, committee, drop_leader},
 };
@@ -90,11 +90,21 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
         );
         for (offset, decision) in sequence.iter().take(k).enumerate() {
             let expected = elector.elect_leader(l1 + offset as u64);
+            // Only the target misses the fast path; its siblings receive every vote.
+            let expected_path = if offset == target_offset {
+                DirectCommitPath::Slow
+            } else {
+                DirectCommitPath::Fast
+            };
             match decision {
-                LeaderStatus::DirectCommit(block) => {
+                LeaderStatus::DirectCommit(block, path) => {
                     assert_eq!(
                         block.author(),
                         expected,
+                        "[{spec}] target_offset={target_offset} offset={offset}"
+                    );
+                    assert_eq!(
+                        *path, expected_path,
                         "[{spec}] target_offset={target_offset} offset={offset}"
                     );
                 }

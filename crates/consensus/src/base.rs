@@ -17,7 +17,7 @@ use dag::{
     block::{Block, BlockReference, RoundNumber},
     committee::Stake,
     committee::{Committee, StakeAggregator},
-    consensus::LeaderStatus,
+    consensus::{DirectCommitPath, IndirectCommitPath, LeaderStatus},
     data::Data,
     storage::BlockReader,
 };
@@ -245,7 +245,7 @@ impl BaseCommitter {
 
         tracing::trace!("[{self}] leader {leader} is decided by anchor {anchor:?}");
         if let Some(block) = commit {
-            return LeaderStatus::IndirectCommit(block.clone());
+            return LeaderStatus::IndirectCommit(block.clone(), IndirectCommitPath::Certificate);
         }
 
         // Second rung (fast-path protocols only): commit the leader block backed by a
@@ -267,7 +267,7 @@ impl BaseCommitter {
                 })
                 .min_by_key(|leader_block| leader_block.reference().digest);
             if let Some(block) = weak_commit {
-                return LeaderStatus::IndirectCommit(block);
+                return LeaderStatus::IndirectCommit(block, IndirectCommitPath::WeakQuorum);
             }
         }
 
@@ -374,7 +374,7 @@ impl BaseCommitter {
                 leader.with_round(leader_round),
             );
             match anchor {
-                LeaderStatus::DirectCommit(anchor) | LeaderStatus::IndirectCommit(anchor) => {
+                LeaderStatus::DirectCommit(anchor, _) | LeaderStatus::IndirectCommit(anchor, _) => {
                     return self.decide_leader_from_anchor(anchor, leader, leader_round);
                 }
                 LeaderStatus::DirectSkip(..) | LeaderStatus::IndirectSkip(..) => (),
@@ -417,9 +417,14 @@ impl BaseCommitter {
         let leader_blocks = self
             .block_reader
             .get_blocks_at_authority_round(leader, leader_round);
-        let mut supported = leader_blocks.into_iter().filter(|leader_block| {
-            self.enough_fast_path_support(&voting_blocks, leader_block)
-                || self.enough_leader_support(decision_round, leader_block)
+        let mut supported = leader_blocks.into_iter().filter_map(|leader_block| {
+            if self.enough_fast_path_support(&voting_blocks, &leader_block) {
+                Some((leader_block, DirectCommitPath::Fast))
+            } else if self.enough_leader_support(decision_round, &leader_block) {
+                Some((leader_block, DirectCommitPath::Slow))
+            } else {
+                None
+            }
         });
         let first = supported.next();
         if supported.next().is_some() {
@@ -430,7 +435,7 @@ impl BaseCommitter {
         }
 
         first
-            .map(LeaderStatus::DirectCommit)
+            .map(|(block, path)| LeaderStatus::DirectCommit(block, path))
             .unwrap_or_else(|| LeaderStatus::Undecided(leader, leader_round))
     }
 }
@@ -454,7 +459,7 @@ mod tests {
     use dag::{
         authority::Authority,
         block::Block,
-        consensus::LeaderStatus,
+        consensus::{DirectCommitPath, IndirectCommitPath, LeaderStatus},
         crypto::BlockDigest,
         data::Data,
         storage::Storage,
@@ -674,7 +679,10 @@ mod tests {
 
         let leader = committer.elect_leader(3).unwrap();
         match committer.try_direct_decide(leader, 3) {
-            LeaderStatus::DirectCommit(block) => assert_eq!(block.author(), leader),
+            LeaderStatus::DirectCommit(block, path) => {
+                assert_eq!(block.author(), leader);
+                assert_eq!(path, DirectCommitPath::Slow);
+            }
             other => panic!("expected DirectCommit, got {other:?}"),
         }
     }
@@ -757,7 +765,10 @@ mod tests {
 
         let leader = fast_committer.elect_leader(3).unwrap();
         match fast_committer.try_direct_decide(leader, 3) {
-            LeaderStatus::DirectCommit(block) => assert_eq!(block.author(), leader),
+            LeaderStatus::DirectCommit(block, path) => {
+                assert_eq!(block.author(), leader);
+                assert_eq!(path, DirectCommitPath::Fast);
+            }
             other => panic!("expected DirectCommit, got {other:?}"),
         }
         match slow_committer.try_direct_decide(leader, 3) {
@@ -831,7 +842,10 @@ mod tests {
             BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
 
         match fast_committer.decide_leader_from_anchor(&anchor, leader, leader_round) {
-            LeaderStatus::IndirectCommit(block) => assert_eq!(block.author(), leader),
+            LeaderStatus::IndirectCommit(block, path) => {
+                assert_eq!(block.author(), leader);
+                assert_eq!(path, IndirectCommitPath::WeakQuorum);
+            }
             other => panic!("expected IndirectCommit, got {other:?}"),
         }
         match slow_committer.decide_leader_from_anchor(&anchor, leader, leader_round) {
@@ -915,9 +929,10 @@ mod tests {
         );
 
         match committer.decide_leader_from_anchor(&anchor, leader, 2) {
-            LeaderStatus::IndirectCommit(block) => {
+            LeaderStatus::IndirectCommit(block, path) => {
                 assert_eq!(block.author(), leader);
                 assert_eq!(block.reference().digest, twin_a_digest);
+                assert_eq!(path, IndirectCommitPath::Certificate);
             }
             other => panic!("expected IndirectCommit, got {other:?}"),
         }
@@ -954,7 +969,10 @@ mod tests {
 
         let leader = committer.elect_leader(3).unwrap();
         match committer.try_direct_decide(leader, 3) {
-            LeaderStatus::DirectCommit(block) => assert_eq!(block.author(), leader),
+            LeaderStatus::DirectCommit(block, path) => {
+                assert_eq!(block.author(), leader);
+                assert_eq!(path, DirectCommitPath::Slow);
+            }
             other => panic!("expected DirectCommit, got {other:?}"),
         }
     }
@@ -1075,7 +1093,10 @@ mod tests {
             other => panic!("expected Undecided, got {other:?}"),
         }
         match committer.decide_leader_from_anchor(&anchor, leader, 3) {
-            LeaderStatus::IndirectCommit(block) => assert_eq!(block.author(), leader),
+            LeaderStatus::IndirectCommit(block, path) => {
+                assert_eq!(block.author(), leader);
+                assert_eq!(path, IndirectCommitPath::Certificate);
+            }
             other => panic!("expected IndirectCommit, got {other:?}"),
         }
     }
