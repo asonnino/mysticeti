@@ -4,6 +4,7 @@
 pub mod config;
 pub mod context;
 mod dispatcher;
+mod equivocator;
 pub mod event_simulator;
 pub mod executor;
 pub mod network;

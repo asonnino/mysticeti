@@ -163,6 +163,13 @@ impl SimulationState {
     async fn setup(config: SimulationConfig) -> Self {
         let public_config = PublicReplicaConfig::new_for_tests(config.committee_size)
             .with_parameters(config.replica_parameters.clone());
+        let leader_count = config
+            .replica_parameters
+            .consensus
+            .to_protocol(&public_config.committee())
+            .expect("invalid consensus protocol")
+            .leader_count
+            .get();
         let commit_consumers = vec![None; config.committee_size];
         let (network, replicas, load_generators) = Self::build_replicas(
             public_config,
@@ -171,6 +178,8 @@ impl SimulationState {
             commit_consumers,
         )
         .await;
+        // Connections are only wired in `apply_topology`, so the shim sees every link.
+        let network = network.with_equivocating_leaders(&config.equivocating_leaders, leader_count);
 
         Self {
             config,

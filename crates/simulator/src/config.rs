@@ -50,6 +50,9 @@ pub struct SimulationConfig {
     pub replica_parameters: ReplicaParameters,
     #[serde(default = "defaults::load_generator")]
     pub load_generator: Option<LoadGeneratorConfig>,
+    /// Authority indices that send twin blocks in their leader rounds (see docs/simulator.md).
+    #[serde(default)]
+    pub equivocating_leaders: Vec<usize>,
 }
 
 impl Default for SimulationConfig {
@@ -64,6 +67,7 @@ impl Default for SimulationConfig {
             rng_seed: 0,
             replica_parameters: ReplicaParameters::default(),
             load_generator: Some(LoadGeneratorConfig::new_for_test()),
+            equivocating_leaders: Vec::new(),
         }
     }
 }

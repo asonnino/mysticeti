@@ -79,6 +79,14 @@ impl ConfigRender for SimulationConfig {
                 format!("{}-{} ms", self.latency_min_ms, self.latency_max_ms),
             ),
             ("RNG seed", self.rng_seed.to_string()),
+            (
+                "Equivocating leaders",
+                if self.equivocating_leaders.is_empty() {
+                    "none".to_string()
+                } else {
+                    format!("{:?}", self.equivocating_leaders)
+                },
+            ),
         ]
     }
 }
