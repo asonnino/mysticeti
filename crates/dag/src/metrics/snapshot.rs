@@ -3,12 +3,16 @@
 
 use std::time::Duration;
 
-use prometheus::{Encoder, TextEncoder, proto::MetricFamily};
+use prometheus::{
+    Encoder, TextEncoder,
+    proto::{Metric, MetricFamily},
+};
 
 use super::names::{
-    COMMIT_TYPE_DIRECT_SKIP, COMMIT_TYPE_FAST_COMMIT, COMMIT_TYPE_INDIRECT_COMMIT_CERTIFICATE,
-    COMMIT_TYPE_INDIRECT_COMMIT_WEAK, COMMIT_TYPE_INDIRECT_SKIP, COMMIT_TYPE_SLOW_COMMIT,
-    COMMITTED_LEADERS_TOTAL, LABEL_COMMIT_TYPE, LATENCY_S, LEADER_TIMEOUT_TOTAL,
+    BLOCK_LATENCY_S, BlockKind, COMMIT_TYPE_DIRECT_SKIP, COMMIT_TYPE_FAST_COMMIT,
+    COMMIT_TYPE_INDIRECT_COMMIT_CERTIFICATE, COMMIT_TYPE_INDIRECT_COMMIT_WEAK,
+    COMMIT_TYPE_INDIRECT_SKIP, COMMIT_TYPE_SLOW_COMMIT, COMMITTED_LEADERS_TOTAL, LABEL_COMMIT_TYPE,
+    LABEL_KIND, LATENCY_S, LEADER_TIMEOUT_TOTAL,
 };
 
 /// A point-in-time snapshot of all metrics from a Prometheus
@@ -30,16 +34,28 @@ impl MetricsSnapshot {
 
     /// Percentile `p` (in `0.0..=1.0`) of this replica's committed-transaction latency
     /// histogram, in milliseconds. Returns `None` when the histogram is absent or empty.
-    pub fn latency_percentile_ms(&self, p: f64) -> Option<f64> {
-        self.histogram_percentile(LATENCY_S, p)
+    pub fn transaction_latency_percentile_ms(&self, p: f64) -> Option<f64> {
+        self.histogram_percentile(LATENCY_S, &[], p)
             .map(|seconds| seconds * 1000.0)
+    }
+
+    /// Percentile `p` of this replica's proposal-to-commit latency for blocks of `kind`, in
+    /// milliseconds. `None` when the histogram is absent or empty.
+    pub fn block_latency_percentile_ms(&self, kind: BlockKind, p: f64) -> Option<f64> {
+        self.histogram_percentile(BLOCK_LATENCY_S, &[(LABEL_KIND, kind.as_label())], p)
+            .map(|seconds| seconds * 1000.0)
+    }
+
+    /// Sample sum (s) and count of the proposal-to-commit latency for blocks of `kind`.
+    pub fn block_latency_sum_and_count(&self, kind: BlockKind) -> Option<(f64, u64)> {
+        self.histogram_sum_and_count(BLOCK_LATENCY_S, &[(LABEL_KIND, kind.as_label())])
     }
 
     /// Total committed transactions observed by this replica, taken from the
     /// `latency_s` histogram sample-count (one observation per committed
     /// transaction). `0` when the histogram is absent or empty.
     pub fn total_committed_transactions(&self) -> u64 {
-        self.histogram_sum_and_count(LATENCY_S)
+        self.histogram_sum_and_count(LATENCY_S, &[])
             .map(|(_, count)| count)
             .unwrap_or(0)
     }
@@ -164,14 +180,7 @@ impl MetricsSnapshot {
             return 0.0;
         };
         for metric in family.get_metric() {
-            let actual = metric.get_label();
-            let labels_match = actual.len() == label_values.len()
-                && label_values.iter().all(|(key, value)| {
-                    actual
-                        .iter()
-                        .any(|l| l.name() == *key && l.value() == *value)
-                });
-            if !labels_match {
+            if !Self::labels_match(metric, label_values) {
                 continue;
             }
             if metric.counter.is_some() {
@@ -185,16 +194,33 @@ impl MetricsSnapshot {
         0.0
     }
 
+    /// Whether `metric` carries exactly the given label pairs (an empty list matches only
+    /// unlabelled series).
+    fn labels_match(metric: &Metric, label_values: &[(&str, &str)]) -> bool {
+        let actual = metric.get_label();
+        actual.len() == label_values.len()
+            && label_values.iter().all(|(key, value)| {
+                actual
+                    .iter()
+                    .any(|l| l.name() == *key && l.value() == *value)
+            })
+    }
+
     /// Percentile `p` (clamped to `[0, 1]`) of a histogram's observations, in the histogram's
     /// native unit. Uses the Prometheus `histogram_quantile` idiom: linear interpolation between
     /// the upper bounds of adjacent buckets. Returns `None` when the histogram is absent or has
     /// zero observations. When the selected bucket is the `+Inf` terminal, falls back to the
     /// previous finite upper bound so the result stays plottable.
-    pub(super) fn histogram_percentile(&self, name: &str, p: f64) -> Option<f64> {
+    pub(super) fn histogram_percentile(
+        &self,
+        name: &str,
+        label_values: &[(&str, &str)],
+        p: f64,
+    ) -> Option<f64> {
         let p = p.clamp(0.0, 1.0);
         let family = self.find_family(name)?;
         for metric in family.get_metric() {
-            if metric.histogram.is_none() {
+            if metric.histogram.is_none() || !Self::labels_match(metric, label_values) {
                 continue;
             }
             let histogram = metric.get_histogram();
@@ -246,10 +272,14 @@ impl MetricsSnapshot {
     /// Read a histogram's sample sum and count. Returns `None` when no
     /// matching histogram is found (distinct from a present histogram
     /// with zero observations, which returns `Some((0.0, 0))`).
-    pub fn histogram_sum_and_count(&self, name: &str) -> Option<(f64, u64)> {
+    pub fn histogram_sum_and_count(
+        &self,
+        name: &str,
+        label_values: &[(&str, &str)],
+    ) -> Option<(f64, u64)> {
         let family = self.find_family(name)?;
         for metric in family.get_metric() {
-            if metric.histogram.is_none() {
+            if metric.histogram.is_none() || !Self::labels_match(metric, label_values) {
                 continue;
             }
             let histogram = metric.get_histogram();
@@ -383,23 +413,23 @@ mod test {
         }
         let snapshot = collect_snapshot(&registry);
         assert_eq!(
-            snapshot.histogram_percentile("demo_latency_s", 0.0),
+            snapshot.histogram_percentile("demo_latency_s", &[], 0.0),
             Some(0.0)
         );
         assert_eq!(
-            snapshot.histogram_percentile("demo_latency_s", 0.5),
+            snapshot.histogram_percentile("demo_latency_s", &[], 0.5),
             Some(0.5)
         );
         // p90 target = 360, lies in the fourth bucket between cumulative 300 and 400 → 0.75 +
         // 0.6 * 0.25 = 0.9.
         let p90 = snapshot
-            .histogram_percentile("demo_latency_s", 0.9)
+            .histogram_percentile("demo_latency_s", &[], 0.9)
             .unwrap();
         assert!((p90 - 0.9).abs() < 1e-9, "p90 = {p90}");
         // p100: prometheus crate adds an implicit +Inf bucket; fall back to the previous finite
         // edge.
         assert_eq!(
-            snapshot.histogram_percentile("demo_latency_s", 1.0),
+            snapshot.histogram_percentile("demo_latency_s", &[], 1.0),
             Some(1.0)
         );
     }
@@ -411,7 +441,10 @@ mod test {
             register_histogram_with_registry!("demo_empty_s", "help", vec![0.25, 0.5], registry)
                 .unwrap();
         let snapshot = collect_snapshot(&registry);
-        assert_eq!(snapshot.histogram_percentile("demo_empty_s", 0.5), None);
+        assert_eq!(
+            snapshot.histogram_percentile("demo_empty_s", &[], 0.5),
+            None
+        );
     }
 
     #[test]

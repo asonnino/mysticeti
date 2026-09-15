@@ -5,6 +5,7 @@ use std::{num::NonZeroUsize, path::PathBuf};
 
 use consensus::protocol::ConsensusProtocol;
 use dag::config::ImportExport;
+use dag::metrics::BlockKind;
 use indoc::indoc;
 use replica::config::ReplicaParameters;
 use replica::result::Outcome;
@@ -23,6 +24,14 @@ fn full_mesh() {
     let fast_commits = results.metrics.iter().map(|m| m.fast_commits()).max();
     assert!(slow_commits.unwrap_or(0) > 0);
     assert_eq!(fast_commits, Some(0));
+    // Every committed leader is observed once on the block latency histogram.
+    for metrics in &results.metrics {
+        let (sum, count) = metrics
+            .block_latency_sum_and_count(BlockKind::Leader)
+            .unwrap();
+        assert_eq!(count, metrics.total_committed_leaders());
+        assert!(sum > 0.0);
+    }
 }
 
 #[test]
