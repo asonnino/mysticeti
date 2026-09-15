@@ -43,7 +43,9 @@ parameter. Suites run sequentially and print a final summary table comparing eve
 See [`crates/simulator/examples/single.yaml`](../crates/simulator/examples/single.yaml) for the
 annotated single-run template and
 [`crates/simulator/examples/suite.yaml`](../crates/simulator/examples/suite.yaml) for a suite that
-sweeps committee size, latency, topology, and protocol variant.
+sweeps committee size, latency, topology, and protocol variant, and
+[`crates/simulator/examples/twin.yaml`](../crates/simulator/examples/twin.yaml) for an
+equivocating-leader run.
 
 ## Configuration Reference
 
@@ -59,6 +61,7 @@ All fields are optional and fall back to the defaults shown.
 | `rng_seed`                          | `0`                                   | Seed for the deterministic RNG. Change this to get different per-run noise while keeping everything else fixed. |
 | `replica_parameters`                | `ReplicaParameters::default()`        | Same tunables as a real replica: DAG round timeout, max block size, consensus protocol, leader count. |
 | `load_generator`                    | `LoadGeneratorConfig::new_for_test()` | Built-in transaction generator (`load` tx/s, `transaction_size`, `initial_delay`). `null` for empty blocks. |
+| `equivocating_leaders`              | `[]`                                  | Authority indices that behave as equivocating leaders — see below. |
 
 ## Network Topologies
 
@@ -74,6 +77,36 @@ are established once and held for the duration):
 - **`partition: [[...], [...], ...]`** — the committee is split into the listed groups; replicas
   only connect inside their own group. Lets you construct arbitrary network splits — two equal
   halves exercise "no quorum on either side" conditions.
+
+## Byzantine Faults
+
+The `equivocating_leaders` field turns the listed authorities into equivocating leaders. In
+every round where such an authority holds a leader slot, it sends each peer two blocks for that
+round: its real proposal and a *twin* with the same parents, transactions and timestamp but a
+different digest (the last byte flipped). Odd-indexed peers receive the twin first, even-indexed
+peers the original, so the committee's votes split between the two. Everything else the
+authority does is honest.
+
+The behaviour is a shim on the equivocator's outgoing links, so the replica code is unmodified.
+The twin is also delivered back to the equivocator itself (as if a peer had sent it), so that
+honest blocks referencing the twin stay causally complete for it and it keeps proposing.
+
+What to expect: a slot with two twins cannot gather a fast quorum or a certificate for either,
+so it is never fast- or slow-committed. Under a dual-path protocol (`dag-hydrangea`) each twin
+still gathers a weak quorum of anchor-linked votes and the slot is committed by the weak rung of
+the graded indirect rule, with the digest tie-break choosing the twin. Under a single-path
+protocol (`mysticeti`) the slot is skipped indirectly. In neither case is a direct skip possible,
+since every voter voted for one of the twins. The scenarios in
+`crates/simulator/tests/dag_hydrangea.rs` and `crates/simulator/tests/simulation.rs` assert
+exactly this through the `commit_type` breakdown of `committed_leaders_total`;
+[`examples/twin.yaml`](../crates/simulator/examples/twin.yaml) is a ready-made run of the
+DagHydrangea case whose exported `metrics-*.prom` files show the breakdown per leader.
+
+Two approximations to keep in mind. The leader slots are computed from the protocol's leader
+count and the round-robin `LeaderElector`, which is exact for the pipelined protocols; the
+non-pipelined Cordial Miners variants equivocate in a few extra (non-leader) rounds, which is
+harmless. And equivocating in every round is deliberately not offered: it would double the
+authority's message rate on every link and the FIFO latency links would queue without bound.
 
 ## Outcomes
 
