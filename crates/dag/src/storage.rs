@@ -124,9 +124,31 @@ impl Storage {
 #[cfg(test)]
 mod tests {
     use crate::{
+        authority::Authority,
+        block::{Block, data::Data},
         committee::Committee,
+        crypto::{BLOCK_DIGEST_SIZE, BlockDigest},
         storage::{Storage, block_store::CommitData},
     };
+
+    #[test]
+    fn second_own_block_at_a_round_keeps_the_first() {
+        let committee = Committee::new_test(vec![1; 4]);
+        let mut storage = Storage::new_for_test(&committee);
+        let own = Authority::default();
+        let first = Block::new_for_test(own, 1, vec![]);
+        let mut digest = [0u8; BLOCK_DIGEST_SIZE];
+        digest[BLOCK_DIGEST_SIZE - 1] = 1;
+        let twin = Block::new_for_test(own, 1, vec![]).with_digest(BlockDigest::from(digest));
+        let (first_reference, twin_reference) = (*first.reference(), *twin.reference());
+        storage.insert_block(Data::new(first));
+        storage.insert_block(Data::new(twin));
+        let reader = storage.block_reader();
+        assert!(reader.block_exists(twin_reference));
+        let own_blocks = reader.get_own_blocks(0, 10);
+        assert_eq!(own_blocks.len(), 1);
+        assert_eq!(*own_blocks[0].reference(), first_reference);
+    }
 
     #[test]
     fn iter_commits_yields_every_batch_in_order() {
