@@ -182,17 +182,28 @@ def parse_yaml(path):
     return tps, p50, p90
 
 
+# Crash order the measurement loaders accept. The E3 crash-sweep figures set it
+# to "region-order", so round-robin and region-order runs never mix in a curve.
+CRASH_ORDER = "round-robin"
+
+_MEASUREMENTS_RE = re.compile(
+    r"measurements-(orcaella|mysticeti|)-?l2-(?:f(\d+)-c(\d+)-)?"
+    r"512-(\d+)(-region-order)?-(\d+)-(\d+)\.yaml")
+
+
 def _decode(base):
-    m = re.match(
-        r"measurements-(orcaella|mysticeti|)-?l2-(?:f(\d+)-c(\d+)-)?"
-        r"512-(\d+)(?:-region-order)?-(\d+)-(\d+)\.yaml",
-        base)
+    """(name, f, c, faults, nodes, load) of a measurements file, or None when it
+    does not parse or was run under a crash order other than `CRASH_ORDER`."""
+    m = _MEASUREMENTS_RE.match(base)
     if not m:
+        return None
+    order = "region-order" if m.group(5) else "round-robin"
+    if order != CRASH_ORDER:
         return None
     return (m.group(1) or "none",
             int(m.group(2)) if m.group(2) is not None else None,
             int(m.group(3)) if m.group(3) is not None else None,
-            int(m.group(4)), int(m.group(5)), int(m.group(6)))
+            int(m.group(4)), int(m.group(6)), int(m.group(7)))
 
 
 def quorum_of(path):
@@ -261,18 +272,10 @@ def load_curve(region, predicate, root=None):
     points = []
     pattern = os.path.join(root or RESULTS, region, "*.yaml")
     for path in sorted(glob.glob(pattern)):
-        base = os.path.basename(path)
-        m = re.match(
-            r"measurements-(orcaella|mysticeti|)-?l2-(?:f(\d+)-c(\d+)-)?"
-            r"512-(\d+)(?:-region-order)?-(\d+)-(\d+)\.yaml",
-            base,
-        )
-        if not m:
+        dec = _decode(os.path.basename(path))
+        if not dec:
             continue
-        name = m.group(1) or "none"
-        ff = int(m.group(2)) if m.group(2) is not None else None
-        cc = int(m.group(3)) if m.group(3) is not None else None
-        faults, nodes, load = int(m.group(4)), int(m.group(5)), int(m.group(6))
+        name, ff, cc, faults, nodes, load = dec
         if not predicate(name, ff, cc, faults, nodes, load):
             continue
         points.append(parse_yaml(path))
