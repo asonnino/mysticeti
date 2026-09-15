@@ -42,7 +42,7 @@ pub struct Replica {
     pub(crate) public_config: PublicReplicaConfig,
     pub(crate) private_config: PrivateReplicaConfig,
     pub(crate) storage: StorageKind,
-    pub(crate) crypto_disabled: bool,
+    pub(crate) simulated_crypto: bool,
     pub(crate) metrics: Option<Arc<Metrics>>,
     pub(crate) network: Option<Network>,
     pub(crate) registry: Registry,
@@ -60,7 +60,7 @@ impl Replica {
             public_config,
             private_config,
             storage: storage_kind,
-            crypto_disabled,
+            simulated_crypto,
             metrics: metrics_override,
             network: network_override,
             registry,
@@ -88,7 +88,9 @@ impl Replica {
             .consensus
             .to_protocol(&committee)
             .wrap_err("Invalid consensus protocol configuration")?;
-        let crypto = if crypto_disabled || !protocol.require_crypto {
+        let crypto = if simulated_crypto {
+            CryptoEngine::simulated()
+        } else if !protocol.require_crypto {
             CryptoEngine::disabled()
         } else {
             CryptoEngine::enabled(private_config.keypair)

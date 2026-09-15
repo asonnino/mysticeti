@@ -141,7 +141,7 @@ impl SimulationState {
             let metrics = Metrics::new_for_test(committee_size);
             let mut builder = ReplicaBuilder::new(authority, public_config.clone(), private_config)
                 .with_storage(StorageKind::Ephemeral)
-                .with_crypto_disabled()
+                .with_simulated_crypto()
                 .with_metrics(metrics)
                 .with_network(node_network);
             if let Some(commit_consumer) = commit_consumer {

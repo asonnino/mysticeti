@@ -316,6 +316,24 @@ pub(crate) mod test {
     use rand::{Rng, prelude::SliceRandom};
 
     use super::*;
+    use crate::crypto::BLOCK_DIGEST_SIZE;
+
+    #[test]
+    fn only_the_simulated_verifier_accepts_an_explicit_digest() {
+        let committee = Committee::new_test(vec![1; 4]);
+        let includes = (0..3).map(|a| BlockReference::new_test(a, 0)).collect();
+        let mut digest = [0u8; BLOCK_DIGEST_SIZE];
+        digest[BLOCK_DIGEST_SIZE - 1] = 1;
+        let twin = Block::new_for_test(Authority::new(0), 1, includes)
+            .with_digest(BlockDigest::from(digest));
+        twin.verify(&committee, 3, &CryptoEngine::simulated().verifier())
+            .expect("the simulated verifier trusts the claimed digest");
+        assert!(
+            twin.verify(&committee, 3, &CryptoEngine::disabled().verifier())
+                .is_err(),
+            "the disabled verifier pins blocks to the synthetic digest"
+        );
+    }
 
     /// Test utility for building DAGs from a compact string notation.
     ///

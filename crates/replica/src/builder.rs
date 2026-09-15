@@ -29,7 +29,7 @@ pub struct ReplicaBuilder {
     public_config: PublicReplicaConfig,
     private_config: PrivateReplicaConfig,
     storage: StorageKind,
-    crypto_disabled: bool,
+    simulated_crypto: bool,
     metrics: Option<Arc<Metrics>>,
     network: Option<Network>,
     registry: Registry,
@@ -48,7 +48,7 @@ impl ReplicaBuilder {
             public_config,
             private_config,
             storage,
-            crypto_disabled: false,
+            simulated_crypto: false,
             metrics: None,
             network: None,
             registry: Registry::new(),
@@ -62,11 +62,11 @@ impl ReplicaBuilder {
         self
     }
 
-    /// Force the replica to run without signature verification, even
-    /// if the chosen protocol normally requires it. Intended for
-    /// simulation runs that want to skip crypto cost.
-    pub fn with_crypto_disabled(mut self) -> Self {
-        self.crypto_disabled = true;
+    /// Run with simulated crypto: no signatures, and the digest a block claims is trusted
+    /// (`CryptoEngine::simulated`). For the simulator only, which skips crypto cost and
+    /// forges same-slot twins to model equivocation.
+    pub fn with_simulated_crypto(mut self) -> Self {
+        self.simulated_crypto = true;
         self
     }
 
@@ -107,7 +107,7 @@ impl ReplicaBuilder {
             public_config: self.public_config,
             private_config: self.private_config,
             storage: self.storage,
-            crypto_disabled: self.crypto_disabled,
+            simulated_crypto: self.simulated_crypto,
             metrics: self.metrics,
             network: self.network,
             registry: self.registry,

@@ -32,7 +32,7 @@ pub use self::sign::{PublicKey, SIGNATURE_SIZE, SignatureBytes, Signer};
 /// [`CryptoVerifier`] for network tasks.
 pub struct CryptoEngine {
     signer: Signer,
-    enabled: bool,
+    mode: Mode,
 }
 
 /// Verification-side crypto shared by network tasks.
@@ -40,7 +40,20 @@ pub struct CryptoEngine {
 /// Clone + Send + Sync. Does not hold any private key material.
 #[derive(Clone)]
 pub struct CryptoVerifier {
-    enabled: bool,
+    mode: Mode,
+}
+
+/// How an engine treats signatures and digests.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    /// Real signatures; the digest is recomputed and checked.
+    Enabled,
+    /// No signatures; every block must carry the synthetic `(round, authority)` digest, so a
+    /// slot holds at most one representable block.
+    Disabled,
+    /// No signatures and the claimed digest is trusted, so a slot may hold several
+    /// distinguishable blocks. Simulator-only: what modelling an equivocating leader needs.
+    Simulated,
 }
 
 impl CryptoEngine {
@@ -49,24 +62,31 @@ impl CryptoEngine {
     pub fn enabled(signer: Signer) -> Self {
         Self {
             signer,
-            enabled: true,
+            mode: Mode::Enabled,
         }
     }
 
     /// Creates an engine that skips signing and verification. Signing returns default-valued
-    /// signatures and digests; verification always succeeds.
+    /// signatures and synthetic digests; verification accepts exactly those digests.
     pub fn disabled() -> Self {
         Self {
             signer: Signer::dummy(),
-            enabled: false,
+            mode: Mode::Disabled,
         }
     }
 
-    /// Derives a [`CryptoVerifier`] that shares the same enabled state.
-    pub fn verifier(&self) -> CryptoVerifier {
-        CryptoVerifier {
-            enabled: self.enabled,
+    /// Like [`disabled`](Self::disabled), but verification trusts whatever digest a block
+    /// claims. For the simulator only, which forges same-slot twins to model equivocation.
+    pub fn simulated() -> Self {
+        Self {
+            signer: Signer::dummy(),
+            mode: Mode::Simulated,
         }
+    }
+
+    /// Derives a [`CryptoVerifier`] that shares the same mode.
+    pub fn verifier(&self) -> CryptoVerifier {
+        CryptoVerifier { mode: self.mode }
     }
 
     /// Signs the block fields and returns the signature and digest. Hashes the fields once to
@@ -80,7 +100,7 @@ impl CryptoEngine {
         transactions: &[Transaction],
         timestamp_ns: u64,
     ) -> (SignatureBytes, BlockDigest) {
-        if !self.enabled {
+        if self.mode != Mode::Enabled {
             return (
                 SignatureBytes::dummy(),
                 BlockDigest::synthetic(round, authority),
@@ -102,8 +122,10 @@ impl CryptoVerifier {
     /// Verifies the signature and computes the digest in one pass. Hashes the fields once to
     /// produce the content hash, verifies the signature against it, then derives the full digest.
     pub fn verify(&self, public_key: &PublicKey, block: &Block) -> eyre::Result<BlockDigest> {
-        if !self.enabled {
-            return Ok(BlockDigest::synthetic(block.round(), block.author()));
+        match self.mode {
+            Mode::Disabled => return Ok(BlockDigest::synthetic(block.round(), block.author())),
+            Mode::Simulated => return Ok(block.digest()),
+            Mode::Enabled => {}
         }
         let digest = BlockDigest::new(
             block.author(),
