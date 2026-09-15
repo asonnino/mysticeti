@@ -44,8 +44,9 @@ cleanly without them:
 - Orcaella: `measurements-orcaella-l2-f{F}-c{C}-512-{faults}-{nodes}-{load}.yaml`
 - Mysticeti: `measurements-mysticeti-l2-512-{faults}-{nodes}-{load}.yaml`
 - Hydrangea: `bench-{faults}-{nodes}-{x}-True-{load}-512.txt`
-- Runs with `crash_order: region-order` carry a `-region-order` suffix after `{faults}`;
-  the decoders accept it.
+- Runs with `crash_order: region-order` carry a `-region-order` suffix after `{faults}`.
+  The loaders only accept files whose order matches `plot.CRASH_ORDER` (default
+  `round-robin`), so the two orders never mix in one figure.
 - `512` is the transaction size in bytes, `faults` the number of crashed nodes,
   `load` the offered tx/s.
 - Orcaella with `c=0` is Blue Bottle (the protocol collapses to 5f+1). By default it
