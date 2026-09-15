@@ -4,8 +4,9 @@
 use std::{num::NonZeroUsize, path::PathBuf};
 
 use consensus::protocol::ConsensusProtocol;
+use dag::authority::Authority;
 use dag::config::ImportExport;
-use dag::metrics::BlockKind;
+use dag::metrics::{BlockKind, MetricsSnapshot};
 use indoc::indoc;
 use replica::config::ReplicaParameters;
 use replica::result::Outcome;
@@ -56,6 +57,7 @@ fn config_yaml_round_trip() {
         topology: NetworkTopology::Star(0),
         duration_secs: 30,
         rng_seed: 42,
+        equivocating_leaders: vec![2, 5],
         ..Default::default()
     };
 
@@ -68,6 +70,39 @@ fn config_yaml_round_trip() {
     assert_eq!(restored.duration_secs, 30);
     assert_eq!(restored.rng_seed, 42);
     assert!(matches!(restored.topology, NetworkTopology::Star(0)));
+    assert_eq!(restored.equivocating_leaders, vec![2, 5]);
+}
+
+#[test]
+fn equivocating_leader() {
+    // Mysticeti (n=10, no fast path) with authority 3 sending twin blocks in its
+    // leader rounds. The twins split the votes, so no certificate forms and the
+    // slot cannot be committed; every voter voted for one twin, so there are no
+    // blames and no direct skip either. Every equivocated slot is therefore an
+    // indirect skip (observed: 80 of 80), while the other slots slow-commit.
+    let result = SimulationRunner::new(SimulationConfig {
+        equivocating_leaders: vec![3],
+        duration_secs: 40,
+        ..Default::default()
+    })
+    .run()
+    .unwrap();
+
+    assert_eq!(result.outcome, Outcome::Pass);
+    let equivocator = Authority::from(3usize);
+    let decided = result
+        .metrics
+        .iter()
+        .map(|metrics| metrics.decided_leaders_of(equivocator))
+        .max();
+    assert!(decided.unwrap_or(0) > 0);
+    let max_over_replicas = |accessor: fn(&MetricsSnapshot) -> u64| {
+        result.metrics.iter().map(accessor).max().unwrap_or(0)
+    };
+    assert!(max_over_replicas(MetricsSnapshot::indirect_skips) > 0);
+    assert_eq!(max_over_replicas(MetricsSnapshot::direct_skips), 0);
+    assert_eq!(max_over_replicas(MetricsSnapshot::fast_commits), 0);
+    assert!(max_over_replicas(MetricsSnapshot::slow_commits) > 0);
 }
 
 #[test]
