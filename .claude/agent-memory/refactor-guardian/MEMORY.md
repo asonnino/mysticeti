@@ -10,3 +10,4 @@
 - [#208 commit-consumer seam](project_208_commit_consumer_seam.md) — opt-in CommittedSubDag output channel; None-path inertness, two-sender drain, single-threaded simulator determinism
 - [#267 commit-path labels](project_267_commit_path_labels.md) — LeaderStatus path tags: 24-byte layout budget, fast-beats-slow labelling, commit_type wire rename
 - [Block latency instrumentation](project_block_latency_instrumentation.md) — per-block observe in handle_commit: anchor uniqueness, genesis guard, pre-resolved label children, transaction_time lock scope
+- [Commit-path metric pre-resolution](project_commit_path_metric_preresolution.md) — per-authority leader counters panic if committee_size mismatches; zero series from startup make smoke.rs vacuous; benchmark_duration batching rules
