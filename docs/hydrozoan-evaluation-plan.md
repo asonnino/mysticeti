@@ -10,15 +10,17 @@ the throughput plateau, min p50 / min p90, median tps).
 | # | Item | Status |
 |---|---|---|
 | P1 | Commit-path labels, `block_latency_s`, remote scraping | done: #267 closed by PR #269 |
-| P2 | Crash-order knob in the orchestrator (`crash_order: region-order`) | filed: #270 (another agent) |
+| P2 | Crash-order knob in the orchestrator (`crash_order: region-order`) | done (this branch, closes #270) |
 | P3 | Plot pipeline in-repo (`scripts/eval/`) | done (this branch) |
 | P4 | Equivocating-leader fault mode in the simulator | filed: #271 (another agent) |
 
 Notes.
 
-- P2: today `CrashRecoverySchedule` drains nodes from the front of the round-robin list
-  (`session.rs:42`, `faults.rs`), so crashes cycle through regions and hit Tokyo on the 6th
-  crash. The plateau story needs "nearby nodes first, tail survives".
+- P2: `Settings::crash_order` (`faults.rs`). The default `round-robin` keeps the selection
+  order, so crashes cycle through regions and hit Tokyo on the 6th crash; `region-order`
+  crashes region by region in `regions` order, so the tail survives until the first five
+  regions are exhausted. Region-order runs get a `-region-order` suffix in the measurements
+  filename.
 - P3: `scripts/eval/plot.py` + `scripts/eval/hydrangea/*.txt` + `README.md`, venv at
   `scripts/.venv-eval` (gitignored), output to the gitignored `plots/`. Validated at zero cost
   by re-rendering the 13 Orcaella figures from `results/results-96dee8d`; `parse_yaml` output
@@ -248,7 +250,7 @@ is destroyed.
 
 ## 6. Decisions taken 2026-09-15
 
-1. P2 filed as #270 (crash order), P4 filed as #271 (equivocating leader); both for other agents.
+1. P2 filed as #270 (crash order) and implemented on this branch; P4 filed as #271 (equivocating leader) for another agent.
 2. Blue Bottle added to E1 as a named baseline (arXiv 2511.15361); Orcaella cited as a preprint.
 3. Balanced (6, 6, 19) is "the" Hydrozoan curve; Graded (6, 8, 15) is the crash-sweep configuration.
 4. No runs for the draft's capped configs; the k sweep covers them. E4 is optional.
