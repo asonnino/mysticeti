@@ -79,6 +79,15 @@ pub enum CrashOrder {
     RegionOrder,
 }
 
+impl Display for CrashOrder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::RoundRobin => write!(f, "round-robin"),
+            Self::RegionOrder => write!(f, "region-order"),
+        }
+    }
+}
+
 impl CrashOrder {
     /// Reorder `instances` so the schedule crashes them in this order.
     fn apply(self, regions: &[String], mut instances: Vec<Instance>) -> Vec<Instance> {

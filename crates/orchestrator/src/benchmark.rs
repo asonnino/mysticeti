@@ -6,6 +6,7 @@ use std::fmt::{Debug, Display};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    faults::CrashOrder,
     protocol::{Protocol, ProtocolParameters},
     settings::Settings,
 };
@@ -36,13 +37,14 @@ impl<N: Debug, C: Debug> Debug for BenchmarkParameters<N, C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{:?}-{:?}-{:?}-{}-{}",
-            self.node_parameters,
-            self.client_parameters,
-            self.settings.faults,
-            self.nodes,
-            self.load
-        )
+            "{:?}-{:?}-{:?}",
+            self.node_parameters, self.client_parameters, self.settings.faults,
+        )?;
+        // Keep default-order filenames unchanged for existing parsers.
+        if self.settings.crash_order != CrashOrder::RoundRobin {
+            write!(f, "-{}", self.settings.crash_order)?;
+        }
+        write!(f, "-{}-{}", self.nodes, self.load)
     }
 }
 
