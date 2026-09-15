@@ -29,6 +29,12 @@ max_line_length = unset
 [lean/README.md]
 max_line_length = unset
 
+# Hydrangea benchmark summaries under scripts/eval: raw tool output, kept verbatim.
+[scripts/eval/hydrangea/*.txt]
+indent_size = unset
+indent_style = unset
+max_line_length = unset
+
 [{*.yml,*.yaml,*.toml}]
 indent_size = 2
 max_line_length = 150
