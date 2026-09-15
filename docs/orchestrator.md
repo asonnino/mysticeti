@@ -164,7 +164,8 @@ benchmark), keyed by metric name with the full label map of each sample for post
 
 The replica metrics collected on every scrape are:
 
-- `benchmark_duration`: seconds since the replica's first commit.
+- `benchmark_duration`: seconds since the replica started, advanced only while transactions
+  commit.
 - `latency_s` (p50/p90/p99, `_count`, `_sum`) and `latency_squared_s`: submission-to-commit
   latency of every committed transaction, measured against the timestamp the load generator
   embeds in each transaction. Includes queuing until the transaction is included in a block.
