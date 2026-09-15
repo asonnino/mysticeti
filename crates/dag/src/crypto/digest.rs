@@ -75,8 +75,12 @@ impl BlockDigest {
     /// 24 bytes zeroed. Used by [`Block::genesis`], the [`CryptoEngine::disabled`] paths,
     /// and the test helpers — anywhere a real Blake2b digest is not produced. Keeps the
     /// `Hash` impl on [`BlockReference`] (which keys off the first 8 bytes) well-distributed.
-    /// Two blocks at the same `(round, authority)` still collide, which matches their
-    /// indistinguishability under disabled crypto.
+    /// Two blocks at the same `(round, authority)` collide, which the disabled verifier
+    /// enforces; only the simulated verifier ([`CryptoEngine::simulated`]) accepts a block
+    /// carrying an explicit digest ([`Block::with_digest`]).
+    ///
+    /// [`Block::with_digest`]: crate::block::Block::with_digest
+    /// [`CryptoEngine::simulated`]: super::CryptoEngine::simulated
     ///
     /// [`Block::genesis`]: crate::block::Block::genesis
     /// [`CryptoEngine::disabled`]: super::CryptoEngine::disabled
