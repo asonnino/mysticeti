@@ -23,14 +23,7 @@ pub use self::names::{
 };
 pub use self::snapshot::MetricsSnapshot;
 pub use self::timers::{OwnedUtilizationTimer, UtilizationTimer};
-use self::{
-    coarse::CoarseMetrics,
-    names::{
-        COMMIT_TYPE_DIRECT_SKIP, COMMIT_TYPE_FAST_COMMIT, COMMIT_TYPE_INDIRECT_COMMIT_CERTIFICATE,
-        COMMIT_TYPE_INDIRECT_COMMIT_WEAK, COMMIT_TYPE_INDIRECT_SKIP, COMMIT_TYPE_SLOW_COMMIT,
-    },
-    precise::PreciseMetrics,
-};
+use self::{coarse::CoarseMetrics, precise::PreciseMetrics};
 use crate::{
     authority::Authority,
     consensus::{DirectCommitPath, IndirectCommitPath, LeaderStatus},
@@ -52,7 +45,7 @@ impl Metrics {
         committee_size: usize,
         report_interval: Option<Duration>,
     ) -> Arc<Self> {
-        let coarse = CoarseMetrics::new(registry);
+        let coarse = CoarseMetrics::new(registry, committee_size);
         let precise = PreciseMetrics::spawn(registry, committee_size, report_interval);
         Arc::new(Self {
             coarse,
@@ -66,7 +59,7 @@ impl Metrics {
     /// up-to-date.
     pub fn new_for_test(committee_size: usize) -> Arc<Self> {
         let registry = Registry::new();
-        let coarse = CoarseMetrics::new(&registry);
+        let coarse = CoarseMetrics::new(&registry, committee_size);
         let precise = PreciseMetrics::new_for_test(&registry, committee_size);
         Arc::new(Self {
             coarse,
@@ -157,24 +150,21 @@ impl Metrics {
     /// Record a decided leader on `committed_leaders_total`, labelled by the decision path.
     /// Silent no-op on `LeaderStatus::Undecided`.
     pub fn inc_decided_leaders(&self, status: &LeaderStatus) {
-        let label = match status {
-            LeaderStatus::DirectCommit(_, DirectCommitPath::Fast) => COMMIT_TYPE_FAST_COMMIT,
-            LeaderStatus::DirectCommit(_, DirectCommitPath::Slow) => COMMIT_TYPE_SLOW_COMMIT,
+        let counters = &self.coarse.committed_leaders[status.authority().index()];
+        let counter = match status {
+            LeaderStatus::DirectCommit(_, DirectCommitPath::Fast) => &counters.fast_commit,
+            LeaderStatus::DirectCommit(_, DirectCommitPath::Slow) => &counters.slow_commit,
             LeaderStatus::IndirectCommit(_, IndirectCommitPath::Certificate) => {
-                COMMIT_TYPE_INDIRECT_COMMIT_CERTIFICATE
+                &counters.indirect_commit_certificate
             }
             LeaderStatus::IndirectCommit(_, IndirectCommitPath::WeakQuorum) => {
-                COMMIT_TYPE_INDIRECT_COMMIT_WEAK
+                &counters.indirect_commit_weak
             }
-            LeaderStatus::DirectSkip(..) => COMMIT_TYPE_DIRECT_SKIP,
-            LeaderStatus::IndirectSkip(..) => COMMIT_TYPE_INDIRECT_SKIP,
+            LeaderStatus::DirectSkip(..) => &counters.direct_skip,
+            LeaderStatus::IndirectSkip(..) => &counters.indirect_skip,
             LeaderStatus::Undecided(..) => return,
         };
-        let authority = status.authority().to_string();
-        self.coarse
-            .committed_leaders_total
-            .with_label_values(&[authority.as_str(), label])
-            .inc();
+        counter.inc();
     }
 
     pub fn set_missing_blocks(&self, authority: Authority, value: i64) {
