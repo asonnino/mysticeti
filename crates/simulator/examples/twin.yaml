@@ -1,0 +1,41 @@
+# Equivocating-leader scenario (see docs/simulator.md, "Byzantine Faults").
+#
+# Authority 3 sends two blocks in every round where it holds a leader slot: its
+# proposal and a twin with a different digest. Odd-indexed peers receive the
+# twin first, even-indexed peers the original, so the votes split. Under
+# dag-hydrangea the equivocated slots are committed by the weak rung of the
+# graded indirect rule; switch the protocol to mysticeti to see them skipped
+# indirectly instead. Read the outcome off committed_leaders_total{commit_type}
+# in the exported metrics-*.prom files:
+#   cargo run -- simulate --config-path crates/simulator/examples/twin.yaml \
+#       --output-dir out/twin
+#
+# All fields are optional and fall back to the defaults of single.yaml.
+# Label shown in logs and in the suite summary table.
+name: equivocating-leader
+# Twenty replicas: with f=3, c=4, k=2 below the thresholds are FAST=17, CERT=12,
+# W=7 and Q=13 (see the cheat-sheet in crates/simulator/tests/dag_hydrangea.rs).
+committee_size: 20
+# Simulated seconds; about 230 rounds at the default 50-100 ms link latency,
+# i.e. roughly 40 equivocated leader slots.
+duration_secs: 40
+rng_seed: 0
+# Every replica connected to every other; the equivocator is not partitioned.
+topology: fullMesh
+# Authority indices that behave as equivocating leaders. Authority 3 leads in
+# two of every twenty rounds (two leaders per round, round-robin election).
+equivocating_leaders: [3]
+replica_parameters:
+  # Dual-path protocol: fast commit at FAST votes, slow commit at SLOW
+  # certificates, weak indirect rung at W anchor-linked votes.
+  consensus:
+    protocol: dag-hydrangea
+    leader_count: 2
+    f: 3
+    c: 4
+    k: 2
+# Light load so blocks carry transactions and latency histograms are populated.
+load_generator:
+  load: 100 # transactions per second
+  transaction_size: 512 # bytes per transaction (must exceed 16-byte header)
+  initial_delay: 0s # humantime: "0s", "500ms", "30s"
