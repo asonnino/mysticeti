@@ -44,7 +44,12 @@ async fn check_commit(address: &SocketAddr) -> Result<bool, reqwest::Error> {
     let route = prometheus::METRICS_ROUTE;
     let res = reqwest::get(format!("http://{address}{route}")).await?;
     let string = res.text().await?;
-    let commit = string.contains("committed_leaders_total");
+    // The series exist from startup; a commit shows as a positive count.
+    let commit = string
+        .lines()
+        .filter(|line| line.starts_with("committed_leaders_total{"))
+        .filter_map(|line| line.rsplit(' ').next()?.parse::<f64>().ok())
+        .any(|count| count > 0.0);
     Ok(commit)
 }
 
