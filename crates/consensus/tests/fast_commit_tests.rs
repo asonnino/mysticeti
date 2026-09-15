@@ -14,7 +14,7 @@ use std::sync::Arc;
 use consensus::{committer::Committer, leader::LeaderElector, protocol::ConsensusProtocol};
 use dag::{
     committee::Committee,
-    consensus::LeaderStatus,
+    consensus::{DirectCommitPath, LeaderStatus},
     storage::Storage,
     test_util::{build_dag, build_dag_layer, committee, drop_leader},
 };
@@ -83,10 +83,15 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
         for (offset, decision) in sequence.iter().enumerate() {
             let expected = elector.elect_leader(l1 + offset as u64);
             match decision {
-                LeaderStatus::DirectCommit(block) => {
+                LeaderStatus::DirectCommit(block, path) => {
                     assert_eq!(
                         block.author(),
                         expected,
+                        "[{spec}] target_offset={target_offset} offset={offset}"
+                    );
+                    assert_eq!(
+                        *path,
+                        DirectCommitPath::Fast,
                         "[{spec}] target_offset={target_offset} offset={offset}"
                     );
                 }

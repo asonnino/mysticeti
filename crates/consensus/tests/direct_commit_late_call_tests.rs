@@ -57,7 +57,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
         for (offset, decision) in chunk.iter().enumerate() {
             let expected = elector.elect_leader(leader_round + offset as u64);
             match decision {
-                LeaderStatus::DirectCommit(block) => {
+                LeaderStatus::DirectCommit(block, _) => {
                     assert_eq!(
                         block.author(),
                         expected,

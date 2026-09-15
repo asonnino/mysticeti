@@ -6,9 +6,9 @@ use std::time::Duration;
 use prometheus::{Encoder, TextEncoder, proto::MetricFamily};
 
 use super::names::{
-    COMMIT_TYPE_DIRECT_COMMIT, COMMIT_TYPE_DIRECT_SKIP, COMMIT_TYPE_INDIRECT_COMMIT,
-    COMMIT_TYPE_INDIRECT_SKIP, COMMITTED_LEADERS_TOTAL, LABEL_COMMIT_TYPE, LATENCY_S,
-    LEADER_TIMEOUT_TOTAL,
+    COMMIT_TYPE_DIRECT_SKIP, COMMIT_TYPE_FAST_COMMIT, COMMIT_TYPE_INDIRECT_COMMIT_CERTIFICATE,
+    COMMIT_TYPE_INDIRECT_COMMIT_WEAK, COMMIT_TYPE_INDIRECT_SKIP, COMMIT_TYPE_SLOW_COMMIT,
+    COMMITTED_LEADERS_TOTAL, LABEL_COMMIT_TYPE, LATENCY_S, LEADER_TIMEOUT_TOTAL,
 };
 
 /// A point-in-time snapshot of all metrics from a Prometheus
@@ -64,7 +64,10 @@ impl MetricsSnapshot {
                 l.name() == LABEL_COMMIT_TYPE
                     && matches!(
                         l.value(),
-                        COMMIT_TYPE_DIRECT_COMMIT | COMMIT_TYPE_INDIRECT_COMMIT,
+                        COMMIT_TYPE_FAST_COMMIT
+                            | COMMIT_TYPE_SLOW_COMMIT
+                            | COMMIT_TYPE_INDIRECT_COMMIT_CERTIFICATE
+                            | COMMIT_TYPE_INDIRECT_COMMIT_WEAK,
                     )
             });
             if is_commit && metric.counter.is_some() {
@@ -85,7 +88,32 @@ impl MetricsSnapshot {
 
     /// Leaders committed by the direct rule (fast or slow path).
     pub fn direct_commits(&self) -> u64 {
-        self.commit_type_total(COMMIT_TYPE_DIRECT_COMMIT)
+        self.fast_commits() + self.slow_commits()
+    }
+
+    /// Leaders committed by the fast path (a quorum of votes at the voting round).
+    pub fn fast_commits(&self) -> u64 {
+        self.commit_type_total(COMMIT_TYPE_FAST_COMMIT)
+    }
+
+    /// Leaders committed by the slow path (a quorum of certificates at the decision round).
+    pub fn slow_commits(&self) -> u64 {
+        self.commit_type_total(COMMIT_TYPE_SLOW_COMMIT)
+    }
+
+    /// Leaders committed by the indirect rule (either rung).
+    pub fn indirect_commits(&self) -> u64 {
+        self.indirect_certificate_commits() + self.indirect_weak_commits()
+    }
+
+    /// Leaders committed by the indirect rule's certificate rung.
+    pub fn indirect_certificate_commits(&self) -> u64 {
+        self.commit_type_total(COMMIT_TYPE_INDIRECT_COMMIT_CERTIFICATE)
+    }
+
+    /// Leaders committed by the indirect rule's weak-quorum rung.
+    pub fn indirect_weak_commits(&self) -> u64 {
+        self.commit_type_total(COMMIT_TYPE_INDIRECT_COMMIT_WEAK)
     }
 
     /// Leaders skipped by the direct rule (a quorum of blames).
@@ -240,8 +268,8 @@ mod test {
     use super::MetricsSnapshot;
     use crate::authority::Authority;
     use crate::metrics::names::{
-        COMMIT_TYPE_DIRECT_COMMIT, COMMIT_TYPE_DIRECT_SKIP, COMMIT_TYPE_INDIRECT_COMMIT,
-        COMMIT_TYPE_INDIRECT_SKIP,
+        COMMIT_TYPE_DIRECT_SKIP, COMMIT_TYPE_FAST_COMMIT, COMMIT_TYPE_INDIRECT_COMMIT_CERTIFICATE,
+        COMMIT_TYPE_INDIRECT_COMMIT_WEAK, COMMIT_TYPE_INDIRECT_SKIP, COMMIT_TYPE_SLOW_COMMIT,
     };
     use prometheus::{
         Registry, register_histogram_with_registry, register_int_counter_vec_with_registry,
@@ -304,8 +332,8 @@ mod test {
     #[test]
     fn committed_leaders_excludes_skips() {
         // Drives `committed_leaders_total` directly so the test doesn't need a `Data<Block>` to
-        // construct `LeaderStatus::DirectCommit`. Label values here must match the wire strings
-        // that `Metrics::inc_decided_leaders` writes.
+        // construct a `LeaderStatus`. Label values here must match the wire strings that
+        // `Metrics::inc_decided_leaders` writes.
         let authority = Authority::from(0_usize).to_string();
         let registry = Registry::new();
         let counter = register_int_counter_vec_with_registry!(
@@ -315,20 +343,24 @@ mod test {
             registry
         )
         .unwrap();
-        counter
-            .with_label_values(&[authority.as_str(), COMMIT_TYPE_DIRECT_COMMIT])
-            .inc();
-        counter
-            .with_label_values(&[authority.as_str(), COMMIT_TYPE_INDIRECT_COMMIT])
-            .inc();
-        counter
-            .with_label_values(&[authority.as_str(), COMMIT_TYPE_DIRECT_SKIP])
-            .inc();
-        counter
-            .with_label_values(&[authority.as_str(), COMMIT_TYPE_INDIRECT_SKIP])
-            .inc();
+        for commit_type in [
+            COMMIT_TYPE_FAST_COMMIT,
+            COMMIT_TYPE_SLOW_COMMIT,
+            COMMIT_TYPE_INDIRECT_COMMIT_CERTIFICATE,
+            COMMIT_TYPE_INDIRECT_COMMIT_WEAK,
+            COMMIT_TYPE_DIRECT_SKIP,
+            COMMIT_TYPE_INDIRECT_SKIP,
+        ] {
+            counter
+                .with_label_values(&[authority.as_str(), commit_type])
+                .inc();
+        }
         let snapshot = collect_snapshot(&registry);
-        assert_eq!(snapshot.total_committed_leaders(), 2);
+        assert_eq!(snapshot.total_committed_leaders(), 4);
+        assert_eq!(snapshot.direct_commits(), 2);
+        assert_eq!(snapshot.indirect_commits(), 2);
+        assert_eq!(snapshot.fast_commits(), 1);
+        assert_eq!(snapshot.indirect_weak_commits(), 1);
     }
 
     #[test]

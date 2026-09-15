@@ -113,14 +113,15 @@ mod tests {
     use crate::authority::Authority;
     use crate::block::Block;
     use crate::block::data::Data;
-    use crate::consensus::LeaderStatus;
+    use crate::consensus::{DirectCommitPath, LeaderStatus};
     use crate::metrics::Metrics;
 
     fn snapshot_with_n_committed_leaders(n: u64) -> MetricsSnapshot {
         let metrics = Metrics::new_for_test(4);
         for _ in 0..n {
             let block = Block::new_for_test(Authority::from(0_usize), 1, vec![]);
-            metrics.inc_decided_leaders(&LeaderStatus::DirectCommit(Data::new(block)));
+            let status = LeaderStatus::DirectCommit(Data::new(block), DirectCommitPath::Slow);
+            metrics.inc_decided_leaders(&status);
         }
         metrics.collect()
     }

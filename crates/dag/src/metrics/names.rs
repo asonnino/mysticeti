@@ -36,9 +36,12 @@ pub const LABEL_COMMIT_TYPE: &str = "commit_type";
 pub const LABEL_FULFILLED: &str = "fulfilled";
 pub const LABEL_PROC: &str = "proc";
 
-// Values for the `commit_type` label on `committed_leaders_total`.
-pub const COMMIT_TYPE_DIRECT_COMMIT: &str = "direct-commit";
-pub const COMMIT_TYPE_INDIRECT_COMMIT: &str = "indirect-commit";
+// Values for the `commit_type` label on `committed_leaders_total`. Single-path protocols only
+// ever emit `slow-commit` and `indirect-commit-certificate`.
+pub const COMMIT_TYPE_FAST_COMMIT: &str = "fast-commit";
+pub const COMMIT_TYPE_SLOW_COMMIT: &str = "slow-commit";
+pub const COMMIT_TYPE_INDIRECT_COMMIT_CERTIFICATE: &str = "indirect-commit-certificate";
+pub const COMMIT_TYPE_INDIRECT_COMMIT_WEAK: &str = "indirect-commit-weak";
 pub const COMMIT_TYPE_DIRECT_SKIP: &str = "direct-skip";
 pub const COMMIT_TYPE_INDIRECT_SKIP: &str = "indirect-skip";
 

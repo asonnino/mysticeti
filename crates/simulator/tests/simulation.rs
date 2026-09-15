@@ -18,6 +18,11 @@ fn full_mesh() {
 
     assert_ne!(results.outcome, Outcome::Diverged);
     assert!(!results.metrics.is_empty());
+    // The default protocol (Mysticeti) has no fast path: every direct commit is slow.
+    let slow_commits = results.metrics.iter().map(|m| m.slow_commits()).max();
+    let fast_commits = results.metrics.iter().map(|m| m.fast_commits()).max();
+    assert!(slow_commits.unwrap_or(0) > 0);
+    assert_eq!(fast_commits, Some(0));
 }
 
 #[test]

@@ -127,7 +127,7 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
                 );
             } else {
                 let direct_committed = sequence.iter().any(|status| match status {
-                    LeaderStatus::DirectCommit(block) => {
+                    LeaderStatus::DirectCommit(block, _) => {
                         block.author() == leader && block.round() == target_round
                     }
                     _ => false,

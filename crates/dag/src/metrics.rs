@@ -17,20 +17,23 @@ use tokio::time::Instant;
 
 pub use self::aggregate::SnapshotAggregate;
 pub use self::names::{
-    BENCHMARK_DURATION, BLOCK_SYNC_REQUESTS_SENT, LABEL_AUTHORITY, LATENCY_S, LATENCY_SQUARED_S,
-    LEADER_TIMEOUT_TOTAL, SyncRequestFulfilled,
+    BENCHMARK_DURATION, BLOCK_SYNC_REQUESTS_SENT, COMMITTED_LEADERS_TOTAL, LABEL_AUTHORITY,
+    LATENCY_S, LATENCY_SQUARED_S, LEADER_TIMEOUT_TOTAL, SyncRequestFulfilled,
 };
 pub use self::snapshot::MetricsSnapshot;
 pub use self::timers::{OwnedUtilizationTimer, UtilizationTimer};
 use self::{
     coarse::CoarseMetrics,
     names::{
-        COMMIT_TYPE_DIRECT_COMMIT, COMMIT_TYPE_DIRECT_SKIP, COMMIT_TYPE_INDIRECT_COMMIT,
-        COMMIT_TYPE_INDIRECT_SKIP,
+        COMMIT_TYPE_DIRECT_SKIP, COMMIT_TYPE_FAST_COMMIT, COMMIT_TYPE_INDIRECT_COMMIT_CERTIFICATE,
+        COMMIT_TYPE_INDIRECT_COMMIT_WEAK, COMMIT_TYPE_INDIRECT_SKIP, COMMIT_TYPE_SLOW_COMMIT,
     },
     precise::PreciseMetrics,
 };
-use crate::{authority::Authority, consensus::LeaderStatus};
+use crate::{
+    authority::Authority,
+    consensus::{DirectCommitPath, IndirectCommitPath, LeaderStatus},
+};
 
 pub struct Metrics {
     coarse: CoarseMetrics,
@@ -145,13 +148,18 @@ impl Metrics {
         self.coarse.inter_block_latency_s.observe(value);
     }
 
-    /// Record a decided leader on `committed_leaders_total`. Silent no-op on
-    /// `LeaderStatus::Undecided` — only decided statuses (commit or skip, direct or indirect)
-    /// produce a metric increment.
+    /// Record a decided leader on `committed_leaders_total`, labelled by the decision path.
+    /// Silent no-op on `LeaderStatus::Undecided`.
     pub fn inc_decided_leaders(&self, status: &LeaderStatus) {
         let label = match status {
-            LeaderStatus::DirectCommit(_) => COMMIT_TYPE_DIRECT_COMMIT,
-            LeaderStatus::IndirectCommit(_) => COMMIT_TYPE_INDIRECT_COMMIT,
+            LeaderStatus::DirectCommit(_, DirectCommitPath::Fast) => COMMIT_TYPE_FAST_COMMIT,
+            LeaderStatus::DirectCommit(_, DirectCommitPath::Slow) => COMMIT_TYPE_SLOW_COMMIT,
+            LeaderStatus::IndirectCommit(_, IndirectCommitPath::Certificate) => {
+                COMMIT_TYPE_INDIRECT_COMMIT_CERTIFICATE
+            }
+            LeaderStatus::IndirectCommit(_, IndirectCommitPath::WeakQuorum) => {
+                COMMIT_TYPE_INDIRECT_COMMIT_WEAK
+            }
             LeaderStatus::DirectSkip(..) => COMMIT_TYPE_DIRECT_SKIP,
             LeaderStatus::IndirectSkip(..) => COMMIT_TYPE_INDIRECT_SKIP,
             LeaderStatus::Undecided(..) => return,
