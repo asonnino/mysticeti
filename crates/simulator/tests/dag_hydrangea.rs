@@ -17,6 +17,7 @@
 use std::num::NonZeroUsize;
 
 use consensus::protocol::{ConsensusProtocol, Protocol, ProtocolError};
+use dag::authority::Authority;
 use dag::metrics::{MetricsSnapshot, SnapshotAggregate};
 use replica::config::ReplicaParameters;
 use replica::result::{Outcome, RunResult};
@@ -296,4 +297,60 @@ fn infeasible_params_rejected() {
             min_n: 20,
         })
     ));
+}
+
+#[test]
+fn equivocating_leader_n20() {
+    // n=20, f=3, c=4, k=2 with authority 3 equivocating in its leader rounds: the
+    // 9 odd peers see the twin first, the 10 even peers and the leader itself the
+    // original, so no twin reaches FAST=17 votes or CERT=12 certificates. Both
+    // twins gather at least W=7 anchor-linked votes, so every equivocated slot is
+    // decided by the weak-quorum rung with its digest tie-break, never by the fast
+    // path and never by a skip (the equivocator stays live, its slots are never
+    // empty). Observed: 42 equivocated slots, all weak-rung commits, on both seeds.
+    for rng_seed in [0, 7] {
+        let result = run(SimulationConfig {
+            committee_size: 20,
+            equivocating_leaders: vec![3],
+            duration_secs: 40,
+            rng_seed,
+            replica_parameters: ReplicaParameters {
+                consensus: dag_hydrangea(3, 4, 2, 2),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        assert_progress(&result, 15);
+        let equivocator = Authority::from(3usize);
+        for metrics in &result.metrics {
+            assert_eq!(
+                metrics.fast_commits_of(equivocator),
+                0,
+                "[seed={rng_seed}] an equivocated slot can never gather a fast quorum"
+            );
+        }
+        let decided = result
+            .metrics
+            .iter()
+            .map(|metrics| metrics.decided_leaders_of(equivocator))
+            .max()
+            .unwrap_or(0);
+        assert!(
+            decided > 0,
+            "[seed={rng_seed}] equivocated slots must be decided"
+        );
+        assert!(
+            max_over_replicas(&result, MetricsSnapshot::indirect_weak_commits) > 0,
+            "[seed={rng_seed}] equivocated slots are committed by the weak-quorum rung"
+        );
+        assert_eq!(
+            max_over_replicas(&result, MetricsSnapshot::direct_skips),
+            0,
+            "[seed={rng_seed}] the equivocator stays live, so none of its slots is skipped"
+        );
+        assert!(
+            max_over_replicas(&result, MetricsSnapshot::fast_commits) > 0,
+            "[seed={rng_seed}] the other slots keep committing through the fast path"
+        );
+    }
 }
