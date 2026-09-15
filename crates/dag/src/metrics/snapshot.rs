@@ -11,12 +11,24 @@ use prometheus::{
 use super::names::{
     BLOCK_LATENCY_S, BlockKind, COMMIT_TYPE_DIRECT_SKIP, COMMIT_TYPE_FAST_COMMIT,
     COMMIT_TYPE_INDIRECT_COMMIT_CERTIFICATE, COMMIT_TYPE_INDIRECT_COMMIT_WEAK,
-    COMMIT_TYPE_INDIRECT_SKIP, COMMIT_TYPE_SLOW_COMMIT, COMMITTED_LEADERS_TOTAL, LABEL_COMMIT_TYPE,
-    LABEL_KIND, LATENCY_S, LEADER_TIMEOUT_TOTAL,
+    COMMIT_TYPE_INDIRECT_SKIP, COMMIT_TYPE_SLOW_COMMIT, COMMITTED_LEADERS_TOTAL, LABEL_AUTHORITY,
+    LABEL_COMMIT_TYPE, LABEL_KIND, LATENCY_S, LEADER_TIMEOUT_TOTAL,
 };
+use crate::authority::Authority;
+
+/// Every value of the `commit_type` label: the decision paths partition the decided slots.
+const COMMIT_TYPES: [&str; 6] = [
+    COMMIT_TYPE_FAST_COMMIT,
+    COMMIT_TYPE_SLOW_COMMIT,
+    COMMIT_TYPE_INDIRECT_COMMIT_CERTIFICATE,
+    COMMIT_TYPE_INDIRECT_COMMIT_WEAK,
+    COMMIT_TYPE_DIRECT_SKIP,
+    COMMIT_TYPE_INDIRECT_SKIP,
+];
 
 /// A point-in-time snapshot of all metrics from a Prometheus
-/// registry. Test-only — no production cost.
+/// registry. Tooling-only (local testbed, simulator, tests): a deployed validator serves the
+/// registry over its Prometheus endpoint and never takes a snapshot.
 #[derive(Debug)]
 pub struct MetricsSnapshot {
     families: Vec<MetricFamily>,
@@ -109,12 +121,12 @@ impl MetricsSnapshot {
 
     /// Leaders committed by the fast path (a quorum of votes at the voting round).
     pub fn fast_commits(&self) -> u64 {
-        self.commit_type_total(COMMIT_TYPE_FAST_COMMIT)
+        self.commit_type_total(COMMIT_TYPE_FAST_COMMIT, None)
     }
 
     /// Leaders committed by the slow path (a quorum of certificates at the decision round).
     pub fn slow_commits(&self) -> u64 {
-        self.commit_type_total(COMMIT_TYPE_SLOW_COMMIT)
+        self.commit_type_total(COMMIT_TYPE_SLOW_COMMIT, None)
     }
 
     /// Leaders committed by the indirect rule (either rung).
@@ -124,36 +136,56 @@ impl MetricsSnapshot {
 
     /// Leaders committed by the indirect rule's certificate rung.
     pub fn indirect_certificate_commits(&self) -> u64 {
-        self.commit_type_total(COMMIT_TYPE_INDIRECT_COMMIT_CERTIFICATE)
+        self.commit_type_total(COMMIT_TYPE_INDIRECT_COMMIT_CERTIFICATE, None)
     }
 
     /// Leaders committed by the indirect rule's weak-quorum rung.
     pub fn indirect_weak_commits(&self) -> u64 {
-        self.commit_type_total(COMMIT_TYPE_INDIRECT_COMMIT_WEAK)
+        self.commit_type_total(COMMIT_TYPE_INDIRECT_COMMIT_WEAK, None)
     }
 
     /// Leaders skipped by the direct rule (a quorum of blames).
     pub fn direct_skips(&self) -> u64 {
-        self.commit_type_total(COMMIT_TYPE_DIRECT_SKIP)
+        self.commit_type_total(COMMIT_TYPE_DIRECT_SKIP, None)
     }
 
     /// Leaders skipped by the indirect rule (via an anchor).
     pub fn indirect_skips(&self) -> u64 {
-        self.commit_type_total(COMMIT_TYPE_INDIRECT_SKIP)
+        self.commit_type_total(COMMIT_TYPE_INDIRECT_SKIP, None)
     }
 
-    /// Decided leaders of one `commit_type`, summed across leader authorities.
-    fn commit_type_total(&self, commit_type: &str) -> u64 {
+    /// Slots of `leader` committed by the fast path.
+    pub fn fast_commits_of(&self, leader: Authority) -> u64 {
+        self.commit_type_total(COMMIT_TYPE_FAST_COMMIT, Some(leader))
+    }
+
+    /// Slots of `leader` decided by any rule (committed or skipped).
+    pub fn decided_leaders_of(&self, leader: Authority) -> u64 {
+        COMMIT_TYPES
+            .iter()
+            .map(|commit_type| self.commit_type_total(commit_type, Some(leader)))
+            .sum()
+    }
+
+    /// Total of the `committed_leaders_total` series with the given `commit_type`, restricted
+    /// to the slots of `leader` when one is given.
+    fn commit_type_total(&self, commit_type: &str, leader: Option<Authority>) -> u64 {
         let Some(family) = self.find_family(COMMITTED_LEADERS_TOTAL) else {
             return 0;
         };
+        let leader = leader.map(|leader| leader.to_string());
         let mut total = 0.0;
         for metric in family.get_metric() {
-            let type_matches = metric
-                .get_label()
-                .iter()
-                .any(|label| label.name() == LABEL_COMMIT_TYPE && label.value() == commit_type);
-            if type_matches && metric.counter.is_some() {
+            let labels = metric.get_label();
+            let has = |name: &str, value: &str| {
+                labels
+                    .iter()
+                    .any(|label| label.name() == name && label.value() == value)
+            };
+            let leader_matches = leader
+                .as_deref()
+                .is_none_or(|leader| has(LABEL_AUTHORITY, leader));
+            if has(LABEL_COMMIT_TYPE, commit_type) && leader_matches && metric.counter.is_some() {
                 total += metric.counter.value();
             }
         }
@@ -464,5 +496,35 @@ mod test {
             snapshot.scalar_value("label_test", &[("a", "x"), ("b", "y")]),
             1.0
         );
+    }
+
+    #[test]
+    fn per_leader_commit_types() {
+        let registry = Registry::new();
+        let counter = register_int_counter_vec_with_registry!(
+            "committed_leaders_total",
+            "help",
+            &["authority", "commit_type"],
+            registry
+        )
+        .unwrap();
+        let (first, second) = (Authority::from(0_usize), Authority::from(1_usize));
+        let (first_label, second_label) = (first.to_string(), second.to_string());
+        counter
+            .with_label_values(&[first_label.as_str(), COMMIT_TYPE_FAST_COMMIT])
+            .inc_by(3);
+        counter
+            .with_label_values(&[first_label.as_str(), COMMIT_TYPE_INDIRECT_SKIP])
+            .inc_by(2);
+        counter
+            .with_label_values(&[second_label.as_str(), COMMIT_TYPE_SLOW_COMMIT])
+            .inc_by(4);
+        let snapshot = collect_snapshot(&registry);
+        assert_eq!(snapshot.fast_commits_of(first), 3);
+        assert_eq!(snapshot.fast_commits_of(second), 0);
+        assert_eq!(snapshot.decided_leaders_of(first), 5);
+        assert_eq!(snapshot.decided_leaders_of(second), 4);
+        assert_eq!(snapshot.fast_commits(), 3);
+        assert_eq!(snapshot.total_committed_leaders(), 7);
     }
 }
