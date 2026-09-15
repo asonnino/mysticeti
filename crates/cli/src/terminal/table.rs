@@ -50,8 +50,8 @@ impl ReplicaRow {
             committed_leaders,
             committed_leaders_per_second,
             tx_per_second,
-            p50_latency_ms: metrics.latency_percentile_ms(0.5),
-            p90_latency_ms: metrics.latency_percentile_ms(0.9),
+            p50_latency_ms: metrics.transaction_latency_percentile_ms(0.5),
+            p90_latency_ms: metrics.transaction_latency_percentile_ms(0.9),
             leader_timeouts: metrics.leader_timeouts(),
         }
     }

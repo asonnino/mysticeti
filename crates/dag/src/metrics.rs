@@ -17,8 +17,9 @@ use tokio::time::Instant;
 
 pub use self::aggregate::SnapshotAggregate;
 pub use self::names::{
-    BENCHMARK_DURATION, BLOCK_SYNC_REQUESTS_SENT, COMMITTED_LEADERS_TOTAL, LABEL_AUTHORITY,
-    LATENCY_S, LATENCY_SQUARED_S, LEADER_TIMEOUT_TOTAL, SyncRequestFulfilled,
+    BENCHMARK_DURATION, BLOCK_LATENCY_S, BLOCK_LATENCY_SQUARED_S, BLOCK_SYNC_REQUESTS_SENT,
+    BlockKind, COMMITTED_LEADERS_TOTAL, LABEL_AUTHORITY, LATENCY_S, LATENCY_SQUARED_S,
+    LEADER_TIMEOUT_TOTAL, SyncRequestFulfilled,
 };
 pub use self::snapshot::MetricsSnapshot;
 pub use self::timers::{OwnedUtilizationTimer, UtilizationTimer};
@@ -136,12 +137,17 @@ impl Metrics {
         self.precise.observe_proposed_block_vote_count(count);
     }
 
-    pub fn observe_latency_s(&self, value: f64) {
-        self.coarse.latency_s.observe(value);
+    /// Record a committed transaction's submission-to-commit latency (s) and its square.
+    pub fn observe_transaction_latency_s(&self, value: f64) {
+        self.coarse.transaction_latency.observe(value);
     }
 
-    pub fn observe_latency_squared_s(&self, value: f64) {
-        self.coarse.latency_squared_s.inc_by(value);
+    /// Record a committed block's proposal-to-commit latency (s) and its square.
+    pub fn observe_block_latency_s(&self, kind: BlockKind, value: f64) {
+        match kind {
+            BlockKind::Leader => self.coarse.leader_block_latency.observe(value),
+            BlockKind::NonLeader => self.coarse.non_leader_block_latency.observe(value),
+        }
     }
 
     pub fn observe_inter_block_latency_s(&self, value: f64) {
@@ -275,11 +281,11 @@ struct NetworkAddressTable {
 mod test {
     use std::time::Duration;
 
-    use super::{Authority, Metrics};
+    use super::{Authority, BlockKind, Metrics};
     use crate::consensus::LeaderStatus;
     use crate::metrics::names::{
-        COMMIT_TYPE_DIRECT_SKIP, COMMIT_TYPE_INDIRECT_SKIP, COMMITTED_LEADERS_TOTAL,
-        LABEL_AUTHORITY, LABEL_COMMIT_TYPE,
+        BLOCK_LATENCY_SQUARED_S, COMMIT_TYPE_DIRECT_SKIP, COMMIT_TYPE_INDIRECT_SKIP,
+        COMMITTED_LEADERS_TOTAL, LABEL_AUTHORITY, LABEL_COMMIT_TYPE, LABEL_KIND,
     };
 
     #[test]
@@ -350,6 +356,31 @@ mod test {
         assert_eq!(snapshot.direct_skips(), 2);
         assert_eq!(snapshot.indirect_skips(), 1);
         assert_eq!(snapshot.direct_commits(), 0);
+    }
+
+    #[test]
+    fn block_latency_series_are_kept_apart() {
+        let metrics = Metrics::new_for_test(4);
+        metrics.observe_block_latency_s(BlockKind::Leader, 0.5);
+        metrics.observe_block_latency_s(BlockKind::NonLeader, 1.0);
+        metrics.observe_block_latency_s(BlockKind::NonLeader, 2.0);
+        let snapshot = metrics.collect();
+        assert_eq!(
+            snapshot.block_latency_sum_and_count(BlockKind::Leader),
+            Some((0.5, 1))
+        );
+        assert_eq!(
+            snapshot.block_latency_sum_and_count(BlockKind::NonLeader),
+            Some((3.0, 2))
+        );
+        assert_eq!(
+            snapshot.scalar_value(BLOCK_LATENCY_SQUARED_S, &[(LABEL_KIND, "non-leader")]),
+            5.0
+        );
+        assert_eq!(
+            snapshot.block_latency_percentile_ms(BlockKind::Leader, 1.0),
+            Some(500.0)
+        );
     }
 
     #[test]

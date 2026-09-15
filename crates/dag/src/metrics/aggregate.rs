@@ -65,7 +65,7 @@ impl<'a> SnapshotAggregate<'a> {
         let (sum, count) = self
             .snapshots
             .iter()
-            .filter_map(|s| s.histogram_sum_and_count(LATENCY_S))
+            .filter_map(|s| s.histogram_sum_and_count(LATENCY_S, &[]))
             .fold((0u64, 0usize), |(sum, count), (_, c)| (sum + c, count + 1));
         if count == 0 {
             return None;
@@ -77,11 +77,11 @@ impl<'a> SnapshotAggregate<'a> {
     /// `p`-th percentile end-to-end latency (ms), averaged across replicas that have
     /// produced enough histogram samples to compute it. `None` when no replica has
     /// any samples.
-    pub fn mean_latency_percentile_ms(&self, p: f64) -> Option<f64> {
+    pub fn mean_transaction_latency_percentile_ms(&self, p: f64) -> Option<f64> {
         let (sum, count) = self
             .snapshots
             .iter()
-            .filter_map(|s| s.latency_percentile_ms(p))
+            .filter_map(|s| s.transaction_latency_percentile_ms(p))
             .fold((0.0f64, 0usize), |(sum, count), v| (sum + v, count + 1));
         (count > 0).then(|| sum / count as f64)
     }
@@ -129,7 +129,7 @@ mod tests {
     fn snapshot_with_latency_samples(samples: &[u64]) -> MetricsSnapshot {
         let metrics = Metrics::new_for_test(4);
         for ms in samples {
-            metrics.observe_latency_s(Duration::from_millis(*ms).as_secs_f64());
+            metrics.observe_transaction_latency_s(Duration::from_millis(*ms).as_secs_f64());
         }
         metrics.collect()
     }
@@ -141,7 +141,7 @@ mod tests {
         assert_eq!(agg.max_committed_leaders(), 0);
         assert_eq!(agg.mean_committed_leaders(), None);
         assert_eq!(agg.mean_committed_transactions(), None);
-        assert_eq!(agg.mean_latency_percentile_ms(0.5), None);
+        assert_eq!(agg.mean_transaction_latency_percentile_ms(0.5), None);
     }
 
     #[test]
@@ -168,21 +168,24 @@ mod tests {
     }
 
     #[test]
-    fn mean_latency_percentile_ms_averages_two_replicas() {
+    fn mean_transaction_latency_percentile_ms_averages_two_replicas() {
         let s1 = snapshot_with_latency_samples(&(1..=100).collect::<Vec<u64>>());
         let s2 = snapshot_with_latency_samples(&(101..=200).collect::<Vec<u64>>());
-        let p1 = s1.latency_percentile_ms(0.5).unwrap();
-        let p2 = s2.latency_percentile_ms(0.5).unwrap();
+        let p1 = s1.transaction_latency_percentile_ms(0.5).unwrap();
+        let p2 = s2.transaction_latency_percentile_ms(0.5).unwrap();
 
         let snapshots = vec![s1, s2];
         let agg = SnapshotAggregate::new(&snapshots);
-        assert_eq!(agg.mean_latency_percentile_ms(0.5), Some((p1 + p2) / 2.0),);
+        assert_eq!(
+            agg.mean_transaction_latency_percentile_ms(0.5),
+            Some((p1 + p2) / 2.0),
+        );
     }
 
     #[test]
-    fn mean_latency_percentile_ms_filters_replicas_without_samples() {
+    fn mean_transaction_latency_percentile_ms_filters_replicas_without_samples() {
         let populated = snapshot_with_latency_samples(&(1..=100).collect::<Vec<u64>>());
-        let expected = populated.latency_percentile_ms(0.5);
+        let expected = populated.transaction_latency_percentile_ms(0.5);
         assert!(
             expected.is_some(),
             "fixture sanity: 100 samples should produce p50"
@@ -191,7 +194,7 @@ mod tests {
         let snapshots = vec![snapshot_with_latency_samples(&[]), populated];
         let agg = SnapshotAggregate::new(&snapshots);
         // Empty replicas drop out; the mean equals the one populated replica's value.
-        assert_eq!(agg.mean_latency_percentile_ms(0.5), expected);
+        assert_eq!(agg.mean_transaction_latency_percentile_ms(0.5), expected);
     }
 
     #[test]

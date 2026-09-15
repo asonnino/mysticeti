@@ -195,19 +195,42 @@ impl ProtocolMetrics for ReplicaProtocol {
                 kind: MetricKind::Gauge,
             },
             MetricSpec {
-                name: "latency_s".into(),
+                name: dag::metrics::LATENCY_S.into(),
                 kind: MetricKind::Histogram,
             },
             MetricSpec {
-                name: "latency_s_count".into(),
+                name: format!("{}_count", dag::metrics::LATENCY_S),
                 kind: MetricKind::Counter,
             },
             MetricSpec {
-                name: "latency_s_sum".into(),
+                name: format!("{}_sum", dag::metrics::LATENCY_S),
                 kind: MetricKind::Counter,
             },
             MetricSpec {
                 name: dag::metrics::LATENCY_SQUARED_S.into(),
+                kind: MetricKind::Counter,
+            },
+            // Proposal-to-commit latency per committed block, one series per `kind`.
+            MetricSpec {
+                name: dag::metrics::BLOCK_LATENCY_S.into(),
+                kind: MetricKind::Histogram,
+            },
+            MetricSpec {
+                name: format!("{}_count", dag::metrics::BLOCK_LATENCY_S),
+                kind: MetricKind::Counter,
+            },
+            MetricSpec {
+                name: format!("{}_sum", dag::metrics::BLOCK_LATENCY_S),
+                kind: MetricKind::Counter,
+            },
+            MetricSpec {
+                name: dag::metrics::BLOCK_LATENCY_SQUARED_S.into(),
+                kind: MetricKind::Counter,
+            },
+            // One series per `authority` and `commit_type`; the fast-path share per scrape
+            // is the ratio of the `fast-commit` rate to the sum of the commit rates.
+            MetricSpec {
+                name: dag::metrics::COMMITTED_LEADERS_TOTAL.into(),
                 kind: MetricKind::Counter,
             },
         ]

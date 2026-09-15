@@ -11,6 +11,8 @@ pub const BENCHMARK_DURATION: &str = "benchmark_duration";
 pub const LATENCY_S: &str = "latency_s";
 pub const LATENCY_SQUARED_S: &str = "latency_squared_s";
 pub const INTER_BLOCK_LATENCY_S: &str = "inter_block_latency_s";
+pub const BLOCK_LATENCY_S: &str = "block_latency_s";
+pub const BLOCK_LATENCY_SQUARED_S: &str = "block_latency_squared_s";
 pub const COMMITTED_LEADERS_TOTAL: &str = "committed_leaders_total";
 pub const LEADER_TIMEOUT_TOTAL: &str = "leader_timeout_total";
 pub const SUBMITTED_TRANSACTIONS: &str = "submitted_transactions";
@@ -35,6 +37,7 @@ pub const LABEL_AUTHORITY: &str = "authority";
 pub const LABEL_COMMIT_TYPE: &str = "commit_type";
 pub const LABEL_FULFILLED: &str = "fulfilled";
 pub const LABEL_PROC: &str = "proc";
+pub const LABEL_KIND: &str = "kind";
 
 // Values for the `commit_type` label on `committed_leaders_total`. Single-path protocols only
 // ever emit `slow-commit` and `indirect-commit-certificate`.
@@ -67,5 +70,23 @@ impl SyncRequestFulfilled {
 impl From<bool> for SyncRequestFulfilled {
     fn from(found: bool) -> Self {
         if found { Self::Found } else { Self::Missing }
+    }
+}
+
+/// Role of a committed block, recorded in the `kind` label on `block_latency_s`: the
+/// sub-dag's leader (the quantity the protocol bounds) or any other block it commits.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BlockKind {
+    Leader,
+    NonLeader,
+}
+
+impl BlockKind {
+    /// Canonical string used in the Prometheus `kind` label.
+    pub fn as_label(&self) -> &'static str {
+        match self {
+            Self::Leader => "leader",
+            Self::NonLeader => "non-leader",
+        }
     }
 }

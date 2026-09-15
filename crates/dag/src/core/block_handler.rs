@@ -12,13 +12,13 @@ use tokio::sync::mpsc;
 
 use crate::{
     block::{
-        Block, BlockReference,
+        Block, BlockReference, GENESIS_ROUND,
         transaction::{Transaction, TransactionLocator},
     },
     consensus::{CommittedSubDag, Linearizer},
     context::Ctx,
     data::Data,
-    metrics::Metrics,
+    metrics::{BlockKind, Metrics},
     storage::BlockReader,
 };
 
@@ -134,9 +134,8 @@ impl<C: Ctx> CommitHandler<C> {
             return;
         };
         let latency = current_timestamp.saturating_sub(tx_submission_timestamp);
-        let square_latency = latency.as_secs_f64().powf(2.0);
-        self.metrics.observe_latency_s(latency.as_secs_f64());
-        self.metrics.observe_latency_squared_s(square_latency);
+        self.metrics
+            .observe_transaction_latency_s(latency.as_secs_f64());
     }
 
     pub fn handle_commit(
@@ -153,6 +152,17 @@ impl<C: Ctx> CommitHandler<C> {
         for commit in &committed {
             self.committed_leaders.push(commit.anchor);
             for block in &commit.blocks {
+                // Genesis blocks carry a zero timestamp and would poison the sums.
+                if block.round() != GENESIS_ROUND {
+                    let kind = if *block.reference() == commit.anchor {
+                        BlockKind::Leader
+                    } else {
+                        BlockKind::NonLeader
+                    };
+                    let latency = current_timestamp.saturating_sub(block.timestamp());
+                    self.metrics
+                        .observe_block_latency_s(kind, latency.as_secs_f64());
+                }
                 for (locator, transaction) in block.located_transactions() {
                     self.update_metrics(
                         transaction_time.get(&locator),
