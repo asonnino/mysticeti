@@ -1,0 +1,183 @@
+
+-----------------------------------------
+ SUMMARY:
+-----------------------------------------
+Logs generated at: 2026-04-07 17:37:34.038800
+
+ + CONFIG:
+ Leader elector: Simple
+ Faults: 0 node(s)
+ Committee size: 10 node(s)
+ Collocate primary and workers: True
+ Burst tx: 5,000.0 tx
+ Transaction size: 512 B
+ Burst: 50
+
+ Block size: 10 Certificates
+ Timeout delay: 5,000 ms
+ Header size: 512,000 B
+ Max header delay: 200 ms
+ GC depth: 50 round(s)
+ Sync retry delay: 5,000 ms
+ Sync retry nodes: 3 node(s)
+ batch size: 512,000 B
+ Max batch delay: 200 ms
+
+ + RESULTS:
+ Execution time: 180 s
+ Block Proposal time : 101 ms
+
+ Block Commit:
+   To First Commit:
+     Mean Latency: 93 ms
+     Median Latency: 93 ms
+     BLPS: 10 blocks/s
+   To Last Commit:
+     Mean Latency: 113 ms
+     Median Latency: 106 ms
+     BLPS: 10 blocks/s
+   Total Blocks Committed: 1,783
+
+ Header Dispatch to Consensus:
+   From Tx Creation:
+     Mean Latency: 71 ms
+     Median Latency: 75 ms
+   From Header Creation:
+     Mean Latency: 42 ms
+     Median Latency: 34 ms
+   Total Headers Dispatched: 18,015
+
+ End-To-End:
+   To First Commit:
+     Mean Latency: 2,602 ms
+     Median Latency: 2,623 ms
+     TPS: 98,143 tx/s
+     BPS: 50,249,239 B/s
+   To Last Commit:
+     Mean Latency: 2,621 ms
+     Median Latency: 2,642 ms
+     TPS: 98,143 tx/s
+     BPS: 50,249,239 B/s
+-----------------------------------------
+
+-----------------------------------------
+ SUMMARY:
+-----------------------------------------
+Logs generated at: 2026-04-07 17:49:01.838042
+
+ + CONFIG:
+ Leader elector: Simple
+ Faults: 0 node(s)
+ Committee size: 10 node(s)
+ Collocate primary and workers: True
+ Burst tx: 5,000.0 tx
+ Transaction size: 512 B
+ Burst: 50
+
+ Block size: 10 Certificates
+ Timeout delay: 5,000 ms
+ Header size: 512,000 B
+ Max header delay: 200 ms
+ GC depth: 50 round(s)
+ Sync retry delay: 5,000 ms
+ Sync retry nodes: 3 node(s)
+ batch size: 512,000 B
+ Max batch delay: 200 ms
+
+ + RESULTS:
+ Execution time: 180 s
+ Block Proposal time : 99 ms
+
+ Block Commit:
+   To First Commit:
+     Mean Latency: 93 ms
+     Median Latency: 94 ms
+     BLPS: 10 blocks/s
+   To Last Commit:
+     Mean Latency: 114 ms
+     Median Latency: 106 ms
+     BLPS: 10 blocks/s
+   Total Blocks Committed: 1,813
+
+ Header Dispatch to Consensus:
+   From Tx Creation:
+     Mean Latency: 69 ms
+     Median Latency: 76 ms
+   From Header Creation:
+     Mean Latency: 39 ms
+     Median Latency: 26 ms
+   Total Headers Dispatched: 18,015
+
+ End-To-End:
+   To First Commit:
+     Mean Latency: 1,123 ms
+     Median Latency: 1,140 ms
+     TPS: 99,733 tx/s
+     BPS: 51,063,456 B/s
+   To Last Commit:
+     Mean Latency: 1,143 ms
+     Median Latency: 1,160 ms
+     TPS: 99,733 tx/s
+     BPS: 51,063,456 B/s
+-----------------------------------------
+
+-----------------------------------------
+ SUMMARY:
+-----------------------------------------
+Logs generated at: 2026-04-07 17:52:58.004885
+
+ + CONFIG:
+ Leader elector: Simple
+ Faults: 0 node(s)
+ Committee size: 10 node(s)
+ Collocate primary and workers: True
+ Burst tx: 5,000.0 tx
+ Transaction size: 512 B
+ Burst: 50
+
+ Block size: 10 Certificates
+ Timeout delay: 5,000 ms
+ Header size: 512,000 B
+ Max header delay: 200 ms
+ GC depth: 50 round(s)
+ Sync retry delay: 5,000 ms
+ Sync retry nodes: 3 node(s)
+ batch size: 512,000 B
+ Max batch delay: 200 ms
+
+ + RESULTS:
+ Execution time: 180 s
+ Block Proposal time : 101 ms
+
+ Block Commit:
+   To First Commit:
+     Mean Latency: 94 ms
+     Median Latency: 94 ms
+     BLPS: 10 blocks/s
+   To Last Commit:
+     Mean Latency: 114 ms
+     Median Latency: 107 ms
+     BLPS: 10 blocks/s
+   Total Blocks Committed: 1,771
+
+ Header Dispatch to Consensus:
+   From Tx Creation:
+     Mean Latency: 68 ms
+     Median Latency: 75 ms
+   From Header Creation:
+     Mean Latency: 38 ms
+     Median Latency: 27 ms
+   Total Headers Dispatched: 18,016
+
+ End-To-End:
+   To First Commit:
+     Mean Latency: 2,598 ms
+     Median Latency: 2,343 ms
+     TPS: 97,440 tx/s
+     BPS: 49,889,101 B/s
+   To Last Commit:
+     Mean Latency: 2,618 ms
+     Median Latency: 2,363 ms
+     TPS: 97,440 tx/s
+     BPS: 49,889,101 B/s
+-----------------------------------------

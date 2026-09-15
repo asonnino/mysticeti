@@ -1,0 +1,61 @@
+
+-----------------------------------------
+ SUMMARY:
+-----------------------------------------
+Logs generated at: 2026-04-07 19:51:21.223774
+
+ + CONFIG:
+ Leader elector: Simple
+ Faults: 0 node(s)
+ Committee size: 50 node(s)
+ Collocate primary and workers: True
+ Burst tx: 5,000.0 tx
+ Transaction size: 512 B
+ Burst: 50
+
+ Block size: 10 Certificates
+ Timeout delay: 1,000 ms
+ Header size: 512,000 B
+ Max header delay: 200 ms
+ GC depth: 50 round(s)
+ Sync retry delay: 5,000 ms
+ Sync retry nodes: 3 node(s)
+ batch size: 512,000 B
+ Max batch delay: 200 ms
+
+ + RESULTS:
+ Execution time: 180 s
+ Block Proposal time : 151 ms
+
+ Block Commit:
+   To First Commit:
+     Mean Latency: 152 ms
+     Median Latency: 149 ms
+     BLPS: 7 blocks/s
+   To Last Commit:
+     Mean Latency: 193 ms
+     Median Latency: 191 ms
+     BLPS: 7 blocks/s
+   Total Blocks Committed: 1,193
+
+ Header Dispatch to Consensus:
+   From Tx Creation:
+     Mean Latency: 175 ms
+     Median Latency: 175 ms
+   From Header Creation:
+     Mean Latency: 73 ms
+     Median Latency: 81 ms
+   Total Headers Dispatched: 44,782
+
+ End-To-End:
+   To First Commit:
+     Mean Latency: 67,322 ms
+     Median Latency: 67,225 ms
+     TPS: 26,378 tx/s
+     BPS: 13,505,731 B/s
+   To Last Commit:
+     Mean Latency: 67,363 ms
+     Median Latency: 67,254 ms
+     TPS: 26,378 tx/s
+     BPS: 13,505,731 B/s
+-----------------------------------------

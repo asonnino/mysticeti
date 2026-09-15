@@ -44,4 +44,5 @@ Thumbs.db
 data/
 plots/
 scripts/.venv/
+scripts/.venv-eval/
 __pycache__/
