@@ -150,7 +150,12 @@ impl Metrics {
     /// Record a decided leader on `committed_leaders_total`, labelled by the decision path.
     /// Silent no-op on `LeaderStatus::Undecided`.
     pub fn inc_decided_leaders(&self, status: &LeaderStatus) {
-        let counters = &self.coarse.committed_leaders[status.authority().index()];
+        let authority = status.authority();
+        let Some(counters) = self.coarse.committed_leaders.get(authority.index()) else {
+            debug_assert!(false, "committed leaders metric missing for {authority}");
+            tracing::warn!("Committed leaders metric missing for {authority}");
+            return;
+        };
         let counter = match status {
             LeaderStatus::DirectCommit(_, DirectCommitPath::Fast) => &counters.fast_commit,
             LeaderStatus::DirectCommit(_, DirectCommitPath::Slow) => &counters.slow_commit,
