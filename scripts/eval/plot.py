@@ -184,7 +184,8 @@ def parse_yaml(path):
 
 def _decode(base):
     m = re.match(
-        r"measurements-(orcaella|mysticeti|)-?l2-(?:f(\d+)-c(\d+)-)?512-(\d+)-(\d+)-(\d+)\.yaml",
+        r"measurements-(orcaella|mysticeti|)-?l2-(?:f(\d+)-c(\d+)-)?"
+        r"512-(\d+)(?:-region-order)?-(\d+)-(\d+)\.yaml",
         base)
     if not m:
         return None
@@ -263,7 +264,7 @@ def load_curve(region, predicate, root=None):
         base = os.path.basename(path)
         m = re.match(
             r"measurements-(orcaella|mysticeti|)-?l2-(?:f(\d+)-c(\d+)-)?"
-            r"512-(\d+)-(\d+)-(\d+)\.yaml",
+            r"512-(\d+)(?:-region-order)?-(\d+)-(\d+)\.yaml",
             base,
         )
         if not m:
