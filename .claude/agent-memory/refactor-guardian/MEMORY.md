@@ -8,3 +8,5 @@
 - [ready_new_block gate post-last_decided](project_ready_new_block_gate.md) — gate uses last_decided_round, which is >= old commit-only round, so the gate is bounded-less-eager (≤ wave_length - 1 rounds)
 - [#189 fast-path seams](project_189_fast_path_seams.md) — dual-path committer extension; equal-by-construction quorum invariant, inert Option<FastPath> guards, cfg-gating + feature-unification gotchas
 - [#208 commit-consumer seam](project_208_commit_consumer_seam.md) — opt-in CommittedSubDag output channel; None-path inertness, two-sender drain, single-threaded simulator determinism
+- [#267 commit-path labels](project_267_commit_path_labels.md) — LeaderStatus path tags: 24-byte layout budget, fast-beats-slow labelling, commit_type wire rename
+- [Block latency instrumentation](project_block_latency_instrumentation.md) — per-block observe in handle_commit: anchor uniqueness, genesis guard, pre-resolved label children, transaction_time lock scope
