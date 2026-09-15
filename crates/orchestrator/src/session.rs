@@ -40,7 +40,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> BenchmarkSession<P> {
         monitoring: Option<&MonitoringReport>,
     ) -> TestbedResult<Self> {
         let (_, nodes, _) = orchestrator.select_instances(parameters)?;
-        let schedule = CrashRecoverySchedule::new(parameters.settings.faults.clone(), nodes);
+        let schedule = CrashRecoverySchedule::new(&parameters.settings, nodes);
         let collector = monitoring
             .map(|r| {
                 Collector::new(

@@ -16,7 +16,7 @@ use serde_with::{DisplayFromStr, DurationSeconds, serde_as};
 
 use crate::{
     error::{SettingsError, SettingsResult},
-    faults::FaultsType,
+    faults::{CrashOrder, FaultsType},
     provider::Instance,
 };
 
@@ -137,6 +137,9 @@ pub struct Settings {
     /// The default faults type to apply to the testbed's nodes.
     #[serde(default = "defaults::default_faults_type")]
     pub faults: FaultsType,
+    /// The order in which the fault schedule crashes nodes.
+    #[serde(default)]
+    pub crash_order: CrashOrder,
     /// The working directory on the remote instance (containing all configuration files).
     #[serde(default = "defaults::default_working_dir")]
     pub working_dir: PathBuf,

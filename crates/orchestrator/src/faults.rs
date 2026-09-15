@@ -8,7 +8,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::provider::Instance;
+use crate::{provider::Instance, settings::Settings};
 
 #[derive(Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub enum FaultsType {
@@ -68,6 +68,42 @@ impl FaultsType {
     }
 }
 
+/// The order in which the fault schedule picks victims from the node list.
+#[derive(Clone, Copy, Serialize, Deserialize, Hash, PartialEq, Eq, Debug, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum CrashOrder {
+    /// Keep the selection order (round-robin across regions), so crashes cycle regions.
+    #[default]
+    RoundRobin,
+    /// Crash region by region, in the order regions are listed in the settings.
+    RegionOrder,
+}
+
+impl Display for CrashOrder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::RoundRobin => write!(f, "round-robin"),
+            Self::RegionOrder => write!(f, "region-order"),
+        }
+    }
+}
+
+impl CrashOrder {
+    /// Reorder `instances` so the schedule crashes them in this order.
+    fn apply(self, regions: &[String], mut instances: Vec<Instance>) -> Vec<Instance> {
+        if self == Self::RegionOrder {
+            // `sort_by_key` is stable: order within a region is preserved.
+            instances.sort_by_key(|instance| {
+                regions
+                    .iter()
+                    .position(|region| region == &instance.region)
+                    .unwrap_or(regions.len())
+            });
+        }
+        instances
+    }
+}
+
 /// The actions to apply to the testbed, i.e., which instances to crash and recover.
 #[derive(Default)]
 pub struct CrashRecoveryAction {
@@ -110,6 +146,14 @@ impl CrashRecoveryAction {
     pub fn no_op() -> Self {
         Self::default()
     }
+
+    #[cfg(test)]
+    pub fn killed_ids(&self) -> Vec<&str> {
+        self.kill
+            .iter()
+            .map(|instance| instance.id.as_str())
+            .collect()
+    }
 }
 
 pub struct CrashRecoverySchedule {
@@ -122,10 +166,10 @@ pub struct CrashRecoverySchedule {
 }
 
 impl CrashRecoverySchedule {
-    pub fn new(faults_type: FaultsType, instances: Vec<Instance>) -> Self {
+    pub fn new(settings: &Settings, instances: Vec<Instance>) -> Self {
         Self {
-            faults_type,
-            instances,
+            faults_type: settings.faults.clone(),
+            instances: settings.crash_order.apply(&settings.regions, instances),
             dead: 0,
         }
     }
@@ -176,23 +220,25 @@ impl CrashRecoverySchedule {
 mod faults_tests {
     use std::time::Duration;
 
-    use super::{CrashRecoverySchedule, FaultsType};
-    use crate::provider::Instance;
+    use super::{CrashOrder, CrashRecoverySchedule, FaultsType};
+    use crate::{provider::Instance, settings::Settings};
+
+    const REGIONS: [&str; 3] = ["us-east-1", "eu-west-2", "ap-northeast-1"];
 
     #[test]
     fn crash_recovery_1_fault() {
         let max_faults = 1;
-        let interval = Duration::from_secs(60);
+        let settings = Settings {
+            faults: FaultsType::CrashRecovery {
+                max_faults,
+                interval: Duration::from_secs(60),
+            },
+            ..Default::default()
+        };
         let faulty = (0..max_faults)
             .map(|i| Instance::new_for_test(i.to_string()))
             .collect();
-        let mut schedule = CrashRecoverySchedule::new(
-            FaultsType::CrashRecovery {
-                max_faults,
-                interval,
-            },
-            faulty,
-        );
+        let mut schedule = CrashRecoverySchedule::new(&settings, faulty);
 
         let action = schedule.update();
         assert_eq!(action.boot.len(), 0);
@@ -214,17 +260,17 @@ mod faults_tests {
     #[test]
     fn crash_recovery_2_faults() {
         let max_faults = 2;
-        let interval = Duration::from_secs(60);
+        let settings = Settings {
+            faults: FaultsType::CrashRecovery {
+                max_faults,
+                interval: Duration::from_secs(60),
+            },
+            ..Default::default()
+        };
         let faulty = (0..max_faults)
             .map(|i| Instance::new_for_test(i.to_string()))
             .collect();
-        let mut schedule = CrashRecoverySchedule::new(
-            FaultsType::CrashRecovery {
-                max_faults,
-                interval,
-            },
-            faulty,
-        );
+        let mut schedule = CrashRecoverySchedule::new(&settings, faulty);
 
         let action = schedule.update();
         assert_eq!(action.boot.len(), 0);
@@ -245,21 +291,21 @@ mod faults_tests {
 
     #[test]
     fn crash_recovery() {
-        let interval = Duration::from_secs(60);
         for i in 3..33 {
             let max_faults = i;
             let min_faults = max_faults / 3;
 
+            let settings = Settings {
+                faults: FaultsType::CrashRecovery {
+                    max_faults,
+                    interval: Duration::from_secs(60),
+                },
+                ..Default::default()
+            };
             let instances = (0..max_faults)
                 .map(|i| Instance::new_for_test(i.to_string()))
                 .collect();
-            let mut schedule = CrashRecoverySchedule::new(
-                FaultsType::CrashRecovery {
-                    max_faults,
-                    interval,
-                },
-                instances,
-            );
+            let mut schedule = CrashRecoverySchedule::new(&settings, instances);
 
             let action = schedule.update();
             assert_eq!(action.boot.len(), 0);
@@ -281,5 +327,37 @@ mod faults_tests {
             assert_eq!(action.boot.len(), 0);
             assert_eq!(action.kill.len(), min_faults);
         }
+    }
+
+    #[test]
+    fn region_order_spares_the_last_region() {
+        let settings = Settings {
+            faults: FaultsType::Permanent { faults: 6 },
+            crash_order: CrashOrder::RegionOrder,
+            regions: REGIONS.map(String::from).to_vec(),
+            ..Default::default()
+        };
+        let instances = Instance::new_for_test_round_robin(&REGIONS, 12);
+        let mut schedule = CrashRecoverySchedule::new(&settings, instances);
+
+        // All of us-east-1 first (in selection order), then eu-west-2; ap-northeast-1 untouched.
+        assert_eq!(
+            schedule.update().killed_ids(),
+            ["0", "3", "6", "9", "1", "4"]
+        );
+    }
+
+    #[test]
+    fn round_robin_keeps_selection_order() {
+        let settings = Settings {
+            faults: FaultsType::Permanent { faults: 3 },
+            crash_order: CrashOrder::RoundRobin,
+            regions: REGIONS.map(String::from).to_vec(),
+            ..Default::default()
+        };
+        let instances = Instance::new_for_test_round_robin(&REGIONS, 12);
+        let mut schedule = CrashRecoverySchedule::new(&settings, instances);
+
+        assert_eq!(schedule.update().killed_ids(), ["0", "1", "2"]);
     }
 }

@@ -70,14 +70,27 @@ impl Instance {
 
     #[cfg(test)]
     pub fn new_for_test(id: String) -> Self {
+        Self::new_for_test_in_region(id, "")
+    }
+
+    #[cfg(test)]
+    pub fn new_for_test_in_region(id: String, region: &str) -> Self {
         Self {
             id,
-            region: Default::default(),
+            region: region.into(),
             main_ip: Ipv4Addr::LOCALHOST,
             tags: Default::default(),
             specs: Default::default(),
             status: InstanceStatus::Active,
         }
+    }
+
+    /// `count` instances picked round-robin over `regions`, as `select_instances` does.
+    #[cfg(test)]
+    pub fn new_for_test_round_robin(regions: &[&str], count: usize) -> Vec<Self> {
+        (0..count)
+            .map(|i| Self::new_for_test_in_region(i.to_string(), regions[i % regions.len()]))
+            .collect()
     }
 }
 

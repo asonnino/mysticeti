@@ -140,6 +140,21 @@ Permanent faults are useful for measuring steady-state throughput under static f
 Crash-recovery exercises the protocol's behaviour around recovery transitions; the crash/recovery
 schedule is reported in the benchmark summary.
 
+`crash_order` controls which replicas the schedule crashes first. It applies to both modes:
+
+```yaml
+# Default: crash replicas in selection order. Nodes are picked round-robin across
+# `regions`, so successive crashes cycle through the regions.
+crash_order: round-robin
+
+# Crash region by region, in the order of `regions`: the first-listed region is
+# exhausted before the second is touched, and the last-listed region (typically the
+# most remote one) survives as long as possible.
+crash_order: region-order
+```
+
+The chosen order is recorded in the `parameters` block of each measurements file.
+
 ## 6. Monitoring
 
 When `monitoring: true` (the default), the orchestrator deploys a
