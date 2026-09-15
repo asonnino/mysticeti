@@ -293,17 +293,23 @@ def load_hydrangea(faults, nodes):
     """
     points = []
     pattern = os.path.join(HYDRANGEA, f"bench-{faults}-{nodes}-*-True-*-512.txt")
+    import statistics
     for path in sorted(glob.glob(pattern)):
-        text = open(path).read()
-        seg = text[text.find("End-To-End"):]
-        med = re.search(
-            r"To First Commit:\s*Mean Latency:\s*[\d,]+ ms\s*"
-            r"Median Latency:\s*([\d,]+) ms", seg)
-        tps = re.search(r"TPS:\s*([\d,]+) tx/s", seg)
-        if not med or not tps:
+        # A file holds one SUMMARY block per trial; aggregate the trials by median.
+        trials = []
+        for block in open(path).read().split("SUMMARY:")[1:]:
+            seg = block[block.find("End-To-End"):]
+            med = re.search(
+                r"To First Commit:\s*Mean Latency:\s*[\d,]+ ms\s*"
+                r"Median Latency:\s*([\d,]+) ms", seg)
+            tps = re.search(r"TPS:\s*([\d,]+) tx/s", seg)
+            if med and tps:
+                tps_v = int(tps.group(1).replace(",", ""))
+                trials.append((tps_v, int(med.group(1).replace(",", "")) / 1000.0))
+        if not trials:
             continue
-        lat_s = int(med.group(1).replace(",", "")) / 1000.0
-        tps_v = int(tps.group(1).replace(",", ""))
+        tps_v = statistics.median(t for t, _ in trials)
+        lat_s = statistics.median(l for _, l in trials)
         points.append((tps_v, lat_s, lat_s))
     points.sort(key=lambda p: p[0])
     return [p[0] for p in points], [p[1] for p in points], [p[2] for p in points]
@@ -475,6 +481,8 @@ def latency_bars(load, style="arrow", ckpt=True):
     for i, (label, color, hatch, predicate) in enumerate(bars):
         p50, p90 = stats(predicate)
         heights.append(p50)
+        path = find_file(region, load, predicate, root=root)
+        err = placement_std(path) if style == "variance" and path else None
         if style == "queuing":
             base = stats(predicate, 10000)[0]
             ax.bar(i, base, width=0.68, color=color, hatch=hatch, edgecolor="white",
@@ -487,7 +495,8 @@ def latency_bars(load, style="arrow", ckpt=True):
                     bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.82))
         else:
             ax.bar(i, p50, width=0.68, color=color, hatch=hatch, edgecolor="white",
-                    linewidth=1.0)
+                    linewidth=1.0, yerr=err, capsize=4,
+                    error_kw=dict(ecolor="0.2", lw=1.2, zorder=3))
 
     myst, others = heights[0], heights[1:]
     omin, omax = min(others), max(others)
