@@ -13,12 +13,13 @@
 //! | (3, 4, 2)  | 20 | 3 | 17        | 7 | 12   | 11   | 13 |
 //! | (0, 9, 1)  | 20 | 5 | 15        | 6 | 11   | 10   | 11 |
 //! | (4, 1, 5)  | 20 | 3 | 17        | 8 | 13   | 10   | 15 |
+//! | (2, 3, 7)  | 20 | 5 | 15        | 8 | 12   | 8    | 15 |
 
 use std::num::NonZeroUsize;
 
 use consensus::protocol::{ConsensusProtocol, Protocol, ProtocolError};
 use dag::authority::Authority;
-use dag::metrics::{MetricsSnapshot, SnapshotAggregate};
+use dag::metrics::{BlockKind, MetricsSnapshot, SnapshotAggregate};
 use replica::config::ReplicaParameters;
 use replica::result::{Outcome, RunResult};
 use simulator::{NetworkTopology, SimulationConfig, SimulationRunner};
@@ -175,6 +176,49 @@ fn crash_one_node_n20() {
     assert!(
         max_over_replicas(&result, MetricsSnapshot::direct_skips) > 0,
         "the crashed node's slots must be directly skipped"
+    );
+}
+
+/// Mean proposal-to-commit latency of leader blocks over all replicas, in seconds.
+fn mean_leader_latency(result: &RunResult<SimulationConfig>) -> f64 {
+    let (sum, count) = result
+        .metrics
+        .iter()
+        .filter_map(|metrics| metrics.block_latency_sum_and_count(BlockKind::Leader))
+        .fold((0.0, 0), |(sum, count), (s, c)| (sum + s, count + c));
+    assert!(count > 0, "no committed leader blocks");
+    sum / count as f64
+}
+
+/// A fast quorum above the threshold-clock quorum (4, 1, 5: FAST=17 > Q=15) must not be
+/// slower than one equal to it (2, 3, 7: FAST=Q=15). Without the fast-commit trigger in
+/// `Syncer::add_blocks` the former only commits at the next own proposal, a round late.
+#[test]
+fn fast_quorum_above_clock_quorum_commits_without_waiting_for_a_proposal_n20() {
+    let run_with = |f, c, k| {
+        let result = run(SimulationConfig {
+            committee_size: 20,
+            duration_secs: 30,
+            replica_parameters: ReplicaParameters {
+                consensus: dag_hydrangea(f, c, k, 2),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        assert_progress(&result, 50);
+        assert_eq!(
+            max_over_replicas(&result, MetricsSnapshot::slow_commits),
+            0,
+            "({f}, {c}, {k}) commits every leader through the fast path"
+        );
+        mean_leader_latency(&result)
+    };
+    let above_clock = run_with(4, 1, 5);
+    let at_clock = run_with(2, 3, 7);
+    println!("mean leader latency: (4, 1, 5) {above_clock:.3}s, (2, 3, 7) {at_clock:.3}s");
+    assert!(
+        above_clock <= at_clock * 1.15,
+        "fast quorum above the clock quorum: {above_clock:.3}s, at the clock quorum: {at_clock:.3}s"
     );
 }
 

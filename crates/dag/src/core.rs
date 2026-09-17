@@ -21,7 +21,7 @@ use crate::{
     authority::Authority,
     block::{Block, BlockReference, GENESIS_ROUND, RoundNumber, transaction::Transaction},
     block_store::{CommitData, OwnBlockData},
-    committee::{Committee, Stake},
+    committee::{Committee, Stake, StakeAggregator},
     consensus::{CommittedSubDag, DagConsensus, LeaderStatus},
     context::Ctx,
     crypto::{CryptoEngine, CryptoVerifier},
@@ -48,6 +48,30 @@ pub struct Core<C: Ctx, D: DagConsensus> {
     // todo - ugly, probably need to merge syncer and core
     recovered_committed_blocks: Option<HashSet<BlockReference>>,
     committer: D,
+}
+
+/// One voting round watched for the fast commit quorum completing between two own
+/// proposals; see [`Core::fast_commit_watch`].
+#[derive(Debug, Clone, Copy)]
+struct WatchedVotingRound {
+    /// The round whose blocks are the votes for the watched, not yet decided leader slot.
+    round: RoundNumber,
+    /// Whether the fast commit quorum was already present when the watch was taken.
+    quorum_reached: bool,
+}
+
+/// Snapshot of the fast-quorum state at the voting rounds of the first undecided leader
+/// slots, taken before new blocks are added; see [`Core::fast_commit_watch`].
+#[derive(Debug, Clone, Copy)]
+pub struct FastCommitWatch {
+    /// The fast direct-commit quorum; larger than the threshold-clock quorum.
+    fast_quorum: Stake,
+    /// Votes for a further leader of the last decided round: the blocks of the round after
+    /// it (with several leaders per round, that slot may still be undecided).
+    same_round_slot: WatchedVotingRound,
+    /// Votes for the first leader of the round after the last decided one: the blocks two
+    /// rounds after it.
+    next_round_slot: WatchedVotingRound,
 }
 
 #[derive(Debug)]
@@ -306,6 +330,47 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
             .collect();
         self.last_decided = latest;
         sequence
+    }
+
+    /// Snapshot, before new blocks are added, whether the fast commit quorum is present at
+    /// the voting rounds of the first undecided leader slots. `None` unless the protocol's
+    /// fast quorum exceeds the threshold-clock quorum: only then can a fast commit become
+    /// possible between two own proposals, which is when the commit rule otherwise runs.
+    pub fn fast_commit_watch(&self) -> Option<FastCommitWatch> {
+        let fast_quorum = self.committer.fast_commit_quorum_above_clock()?;
+        let last_decided_round = self
+            .last_decided
+            .map(|(round, _)| round)
+            .unwrap_or(GENESIS_ROUND);
+        let watch = |round| WatchedVotingRound {
+            round,
+            quorum_reached: self.stake_at_round_reaches(round, fast_quorum),
+        };
+        Some(FastCommitWatch {
+            fast_quorum,
+            same_round_slot: watch(last_decided_round + 1),
+            next_round_slot: watch(last_decided_round + 2),
+        })
+    }
+
+    /// Whether adding blocks since `watch` completed the fast commit quorum at one of the
+    /// watched voting rounds, so that running the commit rule now may fast-commit a leader.
+    pub fn fast_commit_quorum_crossed(&self, watch: &FastCommitWatch) -> bool {
+        [watch.same_round_slot, watch.next_round_slot]
+            .iter()
+            .any(|voting_round| {
+                !voting_round.quorum_reached
+                    && self.stake_at_round_reaches(voting_round.round, watch.fast_quorum)
+            })
+    }
+
+    /// Whether the authorities with a block at `round` hold at least `threshold` stake.
+    fn stake_at_round_reaches(&self, round: RoundNumber, threshold: Stake) -> bool {
+        let mut aggregator = StakeAggregator::new(threshold);
+        self.block_reader()
+            .get_blocks_by_round(round)
+            .iter()
+            .any(|block| aggregator.add(block.author(), &self.committee))
     }
 
     pub fn cleanup(&self) {
