@@ -26,6 +26,8 @@ pub struct Committer {
     base_committers: Vec<BaseCommitter>,
     quorum_threshold: Stake,
     leader_wait: bool,
+    /// Fast commit quorum when larger than `quorum_threshold` (see `DagConsensus`).
+    fast_commit_quorum_above_clock: Option<Stake>,
     /// Whether the protocol has an optimistic fast path; drives the test-only
     /// round-depth queries.
     #[cfg(any(test, feature = "test-utils"))]
@@ -62,6 +64,11 @@ impl Committer {
             base_committers,
             quorum_threshold: protocol.quorum_threshold,
             leader_wait: protocol.leader_wait,
+            fast_commit_quorum_above_clock: protocol
+                .fast_path
+                .as_ref()
+                .map(|fast_path| fast_path.commit_quorum)
+                .filter(|&quorum| quorum > protocol.quorum_threshold),
             #[cfg(any(test, feature = "test-utils"))]
             has_fast_path: protocol.fast_path.is_some(),
             leaders: VecDeque::new(),
@@ -226,6 +233,10 @@ impl DagConsensus for Committer {
             None
         }
     }
+
+    fn fast_commit_quorum_above_clock(&self) -> Option<Stake> {
+        self.fast_commit_quorum_above_clock
+    }
 }
 
 #[cfg(test)]
@@ -266,6 +277,36 @@ mod tests {
             test_protocol(None),
         );
         assert_eq!(committer.quorum_threshold(), 4);
+    }
+
+    /// The fast commit quorum is reported only when it exceeds the threshold-clock quorum:
+    /// that is the only case where a fast commit can appear between two own proposals.
+    #[test]
+    fn fast_commit_quorum_reported_only_above_the_clock_quorum() {
+        let committee = committee(4);
+        let storage = Storage::new_for_test(&committee);
+        let committer = |fast_path| {
+            Committer::new(
+                committee.clone(),
+                storage.block_reader().clone(),
+                test_protocol(fast_path),
+            )
+        };
+        let fast_path = |commit_quorum| {
+            Some(FastPath {
+                commit_quorum,
+                weak_indirect_quorum: 2,
+            })
+        };
+        assert_eq!(committer(None).fast_commit_quorum_above_clock(), None);
+        assert_eq!(
+            committer(fast_path(4)).fast_commit_quorum_above_clock(),
+            None
+        );
+        assert_eq!(
+            committer(fast_path(5)).fast_commit_quorum_above_clock(),
+            Some(5)
+        );
     }
 
     /// `earliest_decision_round_for` is the decision round for single-tier protocols

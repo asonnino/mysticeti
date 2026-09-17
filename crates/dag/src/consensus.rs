@@ -39,6 +39,12 @@ pub trait DagConsensus: Send + 'static {
     /// Returns `None` for asynchronous protocols where
     /// the DAG should wait for all authorities equally.
     fn get_leaders(&self, round: RoundNumber) -> Option<impl Iterator<Item = Authority>>;
+
+    /// The fast direct-commit quorum when it exceeds the threshold-clock quorum, i.e. when
+    /// a fast commit can become possible between two own proposals. `None` otherwise.
+    fn fast_commit_quorum_above_clock(&self) -> Option<Stake> {
+        None
+    }
 }
 
 /// Which rule of the direct decision committed a leader.

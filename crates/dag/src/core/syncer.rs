@@ -77,10 +77,22 @@ impl<C: Ctx, D: DagConsensus> Syncer<C, D> {
     }
 
     /// Add blocks to the core, returning any sub-dags newly committed as a consequence.
+    ///
+    /// The commit rule runs with every own proposal. For protocols whose fast commit
+    /// quorum exceeds the threshold-clock quorum it also runs when the added blocks
+    /// complete that quorum at a watched voting round (see [`Core::fast_commit_watch`]):
+    /// the fast commit would otherwise wait for the next proposal, a round later.
     pub fn add_blocks(&mut self, blocks: Vec<Data<Block>>) -> Vec<CommittedSubDag> {
         let _timer = self.metrics.utilization_timer("Syncer::add_blocks");
+        let watch = self.core.fast_commit_watch();
         self.core.add_blocks(blocks);
-        self.try_new_block()
+        if self.try_propose()
+            || watch.is_some_and(|watch| self.core.fast_commit_quorum_crossed(&watch))
+        {
+            self.commit()
+        } else {
+            Vec::new()
+        }
     }
 
     /// Force a new block proposal, returning any sub-dags newly committed as a consequence.
@@ -95,33 +107,44 @@ impl<C: Ctx, D: DagConsensus> Syncer<C, D> {
     }
 
     fn try_new_block(&mut self) -> Vec<CommittedSubDag> {
-        let _timer = self.metrics.utilization_timer("Syncer::try_new_block");
-        if self.force_new_block || self.core.ready_new_block(&self.connected_authorities) {
-            if self.core.try_new_block().is_none() {
-                return Vec::new();
-            }
-            self.signals.new_block_ready();
-            self.force_new_block = false;
-
-            let newly_committed = self.core.try_commit();
-            let utc_now = C::timestamp_utc();
-            if !newly_committed.is_empty() {
-                let committed_refs: Vec<_> = newly_committed
-                    .iter()
-                    .map(|block| {
-                        let age = utc_now.checked_sub(block.timestamp()).unwrap_or_default();
-                        format!("{}({}ms)", block.reference(), age.as_millis())
-                    })
-                    .collect();
-                tracing::debug!("Committed {:?}", committed_refs);
-            }
-            let committed_subdag = self
-                .commit_handler
-                .handle_commit(self.core.block_reader(), newly_committed);
-            self.core.handle_committed_subdag(committed_subdag)
+        if self.try_propose() {
+            self.commit()
         } else {
             Vec::new()
         }
+    }
+
+    /// Propose a new block if the core is ready for one; true when a block was proposed.
+    fn try_propose(&mut self) -> bool {
+        let _timer = self.metrics.utilization_timer("Syncer::try_new_block");
+        let ready = self.force_new_block || self.core.ready_new_block(&self.connected_authorities);
+        if !ready || self.core.try_new_block().is_none() {
+            return false;
+        }
+        self.signals.new_block_ready();
+        self.force_new_block = false;
+        true
+    }
+
+    /// Run the commit rule and hand the newly committed sub-dags to the commit handler.
+    fn commit(&mut self) -> Vec<CommittedSubDag> {
+        let _timer = self.metrics.utilization_timer("Syncer::commit");
+        let newly_committed = self.core.try_commit();
+        let utc_now = C::timestamp_utc();
+        if !newly_committed.is_empty() {
+            let committed_refs: Vec<_> = newly_committed
+                .iter()
+                .map(|block| {
+                    let age = utc_now.checked_sub(block.timestamp()).unwrap_or_default();
+                    format!("{}({}ms)", block.reference(), age.as_millis())
+                })
+                .collect();
+            tracing::debug!("Committed {:?}", committed_refs);
+        }
+        let committed_subdag = self
+            .commit_handler
+            .handle_commit(self.core.block_reader(), newly_committed);
+        self.core.handle_committed_subdag(committed_subdag)
     }
 
     pub fn commit_handler(&self) -> &CommitHandler<C> {
