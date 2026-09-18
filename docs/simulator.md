@@ -67,9 +67,12 @@ All fields are optional and fall back to the defaults shown.
 
 ## Link Latency
 
-The `latency` field selects how long a message takes on each directed link. Every delivery gets
-its own latency; links are FIFO. Ranges are `start` inclusive and `end` exclusive; `start == end`
-is a constant and `start > end` is rejected.
+The `latency` field selects how long a message takes on each directed link. Every message is
+delayed by its own latency, independently of the others in flight, up to a window of 1024
+messages per directed link; past that, or when the receiver stops reading, the link stops taking
+new messages and the sender waits. Links are FIFO (a message is never delivered before the
+previous one on its link). Ranges are `start` inclusive and `end` exclusive; `start == end` is a
+constant and `start > end` is rejected.
 
 - **`uniform`:** every link draws uniformly from the same range.
 
@@ -152,8 +155,8 @@ DagHydrangea case whose exported `metrics-*.prom` files show the breakdown per l
 Two approximations to keep in mind. The leader slots are computed from the protocol's leader
 count and the round-robin `LeaderElector`, which is exact for the pipelined protocols; the
 non-pipelined Cordial Miners variants equivocate in a few extra (non-leader) rounds, which is
-harmless. And equivocating in every round is deliberately not offered: it would double the
-authority's message rate on every link and the FIFO latency links would queue without bound.
+harmless. And equivocating in every round is not offered: the leader rounds are where
+equivocation bears on the commit rule.
 
 ## Outcomes
 
