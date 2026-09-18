@@ -212,6 +212,32 @@ fn far_region_observes_commits_later() {
 }
 
 #[test]
+fn geographic_run_has_no_spurious_timeouts() {
+    // The testbed matrix at n = 10, where Tokyo's links are slower than a round. If a link
+    // queued its messages, the validators furthest from Tokyo would fall rounds behind after
+    // every Tokyo-led round and never propose their own leader round, which everyone else then
+    // waits out: one leader timeout and one direct skip per ten rounds.
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/geography.yaml");
+    let mut config = SimulationMode::load(&path)
+        .unwrap()
+        .into_configs()
+        .remove(0);
+    config.committee_size = 10;
+    config.replica_parameters.consensus = ConsensusProtocol::Mysticeti {
+        leader_count: NonZeroUsize::new(2).unwrap(),
+    };
+    let results = SimulationRunner::new(config).run().unwrap();
+
+    assert_eq!(results.outcome, Outcome::Pass);
+    for metrics in &results.metrics {
+        assert!(metrics.total_committed_leaders() > 300);
+        // One timeout at startup, before the first blocks arrive.
+        assert!(metrics.leader_timeouts() <= 1);
+        assert_eq!(metrics.direct_skips(), 0);
+    }
+}
+
+#[test]
 fn equivocating_leader() {
     // Mysticeti (n=10, no fast path) with authority 3 sending twin blocks in its
     // leader rounds. The twins split the votes, so no certificate forms and the
