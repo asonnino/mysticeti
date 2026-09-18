@@ -156,18 +156,18 @@ fn cadence_independent_schedules_and_verdicts() {
         "sequence too short: {sequence:?}"
     );
 
-    // The switch lands at an interval boundary. The scan of interval 0 anchors
-    // at round 1, whose one-round window keeps the period, so interval 1
-    // (rounds 33..=64) still runs at period 8: its round-robin sync slots skip
-    // and only its fake-coin async slots commit. The scan of interval 1
-    // anchors at round 33, whose window shows the starved sync slots, so
-    // interval 2 (rounds 65..) runs at period 1: every round commits.
+    // The switch lands at an interval boundary. Control slots are the rounds
+    // that carry a coin, so the scan of interval 0 (period 8) anchors at round
+    // 8, its first async round, not at round 1. The window (rounds 1..=8)
+    // shows the starved sync slots, so interval 1 (rounds 33..) already runs
+    // at period 1: every round commits. Interval 0 itself runs at period 8:
+    // only its fake-coin async slots commit.
     for status in sequence {
         let round = status.round();
         let committed = matches!(status, LeaderStatus::DirectCommit(..));
-        if (33..=64).contains(&round) {
+        if (1..=32).contains(&round) {
             assert_eq!(committed, round % MAX_PERIOD == 0, "round {round}");
-        } else if round >= 65 {
+        } else if round >= 33 {
             assert!(committed, "round {round}: {status:?}");
         }
     }

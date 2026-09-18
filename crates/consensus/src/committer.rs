@@ -168,8 +168,8 @@ impl SteelheadMode {
         }
     }
 
-    /// The wave of the chain verdict at `round`: the asynchronous wavelength
-    /// at every round, whatever the round's own slot type.
+    /// The wave of the chain verdict at a control round: the asynchronous
+    /// wavelength, also above the boundary where the slot type is not known yet.
     fn chain_wave(&self, round: RoundNumber) -> Wave {
         let wave_length = self.schedule.async_wave_length;
         Wave::new(wave_length, round % wave_length, self.merged_certificates)
@@ -179,6 +179,22 @@ impl SteelheadMode {
     /// lies on the chain.
     fn chain_leader(&self, round: RoundNumber) -> Authority {
         self.leader_elector.elect_fake_coin_leader(round)
+    }
+
+    /// Whether `round` hosts a control slot for the scan in progress: a round
+    /// that carries a coin. Up to the boundary of the interval under scan the
+    /// period is fixed, so these are the interval's async rounds. Above it the
+    /// next period is not known yet; only the multiples of `max_period` are
+    /// async rounds under every candidate period, hence sure to carry a coin.
+    fn is_control_round(&self, round: RoundNumber) -> bool {
+        let Some(adaptive) = self.schedule.adaptive else {
+            return false;
+        };
+        if round <= (self.scans_done + 1) * adaptive.interval {
+            self.is_async_round(round)
+        } else {
+            round.is_multiple_of(adaptive.max_period.get())
+        }
     }
 
     /// The interval length; `None` when the period is static.
@@ -272,9 +288,10 @@ impl Committer {
         self
     }
 
-    /// Chain verdicts (adaptive Steelhead): the asynchronous rule read on every
-    /// round from the interval under scan upward, with the round's coin leader
-    /// and anchored on chain commits only. They never enter the output; the
+    /// Chain verdicts (adaptive Steelhead): the asynchronous rule read on the
+    /// control rounds (`is_control_round`: the rounds that carry a coin) from
+    /// the interval under scan upward, with the round's coin leader and
+    /// anchored on chain commits only. They never enter the output; the
     /// interval scan reads them to find the interval's anchor, which is why
     /// the period update keeps moving under asynchrony while known-leader
     /// slots are held undecided.
@@ -291,6 +308,15 @@ impl Committer {
         // Quorums are the pair's; wave and leader are per-call arguments.
         let committer = &self.base_committers[0];
         for round in (self.chain_floor..=highest_known_round).rev() {
+            if !mode.is_control_round(round) {
+                // No coin on this round, so no control slot: it reads as a skip,
+                // which the anchor search and the scan both pass over. The
+                // authority is a placeholder (the coin is not consulted).
+                let placeholder = mode.leader_elector.elect_leader(round);
+                self.chain
+                    .push_front(LeaderStatus::DirectSkip(placeholder, round));
+                continue;
+            }
             let wave = mode.chain_wave(round);
             let leader = mode.chain_leader(round);
             let mut status = committer.try_direct_decide(leader, round, wave);
@@ -305,9 +331,11 @@ impl Committer {
     /// the interval's rounds upward over chain verdicts, passing skips, until
     /// a chain commit (the interval's anchor) or the interval's end (no
     /// anchor: the period is kept); an undecided round leaves it incomplete.
-    /// Each completed scan fixes the period of the next interval.
+    /// Each completed scan fixes the period of the next interval, and with it
+    /// that interval's control rounds: the chain is recomputed for every scan.
     fn complete_scans(&mut self) {
         loop {
+            self.compute_chain();
             let Some(mode) = &self.steelhead else {
                 return;
             };
@@ -472,7 +500,6 @@ impl Committer {
     ) -> impl Iterator<Item = LeaderStatus> + '_ {
         // Adaptive Steelhead: refresh the chain verdicts and complete the
         // interval scans they allow, fixing the periods of the intervals ahead.
-        self.compute_chain();
         self.complete_scans();
 
         let highest_known_round = self.block_reader.highest_round();
