@@ -87,8 +87,8 @@ is a constant and `start > end` is rejected.
   `settings.yml` and every region had an instance to give on each lap: the orchestrator silently
   skips a region that has run out, which shifts every later index. `rtt_ms[from][to]` is looked up
   per direction; a missing direction falls back to the reverse one and a missing intra-region
-  entry is zero. Every pair of listed regions must resolve, and latencies must be finite,
-  non-negative and at most one hour, or the run is rejected before it starts.
+  entry is zero. Every pair of listed regions must resolve, and every listed RTT and `extra_ms`
+  bound must be finite, non-negative and at most one hour, or the run is rejected before it starts.
 
   ```yaml
   latency:
