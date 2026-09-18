@@ -5,7 +5,7 @@ use std::{fmt, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
-use crate::latency::{LatencyError, LatencyModel};
+use crate::latency::LatencyModel;
 use dag::config::ImportExport;
 use replica::config::{LoadGeneratorConfig, ReplicaParameters};
 
@@ -17,13 +17,13 @@ use replica::config::{LoadGeneratorConfig, ReplicaParameters};
 #[serde(untagged)]
 pub enum SimulationMode {
     Suite(Vec<SimulationConfig>),
-    Single(SimulationConfig),
+    Single(Box<SimulationConfig>),
 }
 
 impl SimulationMode {
     pub fn into_configs(self) -> Vec<SimulationConfig> {
         match self {
-            SimulationMode::Single(config) => vec![config],
+            SimulationMode::Single(config) => vec![*config],
             SimulationMode::Suite(configs) => configs,
         }
     }
@@ -37,11 +37,11 @@ pub struct SimulationConfig {
     pub name: Option<String>,
     #[serde(default = "defaults::committee_size")]
     pub committee_size: usize,
-    #[serde(default = "defaults::latency_min_ms")]
-    pub latency_min_ms: u64,
-    #[serde(default = "defaults::latency_max_ms")]
-    pub latency_max_ms: u64,
-    #[serde(default)]
+    // `singleton_map` writes enum variants as `variant: value` rather than a YAML `!variant`
+    // tag, which the untagged `SimulationMode` cannot read back.
+    #[serde(default, with = "serde_yaml::with::singleton_map")]
+    pub latency: LatencyModel,
+    #[serde(default, with = "serde_yaml::with::singleton_map")]
     pub topology: NetworkTopology,
     #[serde(default = "defaults::duration_secs")]
     pub duration_secs: u64,
@@ -61,8 +61,7 @@ impl Default for SimulationConfig {
         Self {
             name: None,
             committee_size: defaults::committee_size(),
-            latency_min_ms: defaults::latency_min_ms(),
-            latency_max_ms: defaults::latency_max_ms(),
+            latency: LatencyModel::default(),
             topology: NetworkTopology::default(),
             duration_secs: defaults::duration_secs(),
             rng_seed: 0,
@@ -74,18 +73,6 @@ impl Default for SimulationConfig {
 }
 
 impl SimulationConfig {
-    pub fn latency_model(&self) -> Result<LatencyModel, LatencyError> {
-        if self.latency_min_ms > self.latency_max_ms {
-            return Err(LatencyError::InvertedRange {
-                min: self.latency_min_ms as f64,
-                max: self.latency_max_ms as f64,
-            });
-        }
-        let min = Duration::from_millis(self.latency_min_ms);
-        let max = Duration::from_millis(self.latency_max_ms);
-        Ok(LatencyModel::Uniform(min..max))
-    }
-
     pub fn duration(&self) -> Duration {
         Duration::from_secs(self.duration_secs)
     }
@@ -135,12 +122,6 @@ mod defaults {
 
     pub fn committee_size() -> usize {
         10
-    }
-    pub fn latency_min_ms() -> u64 {
-        50
-    }
-    pub fn latency_max_ms() -> u64 {
-        100
     }
     pub fn duration_secs() -> u64 {
         20

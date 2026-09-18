@@ -25,12 +25,13 @@
   committee_size: 10
   duration_secs: 30
 # Stresses the latency axis: WAN-like link delays exercise timeout paths.
-# latency_min_ms / latency_max_ms define the uniform link-latency range.
+# `latency` selects the link-latency model (options documented in single.yaml).
 - name: high-latency
   committee_size: 7
   duration_secs: 30
-  latency_min_ms: 200
-  latency_max_ms: 400
+  latency:
+    uniform:
+      range_ms: {start: 200, end: 400}
 # Fault scenario: one authority is fully isolated. Consensus must still
 # progress with the remaining 2f+1 stake.
 # Topology options (also documented in single.yaml):

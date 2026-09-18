@@ -60,11 +60,12 @@ impl SimulationRunner {
         let _guard = SimulatorTracing::new().setup().ok();
         let rng = StdRng::seed_from_u64(self.config.rng_seed);
         let Self { config } = self;
-        let latency = config
-            .latency_model()
+        config
+            .latency
+            .validate()
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
         SimulatorExecutor::run(rng, async move {
-            let state = SimulationState::setup(config, latency).await;
+            let state = SimulationState::setup(config).await;
             state.apply_topology().await;
             SimulatorContext::sleep(state.config.duration()).await;
             state.collect_result().await
@@ -98,9 +99,7 @@ impl SimulatedNetwork {
         commit_consumers: Vec<Option<mpsc::Sender<CommittedSubDag>>>,
     ) -> (Self, Vec<ReplicaHandle<SimulatorContext>>) {
         let public_config = PublicReplicaConfig::new_for_tests(commit_consumers.len());
-        let latency = SimulationConfig::default()
-            .latency_model()
-            .expect("default latency is valid");
+        let latency = LatencyModel::default();
         let (network, replicas, _) =
             SimulationState::build_replicas(public_config, latency, None, commit_consumers).await;
         network.connect_all().await;
@@ -163,7 +162,7 @@ impl SimulationState {
         (network, replicas, load_generators)
     }
 
-    async fn setup(config: SimulationConfig, latency: LatencyModel) -> Self {
+    async fn setup(config: SimulationConfig) -> Self {
         let public_config = PublicReplicaConfig::new_for_tests(config.committee_size)
             .with_parameters(config.replica_parameters.clone());
         let leader_count = config
@@ -176,7 +175,7 @@ impl SimulationState {
         let commit_consumers = vec![None; config.committee_size];
         let (network, replicas, load_generators) = Self::build_replicas(
             public_config,
-            latency,
+            config.latency.clone(),
             config.load_generator.clone(),
             commit_consumers,
         )

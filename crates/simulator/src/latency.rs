@@ -1,24 +1,55 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{ops::Range, time::Duration};
+use std::{fmt, ops::Range, time::Duration};
 
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 
-/// Latency of every directed link, resolved once from the config.
-#[derive(Clone, Debug)]
+mod geography;
+mod uniform;
+
+pub use geography::Geography;
+pub use uniform::UniformLatency;
+
+/// How long messages take on each directed link.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub enum LatencyModel {
-    /// Every link draws from the same range.
-    Uniform(Range<Duration>),
+    Uniform(UniformLatency),
+    Geographic(Geography),
+}
+
+impl Default for LatencyModel {
+    fn default() -> Self {
+        Self::Uniform(UniformLatency::default())
+    }
 }
 
 impl LatencyModel {
-    pub fn link(&self, _from: usize, _to: usize) -> LinkLatency {
+    pub fn validate(&self) -> Result<(), LatencyError> {
         match self {
-            Self::Uniform(range) => LinkLatency {
-                base: Duration::ZERO,
-                extra: range.clone(),
-            },
+            Self::Uniform(uniform) => uniform.validate(),
+            Self::Geographic(geography) => geography.validate(),
+        }
+    }
+
+    /// Panics on a model that fails [`Self::validate`].
+    pub fn link(&self, from: usize, to: usize) -> LinkLatency {
+        match self {
+            Self::Uniform(uniform) => uniform.link(),
+            Self::Geographic(geography) => geography
+                .link(from, to)
+                .expect("latency model must be validated"),
+        }
+    }
+}
+
+impl fmt::Display for LatencyModel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Uniform(uniform) => uniform.fmt(f),
+            Self::Geographic(geography) => geography.fmt(f),
         }
     }
 }
@@ -31,6 +62,10 @@ pub struct LinkLatency {
 }
 
 impl LinkLatency {
+    pub fn new(base: Duration, extra: Range<Duration>) -> Self {
+        Self { base, extra }
+    }
+
     /// An empty `extra` range draws nothing from `rng`.
     pub fn sample(&self, rng: &mut impl Rng) -> Duration {
         if self.extra.is_empty() {
@@ -42,37 +77,12 @@ impl LinkLatency {
 
 #[derive(thiserror::Error, Debug)]
 pub enum LatencyError {
-    #[error("latency range is inverted: min {min} ms exceeds max {max} ms")]
-    InvertedRange { min: f64, max: f64 },
-}
-
-#[cfg(test)]
-mod tests {
-    use std::time::Duration;
-
-    use rand::{Rng, SeedableRng, rngs::StdRng};
-
-    use super::LatencyModel;
-
-    #[test]
-    fn uniform_draws_match_a_raw_range() {
-        let range = Duration::from_millis(50)..Duration::from_millis(100);
-        let link = LatencyModel::Uniform(range.clone()).link(0, 1);
-        let mut model_rng = StdRng::seed_from_u64(7);
-        let mut raw_rng = StdRng::seed_from_u64(7);
-        for _ in 0..1_000 {
-            assert_eq!(
-                link.sample(&mut model_rng),
-                raw_rng.gen_range(range.clone())
-            );
-        }
-    }
-
-    #[test]
-    fn empty_range_is_constant() {
-        let latency = Duration::from_millis(80);
-        let link = LatencyModel::Uniform(latency..latency).link(0, 1);
-        let mut rng = StdRng::seed_from_u64(0);
-        assert_eq!(link.sample(&mut rng), latency);
-    }
+    #[error("latency range is inverted: {start:?} exceeds {end:?}")]
+    InvertedRange { start: Duration, end: Duration },
+    #[error("geography lists no regions")]
+    EmptyRegions,
+    #[error("no RTT between regions {from} and {to}")]
+    MissingRtt { from: String, to: String },
+    #[error("invalid latency of {0} ms")]
+    InvalidLatency(f64),
 }

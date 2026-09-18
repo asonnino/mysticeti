@@ -74,10 +74,7 @@ impl ConfigRender for SimulationConfig {
             ("Replicas", self.committee_size.to_string()),
             ("Topology", self.topology.to_string()),
             ("Duration", format!("{}s", self.duration_secs)),
-            (
-                "Latency range",
-                format!("{}-{} ms", self.latency_min_ms, self.latency_max_ms),
-            ),
+            ("Latency", self.latency.to_string()),
             ("RNG seed", self.rng_seed.to_string()),
             (
                 "Equivocating leaders",
