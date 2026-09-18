@@ -73,11 +73,15 @@ impl SimulatorExecutor {
         mut jh: JoinHandle<R>,
     ) -> R {
         loop {
-            assert!(!simulator.run_one());
+            let drained = simulator.run_one();
             match jh.check_complete() {
                 Ok(value) => break value,
                 Err(njh) => jh = njh,
             }
+            assert!(
+                !drained,
+                "deadlock: the main task is pending with no event left"
+            );
         }
     }
 
