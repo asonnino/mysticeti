@@ -16,7 +16,7 @@ pub use config::{NetworkTopology, SimulationConfig, SimulationMode};
 pub use context::{SimulatorContext, SimulatorInstant};
 pub use event_simulator::{Scheduler, Simulator, SimulatorState};
 pub use executor::{JoinError, JoinHandle, SimulatorExecutor, Sleep};
-pub use latency::{LatencyError, LatencyModel};
+pub use latency::{Geography, LatencyError, LatencyModel, UniformLatency};
 pub use network::SimulatedNetwork;
 pub use runner::SimulationRunner;
 pub use tracing::SimulatorTracing;

@@ -7,8 +7,13 @@
 # To dump the built-in defaults:
 #   cargo run -- simulate --dump-config
 committee_size: 10
-latency_min_ms: 50
-latency_max_ms: 100
+# Link latency model. Options:
+#   uniform:                   - every link draws from the same range (end exclusive)
+#     range_ms: {start: 50, end: 100}
+#   geographic:                - per-region RTTs, see geography.yaml
+latency:
+  uniform:
+    range_ms: {start: 50, end: 100}
 duration_secs: 20
 rng_seed: 0
 # Network topology. Options:
