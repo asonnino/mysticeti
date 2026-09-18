@@ -19,7 +19,9 @@ pub struct SimulatedNetwork {
 }
 
 impl SimulatedNetwork {
+    /// Panics on a `latency` that fails [`LatencyModel::validate`].
     pub fn new(committee: &Committee, latency: LatencyModel) -> (SimulatedNetwork, Vec<Network>) {
+        latency.validate().expect("invalid latency model");
         let (networks, senders): (Vec<_>, Vec<_>) = committee
             .authorities()
             .map(|_| {

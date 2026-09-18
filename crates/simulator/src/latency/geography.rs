@@ -1,16 +1,14 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt,
-    ops::Range,
-    time::Duration,
-};
+use std::{collections::BTreeMap, fmt, ops::Range, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
 use super::{LatencyError, LinkLatency};
+
+/// Longest latency a geography may list.
+const MAX_LATENCY: Duration = Duration::from_secs(3600);
 
 /// A link takes half the RTT between its endpoints' regions, plus a small uniform extra.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -31,7 +29,7 @@ impl Geography {
     }
 
     /// An absent intra-region RTT is zero.
-    pub fn rtt_ms(&self, from: &str, to: &str) -> Option<f64> {
+    pub fn round_trip_ms(&self, from: &str, to: &str) -> Option<f64> {
         let lookup = |a: &str, b: &str| self.rtt_ms.get(a)?.get(b).copied();
         lookup(from, to)
             .or_else(|| lookup(to, from))
@@ -41,13 +39,14 @@ impl Geography {
     pub fn link(&self, from: usize, to: usize) -> Result<LinkLatency, LatencyError> {
         let from = self.region_of(from).ok_or(LatencyError::EmptyRegions)?;
         let to = self.region_of(to).ok_or(LatencyError::EmptyRegions)?;
-        let rtt = self
-            .rtt_ms(from, to)
+        let round_trip = self
+            .round_trip_ms(from, to)
             .ok_or_else(|| LatencyError::MissingRtt {
                 from: from.to_string(),
                 to: to.to_string(),
             })?;
-        Ok(LinkLatency::new(duration_from_ms(rtt)? / 2, self.extra()?))
+        let one_way = duration_from_ms(round_trip)? / 2;
+        Ok(LinkLatency::new(one_way, self.extra()?))
     }
 
     /// Checks that the link between every pair of regions resolves.
@@ -55,6 +54,7 @@ impl Geography {
         if self.regions.is_empty() {
             return Err(LatencyError::EmptyRegions);
         }
+        // Authority `i` sits in slot `i % len`, so the first `len` authorities cover every link.
         for from in 0..self.regions.len() {
             for to in 0..self.regions.len() {
                 self.link(from, to)?;
@@ -96,21 +96,30 @@ impl Geography {
 
 impl fmt::Display for Geography {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let regions = self.regions.iter().collect::<BTreeSet<_>>().len();
-        let rtts = || self.rtt_ms.values().flat_map(BTreeMap::values).copied();
-        let min = rtts().min_by(f64::total_cmp).unwrap_or_default();
-        let max = rtts().max_by(f64::total_cmp).unwrap_or_default();
+        let regions = &self.regions;
+        let round_trips = || {
+            let pairs = regions
+                .iter()
+                .flat_map(|from| regions.iter().map(move |to| (from, to)));
+            pairs.filter_map(|(from, to)| self.round_trip_ms(from, to))
+        };
+        let min = round_trips().min_by(f64::total_cmp).unwrap_or_default();
+        let max = round_trips().max_by(f64::total_cmp).unwrap_or_default();
         write!(
             f,
-            "{regions} regions, RTT {min}-{max} ms, extra {}-{} ms",
-            self.extra_ms.start, self.extra_ms.end
+            "{} regions, RTT {min}-{max} ms, extra {}-{} ms",
+            regions.len(),
+            self.extra_ms.start,
+            self.extra_ms.end
         )
     }
 }
 
 fn duration_from_ms(milliseconds: f64) -> Result<Duration, LatencyError> {
     Duration::try_from_secs_f64(milliseconds / 1000.0)
-        .map_err(|_| LatencyError::InvalidLatency(milliseconds))
+        .ok()
+        .filter(|latency| *latency <= MAX_LATENCY)
+        .ok_or(LatencyError::InvalidLatency(milliseconds))
 }
 
 mod defaults {
@@ -123,7 +132,7 @@ mod defaults {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{collections::BTreeMap, time::Duration};
 
     use rand::{SeedableRng, rngs::StdRng};
 
@@ -157,10 +166,10 @@ mod tests {
     #[test]
     fn rtt_lookup_falls_back() {
         let geography = Geography::new_for_test();
-        assert_eq!(geography.rtt_ms("a", "far"), Some(200.0));
-        assert_eq!(geography.rtt_ms("far", "a"), Some(200.0));
-        assert_eq!(geography.rtt_ms("far", "far"), Some(0.0));
-        assert_eq!(geography.rtt_ms("a", "unknown"), None);
+        assert_eq!(geography.round_trip_ms("a", "far"), Some(200.0));
+        assert_eq!(geography.round_trip_ms("far", "a"), Some(200.0));
+        assert_eq!(geography.round_trip_ms("far", "far"), Some(0.0));
+        assert_eq!(geography.round_trip_ms("a", "unknown"), None);
     }
 
     #[test]
@@ -191,6 +200,17 @@ mod tests {
     }
 
     #[test]
+    fn display_covers_listed_regions_only() {
+        let mut geography = Geography::new_for_test();
+        let stale_row = BTreeMap::from([("a".to_string(), 999.0)]);
+        geography.rtt_ms.insert("stale".to_string(), stale_row);
+        assert_eq!(
+            geography.to_string(),
+            "5 regions, RTT 0-200 ms, extra 0-1 ms"
+        );
+    }
+
+    #[test]
     fn invalid_geographies_are_rejected() {
         let no_regions = Geography {
             regions: Vec::new(),
@@ -198,12 +218,14 @@ mod tests {
         };
         let mut unknown_region = Geography::new_for_test();
         unknown_region.regions.push("unknown".to_string());
-        let mut negative_rtt = Geography::new_for_test();
-        negative_rtt
-            .rtt_ms
-            .get_mut("a")
-            .unwrap()
-            .insert("far".to_string(), -1.0);
+        let with_far_rtt = |round_trip_ms: f64| {
+            let mut geography = Geography::new_for_test();
+            let row = geography.rtt_ms.get_mut("a").unwrap();
+            row.insert("far".to_string(), round_trip_ms);
+            geography
+        };
+        let negative_rtt = with_far_rtt(-1.0);
+        let absurd_rtt = with_far_rtt(1e22);
         let inverted_extra = Geography {
             extra_ms: 2.0..1.0,
             ..Geography::new_for_test()
@@ -217,6 +239,10 @@ mod tests {
         ));
         assert!(matches!(
             error(&negative_rtt),
+            LatencyError::InvalidLatency(_)
+        ));
+        assert!(matches!(
+            error(&absurd_rtt),
             LatencyError::InvalidLatency(_)
         ));
         assert!(matches!(

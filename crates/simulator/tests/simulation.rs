@@ -7,12 +7,13 @@ use consensus::protocol::ConsensusProtocol;
 use dag::authority::Authority;
 use dag::config::ImportExport;
 use dag::metrics::{BlockKind, MetricsSnapshot};
+use dag::test_util::committee;
 use indoc::indoc;
 use replica::config::ReplicaParameters;
 use replica::result::Outcome;
 use simulator::{
-    Geography, LatencyModel, NetworkTopology, SimulationConfig, SimulationMode, SimulationRunner,
-    UniformLatency,
+    Geography, LatencyModel, NetworkTopology, SimulatedNetwork, SimulationConfig, SimulationMode,
+    SimulationRunner, UniformLatency,
 };
 
 #[test]
@@ -89,6 +90,17 @@ fn inverted_latency_range_is_rejected() {
 }
 
 #[test]
+#[should_panic(expected = "invalid latency model")]
+fn network_rejects_an_invalid_latency_model() {
+    let range_ms = Range {
+        start: 200,
+        end: 100,
+    };
+    let latency = LatencyModel::Uniform(UniformLatency { range_ms });
+    SimulatedNetwork::new(&committee(4), latency);
+}
+
+#[test]
 fn geography_yaml_round_trip() {
     let config = SimulationConfig {
         latency: LatencyModel::Geographic(Geography::new_for_test()),
@@ -118,7 +130,7 @@ fn latency_parses_from_yaml() {
     let LatencyModel::Geographic(geography) = config.latency else {
         panic!("expected a geographic latency model");
     };
-    assert_eq!(geography.rtt_ms("far", "near"), Some(200.0));
+    assert_eq!(geography.round_trip_ms("far", "near"), Some(200.0));
     assert_eq!(geography.extra_ms, 0.0..1.0);
 
     let config: SimulationConfig = serde_yaml::from_str("committee_size: 4").unwrap();
@@ -143,9 +155,22 @@ fn geography_example_is_valid() {
         .count();
     assert_eq!(tokyo, 8);
     assert_eq!(
-        geography.rtt_ms("ap-northeast-1", "eu-central-1"),
+        geography.round_trip_ms("ap-northeast-1", "eu-central-1"),
         Some(238.3)
     );
+}
+
+#[test]
+fn every_example_is_valid() {
+    let examples = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples");
+    for entry in std::fs::read_dir(examples).unwrap() {
+        let path = entry.unwrap().path();
+        let configs = SimulationMode::load(&path).unwrap().into_configs();
+        assert!(!configs.is_empty(), "{} is empty", path.display());
+        for config in configs {
+            config.latency.validate().unwrap();
+        }
+    }
 }
 
 #[test]

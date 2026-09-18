@@ -67,11 +67,11 @@ All fields are optional and fall back to the defaults shown.
 
 ## Link Latency
 
-The `latency` field selects how long a message takes on each directed link. A latency is drawn for
-every delivery; links are FIFO.
+The `latency` field selects how long a message takes on each directed link. Every delivery gets
+its own latency; links are FIFO. Ranges are `start` inclusive and `end` exclusive; `start == end`
+is a constant and `start > end` is rejected.
 
-- **`uniform`:** every link draws uniformly from the same range, `start` inclusive and `end`
-  exclusive. `start == end` is a constant latency; `start > end` is rejected.
+- **`uniform`:** every link draws uniformly from the same range.
 
   ```yaml
   latency:
@@ -82,11 +82,13 @@ every delivery; links are FIFO.
 - **`geographic`:** replicas are placed in regions and a message takes half the round-trip time
   between the two regions, plus a small uniform `extra_ms` (processing time and jitter, default
   0–1 ms). Authority `i` sits in `regions[i % regions.len()]`, which is the round-robin the
-  orchestrator uses when it selects instances, so a committee index maps to the same region in the
-  simulator and on the testbed. `rtt_ms[from][to]` is looked up per direction; a missing direction
-  falls back to the reverse one and a missing intra-region entry is zero. Every pair of listed
-  regions must resolve, and RTTs must be finite and non-negative, or the run is rejected before it
-  starts.
+  orchestrator uses when it selects instances. A committee index therefore maps to the same region
+  in the simulator and on the testbed, provided `regions` is in the order of the testbed's
+  `settings.yml` and every region had an instance to give on each lap: the orchestrator silently
+  skips a region that has run out, which shifts every later index. `rtt_ms[from][to]` is looked up
+  per direction; a missing direction falls back to the reverse one and a missing intra-region
+  entry is zero. Every pair of listed regions must resolve, and latencies must be finite,
+  non-negative and at most one hour, or the run is rejected before it starts.
 
   ```yaml
   latency:

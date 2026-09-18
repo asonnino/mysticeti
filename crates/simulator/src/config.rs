@@ -3,7 +3,7 @@
 
 use std::{fmt, time::Duration};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::latency::LatencyModel;
 use dag::config::ImportExport;
@@ -13,11 +13,25 @@ use replica::config::{LoadGeneratorConfig, ReplicaParameters};
 ///
 /// The untagged representation lets one YAML file be either a mapping (single
 /// config, as before) or a top-level sequence of configs (suite).
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Clone)]
 #[serde(untagged)]
 pub enum SimulationMode {
     Suite(Vec<SimulationConfig>),
     Single(Box<SimulationConfig>),
+}
+
+// Not derived: an untagged derive reports every error inside a config as "data did not match
+// any variant", hiding the field at fault.
+impl<'de> Deserialize<'de> for SimulationMode {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_yaml::Value::deserialize(deserializer)?;
+        let mode = if value.is_sequence() {
+            serde_yaml::from_value(value).map(Self::Suite)
+        } else {
+            serde_yaml::from_value(value).map(|config| Self::Single(Box::new(config)))
+        };
+        mode.map_err(serde::de::Error::custom)
+    }
 }
 
 impl SimulationMode {
