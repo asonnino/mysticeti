@@ -440,7 +440,8 @@ impl Committer {
 
     /// Fix the period of the interval above `boundary` from the window of the
     /// completed scan's anchor, if any, and record the scan as done. An agreed
-    /// output with no commit in the anchor's window forces period 1.
+    /// output with no commit in the anchor's window forces period 1. The first
+    /// interval is a warm-up: its scan never replays, so it keeps the period.
     fn apply_period_update(&mut self, anchor: Option<Data<Block>>, boundary: RoundNumber) {
         let mode = self.steelhead.as_mut().expect("adaptive Steelhead");
         let adaptive = mode.schedule.adaptive.expect("adaptive Steelhead");
@@ -462,6 +463,10 @@ impl Committer {
                         mode.stall_fallbacks += 1;
                     }
                     NonZeroU64::MIN
+                } else if mode.scans_done == 0 {
+                    // Warm-up: the window of the first interval is made of start-up
+                    // rounds, which say little about either rule. Keep the period.
+                    current
                 } else {
                     let window =
                         replay::collect_window(&self.block_reader, &anchor, adaptive.interval);
