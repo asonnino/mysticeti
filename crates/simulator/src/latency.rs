@@ -34,7 +34,7 @@ impl LatencyModel {
         }
     }
 
-    /// Panics on a model that fails [`Self::validate`].
+    /// Expects a model that passes [`Self::validate`], which `SimulatedNetwork::new` enforces.
     pub fn link(&self, from: usize, to: usize) -> LinkLatency {
         match self {
             Self::Uniform(uniform) => uniform.link(),
