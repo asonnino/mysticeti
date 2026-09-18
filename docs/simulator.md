@@ -43,9 +43,11 @@ parameter. Suites run sequentially and print a final summary table comparing eve
 See [`crates/simulator/examples/single.yaml`](../crates/simulator/examples/single.yaml) for the
 annotated single-run template and
 [`crates/simulator/examples/suite.yaml`](../crates/simulator/examples/suite.yaml) for a suite that
-sweeps committee size, latency, topology, and protocol variant, and
+sweeps committee size, latency, topology, and protocol variant,
 [`crates/simulator/examples/twin.yaml`](../crates/simulator/examples/twin.yaml) for an
-equivocating-leader run.
+equivocating-leader run, and
+[`crates/simulator/examples/geography.yaml`](../crates/simulator/examples/geography.yaml) for a
+geo-distributed committee.
 
 ## Configuration Reference
 
@@ -55,13 +57,56 @@ All fields are optional and fall back to the defaults shown.
 | ----------------------------------- | ------------------------------------- | ----------- |
 | `name`                              | _(unset)_                             | Optional label shown in logs and the suite summary table. |
 | `committee_size`                    | `10`                                  | Number of replicas. Stake is uniform. |
-| `latency_min_ms` / `latency_max_ms` | `50` / `100`                          | Range for per-message link latency (min inclusive, max exclusive), sampled uniformly for every delivery. |
+| `latency`                           | `uniform` over 50–100 ms              | Link latency model — see below. |
 | `topology`                          | `fullMesh`                            | Network topology — see below. |
 | `duration_secs`                     | `20`                                  | Simulated time for which to run the simulation. |
 | `rng_seed`                          | `0`                                   | Seed for the deterministic RNG. Change this to get different per-run noise while keeping everything else fixed. |
 | `replica_parameters`                | `ReplicaParameters::default()`        | Same tunables as a real replica: DAG round timeout, max block size, consensus protocol, leader count. |
 | `load_generator`                    | `LoadGeneratorConfig::new_for_test()` | Built-in transaction generator (`load` tx/s, `transaction_size`, `initial_delay`). `null` for empty blocks. |
 | `equivocating_leaders`              | `[]`                                  | Authority indices that behave as equivocating leaders — see below. |
+
+## Link Latency
+
+The `latency` field selects how long a message takes on each directed link. A latency is drawn for
+every delivery; links are FIFO.
+
+- **`uniform`:** every link draws uniformly from the same range, `start` inclusive and `end`
+  exclusive. `start == end` is a constant latency; `start > end` is rejected.
+
+  ```yaml
+  latency:
+    uniform:
+      range_ms: {start: 50, end: 100}
+  ```
+
+- **`geographic`:** replicas are placed in regions and a message takes half the round-trip time
+  between the two regions, plus a small uniform `extra_ms` (processing time and jitter, default
+  0–1 ms). Authority `i` sits in `regions[i % regions.len()]`, which is the round-robin the
+  orchestrator uses when it selects instances, so a committee index maps to the same region in the
+  simulator and on the testbed. `rtt_ms[from][to]` is looked up per direction; a missing direction
+  falls back to the reverse one and a missing intra-region entry is zero. Every pair of listed
+  regions must resolve, and RTTs must be finite and non-negative, or the run is rejected before it
+  starts.
+
+  ```yaml
+  latency:
+    geographic:
+      regions: [us-east-1, eu-west-2, ap-northeast-1]
+      rtt_ms:
+        us-east-1: {eu-west-2: 75.3, ap-northeast-1: 146.4}
+        eu-west-2: {ap-northeast-1: 212.2}
+      extra_ms: {start: 0, end: 1}
+  ```
+
+  [`examples/geography.yaml`](../crates/simulator/examples/geography.yaml) is a 50-replica,
+  six-region committee calibrated from an RTT matrix measured on the AWS testbed.
+
+The latency model composes with `topology` and `equivocating_leaders`: crashing a region is a
+`partition` whose alive group leaves that region's indices out.
+
+Earlier versions configured the uniform range with top-level `latency_min_ms` / `latency_max_ms`
+keys. They are no longer read (unknown keys are ignored), so a config that still sets them runs
+with the default latency: move them under `latency.uniform.range_ms`.
 
 ## Network Topologies
 
