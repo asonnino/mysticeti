@@ -1,10 +1,11 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{fmt, ops::Range, time::Duration};
+use std::{fmt, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
+use crate::latency::{LatencyError, LatencyModel};
 use dag::config::ImportExport;
 use replica::config::{LoadGeneratorConfig, ReplicaParameters};
 
@@ -73,16 +74,16 @@ impl Default for SimulationConfig {
 }
 
 impl SimulationConfig {
-    pub fn latency_range(&self) -> Range<Duration> {
-        assert!(
-            self.latency_min_ms <= self.latency_max_ms,
-            "latency_min_ms ({}) must not exceed latency_max_ms ({})",
-            self.latency_min_ms,
-            self.latency_max_ms
-        );
+    pub fn latency_model(&self) -> Result<LatencyModel, LatencyError> {
+        if self.latency_min_ms > self.latency_max_ms {
+            return Err(LatencyError::InvertedRange {
+                min: self.latency_min_ms as f64,
+                max: self.latency_max_ms as f64,
+            });
+        }
         let min = Duration::from_millis(self.latency_min_ms);
         let max = Duration::from_millis(self.latency_max_ms);
-        min..max
+        Ok(LatencyModel::Uniform(min..max))
     }
 
     pub fn duration(&self) -> Duration {
