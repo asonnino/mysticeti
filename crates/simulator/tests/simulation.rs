@@ -74,6 +74,17 @@ fn config_yaml_round_trip() {
 }
 
 #[test]
+fn inverted_latency_range_is_rejected() {
+    let config = SimulationConfig {
+        latency_min_ms: 200,
+        latency_max_ms: 100,
+        ..Default::default()
+    };
+    let error = SimulationRunner::new(config).run().err().unwrap();
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+}
+
+#[test]
 fn equivocating_leader() {
     // Mysticeti (n=10, no fast path) with authority 3 sending twin blocks in its
     // leader rounds. The twins split the votes, so no certificate forms and the
