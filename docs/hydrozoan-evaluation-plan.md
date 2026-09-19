@@ -370,9 +370,11 @@ crash points interleaved across protocols per x. Files: `results/results-0669999
 
 ### Wrap-up
 
-- [ ] Destroy the testbed (`remote-testbed destroy`) and revoke the dev-machine STS token
-- [ ] Review and commit `scripts/eval/{aws_campaign.py,hydrozoan.py,sim_campaign.py,sim-remote.sh,
-  settings-eval.yml}`, `results/results-0669999/`, `results/sim-0669999/`
+- [x] Destroy the testbed (`remote-testbed destroy`) and revoke the dev-machine STS token
+  (2026-09-19 ~13:20 UTC: 54 instances terminated, verified per region; credentials removed)
+- [x] Review and commit `scripts/eval/{aws_campaign.py,hydrozoan.py,sim_campaign.py,sim-remote.sh,
+  settings-eval.yml,ping-matrix.sh}` (PR #283); `results/` stays out of git (release
+  `eval-0669999` assets, now gitignored)
 - [ ] Paper: `evaluation.tex` bullets to prose, figures E1/E2/E3/E5/E6 + simulator tables; drop
   the "more leaders per round" clause of C4; state the x = 7..8 crossing where Mysticeti's
   smaller clock quorum still dodges Tokyo
