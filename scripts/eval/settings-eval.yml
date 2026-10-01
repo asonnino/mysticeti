@@ -1,0 +1,23 @@
+# Orchestrator settings for the Hydrozoan evaluation campaign, used as the base of every
+# per-run settings file written by scripts/eval/aws_campaign.py (which sets the duration,
+# faults, crash order, node/client parameters and results directory). Meant to run on the
+# author's dev machine (`ssh aws`), whose own key is the testbed key.
+testbed_id: hydrozoan-eval
+cloud_provider: !aws
+  specs: m5d.8xlarge
+  token_file: /home/ubuntu/.aws/credentials
+ssh_private_key_file: /home/ubuntu/.ssh/id_ed25519
+regions:
+  - us-east-1 # N. Virginia
+  - us-east-2 # Ohio
+  - eu-central-1 # Frankfurt
+  - eu-west-2 # London
+  - eu-west-3 # Paris
+  - ap-northeast-1 # Tokyo
+repository:
+  url: https://github.com/asonnino/mysticeti.git
+  commit: eval-0669999 # branch pinned at the campaign commit; results land in results-0669999
+benchmark_duration: 300
+faults: !Permanent
+  faults: 0
+crash_order: round-robin

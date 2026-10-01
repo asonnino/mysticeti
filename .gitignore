@@ -46,3 +46,6 @@ plots/
 scripts/.venv/
 scripts/.venv-eval/
 __pycache__/
+
+# Raw evaluation measurements live in the eval-* release assets, never in git.
+/results/
