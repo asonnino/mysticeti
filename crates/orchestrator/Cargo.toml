@@ -22,7 +22,7 @@ prometheus-http-query = { version = "0.9", default-features = false, features = 
 ] }
 rand = { workspace = true }
 reqwest = { workspace = true }
-russh = "0.63"
+russh = "0.64"
 russh-sftp = "2.1"
 serde = { workspace = true }
 serde_json = { workspace = true }
