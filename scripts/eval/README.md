@@ -115,3 +115,27 @@ Hydrozoan fast-path / slow-path breakdown figures will need new loaders for thes
 Colors: Blue Bottle blue, Orcaella green, Mysticeti orange, Hydrangea red.
 Latency-throughput legends use a fixed order (Hydrangea, Mysticeti, Blue Bottle,
 Orcaella) via `_ordered_handles`.
+
+## Simulator campaign (`sim_campaign.py`, `sim-remote.sh`)
+
+The discrete-event simulator supplies the two evaluation items that need controlled faults:
+a crash sweep past the fast slack `p` (how crashed-leader slots are decided once the direct
+skip can no longer fire) and equivocating leaders (`equivocating_leaders`). Both run at n = 50
+with the paper's configurations; `sim_campaign.py` holds the run matrix.
+
+```sh
+scripts/.venv-eval/bin/python scripts/eval/sim_campaign.py generate   # data/sim/configs/*.yaml
+scripts/eval/sim-remote.sh                                            # run on EC2, fetch, parse
+scripts/.venv-eval/bin/python scripts/eval/sim_campaign.py parse results/sim-<sha>
+scripts/.venv-eval/bin/python scripts/eval/sim_campaign.py plot results/sim-<sha>/summary.csv
+```
+
+`sim-remote.sh` launches one throwaway instance (default `m6i.8xlarge` in `us-east-1`), builds
+the release binary there, runs every config with `PARALLEL` concurrent simulations, copies back
+`metrics-A.prom`, `config.yaml` and `meta.yaml` per run, and terminates the instance (a
+dead-man `shutdown` on the box terminates it even if the script dies). The fetch retries;
+if it still fails the instance is left running and the script prints the
+`sim-remote.sh fetch <ip>` command that fetches and parses from a running box. It needs AWS
+credentials and the orchestrator's SSH key, so run it from a plain terminal. Simulations are
+not run locally on purpose: every replica keeps its WAL in a tempfile, and fifty replicas at
+1000 tx/s each fill tens of GB within a minute.
