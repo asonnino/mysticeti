@@ -83,7 +83,7 @@ pub enum MetaStatement {
 impl<C: Ctx, D: DagConsensus> Core<C, D> {
     #[allow(clippy::too_many_arguments)]
     pub fn open(
-        block_handler: RealBlockHandler<C>,
+        mut block_handler: RealBlockHandler<C>,
         authority: Authority,
         committee: Arc<Committee>,
         metrics: Arc<Metrics>,
@@ -100,6 +100,14 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
             last_committed_leader,
             committed_blocks,
         } = recovered;
+        let recovered_transactions = pending
+            .iter()
+            .map(|(_, statement)| match statement {
+                MetaStatement::Payload(payload) => payload.len(),
+                MetaStatement::Include(_) => 0,
+            })
+            .sum();
+        block_handler.recover_pending_transactions(recovered_transactions);
         let quorum_threshold = committer.quorum_threshold();
         let mut threshold_clock = ThresholdClockAggregator::new(0, quorum_threshold);
         let last_own_block = if let Some(own_block) = last_own_block {

@@ -6,6 +6,7 @@ use std::{path::Path, sync::Arc};
 use consensus::{committer::Committer, protocol::ConsensusProtocol};
 use dag::{
     authority::Authority,
+    block::transaction::Transaction,
     committee::Committee,
     context::Ctx,
     core::{Core, block_handler::RealBlockHandler},
@@ -14,12 +15,22 @@ use dag::{
     storage::Storage,
     test_util::committee,
 };
+use tokio::sync::mpsc;
 
 fn open_core<C: Ctx>(
     authority: Authority,
     committee: &Arc<Committee>,
     path: Option<&Path>,
 ) -> Core<C, Committer> {
+    open_core_with_sender(authority, committee, path).0
+}
+
+/// Like `open_core`, but also returns the sender feeding the core's block handler.
+pub fn open_core_with_sender<C: Ctx>(
+    authority: Authority,
+    committee: &Arc<Committee>,
+    path: Option<&Path>,
+) -> (Core<C, Committer>, mpsc::Sender<Vec<Transaction>>) {
     let metrics = Metrics::new_for_test(committee.len());
     let (storage, recovered) = if let Some(path) = path {
         let wal_path = path.join(format!("{:03}.wal", authority));
@@ -32,9 +43,9 @@ fn open_core<C: Ctx>(
         .to_protocol(committee)
         .expect("default protocol is infallible");
     let committer = Committer::new(committee.clone(), storage.block_reader().clone(), protocol);
-    let (block_handler, _tx_sender) = RealBlockHandler::new(metrics.clone());
+    let (block_handler, tx_sender) = RealBlockHandler::new(metrics.clone());
     let crypto = CryptoEngine::disabled();
-    Core::open(
+    let core = Core::open(
         block_handler,
         authority,
         committee.clone(),
@@ -44,7 +55,8 @@ fn open_core<C: Ctx>(
         false,
         committer,
         crypto,
-    )
+    );
+    (core, tx_sender)
 }
 
 pub fn committee_and_cores<C: Ctx>(n: usize) -> (Arc<Committee>, Vec<Core<C, Committer>>) {
