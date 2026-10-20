@@ -15,3 +15,4 @@
 - [Simulator run-to-run divergence](project_simulator_nondeterminism.md) — cause is tokio's unbiased `select!` (7 sites); with a `biased;` patch on both sides, output diffing DOES validate a simulator refactor
 - [#277 LatencyModel seam](project_277_latency_model_seam.md) — per-link latency; Uniform RNG-stream equivalence, b->a direction in connect, geography validate/expect invariant, serde_yaml `!tag` vs singleton_map rules
 - [#281 link queue seam](project_281_link_queue_seam.md) — Sleep-across-select invariants, +task_id wake skew, run_one() semantics, MAX_IN_FLIGHT window, stale ./target gotcha
+- [Protocol name consumers](project_protocol_name_consumers.md) — Debug name -> measurement filenames parsed by paper repos; serde tag in campaign configs
