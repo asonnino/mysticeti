@@ -270,7 +270,8 @@ The two regimes correspond to the two families of protocols:
   block. If not, the proposer waits up to the round timeout (default **1 s**) for the laggard
   before falling back to `ForceNewBlock`.
 
-- **Asynchronous-friendly / quorum-waiting** — Cordial Miners (asynchronous), Mahi-Mahi.
+- **Asynchronous-friendly / quorum-waiting** — Cordial Miners (asynchronous), Mahi-Mahi, Blue Bottle
+  (asynchronous), Orcaella (asynchronous).
   `get_leaders(round)` returns `None`. Before proposing, the core instead requires **every connected
   committee member** to have a block at the current quorum round — any block, no designated leader.
   The round timeout in this regime is much tighter (default **75 ms**): the protocol has no reason
