@@ -549,8 +549,6 @@ impl Protocol {
         c: Stake,
         leader_count: NonZeroUsize,
     ) -> Result<Self, ProtocolError> {
-        // Widen to u128 so the bound arithmetic cannot overflow; once the bound holds,
-        // every threshold below is at most `total_stake`.
         let min_n = if f == 0 {
             2 * c as u128 + 1
         } else {
@@ -711,6 +709,28 @@ mod tests {
 
     use crate::protocol::{Protocol, ProtocolError};
 
+    /// A Byzantine stake whose bound `5f + 3c + 1` overflows `Stake` is rejected, not wrapped.
+    #[test]
+    fn orcaella_byzantine_bound_overflow_rejected() {
+        let f = Stake::MAX / 5 + 1;
+        let result = Protocol::orcaella(100, f, 0, NonZeroUsize::new(1).unwrap());
+        assert!(matches!(
+            result,
+            Err(ProtocolError::FaultBoundViolated { .. })
+        ));
+    }
+
+    /// A crash stake whose bound `2c + 1` overflows `Stake` is rejected, not wrapped.
+    #[test]
+    fn orcaella_crash_bound_overflow_rejected() {
+        let c = Stake::MAX / 2 + 1;
+        let result = Protocol::orcaella(100, 0, c, NonZeroUsize::new(1).unwrap());
+        assert!(matches!(
+            result,
+            Err(ProtocolError::FaultBoundViolated { .. })
+        ));
+    }
+
     /// Reference thresholds from the design note at the mixed configuration
     /// n = 20, f = 3, c = 4, k = 2 (p = 3), where the certificate, slow-commit,
     /// and pacemaker quorums are all distinct.
@@ -748,28 +768,6 @@ mod tests {
                 n: 4,
                 min_n: 5,
             })
-        ));
-    }
-
-    /// A Byzantine stake whose bound `5f + 3c + 1` overflows `Stake` is rejected, not wrapped.
-    #[test]
-    fn orcaella_overflowing_byzantine_bound_rejected() {
-        let f = Stake::MAX / 5 + 1;
-        let result = Protocol::orcaella(100, f, 0, NonZeroUsize::new(1).unwrap());
-        assert!(matches!(
-            result,
-            Err(ProtocolError::FaultBoundViolated { .. })
-        ));
-    }
-
-    /// A crash stake whose bound `2c + 1` overflows `Stake` is rejected, not wrapped.
-    #[test]
-    fn orcaella_overflowing_crash_bound_rejected() {
-        let c = Stake::MAX / 2 + 1;
-        let result = Protocol::orcaella(100, 0, c, NonZeroUsize::new(1).unwrap());
-        assert!(matches!(
-            result,
-            Err(ProtocolError::FaultBoundViolated { .. })
         ));
     }
 }
