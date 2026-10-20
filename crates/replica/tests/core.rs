@@ -10,7 +10,6 @@ use dag::{
     context::TokioCtx,
     core::threshold_clock::threshold_clock_valid_non_genesis,
     data::Data,
-    test_util::committee,
 };
 use minibytes::Bytes;
 use rand::{Rng, SeedableRng, prelude::StdRng};
@@ -176,13 +175,13 @@ fn test_core_recovery() {
 #[test]
 fn test_core_recovery_with_unproposed_payload() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let committee = committee(4);
+    let (committee, mut cores) = committee_and_cores::<TokioCtx>(4);
     let authority = Authority::from(0usize);
     let tx = |data: &'static [u8]| Transaction::new(Bytes::from(data));
 
-    let other_blocks: Vec<_> = (1..4usize)
-        .map(|i| {
-            let (mut core, _sender) = open_core::<TokioCtx>(Authority::from(i), &committee, None);
+    let other_blocks: Vec<_> = cores[1..]
+        .iter_mut()
+        .map(|core| {
             core.try_new_block()
                 .expect("Must be able to create block after genesis")
         })
