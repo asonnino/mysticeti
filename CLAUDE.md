@@ -1,8 +1,8 @@
 # Mysticeti — uncertified DAG consensus
 
 Reference implementations of several uncertified DAG-based consensus protocols
-(Mysticeti, Hybrid Mysticeti, Mahi-Mahi, Blue Bottle, Orcaella PS/Async, Cordial Miners PS/Async,
-Nemo-Nemo, Hydrozoan). The codebase is deliberately small and modular, meant for benchmarking and
+(Mysticeti, Mahi-Mahi, each with a Hybrid variant, Blue Bottle, Orcaella PS/Async, Cordial Miners
+PS/Async, Nemo-Nemo, Hydrozoan). The codebase is deliberately small and modular, meant for benchmarking and
 experimentation — **not production** — but uses real networking, cryptography, and
 persistent storage. Ships with a discrete-event simulator and a cloud orchestrator for
 running the protocols under custom scenarios.
