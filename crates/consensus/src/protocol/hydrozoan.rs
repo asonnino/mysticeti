@@ -70,7 +70,30 @@ impl Protocol {
 mod tests {
     use std::num::NonZeroUsize;
 
-    use crate::protocol::{Protocol, ProtocolError};
+    use crate::{
+        protocol::{ConsensusProtocol, Protocol, ProtocolError},
+        test_scenarios::scenario_tests,
+    };
+
+    scenario_tests!(f1_c0_k0, sizes: [n4, n20], fast_path, |leader_count| {
+        ConsensusProtocol::Hydrozoan { leader_count, f: 1, c: 0, k: 0 }
+    });
+    scenario_tests!(f0_c1_k1, sizes: [n4, n20], fast_path, |leader_count| {
+        ConsensusProtocol::Hydrozoan { leader_count, f: 0, c: 1, k: 1 }
+    });
+    // Larger fault and slack configurations, above the 3f + 2c + k + 1 bound only at n = 20.
+    scenario_tests!(f6_c0_k1, sizes: [n20], fast_path, |leader_count| {
+        ConsensusProtocol::Hydrozoan { leader_count, f: 6, c: 0, k: 1 }
+    });
+    scenario_tests!(f0_c9_k1, sizes: [n20], fast_path, |leader_count| {
+        ConsensusProtocol::Hydrozoan { leader_count, f: 0, c: 9, k: 1 }
+    });
+    scenario_tests!(f3_c4_k2, sizes: [n20], fast_path, |leader_count| {
+        ConsensusProtocol::Hydrozoan { leader_count, f: 3, c: 4, k: 2 }
+    });
+    scenario_tests!(f4_c1_k5, sizes: [n20], fast_path, |leader_count| {
+        ConsensusProtocol::Hydrozoan { leader_count, f: 4, c: 1, k: 5 }
+    });
 
     /// Reference thresholds from the design note at the mixed configuration
     /// n = 20, f = 3, c = 4, k = 2 (p = 3), where the certificate, slow-commit,

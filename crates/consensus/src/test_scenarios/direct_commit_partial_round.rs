@@ -12,35 +12,11 @@
 
 use std::sync::Arc;
 
-use consensus::{committer::Committer, leader::LeaderElector, protocol::ConsensusProtocol};
-use dag::{
-    committee::Committee,
-    consensus::LeaderStatus,
-    storage::Storage,
-    test_util::{build_dag, committee},
-};
+use dag::{committee::Committee, consensus::LeaderStatus, storage::Storage, test_util::build_dag};
 
-#[test]
-#[tracing_test::traced_test]
-fn direct_commit_partial_round_n4() {
-    run_for_size(4);
-}
+use crate::{committer::Committer, leader::LeaderElector, protocol::ConsensusProtocol};
 
-#[test]
-#[tracing_test::traced_test]
-fn direct_commit_partial_round_n20() {
-    run_for_size(20);
-}
-
-fn run_for_size(n: usize) {
-    let committee = committee(n);
-    let leader_counts = [1, 2, 2 * n / 3 + 1, n];
-    for spec in ConsensusProtocol::all_for_test(n, &leader_counts) {
-        run(&spec, &committee);
-    }
-}
-
-fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
+pub(crate) fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     let mut storage = Storage::new_for_test(committee);
     let mut committer = Committer::new_for_test(committee, &storage, spec);
     let protocol = spec.to_protocol(committee).expect("valid protocol");

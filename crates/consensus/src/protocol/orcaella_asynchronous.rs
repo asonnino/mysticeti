@@ -43,7 +43,24 @@ mod tests {
 
     use dag::committee::Stake;
 
-    use crate::protocol::{Protocol, ProtocolError};
+    use crate::{
+        protocol::{ConsensusProtocol, Protocol, ProtocolError},
+        test_scenarios::scenario_tests,
+    };
+
+    scenario_tests!(f0_c1_w3, sizes: [n4, n20], |leader_count| {
+        ConsensusProtocol::OrcaellaAsynchronous { leader_count, f: 0, c: 1, wave_length: 3 }
+    });
+    // With f > 0, n = 4 is below the 5f + 3c + 1 bound.
+    scenario_tests!(f1_c0_w3, sizes: [n20], |leader_count| {
+        ConsensusProtocol::OrcaellaAsynchronous { leader_count, f: 1, c: 0, wave_length: 3 }
+    });
+    scenario_tests!(f1_c1_w3, sizes: [n20], |leader_count| {
+        ConsensusProtocol::OrcaellaAsynchronous { leader_count, f: 1, c: 1, wave_length: 3 }
+    });
+    scenario_tests!(f1_c1_w4, sizes: [n20], |leader_count| {
+        ConsensusProtocol::OrcaellaAsynchronous { leader_count, f: 1, c: 1, wave_length: 4 }
+    });
 
     /// Async Orcaella keeps Orcaella's thresholds and only changes the wave length
     /// and the leader wait.

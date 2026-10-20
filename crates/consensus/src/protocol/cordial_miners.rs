@@ -30,3 +30,13 @@ impl Protocol {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{protocol::ConsensusProtocol, test_scenarios::scenario_tests};
+
+    // Cordial Miners fixes one leader per round, so the leader-count sweep collapses to one run.
+    scenario_tests!(baseline, sizes: [n4, n20], |_| {
+        ConsensusProtocol::CordialMinersPartiallySynchronous
+    });
+}

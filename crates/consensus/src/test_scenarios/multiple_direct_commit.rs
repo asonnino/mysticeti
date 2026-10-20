@@ -5,37 +5,14 @@
 
 use std::sync::Arc;
 
-use consensus::{committer::Committer, leader::LeaderElector, protocol::ConsensusProtocol};
 use dag::{
-    authority::Authority,
-    block::RoundNumber,
-    committee::Committee,
-    consensus::LeaderStatus,
-    storage::Storage,
-    test_util::{build_dag, committee},
+    authority::Authority, block::RoundNumber, committee::Committee, consensus::LeaderStatus,
+    storage::Storage, test_util::build_dag,
 };
 
-#[test]
-#[tracing_test::traced_test]
-fn multiple_direct_commit_n4() {
-    run_for_size(4);
-}
+use crate::{committer::Committer, leader::LeaderElector, protocol::ConsensusProtocol};
 
-#[test]
-#[tracing_test::traced_test]
-fn multiple_direct_commit_n20() {
-    run_for_size(20);
-}
-
-fn run_for_size(n: usize) {
-    let committee = committee(n);
-    let leader_counts = [1, 2, 2 * n / 3 + 1, n];
-    for spec in ConsensusProtocol::all_for_test(n, &leader_counts) {
-        run(&spec, &committee);
-    }
-}
-
-fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
+pub(crate) fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     let mut last_committed: Option<(RoundNumber, Authority)> = None;
 
     let template_storage = Storage::new_for_test(committee);

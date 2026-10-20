@@ -19,7 +19,6 @@
 
 use std::sync::Arc;
 
-use consensus::{committer::Committer, leader::LeaderElector, protocol::ConsensusProtocol};
 use dag::{
     authority::Authority,
     block::Block,
@@ -27,30 +26,12 @@ use dag::{
     consensus::{IndirectCommitPath, LeaderStatus},
     crypto::{BLOCK_DIGEST_SIZE, BlockDigest},
     storage::Storage,
-    test_util::{build_dag, build_dag_layer, committee, insert_test_block},
+    test_util::{build_dag, build_dag_layer, insert_test_block},
 };
 
-#[test]
-#[tracing_test::traced_test]
-fn equivocation_certificate_beats_weak_quorum_n4() {
-    run_for_size(4);
-}
+use crate::{committer::Committer, leader::LeaderElector, protocol::ConsensusProtocol};
 
-#[test]
-#[tracing_test::traced_test]
-fn equivocation_certificate_beats_weak_quorum_n20() {
-    run_for_size(20);
-}
-
-fn run_for_size(n: usize) {
-    let committee = committee(n);
-    let leader_counts = [1, 2, 2 * n / 3 + 1, n];
-    for spec in ConsensusProtocol::all_fast_path_for_test(n, &leader_counts) {
-        run(&spec, &committee);
-    }
-}
-
-fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
+pub(crate) fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     let protocol = spec.to_protocol(committee).expect("valid protocol");
     let fast_path = protocol.fast_path.expect("fast-path protocol");
     let b1_voters = protocol.certificate_quorum as usize;
