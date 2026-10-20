@@ -17,3 +17,4 @@
 - [#281 link queue seam](project_281_link_queue_seam.md) — Sleep-across-select invariants, +task_id wake skew, run_one() semantics, MAX_IN_FLIGHT window, stale ./target gotcha
 - [Protocol name consumers](project_protocol_name_consumers.md) — Debug name -> measurement filenames parsed by paper repos; serde tag in campaign configs
 - [Protocol module split](project_protocol_module_split.md) — per-protocol impl Protocol files: verified-safe move pattern, test-path rename, mechanical byte-check
+- [Scenario harness move](project_scenario_harness_move.md) — scenario tests in lib via scenario_tests!; --list tally audit, Debug-dedup fragility, dead consensus/test-utils
