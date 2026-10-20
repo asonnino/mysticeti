@@ -15,7 +15,8 @@ not intended for production use, but relies on real networking, cryptography, an
 storage. It also ships with a discrete-event simulator for exercising the protocols under custom
 network and failure scenarios.
 
-This repository currently supports [Mysticeti](https://sonnino.com/papers/mysticeti.pdf),
+This repository currently supports [Mysticeti](https://sonnino.com/papers/mysticeti.pdf) (plus a
+derived variant under mixed Byzantine and crash faults),
 [Mahi-Mahi](https://sonnino.com/papers/mahi-mahi.pdf),
 [Blue Bottle](https://sonnino.com/papers/bluebottle.pdf) (both the partially synchronous and asynchronous
 variants),
