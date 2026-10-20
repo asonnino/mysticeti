@@ -21,6 +21,7 @@ mod hydrozoan;
 mod mahi_mahi;
 mod mysticeti;
 mod nemo_nemo;
+mod nemo_nemo_asynchronous;
 mod orcaella;
 mod orcaella_asynchronous;
 
@@ -93,6 +94,12 @@ pub enum ConsensusProtocol {
         #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
     },
+    NemoNemoAsynchronous {
+        #[serde(default = "defaults::default_leader_count")]
+        leader_count: NonZeroUsize,
+        #[serde(deserialize_with = "defaults::deserialize_nemo_nemo_asynchronous_wave_length")]
+        wave_length: RoundNumber,
+    },
     Hydrozoan {
         #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
@@ -146,6 +153,18 @@ mod defaults {
         if value != 4 && value != 5 {
             return Err(D::Error::custom(format!(
                 "HybridMahiMahi wave_length must be 4 or 5, got {value}"
+            )));
+        }
+        Ok(value)
+    }
+
+    pub fn deserialize_nemo_nemo_asynchronous_wave_length<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<RoundNumber, D::Error> {
+        let value = RoundNumber::deserialize(deserializer)?;
+        if value != 2 && value != 3 {
+            return Err(D::Error::custom(format!(
+                "NemoNemoAsynchronous wave_length must be 2 or 3, got {value}"
             )));
         }
         Ok(value)
@@ -221,6 +240,14 @@ impl fmt::Display for ConsensusProtocol {
             Self::NemoNemo { leader_count } => {
                 write!(fmt, "Nemo-Nemo ({} leaders/round)", leader_count)
             }
+            Self::NemoNemoAsynchronous {
+                leader_count,
+                wave_length,
+            } => write!(
+                fmt,
+                "Nemo-Nemo Async ({} leaders/round, wave length {})",
+                leader_count, wave_length
+            ),
             Self::Hydrozoan {
                 leader_count,
                 f,
@@ -280,6 +307,10 @@ impl fmt::Debug for ConsensusProtocol {
                 "hybrid-mahi-mahi-l{leader_count}-f{f}-c{c}-w{wave_length}"
             ),
             Self::NemoNemo { leader_count } => write!(fmt, "nemo-nemo-l{leader_count}"),
+            Self::NemoNemoAsynchronous {
+                leader_count,
+                wave_length,
+            } => write!(fmt, "nemo-nemo-async-l{leader_count}-w{wave_length}"),
             Self::Hydrozoan {
                 leader_count,
                 f,
@@ -306,6 +337,7 @@ impl ConsensusProtocol {
             | Self::MahiMahi { leader_count, .. }
             | Self::HybridMahiMahi { leader_count, .. }
             | Self::NemoNemo { leader_count }
+            | Self::NemoNemoAsynchronous { leader_count, .. }
             | Self::Hydrozoan { leader_count, .. } => Some(*leader_count),
         };
         if let Some(leader_count) = user_leader_count
@@ -352,6 +384,10 @@ impl ConsensusProtocol {
                 wave_length,
             } => Protocol::hybrid_mahi_mahi(total_stake, f, c, leader_count, wave_length)?,
             Self::NemoNemo { leader_count } => Protocol::nemo_nemo(total_stake, leader_count),
+            Self::NemoNemoAsynchronous {
+                leader_count,
+                wave_length,
+            } => Protocol::nemo_nemo_asynchronous(total_stake, leader_count, wave_length)?,
             Self::Hydrozoan {
                 leader_count,
                 f,
