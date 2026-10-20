@@ -45,9 +45,8 @@ impl<C: Ctx> RealBlockHandler<C> {
         (this, sender)
     }
 
-    /// Accounts for the transactions recovered from the WAL that were queued but not yet
-    /// proposed. The next proposal includes them, so [`Self::handle_proposal`] subtracts them.
-    pub fn recover_pending_transactions(&mut self, count: usize) {
+    /// Seeds the count with the unproposed transactions recovered from the WAL.
+    pub(super) fn recover_pending_transactions(&mut self, count: usize) {
         self.pending_transactions = count;
     }
 
