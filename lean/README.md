@@ -1,7 +1,7 @@
 # The Hydrozoan formalization
 
 A Lean 4 + mathlib formalization of the safety and liveness results of the
-Hydrozoan paper — the protocol implemented in `crates/consensus`.
+Hydrozoan paper (implemented in `crates/consensus`).
 References to `sections/*.tex` in the docstrings name the paper's source
 files (procedures of its Algorithm 2 and 3, and its lemma labels); the
 paper is a separate repository. Every proof is machine-checked by the Lean kernel; the human
