@@ -40,6 +40,16 @@ pub enum ConsensusProtocol {
         /// `n >= 5f+3c+1` for `f > 0`, or `n >= 2c+1` for `f = 0`.
         c: Stake,
     },
+    OrcaellaAsynchronous {
+        #[serde(default = "defaults::default_leader_count")]
+        leader_count: NonZeroUsize,
+        /// Byzantine-fault stake to tolerate.
+        f: Stake,
+        /// Crash-only fault stake to tolerate (on top of `f`); same bound as Orcaella.
+        c: Stake,
+        #[serde(deserialize_with = "defaults::deserialize_orcaella_asynchronous_wave_length")]
+        wave_length: RoundNumber,
+    },
     MahiMahi {
         #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
@@ -83,6 +93,18 @@ mod defaults {
         }
         Ok(value)
     }
+
+    pub fn deserialize_orcaella_asynchronous_wave_length<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<RoundNumber, D::Error> {
+        let value = RoundNumber::deserialize(deserializer)?;
+        if value != 3 && value != 4 {
+            return Err(D::Error::custom(format!(
+                "OrcaellaAsynchronous wave_length must be 3 or 4, got {value}"
+            )));
+        }
+        Ok(value)
+    }
 }
 
 impl Default for ConsensusProtocol {
@@ -116,6 +138,16 @@ impl fmt::Display for ConsensusProtocol {
                     leader_count
                 )
             }
+            Self::OrcaellaAsynchronous {
+                leader_count,
+                f,
+                c,
+                wave_length,
+            } => write!(
+                fmt,
+                "Orcaella Async ({} leaders/round, f={f}, c={c}, wave length {})",
+                leader_count, wave_length
+            ),
             Self::MahiMahi {
                 leader_count,
                 wave_length,
@@ -160,6 +192,15 @@ impl fmt::Debug for ConsensusProtocol {
             Self::Orcaella { leader_count, f, c } => {
                 write!(fmt, "orcaella-l{leader_count}-f{f}-c{c}")
             }
+            Self::OrcaellaAsynchronous {
+                leader_count,
+                f,
+                c,
+                wave_length,
+            } => write!(
+                fmt,
+                "orcaella-async-l{leader_count}-f{f}-c{c}-w{wave_length}"
+            ),
             Self::MahiMahi {
                 leader_count,
                 wave_length,
@@ -186,6 +227,7 @@ impl ConsensusProtocol {
             | Self::BlueBottlePartiallySynchronous { leader_count }
             | Self::BlueBottleAsynchronous { leader_count }
             | Self::Orcaella { leader_count, .. }
+            | Self::OrcaellaAsynchronous { leader_count, .. }
             | Self::MahiMahi { leader_count, .. }
             | Self::NemoNemo { leader_count }
             | Self::Hydrozoan { leader_count, .. } => Some(*leader_count),
@@ -214,6 +256,12 @@ impl ConsensusProtocol {
             Self::Orcaella { leader_count, f, c } => {
                 Protocol::orcaella(total_stake, f, c, leader_count)?
             }
+            Self::OrcaellaAsynchronous {
+                leader_count,
+                f,
+                c,
+                wave_length,
+            } => Protocol::orcaella_asynchronous(total_stake, f, c, leader_count, wave_length)?,
             Self::MahiMahi {
                 leader_count,
                 wave_length,
@@ -259,6 +307,34 @@ impl ConsensusProtocol {
                     leader_count,
                     f: 1,
                     c: 1,
+                });
+            }
+            variants.push(Self::OrcaellaAsynchronous {
+                leader_count,
+                f: 0,
+                c: 1,
+                wave_length: 3,
+            });
+            if n >= 6 {
+                variants.push(Self::OrcaellaAsynchronous {
+                    leader_count,
+                    f: 1,
+                    c: 0,
+                    wave_length: 3,
+                });
+            }
+            if n >= 9 {
+                variants.push(Self::OrcaellaAsynchronous {
+                    leader_count,
+                    f: 1,
+                    c: 1,
+                    wave_length: 3,
+                });
+                variants.push(Self::OrcaellaAsynchronous {
+                    leader_count,
+                    f: 1,
+                    c: 1,
+                    wave_length: 4,
                 });
             }
             variants.push(Self::MahiMahi {
@@ -371,13 +447,38 @@ pub enum ProtocolError {
         n: Stake,
         min_n: Stake,
     },
-    #[error("Mahi-Mahi requires wave_length in {{4, 5}}, got {wave_length}")]
-    MahiMahiInvalidWaveLength { wave_length: RoundNumber },
+    #[error(
+        "{protocol} requires wave_length in {{{}, {}}}, got {wave_length}",
+        allowed[0],
+        allowed[1]
+    )]
+    InvalidWaveLength {
+        protocol: &'static str,
+        wave_length: RoundNumber,
+        allowed: [RoundNumber; 2],
+    },
     #[error("leader_count ({leader_count}) exceeds committee size ({committee_size})")]
     LeaderCountExceedsCommittee {
         leader_count: NonZeroUsize,
         committee_size: usize,
     },
+}
+
+impl ProtocolError {
+    fn check_wave_length(
+        protocol: &'static str,
+        wave_length: RoundNumber,
+        allowed: [RoundNumber; 2],
+    ) -> Result<(), Self> {
+        if allowed.contains(&wave_length) {
+            return Ok(());
+        }
+        Err(Self::InvalidWaveLength {
+            protocol,
+            wave_length,
+            allowed,
+        })
+    }
 }
 
 /// Optimistic fast-path parameters for dual-path protocols.
@@ -578,6 +679,34 @@ impl Protocol {
         })
     }
 
+    /// Orcaella (asynchronous variant): Orcaella's thresholds with one or two buffer
+    /// rounds and no leader wait; derived in the unified-decider appendix of the lean-dag paper.
+    pub fn orcaella_asynchronous(
+        total_stake: Stake,
+        f: Stake,
+        c: Stake,
+        leader_count: NonZeroUsize,
+        wave_length: RoundNumber,
+    ) -> Result<Self, ProtocolError> {
+        ProtocolError::check_wave_length("Orcaella Async", wave_length, [3, 4])?;
+        let orcaella =
+            Self::orcaella(total_stake, f, c, leader_count).map_err(|error| match error {
+                ProtocolError::FaultBoundViolated { n, min_n, .. } => {
+                    ProtocolError::FaultBoundViolated {
+                        protocol: "Orcaella Async",
+                        n,
+                        min_n,
+                    }
+                }
+                error => error,
+            })?;
+        Ok(Self {
+            wave_length,
+            leader_wait: false,
+            ..orcaella
+        })
+    }
+
     /// Mahi-Mahi
     ///
     /// "Mahi-Mahi: Low-Latency Asynchronous BFT DAG-Based Consensus" ICDCS 2025.
@@ -587,9 +716,7 @@ impl Protocol {
         leader_count: NonZeroUsize,
         wave_length: RoundNumber,
     ) -> Result<Self, ProtocolError> {
-        if wave_length != 4 && wave_length != 5 {
-            return Err(ProtocolError::MahiMahiInvalidWaveLength { wave_length });
-        }
+        ProtocolError::check_wave_length("Mahi-Mahi", wave_length, [4, 5])?;
 
         let quorum = 2 * total_stake / 3 + 1;
         Ok(Self {
@@ -729,6 +856,103 @@ mod tests {
             result,
             Err(ProtocolError::FaultBoundViolated { .. })
         ));
+    }
+
+    /// Async Orcaella keeps Orcaella's thresholds and only changes the wave length
+    /// and the leader wait.
+    #[test]
+    fn orcaella_asynchronous_reduces_to_orcaella() {
+        let leader_count = NonZeroUsize::new(2).unwrap();
+        for (n, f, c) in [(3, 0, 1), (9, 1, 1), (20, 0, 1), (20, 3, 1)] {
+            let orcaella = Protocol::orcaella(n, f, c, leader_count).unwrap();
+            for wave_length in [3, 4] {
+                let protocol =
+                    Protocol::orcaella_asynchronous(n, f, c, leader_count, wave_length).unwrap();
+                assert_eq!(protocol.direct_commit_quorum, orcaella.direct_commit_quorum);
+                assert_eq!(protocol.direct_skip_quorum, orcaella.direct_skip_quorum);
+                assert_eq!(protocol.certificate_quorum, orcaella.certificate_quorum);
+                assert_eq!(protocol.quorum_threshold, orcaella.quorum_threshold);
+                assert_eq!(protocol.anchor_link_size, orcaella.anchor_link_size);
+                assert_eq!(protocol.require_crypto, orcaella.require_crypto);
+                assert_eq!(protocol.leader_count, leader_count);
+                assert!(protocol.fast_path.is_none());
+                assert!(protocol.merged_certificates);
+                assert!(protocol.pipeline);
+                assert_eq!(protocol.wave_length, wave_length);
+                assert!(!protocol.leader_wait);
+            }
+        }
+    }
+
+    /// Only one or two buffer rounds are accepted.
+    #[test]
+    fn orcaella_asynchronous_invalid_wave_length_rejected() {
+        for wave_length in [0, 2, 5] {
+            let result = Protocol::orcaella_asynchronous(
+                9,
+                1,
+                1,
+                NonZeroUsize::new(1).unwrap(),
+                wave_length,
+            );
+            assert!(matches!(
+                result,
+                Err(ProtocolError::InvalidWaveLength {
+                    protocol: "Orcaella Async",
+                    wave_length: got,
+                    allowed: [3, 4],
+                }) if got == wave_length
+            ));
+        }
+    }
+
+    /// Mahi-Mahi keeps its wave-length error message.
+    #[test]
+    fn mahi_mahi_invalid_wave_length_rejected() {
+        let error = Protocol::mahi_mahi(4, NonZeroUsize::new(1).unwrap(), 3)
+            .err()
+            .expect("wave length 3 is invalid");
+        assert_eq!(
+            error.to_string(),
+            "Mahi-Mahi requires wave_length in {4, 5}, got 3"
+        );
+    }
+
+    /// The Orcaella fault bound is enforced and reported under the async name.
+    #[test]
+    fn orcaella_asynchronous_fault_bound_rejected() {
+        let leader_count = NonZeroUsize::new(1).unwrap();
+        let result = Protocol::orcaella_asynchronous(5, 1, 0, leader_count, 3);
+        assert!(matches!(
+            result,
+            Err(ProtocolError::FaultBoundViolated {
+                protocol: "Orcaella Async",
+                n: 5,
+                min_n: 6,
+            })
+        ));
+        let result = Protocol::orcaella_asynchronous(2, 0, 1, leader_count, 4);
+        assert!(matches!(
+            result,
+            Err(ProtocolError::FaultBoundViolated {
+                protocol: "Orcaella Async",
+                n: 2,
+                min_n: 3,
+            })
+        ));
+    }
+
+    /// Fault stakes whose bound overflows `Stake` are rejected, not wrapped.
+    #[test]
+    fn orcaella_asynchronous_bound_overflow_rejected() {
+        let leader_count = NonZeroUsize::new(1).unwrap();
+        for (f, c) in [(Stake::MAX / 5 + 1, 0), (0, Stake::MAX / 2 + 1)] {
+            let result = Protocol::orcaella_asynchronous(100, f, c, leader_count, 3);
+            assert!(matches!(
+                result,
+                Err(ProtocolError::FaultBoundViolated { .. })
+            ));
+        }
     }
 
     /// Reference thresholds from the design note at the mixed configuration

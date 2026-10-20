@@ -13,10 +13,11 @@
 //!   uniform-blamers construction would yield an indirect-*commit* instead.
 //! - **UniformBlamers** (everyone else): `build_split_chain` to the voting
 //!   round with `(direct_skip_quorum - 1)` blamers; the chain collapses to a
-//!   single layer when `wl <= 3`. The forward DAG is left full, except for
-//!   fast-path protocols whose residual supporters reach the weak indirect
-//!   quorum: there the supporter refs are excluded from the forward DAG (as in
-//!   HideVoters) so the anchor cannot weak-commit the target.
+//!   single layer when `wl <= 3`. The forward DAG is left full, except when the
+//!   residual supporters reach the weak indirect quorum (fast path) or, with
+//!   merged certificates, the anchor link size: there the supporter refs are
+//!   excluded from the forward DAG (as in HideVoters) so the anchor cannot
+//!   indirect-commit the target.
 
 use std::sync::Arc;
 
@@ -97,14 +98,16 @@ fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
                 committer.voting_round_for(target_round),
                 blamers_count,
             );
-            // With a fast path, the residual supporters can reach the weak indirect
-            // quorum, and an anchor that sees them would indirect-*commit* the target
-            // through the weak rung. Exclude them from the forward DAG in that case.
+            // The residual supporters can reach the weak indirect quorum (fast path) or,
+            // with merged certificates, the anchor link size; an anchor that sees them
+            // would then indirect-*commit* the target. Exclude them from the forward DAG.
             let residual_supporters = committee.len() as Stake - protocol.direct_skip_quorum + 1;
             let hide_supporters = protocol
                 .fast_path
                 .as_ref()
-                .is_some_and(|fast_path| residual_supporters >= fast_path.weak_indirect_quorum);
+                .is_some_and(|fast_path| residual_supporters >= fast_path.weak_indirect_quorum)
+                || (protocol.merged_certificates
+                    && residual_supporters >= protocol.anchor_link_size);
             let forward_refs: Vec<_> = if hide_supporters {
                 blames
             } else {
