@@ -51,8 +51,8 @@ pub struct SimulationConfig {
     pub name: Option<String>,
     #[serde(default = "defaults::committee_size")]
     pub committee_size: usize,
-    // `singleton_map` writes enum variants as `variant: value` rather than a YAML `!variant`
-    // tag, which the untagged `SimulationMode` cannot read back.
+    // `singleton_map` keeps enum variants in the `variant: value` map form that configs and
+    // exported runs use, rather than serde_yaml's default `!variant` tag.
     #[serde(default, with = "serde_yaml::with::singleton_map")]
     pub latency: LatencyModel,
     #[serde(default, with = "serde_yaml::with::singleton_map")]
