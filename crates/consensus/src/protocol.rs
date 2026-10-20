@@ -13,6 +13,7 @@ mod blue_bottle;
 mod blue_bottle_asynchronous;
 mod cordial_miners;
 mod cordial_miners_asynchronous;
+mod hybrid_mahi_mahi;
 mod hybrid_mysticeti;
 mod hydrozoan;
 mod mahi_mahi;
@@ -76,6 +77,16 @@ pub enum ConsensusProtocol {
         #[serde(deserialize_with = "defaults::deserialize_mahi_mahi_wave_length")]
         wave_length: RoundNumber,
     },
+    HybridMahiMahi {
+        #[serde(default = "defaults::default_leader_count")]
+        leader_count: NonZeroUsize,
+        /// Byzantine-fault stake to tolerate.
+        f: Stake,
+        /// Crash-only fault stake to tolerate (on top of `f`); same bound as Hybrid Mysticeti.
+        c: Stake,
+        #[serde(deserialize_with = "defaults::deserialize_hybrid_mahi_mahi_wave_length")]
+        wave_length: RoundNumber,
+    },
     NemoNemo {
         #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
@@ -121,6 +132,18 @@ mod defaults {
         if value != 3 && value != 4 {
             return Err(D::Error::custom(format!(
                 "OrcaellaAsynchronous wave_length must be 3 or 4, got {value}"
+            )));
+        }
+        Ok(value)
+    }
+
+    pub fn deserialize_hybrid_mahi_mahi_wave_length<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<RoundNumber, D::Error> {
+        let value = RoundNumber::deserialize(deserializer)?;
+        if value != 4 && value != 5 {
+            return Err(D::Error::custom(format!(
+                "HybridMahiMahi wave_length must be 4 or 5, got {value}"
             )));
         }
         Ok(value)
@@ -183,6 +206,16 @@ impl fmt::Display for ConsensusProtocol {
                 "Mahi-Mahi ({} leaders/round, wave length {})",
                 leader_count, wave_length
             ),
+            Self::HybridMahiMahi {
+                leader_count,
+                f,
+                c,
+                wave_length,
+            } => write!(
+                fmt,
+                "Hybrid Mahi-Mahi ({} leaders/round, f={f}, c={c}, wave length {})",
+                leader_count, wave_length
+            ),
             Self::NemoNemo { leader_count } => {
                 write!(fmt, "Nemo-Nemo ({} leaders/round)", leader_count)
             }
@@ -235,6 +268,15 @@ impl fmt::Debug for ConsensusProtocol {
                 leader_count,
                 wave_length,
             } => write!(fmt, "mahi-mahi-l{leader_count}-w{wave_length}"),
+            Self::HybridMahiMahi {
+                leader_count,
+                f,
+                c,
+                wave_length,
+            } => write!(
+                fmt,
+                "hybrid-mahi-mahi-l{leader_count}-f{f}-c{c}-w{wave_length}"
+            ),
             Self::NemoNemo { leader_count } => write!(fmt, "nemo-nemo-l{leader_count}"),
             Self::Hydrozoan {
                 leader_count,
@@ -260,6 +302,7 @@ impl ConsensusProtocol {
             | Self::Orcaella { leader_count, .. }
             | Self::OrcaellaAsynchronous { leader_count, .. }
             | Self::MahiMahi { leader_count, .. }
+            | Self::HybridMahiMahi { leader_count, .. }
             | Self::NemoNemo { leader_count }
             | Self::Hydrozoan { leader_count, .. } => Some(*leader_count),
         };
@@ -300,6 +343,12 @@ impl ConsensusProtocol {
                 leader_count,
                 wave_length,
             } => Protocol::mahi_mahi(total_stake, leader_count, wave_length)?,
+            Self::HybridMahiMahi {
+                leader_count,
+                f,
+                c,
+                wave_length,
+            } => Protocol::hybrid_mahi_mahi(total_stake, f, c, leader_count, wave_length)?,
             Self::NemoNemo { leader_count } => Protocol::nemo_nemo(total_stake, leader_count),
             Self::Hydrozoan {
                 leader_count,
