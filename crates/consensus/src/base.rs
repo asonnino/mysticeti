@@ -1164,4 +1164,67 @@ mod tests {
             other => panic!("expected Undecided after undecided anchor, got {other:?}"),
         }
     }
+
+    /// With a Byzantine authority equivocating at the leader round, `2f + 1` votes for one
+    /// twin and `f` for the other, and a fully connected decision layer, every decision
+    /// block certifies the first twin and none certifies the second.
+    #[test]
+    fn is_certificate_under_equivocation() {
+        let committee = committee(4);
+        let quorum = 2 * committee.total_stake() / 3 + 1;
+        let mut storage = Storage::new_for_test(&committee);
+        let round_1 = build_dag(&committee, &mut storage, None, 1);
+
+        // Round 2: authority 3 equivocates, authorities 0, 1, 2 propose normally.
+        let byzantine = Authority::from(3u64);
+        let honest_round_2 = build_dag_layer(
+            (0..3u64)
+                .map(|authority| (Authority::from(authority), round_1.clone()))
+                .collect(),
+            &mut storage,
+        );
+        let twin_1 = insert_test_block(
+            Block::new_for_test(byzantine, 2, round_1.clone()).with_digest([1u8; 32].into()),
+            &mut storage,
+        );
+        let twin_2 = insert_test_block(
+            Block::new_for_test(byzantine, 2, round_1).with_digest([2u8; 32].into()),
+            &mut storage,
+        );
+
+        // Round 3: authorities 0, 1, 2 vote for the first twin, authority 3 for the second.
+        let votes = build_dag_layer(
+            (0..4u64)
+                .map(|authority| {
+                    let mut parents = honest_round_2.clone();
+                    parents.push(if authority < 3 { twin_1 } else { twin_2 });
+                    (Authority::from(authority), parents)
+                })
+                .collect(),
+            &mut storage,
+        );
+
+        // Round 4: fully connected decision layer.
+        let decisions = build_dag_layer(
+            (0..4u64)
+                .map(|authority| (Authority::from(authority), votes.clone()))
+                .collect(),
+            &mut storage,
+        );
+
+        let reader = storage.block_reader().clone();
+        let committer = BaseCommitter::new_for_test(&committee, reader.clone(), 3, 0);
+        let twin_1 = reader.get_block(twin_1).unwrap();
+        let twin_2 = reader.get_block(twin_2).unwrap();
+        for decision in decisions {
+            let decision = reader.get_block(decision).unwrap();
+            let votes: Vec<_> = decision
+                .includes()
+                .iter()
+                .map(|reference| reader.get_block(*reference).unwrap())
+                .collect();
+            assert!(committer.is_certificate(votes.iter(), &twin_1, quorum));
+            assert!(!committer.is_certificate(votes.iter(), &twin_2, quorum));
+        }
+    }
 }
