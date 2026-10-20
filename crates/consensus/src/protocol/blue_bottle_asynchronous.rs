@@ -5,7 +5,7 @@ use std::num::NonZeroUsize;
 
 use dag::committee::Stake;
 
-use super::Protocol;
+use super::{LeaderElection, Protocol};
 
 impl Protocol {
     /// Blue Bottle (asynchronous variant)
@@ -28,6 +28,7 @@ impl Protocol {
             pipeline: true,
             leader_wait: false,
             require_crypto: true,
+            leader_election: LeaderElection::fake_coin(),
         }
     }
 }

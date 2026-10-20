@@ -22,10 +22,10 @@ pub(crate) fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     let mut committer = Committer::new_for_test(committee, &storage, spec);
     let protocol = spec.to_protocol(committee).expect("valid protocol");
     let k = protocol.leader_count.get();
-    let elector = LeaderElector::new(committee.len());
+    let elector = LeaderElector::new(committee.len(), protocol.leader_election);
     let l1 = committer.nth_leader_round(1);
     let target_offset = k - 1;
-    let target_leader = elector.elect_leader(l1 + target_offset as u64);
+    let target_leader = elector.elect_leader(l1, target_offset as u64);
 
     let refs_at_leader = build_dag(committee, &mut storage, None, l1);
     let refs_without_target = drop_leader(&refs_at_leader, target_leader);

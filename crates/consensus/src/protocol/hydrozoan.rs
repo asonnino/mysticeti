@@ -5,7 +5,7 @@ use std::num::NonZeroUsize;
 
 use dag::committee::Stake;
 
-use super::{FastPath, Protocol, ProtocolError};
+use super::{FastPath, LeaderElection, Protocol, ProtocolError};
 
 impl Protocol {
     /// Hydrozoan
@@ -62,6 +62,7 @@ impl Protocol {
             pipeline: true,
             leader_wait: true,
             require_crypto: f != 0,
+            leader_election: LeaderElection::RoundRobin,
         })
     }
 }

@@ -22,9 +22,9 @@ pub(crate) fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     tracing::info!("[{spec}] Commit sequence: {sequence:?}");
 
     assert_eq!(sequence.len(), k, "[{spec}] expected {k} decisions");
-    let elector = LeaderElector::new(committee.len());
+    let elector = LeaderElector::new(committee.len(), protocol.leader_election);
     for (offset, decision) in sequence.iter().enumerate() {
-        let expected = elector.elect_leader(l1 + offset as u64);
+        let expected = elector.elect_leader(l1, offset as u64);
         match decision {
             LeaderStatus::DirectCommit(block, _) => {
                 assert_eq!(block.author(), expected, "[{spec}] offset={offset}");

@@ -5,7 +5,7 @@ use std::num::NonZeroUsize;
 
 use dag::{block::RoundNumber, committee::Stake};
 
-use super::{Protocol, ProtocolError};
+use super::{LeaderElection, Protocol, ProtocolError};
 
 impl Protocol {
     /// Hybrid Mahi-Mahi: Hybrid Mysticeti's thresholds on Mahi-Mahi's wave (one or two buffer
@@ -33,6 +33,7 @@ impl Protocol {
         Ok(Self {
             wave_length,
             leader_wait: false,
+            leader_election: LeaderElection::fake_coin(),
             ..hybrid_mysticeti
         })
     }

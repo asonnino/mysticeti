@@ -5,7 +5,7 @@ use std::num::NonZeroUsize;
 
 use dag::{block::RoundNumber, committee::Stake};
 
-use super::{Protocol, ProtocolError};
+use super::{LeaderElection, Protocol, ProtocolError};
 
 impl Protocol {
     /// Mahi-Mahi
@@ -33,6 +33,7 @@ impl Protocol {
             pipeline: true,
             leader_wait: false,
             require_crypto: true,
+            leader_election: LeaderElection::fake_coin(),
         })
     }
 }

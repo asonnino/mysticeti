@@ -5,7 +5,7 @@ use std::num::NonZeroUsize;
 
 use dag::committee::Stake;
 
-use super::Protocol;
+use super::{LeaderElection, Protocol};
 
 impl Protocol {
     /// Nemo-Nemo
@@ -27,6 +27,7 @@ impl Protocol {
             pipeline: true,
             leader_wait: true,
             require_crypto: false,
+            leader_election: LeaderElection::RoundRobin,
         }
     }
 }

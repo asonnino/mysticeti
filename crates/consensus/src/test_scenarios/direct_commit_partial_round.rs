@@ -25,8 +25,8 @@ pub(crate) fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     let earliest_decision = committer.earliest_decision_round_for(l1);
     build_dag(committee, &mut storage, None, earliest_decision);
 
-    let elector = LeaderElector::new(committee.len());
-    let first_leader = elector.elect_leader(l1);
+    let elector = LeaderElector::new(committee.len(), protocol.leader_election);
+    let first_leader = elector.elect_leader(l1, 0);
     let seed = Some((l1, first_leader));
 
     let sequence = committer.try_commit(seed).collect::<Vec<_>>();
@@ -40,7 +40,7 @@ pub(crate) fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     );
     for (i, decision) in sequence.iter().enumerate() {
         let offset = i + 1;
-        let expected = elector.elect_leader(l1 + offset as u64);
+        let expected = elector.elect_leader(l1, offset as u64);
         match decision {
             LeaderStatus::DirectCommit(block, _) => {
                 assert_eq!(block.author(), expected, "[{spec}] offset={offset}");

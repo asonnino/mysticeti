@@ -50,7 +50,7 @@ impl Committer {
                 let committer = BaseCommitter::new(
                     committee.clone(),
                     block_reader.clone(),
-                    LeaderElector::new(committee.len()),
+                    LeaderElector::new(committee.len(), protocol.leader_election),
                     &protocol,
                     leader_offset as RoundNumber,
                     round_offset,
@@ -247,6 +247,7 @@ mod tests {
 
     use crate::{
         committer::Committer,
+        leader::LeaderElection,
         protocol::{FastPath, Protocol},
     };
 
@@ -264,6 +265,7 @@ mod tests {
             pipeline: false,
             leader_wait: true,
             require_crypto: false,
+            leader_election: LeaderElection::RoundRobin,
         }
     }
 
