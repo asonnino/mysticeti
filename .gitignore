@@ -44,5 +44,7 @@ Thumbs.db
 data/
 plots/
 scripts/.venv/
-scripts/.venv-eval/
 __pycache__/
+
+# Raw evaluation measurements live in eval-* release assets, never in git (see CLAUDE.md).
+/results/
