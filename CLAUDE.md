@@ -90,6 +90,25 @@ the voting round, reconciled with the certified slow path by a graded indirect r
   4-space multiples (not alignment padding). Use descriptive names, not C-style
   abbreviations. No section-divider comment banners — use modules/idioms.
 
+## Evaluation data
+
+Raw measurements (orchestrator `measurements-*.yaml`, simulator `.prom` dumps, logs) never go
+into git: `results/` is gitignored scratch space. Each campaign is published as a GitHub
+release of `asonnino/mysticeti`, and the paper repo holds the summaries, parsers, plots and
+run log, citing each archive by sha256 (e.g. `hydrozoan-paper/data/evaluation/EVALUATION.md`).
+
+- **One release per build.** Tag `eval-<short sha>` on the commit that produced the data:
+  `gh release create eval-<sha> -R asonnino/mysticeti --target <full sha> --latest=false`.
+  Data from different builds never shares a release or an archive, even within one paper.
+- **Assets:** one `.tar.gz` per day or kind (`aws-measurements-<date>`, `simulator-<date>`),
+  each rooted at a single directory, plus a `SHA256SUMS` covering every archive. Archive the
+  files as produced, minus `.DS_Store` (`COPYFILE_DISABLE=1 tar czf ...` on macOS).
+- **Notes:** build, dates, testbed, what each archive holds and its layout, and anything left
+  out and why.
+- **Verify before deleting local copies:** download every asset back and run
+  `shasum -a 256 -c SHA256SUMS`.
+- Existing: `eval-96dee8d` (Orcaella), `eval-0669999` and `eval-649ec4f` (Hydrozoan).
+
 ## Gotchas
 
 - **Checking if a branch is merged:** past PRs landed via **squash**, so a merged

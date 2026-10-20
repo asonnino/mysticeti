@@ -11,3 +11,7 @@
 - [#267 commit-path labels](project_267_commit_path_labels.md) — LeaderStatus path tags: 24-byte layout budget, fast-beats-slow labelling, commit_type wire rename
 - [Block latency instrumentation](project_block_latency_instrumentation.md) — per-block observe in handle_commit: anchor uniqueness, genesis guard, pre-resolved label children, transaction_time lock scope
 - [Commit-path metric pre-resolution](project_commit_path_metric_preresolution.md) — per-authority leader counters panic if committee_size mismatches; zero series from startup make smoke.rs vacuous; benchmark_duration batching rules
+- [#271 equivocating-leader seam](project_271_equivocating_leader_seam.md) — "crypto disabled" is NOT simulator-only (require_crypto=false in prod), only Mode::Simulated trusts block.digest(); own-block relaxation reader audit; reflection must stay try_send (deadlock)
+- [Simulator run-to-run divergence](project_simulator_nondeterminism.md) — cause is tokio's unbiased `select!` (7 sites); with a `biased;` patch on both sides, output diffing DOES validate a simulator refactor
+- [#277 LatencyModel seam](project_277_latency_model_seam.md) — per-link latency; Uniform RNG-stream equivalence, b->a direction in connect, geography validate/expect invariant, serde_yaml `!tag` vs singleton_map rules
+- [#281 link queue seam](project_281_link_queue_seam.md) — Sleep-across-select invariants, +task_id wake skew, run_one() semantics, MAX_IN_FLIGHT window, stale ./target gotcha
