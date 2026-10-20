@@ -54,7 +54,21 @@ mod tests {
 
     use dag::committee::Stake;
 
-    use crate::protocol::{Protocol, ProtocolError};
+    use crate::{
+        protocol::{ConsensusProtocol, Protocol, ProtocolError},
+        test_scenarios::scenario_tests,
+    };
+
+    scenario_tests!(f0_c1, sizes: [n4, n20], |leader_count| {
+        ConsensusProtocol::Orcaella { leader_count, f: 0, c: 1 }
+    });
+    // With f > 0, n = 4 is below the 5f + 3c + 1 bound.
+    scenario_tests!(f1_c0, sizes: [n20], |leader_count| {
+        ConsensusProtocol::Orcaella { leader_count, f: 1, c: 0 }
+    });
+    scenario_tests!(f1_c1, sizes: [n20], |leader_count| {
+        ConsensusProtocol::Orcaella { leader_count, f: 1, c: 1 }
+    });
 
     /// A Byzantine stake whose bound `5f + 3c + 1` overflows `Stake` is rejected, not wrapped.
     #[test]

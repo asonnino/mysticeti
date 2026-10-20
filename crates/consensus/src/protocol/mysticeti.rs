@@ -30,3 +30,12 @@ impl Protocol {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{protocol::ConsensusProtocol, test_scenarios::scenario_tests};
+
+    scenario_tests!(baseline, sizes: [n4, n20], |leader_count| {
+        ConsensusProtocol::Mysticeti { leader_count }
+    });
+}

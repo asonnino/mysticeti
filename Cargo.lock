@@ -1018,12 +1018,10 @@ dependencies = [
 name = "consensus"
 version = "0.1.0"
 dependencies = [
- "consensus",
  "dag",
  "serde",
  "thiserror 2.0.21",
  "tracing",
- "tracing-test",
 ]
 
 [[package]]

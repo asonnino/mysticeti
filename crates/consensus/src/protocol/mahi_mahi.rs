@@ -41,7 +41,17 @@ impl Protocol {
 mod tests {
     use std::num::NonZeroUsize;
 
-    use crate::protocol::Protocol;
+    use crate::{
+        protocol::{ConsensusProtocol, Protocol},
+        test_scenarios::scenario_tests,
+    };
+
+    scenario_tests!(w4, sizes: [n4, n20], |leader_count| {
+        ConsensusProtocol::MahiMahi { leader_count, wave_length: 4 }
+    });
+    scenario_tests!(w5, sizes: [n4, n20], |leader_count| {
+        ConsensusProtocol::MahiMahi { leader_count, wave_length: 5 }
+    });
 
     /// Mahi-Mahi keeps its wave-length error message.
     #[test]
