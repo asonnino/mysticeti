@@ -62,6 +62,10 @@ tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 tracing-test = "0.2.4"
 
+# The n = 20 scenario tests spend minutes in unoptimized debug builds.
+[profile.dev]
+opt-level = 1
+
 [profile.release]
 panic = "abort"
 debug = 1
