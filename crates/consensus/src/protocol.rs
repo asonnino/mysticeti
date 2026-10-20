@@ -549,12 +549,16 @@ impl Protocol {
         c: Stake,
         leader_count: NonZeroUsize,
     ) -> Result<Self, ProtocolError> {
-        let min_n = if f == 0 { 2 * c + 1 } else { 5 * f + 3 * c + 1 };
-        if min_n > total_stake {
+        let min_n = if f == 0 {
+            2 * c as u128 + 1
+        } else {
+            5 * f as u128 + 3 * c as u128 + 1
+        };
+        if min_n > total_stake as u128 {
             return Err(ProtocolError::FaultBoundViolated {
                 protocol: "Orcaella",
                 n: total_stake,
-                min_n,
+                min_n: Stake::try_from(min_n).unwrap_or(Stake::MAX),
             });
         }
 
@@ -701,7 +705,31 @@ impl Protocol {
 mod tests {
     use std::num::NonZeroUsize;
 
+    use dag::committee::Stake;
+
     use crate::protocol::{Protocol, ProtocolError};
+
+    /// A Byzantine stake whose bound `5f + 3c + 1` overflows `Stake` is rejected, not wrapped.
+    #[test]
+    fn orcaella_byzantine_bound_overflow_rejected() {
+        let f = Stake::MAX / 5 + 1;
+        let result = Protocol::orcaella(100, f, 0, NonZeroUsize::new(1).unwrap());
+        assert!(matches!(
+            result,
+            Err(ProtocolError::FaultBoundViolated { .. })
+        ));
+    }
+
+    /// A crash stake whose bound `2c + 1` overflows `Stake` is rejected, not wrapped.
+    #[test]
+    fn orcaella_crash_bound_overflow_rejected() {
+        let c = Stake::MAX / 2 + 1;
+        let result = Protocol::orcaella(100, 0, c, NonZeroUsize::new(1).unwrap());
+        assert!(matches!(
+            result,
+            Err(ProtocolError::FaultBoundViolated { .. })
+        ));
+    }
 
     /// Reference thresholds from the design note at the mixed configuration
     /// n = 20, f = 3, c = 4, k = 2 (p = 3), where the certificate, slow-commit,
