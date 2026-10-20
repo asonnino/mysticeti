@@ -17,16 +17,7 @@ use dag::{
 };
 use tokio::sync::mpsc;
 
-fn open_core<C: Ctx>(
-    authority: Authority,
-    committee: &Arc<Committee>,
-    path: Option<&Path>,
-) -> Core<C, Committer> {
-    open_core_with_sender(authority, committee, path).0
-}
-
-/// Like `open_core`, but also returns the sender feeding the core's block handler.
-pub fn open_core_with_sender<C: Ctx>(
+pub fn open_core<C: Ctx>(
     authority: Authority,
     committee: &Arc<Committee>,
     path: Option<&Path>,
@@ -70,7 +61,7 @@ pub fn committee_and_cores_persisted<C: Ctx>(
     let committee = committee(n);
     let cores = committee
         .authorities()
-        .map(|authority| open_core(authority, &committee, path))
+        .map(|authority| open_core(authority, &committee, path).0)
         .collect();
     (committee, cores)
 }
