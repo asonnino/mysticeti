@@ -3,7 +3,7 @@
 # Authority 3 sends two blocks in every round where it holds a leader slot: its
 # proposal and a twin with a different digest. Odd-indexed peers receive the
 # twin first, even-indexed peers the original, so the votes split. Under
-# dag-hydrangea the equivocated slots are committed by the weak rung of the
+# hydrozoan the equivocated slots are committed by the weak rung of the
 # graded indirect rule; switch the protocol to mysticeti to see them skipped
 # indirectly instead. Read the outcome off committed_leaders_total{commit_type}
 # in the exported metrics-*.prom files:
@@ -14,7 +14,7 @@
 # Label shown in logs and in the suite summary table.
 name: equivocating-leader
 # Twenty replicas: with f=3, c=4, k=2 below the thresholds are FAST=17, CERT=12,
-# W=7 and Q=13 (see the cheat-sheet in crates/simulator/tests/dag_hydrangea.rs).
+# W=7 and Q=13 (see the cheat-sheet in crates/simulator/tests/hydrozoan.rs).
 committee_size: 20
 # Simulated seconds; about 230 rounds at the default 50-100 ms link latency,
 # i.e. roughly 40 equivocated leader slots.
@@ -29,7 +29,7 @@ replica_parameters:
   # Dual-path protocol: fast commit at FAST votes, slow commit at SLOW
   # certificates, weak indirect rung at W anchor-linked votes.
   consensus:
-    protocol: dag-hydrangea
+    protocol: hydrozoan
     leader_count: 2
     f: 3
     c: 4

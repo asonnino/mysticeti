@@ -10,7 +10,7 @@ two `dag` relaxations that make same-slot twin blocks representable. Related: [[
 
 **`CryptoEngine::disabled()` is NOT simulator-only.** `crates/replica/src/replica.rs:93` picks the
 disabled engine when `!protocol.require_crypto`. `require_crypto` is `false` for Nemo-Nemo (CFT)
-and for Orcaella / DagHydrangea whenever `f == 0` (`crates/consensus/src/protocol.rs`). So anything
+and for Orcaella / Hydrozoan whenever `f == 0` (`crates/consensus/src/protocol.rs`). So anything
 keyed off "crypto disabled" is live in real deployments, not just the simulator.
 
 **The trust boundary is `Mode::Disabled` vs `Mode::Simulated`** (`crates/dag/src/crypto.rs`,

@@ -2,7 +2,7 @@
 
 Reference implementations of several uncertified DAG-based consensus protocols
 (Mysticeti, Mahi-Mahi, Blue Bottle, Orcaella, Cordial Miners PS/Async, Nemo-Nemo,
-DagHydrangea). The codebase is deliberately small and modular, meant for benchmarking and
+Hydrozoan). The codebase is deliberately small and modular, meant for benchmarking and
 experimentation — **not production** — but uses real networking, cryptography, and
 persistent storage. Ships with a discrete-event simulator and a cloud orchestrator for
 running the protocols under custom scenarios.
@@ -30,7 +30,7 @@ design notes.
 ## Lean formalization
 
 `lean/` holds a Lean 4 + mathlib formalization of the safety and liveness
-arguments of Hydrozoan (the paper name of `DagHydrangea`); the paper's
+arguments of Hydrozoan (`ConsensusProtocol::Hydrozoan`); the paper's
 theory-only variant Optimal-Hydrozoan lives in `gdanezis/lean-dag` as a peer
 arc of this development's mirror there. It is a separate lake project, not a Cargo crate:
 `cd lean && lake build`; `python3 lean/scripts/check_no_holes.py` scans for proof
@@ -66,7 +66,7 @@ that validates inputs and builds a `Protocol`. Rounds group into *waves* (leader
 voting round(s) → decision round); a leader is **directly** committed/skipped from
 votes/blames in its own wave, or **indirectly** decided later via an anchor. With
 `leader_count > 1` a round elects a *cohort* of K leaders (offsets `0..K`). Dual-path
-protocols (DagHydrangea) set `fast_path: Some(..)`: a fast direct commit from votes at
+protocols (Hydrozoan) set `fast_path: Some(..)`: a fast direct commit from votes at
 the voting round, reconciled with the certified slow path by a graded indirect rule
 (certificate → weak quorum → skip).
 
