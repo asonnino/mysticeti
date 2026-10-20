@@ -61,11 +61,13 @@ bypassing the hook.
 All supported protocols share one committer; they differ only in a flat parameter set
 (`Protocol`: `direct_commit_quorum`, `direct_skip_quorum`, `certificate_quorum`,
 `quorum_threshold`, `fast_path`, `anchor_link_size`, `wave_length`, `leader_count`,
-`pipeline`, `leader_wait`, `require_crypto`). `ConsensusProtocol` is the user-facing enum
+`pipeline`, `leader_wait`, `require_crypto`, `leader_election`). `ConsensusProtocol` is the user-facing enum
 that validates inputs and builds a `Protocol`. Rounds group into *waves* (leader round →
 voting round(s) → decision round); a leader is **directly** committed/skipped from
 votes/blames in its own wave, or **indirectly** decided later via an anchor. With
-`leader_count > 1` a round elects a *cohort* of K leaders (offsets `0..K`). Dual-path
+`leader_count > 1` a round elects a *cohort* of K leaders (offsets `0..K`). Partially synchronous
+protocols elect leaders round-robin; asynchronous ones use a `FakeCoin`, a PRF of a seed the
+validators share, which stands in for a real common coin and is sound for crash faults only. Dual-path
 protocols (Hydrozoan) set `fast_path: Some(..)`: a fast direct commit from votes at
 the voting round, reconciled with the certified slow path by a graded indirect rule
 (certificate → weak quorum → skip).
