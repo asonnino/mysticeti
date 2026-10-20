@@ -17,7 +17,7 @@ network and failure scenarios.
 
 This repository currently supports [Mysticeti](https://sonnino.com/papers/mysticeti.pdf) (plus a
 derived variant under mixed Byzantine and crash faults),
-[Mahi-Mahi](https://sonnino.com/papers/mahi-mahi.pdf),
+[Mahi-Mahi](https://sonnino.com/papers/mahi-mahi.pdf) (likewise),
 [Blue Bottle](https://sonnino.com/papers/bluebottle.pdf) (both the partially synchronous and asynchronous
 variants),
 [Cordial Miners](https://arxiv.org/abs/2205.09174) (both the partially synchronous and asynchronous
