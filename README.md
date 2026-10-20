@@ -21,8 +21,8 @@ This repository currently supports [Mysticeti](https://sonnino.com/papers/mystic
 variants),
 [Cordial Miners](https://arxiv.org/abs/2205.09174) (both the partially synchronous and asynchronous
 variants), [Nemo-Nemo](https://sonnino.com/papers/nemo-nemo.pdf),
-[Orcaella](https://sonnino.com/papers/orcaella.pdf), and a DAG variant of
-[Hydrangea](https://eprint.iacr.org/2025/1112).
+[Orcaella](https://sonnino.com/papers/orcaella.pdf) (plus a derived asynchronous variant), and a DAG
+variant of [Hydrangea](https://eprint.iacr.org/2025/1112).
 
 ## Quick Start
 
