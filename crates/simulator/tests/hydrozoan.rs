@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-//! DagHydrangea simulation tests.
+//! Hydrozoan simulation tests.
 //!
 //! Threshold cheat-sheet for the configurations used below
 //! (n = 3f + 2c + k + 1, p = (c + k) / 2):
@@ -24,8 +24,8 @@ use replica::config::ReplicaParameters;
 use replica::result::{Outcome, RunResult};
 use simulator::{NetworkTopology, SimulationConfig, SimulationRunner};
 
-fn dag_hydrangea(f: u64, c: u64, k: u64, leader_count: usize) -> ConsensusProtocol {
-    ConsensusProtocol::DagHydrangea {
+fn hydrozoan(f: u64, c: u64, k: u64, leader_count: usize) -> ConsensusProtocol {
+    ConsensusProtocol::Hydrozoan {
         leader_count: NonZeroUsize::new(leader_count).unwrap(),
         f,
         c,
@@ -64,7 +64,7 @@ fn happy_path_bft_n4() {
             committee_size: 4,
             duration_secs: 30,
             replica_parameters: ReplicaParameters {
-                consensus: dag_hydrangea(1, 0, 0, 2),
+                consensus: hydrozoan(1, 0, 0, 2),
                 ..Default::default()
             },
             ..Default::default()
@@ -82,7 +82,7 @@ fn fast_dominant_crash_slack_n4() {
         committee_size: 4,
         duration_secs: 30,
         replica_parameters: ReplicaParameters {
-            consensus: dag_hydrangea(0, 1, 1, 2),
+            consensus: hydrozoan(0, 1, 1, 2),
             ..Default::default()
         },
         ..Default::default()
@@ -108,7 +108,7 @@ fn happy_path_mixed_n20() {
             committee_size: 20,
             duration_secs: 40,
             replica_parameters: ReplicaParameters {
-                consensus: dag_hydrangea(3, 4, 2, 2),
+                consensus: hydrozoan(3, 4, 2, 2),
                 ..Default::default()
             },
             ..Default::default()
@@ -125,7 +125,7 @@ fn happy_path_wide_slack_n20() {
             committee_size: 20,
             duration_secs: 40,
             replica_parameters: ReplicaParameters {
-                consensus: dag_hydrangea(4, 1, 5, 2),
+                consensus: hydrozoan(4, 1, 5, 2),
                 ..Default::default()
             },
             ..Default::default()
@@ -143,7 +143,7 @@ fn crash_one_node_n4() {
         topology: NetworkTopology::OneDown(0),
         duration_secs: 30,
         replica_parameters: ReplicaParameters {
-            consensus: dag_hydrangea(0, 1, 1, 2),
+            consensus: hydrozoan(0, 1, 1, 2),
             ..Default::default()
         },
         ..Default::default()
@@ -167,7 +167,7 @@ fn crash_one_node_n20() {
         topology: NetworkTopology::OneDown(0),
         duration_secs: 40,
         replica_parameters: ReplicaParameters {
-            consensus: dag_hydrangea(3, 4, 2, 2),
+            consensus: hydrozoan(3, 4, 2, 2),
             ..Default::default()
         },
         ..Default::default()
@@ -200,7 +200,7 @@ fn fast_quorum_above_clock_quorum_commits_without_waiting_for_a_proposal_n20() {
             committee_size: 20,
             duration_secs: 30,
             replica_parameters: ReplicaParameters {
-                consensus: dag_hydrangea(f, c, k, 2),
+                consensus: hydrozoan(f, c, k, 2),
                 ..Default::default()
             },
             ..Default::default()
@@ -243,7 +243,7 @@ fn slow_path_partition_n20() {
             duration_secs: 40,
             rng_seed,
             replica_parameters: ReplicaParameters {
-                consensus: dag_hydrangea(0, 9, 1, 2),
+                consensus: hydrozoan(0, 9, 1, 2),
                 ..Default::default()
             },
             ..Default::default()
@@ -279,7 +279,7 @@ fn partition_below_quorum_n20() {
         topology: NetworkTopology::Partition(vec![(0..10).collect(), (10..20).collect()]),
         duration_secs: 20,
         replica_parameters: ReplicaParameters {
-            consensus: dag_hydrangea(0, 9, 1, 2),
+            consensus: hydrozoan(0, 9, 1, 2),
             ..Default::default()
         },
         ..Default::default()
@@ -294,7 +294,7 @@ fn multi_leader_1_n20() {
             committee_size: 20,
             duration_secs: 30,
             replica_parameters: ReplicaParameters {
-                consensus: dag_hydrangea(3, 4, 2, 1),
+                consensus: hydrozoan(3, 4, 2, 1),
                 ..Default::default()
             },
             ..Default::default()
@@ -310,7 +310,7 @@ fn multi_leader_4_n20() {
             committee_size: 20,
             duration_secs: 30,
             replica_parameters: ReplicaParameters {
-                consensus: dag_hydrangea(3, 4, 2, 4),
+                consensus: hydrozoan(3, 4, 2, 4),
                 ..Default::default()
             },
             ..Default::default()
@@ -322,21 +322,21 @@ fn multi_leader_4_n20() {
 #[test]
 fn infeasible_params_rejected() {
     // n=4, f=1, c=0, k=1 needs n >= 3*1+0+1+1 = 5 — rejected.
-    let result = Protocol::dag_hydrangea(4, 1, 0, 1, NonZeroUsize::new(1).unwrap());
+    let result = Protocol::hydrozoan(4, 1, 0, 1, NonZeroUsize::new(1).unwrap());
     assert!(matches!(
         result,
         Err(ProtocolError::FaultBoundViolated {
-            protocol: "DagHydrangea",
+            protocol: "Hydrozoan",
             n: 4,
             min_n: 5,
         })
     ));
     // n=19, f=3, c=4, k=2 needs n >= 9+8+2+1 = 20 — rejected.
-    let result = Protocol::dag_hydrangea(19, 3, 4, 2, NonZeroUsize::new(1).unwrap());
+    let result = Protocol::hydrozoan(19, 3, 4, 2, NonZeroUsize::new(1).unwrap());
     assert!(matches!(
         result,
         Err(ProtocolError::FaultBoundViolated {
-            protocol: "DagHydrangea",
+            protocol: "Hydrozoan",
             n: 19,
             min_n: 20,
         })
@@ -359,7 +359,7 @@ fn equivocating_leader_n20() {
             duration_secs: 40,
             rng_seed,
             replica_parameters: ReplicaParameters {
-                consensus: dag_hydrangea(3, 4, 2, 2),
+                consensus: hydrozoan(3, 4, 2, 2),
                 ..Default::default()
             },
             ..Default::default()

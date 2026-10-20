@@ -142,15 +142,15 @@ The twin is also delivered back to the equivocator itself (as if a peer had sent
 honest blocks referencing the twin stay causally complete for it and it keeps proposing.
 
 What to expect: a slot with two twins cannot gather a fast quorum or a certificate for either,
-so it is never fast- or slow-committed. Under a dual-path protocol (`dag-hydrangea`) each twin
+so it is never fast- or slow-committed. Under a dual-path protocol (`hydrozoan`) each twin
 still gathers a weak quorum of anchor-linked votes and the slot is committed by the weak rung of
 the graded indirect rule, with the digest tie-break choosing the twin. Under a single-path
 protocol (`mysticeti`) the slot is skipped indirectly. In neither case is a direct skip possible,
 since every voter voted for one of the twins. The scenarios in
-`crates/simulator/tests/dag_hydrangea.rs` and `crates/simulator/tests/simulation.rs` assert
+`crates/simulator/tests/hydrozoan.rs` and `crates/simulator/tests/simulation.rs` assert
 exactly this through the `commit_type` breakdown of `committed_leaders_total`;
 [`examples/twin.yaml`](../crates/simulator/examples/twin.yaml) is a ready-made run of the
-DagHydrangea case whose exported `metrics-*.prom` files show the breakdown per leader.
+Hydrozoan case whose exported `metrics-*.prom` files show the breakdown per leader.
 
 Two approximations to keep in mind. The leader slots are computed from the protocol's leader
 count and the round-robin `LeaderElector`, which is exact for the pipelined protocols; the

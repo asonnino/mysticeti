@@ -50,7 +50,7 @@ pub enum ConsensusProtocol {
         #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
     },
-    DagHydrangea {
+    Hydrozoan {
         #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
         /// Byzantine-fault stake to tolerate.
@@ -127,7 +127,7 @@ impl fmt::Display for ConsensusProtocol {
             Self::NemoNemo { leader_count } => {
                 write!(fmt, "Nemo-Nemo ({} leaders/round)", leader_count)
             }
-            Self::DagHydrangea {
+            Self::Hydrozoan {
                 leader_count,
                 f,
                 c,
@@ -135,7 +135,7 @@ impl fmt::Display for ConsensusProtocol {
             } => {
                 write!(
                     fmt,
-                    "DagHydrangea ({} leaders/round, f={f}, c={c}, k={k})",
+                    "Hydrozoan ({} leaders/round, f={f}, c={c}, k={k})",
                     leader_count
                 )
             }
@@ -165,12 +165,12 @@ impl fmt::Debug for ConsensusProtocol {
                 wave_length,
             } => write!(fmt, "mahi-mahi-l{leader_count}-w{wave_length}"),
             Self::NemoNemo { leader_count } => write!(fmt, "nemo-nemo-l{leader_count}"),
-            Self::DagHydrangea {
+            Self::Hydrozoan {
                 leader_count,
                 f,
                 c,
                 k,
-            } => write!(fmt, "dag-hydrangea-l{leader_count}-f{f}-c{c}-k{k}"),
+            } => write!(fmt, "hydrozoan-l{leader_count}-f{f}-c{c}-k{k}"),
         }
     }
 }
@@ -188,7 +188,7 @@ impl ConsensusProtocol {
             | Self::Orcaella { leader_count, .. }
             | Self::MahiMahi { leader_count, .. }
             | Self::NemoNemo { leader_count }
-            | Self::DagHydrangea { leader_count, .. } => Some(*leader_count),
+            | Self::Hydrozoan { leader_count, .. } => Some(*leader_count),
         };
         if let Some(leader_count) = user_leader_count
             && leader_count.get() > committee_size
@@ -219,12 +219,12 @@ impl ConsensusProtocol {
                 wave_length,
             } => Protocol::mahi_mahi(total_stake, leader_count, wave_length)?,
             Self::NemoNemo { leader_count } => Protocol::nemo_nemo(total_stake, leader_count),
-            Self::DagHydrangea {
+            Self::Hydrozoan {
                 leader_count,
                 f,
                 c,
                 k,
-            } => Protocol::dag_hydrangea(total_stake, f, c, k, leader_count)?,
+            } => Protocol::hydrozoan(total_stake, f, c, k, leader_count)?,
         })
     }
 }
@@ -269,38 +269,38 @@ impl ConsensusProtocol {
                 leader_count,
                 wave_length: 5,
             });
-            variants.push(Self::DagHydrangea {
+            variants.push(Self::Hydrozoan {
                 leader_count,
                 f: 1,
                 c: 0,
                 k: 0,
             });
-            variants.push(Self::DagHydrangea {
+            variants.push(Self::Hydrozoan {
                 leader_count,
                 f: 0,
                 c: 1,
                 k: 1,
             });
             if n >= 20 {
-                variants.push(Self::DagHydrangea {
+                variants.push(Self::Hydrozoan {
                     leader_count,
                     f: 6,
                     c: 0,
                     k: 1,
                 });
-                variants.push(Self::DagHydrangea {
+                variants.push(Self::Hydrozoan {
                     leader_count,
                     f: 0,
                     c: 9,
                     k: 1,
                 });
-                variants.push(Self::DagHydrangea {
+                variants.push(Self::Hydrozoan {
                     leader_count,
                     f: 3,
                     c: 4,
                     k: 2,
                 });
-                variants.push(Self::DagHydrangea {
+                variants.push(Self::Hydrozoan {
                     leader_count,
                     f: 4,
                     c: 1,
@@ -319,38 +319,38 @@ impl ConsensusProtocol {
         let mut variants = Vec::new();
         for &l in leader_counts {
             let leader_count = NonZeroUsize::new(l).expect("leader_count must be non-zero");
-            variants.push(Self::DagHydrangea {
+            variants.push(Self::Hydrozoan {
                 leader_count,
                 f: 1,
                 c: 0,
                 k: 0,
             });
-            variants.push(Self::DagHydrangea {
+            variants.push(Self::Hydrozoan {
                 leader_count,
                 f: 0,
                 c: 1,
                 k: 1,
             });
             if n >= 20 {
-                variants.push(Self::DagHydrangea {
+                variants.push(Self::Hydrozoan {
                     leader_count,
                     f: 6,
                     c: 0,
                     k: 1,
                 });
-                variants.push(Self::DagHydrangea {
+                variants.push(Self::Hydrozoan {
                     leader_count,
                     f: 0,
                     c: 9,
                     k: 1,
                 });
-                variants.push(Self::DagHydrangea {
+                variants.push(Self::Hydrozoan {
                     leader_count,
                     f: 3,
                     c: 4,
                     k: 2,
                 });
-                variants.push(Self::DagHydrangea {
+                variants.push(Self::Hydrozoan {
                     leader_count,
                     f: 4,
                     c: 1,
@@ -630,11 +630,11 @@ impl Protocol {
         }
     }
 
-    /// DagHydrangea
+    /// Hydrozoan
     ///
-    /// "Hydrangea: Optimistic Two-Round Partial Synchrony with Improved Fault Resilience"
-    /// <https://eprint.iacr.org/2025/1112>
-    pub fn dag_hydrangea(
+    /// "Hydrozoan: Latency-Adaptive DAG Consensus under Mixed Byzantine and Crash Faults"
+    /// <https://sonnino.com/papers/hydrozoan.pdf>
+    pub fn hydrozoan(
         total_stake: Stake,
         f: Stake,
         c: Stake,
@@ -649,7 +649,7 @@ impl Protocol {
         let min_n = 3 * f + 2 * c + k + 1;
         if min_n > n {
             return Err(ProtocolError::FaultBoundViolated {
-                protocol: "DagHydrangea",
+                protocol: "Hydrozoan",
                 n: total_stake,
                 min_n: Stake::try_from(min_n).unwrap_or(Stake::MAX),
             });
@@ -735,8 +735,8 @@ mod tests {
     /// n = 20, f = 3, c = 4, k = 2 (p = 3), where the certificate, slow-commit,
     /// and pacemaker quorums are all distinct.
     #[test]
-    fn dag_hydrangea_thresholds_mixed_configuration() {
-        let protocol = Protocol::dag_hydrangea(20, 3, 4, 2, NonZeroUsize::new(1).unwrap()).unwrap();
+    fn hydrozoan_thresholds_mixed_configuration() {
+        let protocol = Protocol::hydrozoan(20, 3, 4, 2, NonZeroUsize::new(1).unwrap()).unwrap();
         let fast_path = protocol.fast_path.expect("dual-path protocol");
         assert_eq!(fast_path.commit_quorum, 17); // n - p
         assert_eq!(fast_path.weak_indirect_quorum, 7); // f + p + 1
@@ -749,9 +749,8 @@ mod tests {
     /// At `k = 0` the certificate, slow-commit, and pacemaker quorums coincide
     /// (n = 99, f = 10, c = 34 from the design note).
     #[test]
-    fn dag_hydrangea_quorums_coincide_at_zero_slack() {
-        let protocol =
-            Protocol::dag_hydrangea(99, 10, 34, 0, NonZeroUsize::new(1).unwrap()).unwrap();
+    fn hydrozoan_quorums_coincide_at_zero_slack() {
+        let protocol = Protocol::hydrozoan(99, 10, 34, 0, NonZeroUsize::new(1).unwrap()).unwrap();
         assert_eq!(protocol.certificate_quorum, 55);
         assert_eq!(protocol.direct_commit_quorum, 55);
         assert_eq!(protocol.quorum_threshold, 55);
@@ -759,12 +758,12 @@ mod tests {
 
     /// The fault bound `n >= 3f + 2c + k + 1` is enforced.
     #[test]
-    fn dag_hydrangea_fault_bound_rejected() {
-        let result = Protocol::dag_hydrangea(4, 1, 0, 1, NonZeroUsize::new(1).unwrap());
+    fn hydrozoan_fault_bound_rejected() {
+        let result = Protocol::hydrozoan(4, 1, 0, 1, NonZeroUsize::new(1).unwrap());
         assert!(matches!(
             result,
             Err(ProtocolError::FaultBoundViolated {
-                protocol: "DagHydrangea",
+                protocol: "Hydrozoan",
                 n: 4,
                 min_n: 5,
             })
