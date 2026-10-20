@@ -17,7 +17,7 @@ crate's `replica` binary.
 | Crate | Responsibility |
 | --- | --- |
 | `crates/dag` | DAG primitives + storage the protocols run on: `Block`, `Authority`, `Committee`, `Core` (block manager + threshold clock), `Storage` (WAL-backed and ephemeral), `BlockReader`. |
-| `crates/consensus` | The commit rule, decoupled from the DAG: `Committer` applies direct/indirect rules, `Wave` owns round/wave arithmetic, `protocol.rs` holds per-protocol parameter sets. |
+| `crates/consensus` | The commit rule, decoupled from the DAG: `Committer` applies direct/indirect rules, `Wave` owns round/wave arithmetic, `protocol/` holds one file per protocol parameter set. |
 | `crates/replica` | A running node: wires a `dag::Core` to a consensus `Committer`, networking, storage, metrics, and a load generator. Also hosts the `LocalTestbedRunner`. |
 | `crates/orchestrator` | Cloud-testbed lifecycle (deploy/start/stop/destroy) over SSH + Prometheus metric collection. Protocol-agnostic; the CLI supplies the glue. |
 | `crates/simulator` | Discrete-event simulator for exercising protocols under custom network/failure scenarios. |
@@ -83,9 +83,14 @@ the voting round, reconciled with the certified slow path by a graded indirect r
   `refactor(...)`, `test(...)`, …).
 - **Test-only APIs** are gated behind `#[cfg(any(test, feature = "test-utils"))]`.
   Integration tests under `crates/<crate>/tests/` are separate crates and don't see
-  `cfg(test)`, so they enable the feature (consensus does this via a self `path`
+  `cfg(test)`, so they enable the feature (replica and simulator do this via a self `path`
   dev-dependency). Shared DAG test builders live in `dag::test_util`
   (`build_dag`, `build_dag_layer`, `build_split_chain`, `drop_leader`, `committee`).
+- **Consensus scenario tests** live in `crates/consensus/src/test_scenarios/`, one
+  protocol-agnostic `run` per scenario. Each protocol file under `src/protocol/` declares the
+  configurations it is tested at with `scenario_tests!(name, sizes: [n4, n20], |leader_count| ..)`
+  (add `fast_path` for dual-path protocols), which emits one `#[test]` per scenario and size.
+  A new protocol must add its own `scenario_tests!` calls; a new scenario is added to the macro.
 - **Style** (enforced by hooks): 100-char max line length; line-continuation indents are
   4-space multiples (not alignment padding). Use descriptive names, not C-style
   abbreviations. No section-divider comment banners — use modules/idioms.
