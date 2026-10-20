@@ -175,6 +175,30 @@ pub fn build_split_chain(
     final_blamers_count: usize,
 ) -> (Vec<BlockReference>, Vec<BlockReference>) {
     let n = committee.len();
+    assert!(final_blamers_count < n);
+    build_partial_split_chain(
+        committee,
+        storage,
+        support,
+        blames,
+        target_round,
+        n - final_blamers_count,
+        final_blamers_count,
+    )
+}
+
+/// [`build_split_chain`] whose final layer has only `final_supporters_count` support and
+/// `final_blamers_count` blame blocks; the remaining authorities have no block at `target_round`.
+pub fn build_partial_split_chain(
+    committee: &Committee,
+    storage: &mut Storage,
+    support: Vec<BlockReference>,
+    blames: Vec<BlockReference>,
+    target_round: RoundNumber,
+    final_supporters_count: usize,
+    final_blamers_count: usize,
+) -> (Vec<BlockReference>, Vec<BlockReference>) {
+    let n = committee.len();
     let initial_round = support.first().unwrap().round;
     assert_eq!(
         initial_round,
@@ -182,7 +206,8 @@ pub fn build_split_chain(
         "support and blames must be at the same round",
     );
     assert!(target_round > initial_round);
-    assert!(final_blamers_count < n);
+    assert!(final_supporters_count > 0);
+    assert!(final_supporters_count + final_blamers_count <= n);
 
     let mut support = support;
     let mut blames = blames;
@@ -201,15 +226,15 @@ pub fn build_split_chain(
         current_round += 1;
     }
 
-    let supporters_count = n - final_blamers_count;
+    let blamers_end = final_supporters_count + final_blamers_count;
     let final_support = build_dag_layer(
-        (0..supporters_count as u64)
+        (0..final_supporters_count as u64)
             .map(|i| (Authority::from(i), support.clone()))
             .collect(),
         storage,
     );
     let final_blames = build_dag_layer(
-        (supporters_count as u64..n as u64)
+        (final_supporters_count as u64..blamers_end as u64)
             .map(|i| (Authority::from(i), blames.clone()))
             .collect(),
         storage,

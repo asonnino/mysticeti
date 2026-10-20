@@ -13,6 +13,7 @@ mod blue_bottle;
 mod blue_bottle_asynchronous;
 mod cordial_miners;
 mod cordial_miners_asynchronous;
+mod hybrid_mysticeti;
 mod hydrozoan;
 mod mahi_mahi;
 mod mysticeti;
@@ -33,6 +34,14 @@ pub enum ConsensusProtocol {
     Mysticeti {
         #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
+    },
+    HybridMysticeti {
+        #[serde(default = "defaults::default_leader_count")]
+        leader_count: NonZeroUsize,
+        /// Byzantine-fault stake to tolerate.
+        f: Stake,
+        /// Crash-only fault stake to tolerate (on top of `f`); requires `n >= 3f + 2c + 1`.
+        c: Stake,
     },
     BlueBottlePartiallySynchronous {
         #[serde(default = "defaults::default_leader_count")]
@@ -136,6 +145,13 @@ impl fmt::Display for ConsensusProtocol {
             Self::Mysticeti { leader_count } => {
                 write!(fmt, "Mysticeti ({} leaders/round)", leader_count)
             }
+            Self::HybridMysticeti { leader_count, f, c } => {
+                write!(
+                    fmt,
+                    "Hybrid Mysticeti ({} leaders/round, f={f}, c={c})",
+                    leader_count
+                )
+            }
             Self::BlueBottlePartiallySynchronous { leader_count } => {
                 write!(fmt, "Blue Bottle PS ({} leaders/round)", leader_count)
             }
@@ -194,6 +210,9 @@ impl fmt::Debug for ConsensusProtocol {
             Self::CordialMinersPartiallySynchronous => write!(fmt, "cordial-miners-ps"),
             Self::CordialMinersAsynchronous => write!(fmt, "cordial-miners-async"),
             Self::Mysticeti { leader_count } => write!(fmt, "mysticeti-l{leader_count}"),
+            Self::HybridMysticeti { leader_count, f, c } => {
+                write!(fmt, "hybrid-mysticeti-l{leader_count}-f{f}-c{c}")
+            }
             Self::BlueBottlePartiallySynchronous { leader_count } => {
                 write!(fmt, "blue-bottle-ps-l{leader_count}")
             }
@@ -235,6 +254,7 @@ impl ConsensusProtocol {
         let user_leader_count = match self {
             Self::CordialMinersPartiallySynchronous | Self::CordialMinersAsynchronous => None,
             Self::Mysticeti { leader_count }
+            | Self::HybridMysticeti { leader_count, .. }
             | Self::BlueBottlePartiallySynchronous { leader_count }
             | Self::BlueBottleAsynchronous { leader_count }
             | Self::Orcaella { leader_count, .. }
@@ -258,6 +278,9 @@ impl ConsensusProtocol {
             }
             Self::CordialMinersAsynchronous => Protocol::cordial_miners_asynchronous(total_stake),
             Self::Mysticeti { leader_count } => Protocol::mysticeti(total_stake, leader_count),
+            Self::HybridMysticeti { leader_count, f, c } => {
+                Protocol::hybrid_mysticeti(total_stake, f, c, leader_count)?
+            }
             Self::BlueBottlePartiallySynchronous { leader_count } => {
                 Protocol::blue_bottle_partially_synchronous(total_stake, leader_count)
             }

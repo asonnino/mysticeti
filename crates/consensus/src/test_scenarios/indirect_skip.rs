@@ -25,7 +25,7 @@ use dag::{
     committee::{Committee, Stake},
     consensus::LeaderStatus,
     storage::Storage,
-    test_util::{build_dag, build_dag_layer, build_split_chain, drop_leader},
+    test_util::{build_dag, build_dag_layer, build_partial_split_chain, drop_leader},
 };
 
 use crate::{committer::Committer, leader::LeaderElector, protocol::ConsensusProtocol};
@@ -71,18 +71,24 @@ pub(crate) fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
             build_dag(committee, &mut storage, Some(forward_refs), anchor_decision);
         } else {
             let blamers_count = (protocol.direct_skip_quorum - 1) as usize;
-            let (supports, blames) = build_split_chain(
+            // When skip + cert = n + 1 (Hybrid Mysticeti at f = 0), a complete voting round
+            // always decides the target directly; leave voters out so the supporters stay one
+            // short of a certificate.
+            let supporters_count =
+                (committee.len() - blamers_count).min((protocol.certificate_quorum - 1) as usize);
+            let (supports, blames) = build_partial_split_chain(
                 committee,
                 &mut storage,
                 l1_votes,
                 l1_blames,
                 committer.voting_round_for(target_round),
+                supporters_count,
                 blamers_count,
             );
             // The residual supporters can reach the weak indirect quorum (fast path) or,
             // with merged certificates, the anchor link size; an anchor that sees them
             // would then indirect-*commit* the target. Exclude them from the forward DAG.
-            let residual_supporters = committee.len() as Stake - protocol.direct_skip_quorum + 1;
+            let residual_supporters = supporters_count as Stake;
             let hide_supporters = protocol
                 .fast_path
                 .as_ref()
