@@ -100,22 +100,19 @@ impl<C: Ctx, D: DagConsensus> Core<C, D> {
             last_committed_leader,
             committed_blocks,
         } = recovered;
-        let recovered_transactions = pending
-            .iter()
-            .map(|(_, statement)| match statement {
-                MetaStatement::Payload(payload) => payload.len(),
-                MetaStatement::Include(_) => 0,
-            })
-            .sum();
-        block_handler.recover_pending_transactions(recovered_transactions);
         let quorum_threshold = committer.quorum_threshold();
         let mut threshold_clock = ThresholdClockAggregator::new(0, quorum_threshold);
         let last_own_block = if let Some(own_block) = last_own_block {
-            for (_, pending_block) in pending.iter() {
-                if let MetaStatement::Include(include) = pending_block {
-                    threshold_clock.add_block(*include, &committee);
+            let mut recovered_transactions = 0;
+            for (_, statement) in pending.iter() {
+                match statement {
+                    MetaStatement::Include(include) => {
+                        threshold_clock.add_block(*include, &committee)
+                    }
+                    MetaStatement::Payload(payload) => recovered_transactions += payload.len(),
                 }
             }
+            block_handler.recover_pending_transactions(recovered_transactions);
             own_block
         } else {
             // todo(fix) - this technically has a race condition if node crashes after genesis
