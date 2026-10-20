@@ -16,3 +16,4 @@
 - [#277 LatencyModel seam](project_277_latency_model_seam.md) — per-link latency; Uniform RNG-stream equivalence, b->a direction in connect, geography validate/expect invariant, serde_yaml `!tag` vs singleton_map rules
 - [#281 link queue seam](project_281_link_queue_seam.md) — Sleep-across-select invariants, +task_id wake skew, run_one() semantics, MAX_IN_FLIGHT window, stale ./target gotcha
 - [Protocol name consumers](project_protocol_name_consumers.md) — Debug name -> measurement filenames parsed by paper repos; serde tag in campaign configs
+- [Protocol module split](project_protocol_module_split.md) — per-protocol impl Protocol files: verified-safe move pattern, test-path rename, mechanical byte-check
