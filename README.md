@@ -21,7 +21,8 @@ derived variant under mixed Byzantine and crash faults),
 [Blue Bottle](https://sonnino.com/papers/bluebottle.pdf) (both the partially synchronous and asynchronous
 variants),
 [Cordial Miners](https://arxiv.org/abs/2205.09174) (both the partially synchronous and asynchronous
-variants), [Nemo-Nemo](https://sonnino.com/papers/nemo-nemo.pdf),
+variants), [Nemo-Nemo](https://sonnino.com/papers/nemo-nemo.pdf) (plus a derived asynchronous
+variant),
 [Orcaella](https://sonnino.com/papers/orcaella.pdf) (plus a derived asynchronous variant), and
 [Hydrozoan](https://sonnino.com/papers/hydrozoan.pdf).
 
