@@ -13,7 +13,7 @@ use std::sync::Arc;
 use dag::{
     committee::Committee,
     storage::Storage,
-    test_util::{build_dag, build_split_chain, drop_leader},
+    test_util::{build_dag, build_partial_split_chain, drop_leader},
 };
 
 use crate::{committer::Committer, leader::LeaderElector, protocol::ConsensusProtocol};
@@ -30,12 +30,17 @@ pub(crate) fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     let refs_at_leader = build_dag(committee, &mut storage, None, l1);
     let refs_without_target = drop_leader(&refs_at_leader, target_leader);
     let blamers_count = (protocol.direct_skip_quorum - 1) as usize;
-    let (supports, blames) = build_split_chain(
+    // When skip + cert = n + 1 (Hybrid Mysticeti at f = 0), a complete voting round always
+    // decides the leader; leave voters out so the supporters stay one short of a certificate.
+    let supporters_count =
+        (committee.len() - blamers_count).min((protocol.certificate_quorum - 1) as usize);
+    let (supports, blames) = build_partial_split_chain(
         committee,
         &mut storage,
         refs_at_leader,
         refs_without_target,
         committer.voting_round_for(l1),
+        supporters_count,
         blamers_count,
     );
     let voting_refs: Vec<_> = supports.into_iter().chain(blames).collect();
