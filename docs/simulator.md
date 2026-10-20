@@ -153,7 +153,8 @@ exactly this through the `commit_type` breakdown of `committed_leaders_total`;
 Hydrozoan case whose exported `metrics-*.prom` files show the breakdown per leader.
 
 Two approximations to keep in mind. The leader slots are computed from the protocol's leader
-count and the round-robin `LeaderElector`, which is exact for the pipelined protocols; the
+count and its `LeaderElector` (round-robin or fake coin), which is exact for the pipelined
+protocols; the
 non-pipelined Cordial Miners variants equivocate in a few extra (non-leader) rounds, which is
 harmless. And equivocating in every round is not offered: the leader rounds are where
 equivocation bears on the commit rule.
