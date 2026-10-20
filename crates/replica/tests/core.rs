@@ -3,7 +3,7 @@
 
 mod common;
 
-use common::{committee_and_cores, committee_and_cores_persisted, open_core_with_sender};
+use common::{committee_and_cores, committee_and_cores_persisted, open_core};
 use dag::{
     authority::Authority,
     block::{Block, transaction::Transaction},
@@ -182,16 +182,14 @@ fn test_core_recovery_with_unproposed_payload() {
 
     let other_blocks: Vec<_> = (1..4usize)
         .map(|i| {
-            let (mut core, _sender) =
-                open_core_with_sender::<TokioCtx>(Authority::from(i), &committee, None);
+            let (mut core, _sender) = open_core::<TokioCtx>(Authority::from(i), &committee, None);
             core.try_new_block()
                 .expect("Must be able to create block after genesis")
         })
         .collect();
 
     // Propose round 1, then queue a payload in the WAL without proposing it.
-    let (mut core, sender) =
-        open_core_with_sender::<TokioCtx>(authority, &committee, Some(tmp.path()));
+    let (mut core, sender) = open_core::<TokioCtx>(authority, &committee, Some(tmp.path()));
     core.try_new_block()
         .expect("Must be able to create block after genesis");
     sender.try_send(vec![tx(b"tx-0"), tx(b"tx-1")]).unwrap();
@@ -199,8 +197,7 @@ fn test_core_recovery_with_unproposed_payload() {
     drop(core);
 
     // The recovered payload goes into the next proposal.
-    let (mut core, sender) =
-        open_core_with_sender::<TokioCtx>(authority, &committee, Some(tmp.path()));
+    let (mut core, sender) = open_core::<TokioCtx>(authority, &committee, Some(tmp.path()));
     core.add_blocks(other_blocks);
     let block = core
         .try_new_block()
