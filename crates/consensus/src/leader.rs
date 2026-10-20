@@ -5,7 +5,7 @@ use blake2::{Blake2b, Digest};
 use dag::{authority::Authority, block::RoundNumber};
 use digest::consts::U8;
 
-/// Seed of the [`LeaderElection::FakeCoin`] used by every asynchronous protocol.
+/// Seed of the [`LeaderElection::FakeCoin`] used by asynchronous protocols.
 pub const DEFAULT_FAKE_COIN_SEED: u64 = 0x6d79_7374_6963_6574;
 
 /// How the leaders of each round are chosen.
