@@ -9,6 +9,8 @@ use dag::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::leader::LeaderElection;
+
 mod blue_bottle;
 mod blue_bottle_asynchronous;
 mod cordial_miners;
@@ -444,6 +446,8 @@ pub struct Protocol {
     pub leader_wait: bool,
     /// Whether to perform real cryptographic operations.
     pub require_crypto: bool,
+    /// How the leaders of each round are chosen.
+    pub leader_election: LeaderElection,
 }
 
 impl Protocol {

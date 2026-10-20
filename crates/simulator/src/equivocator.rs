@@ -3,7 +3,7 @@
 
 //! Byzantine behaviour injected at the wire: an equivocating leader.
 
-use consensus::leader::LeaderElector;
+use consensus::leader::{LeaderElection, LeaderElector};
 use dag::authority::Authority;
 use dag::block::{Block, data::Data};
 use dag::crypto::{BLOCK_DIGEST_SIZE, BlockDigest};
@@ -20,11 +20,17 @@ pub(crate) struct Equivocator {
 }
 
 impl Equivocator {
-    /// The equivocator at committee `index`, leading with `leader_count` slots per round.
-    pub(crate) fn new(index: usize, committee_size: usize, leader_count: usize) -> Self {
+    /// The equivocator at committee `index`, leading with `leader_count` slots per round under
+    /// `leader_election`.
+    pub(crate) fn new(
+        index: usize,
+        committee_size: usize,
+        leader_count: usize,
+        leader_election: LeaderElection,
+    ) -> Self {
         Self {
             authority: Authority::from(index),
-            elector: LeaderElector::new(committee_size),
+            elector: LeaderElector::new(committee_size, leader_election),
             leader_count: leader_count as u64,
         }
     }
@@ -33,7 +39,7 @@ impl Equivocator {
     fn is_leader_block(&self, block: &Block) -> bool {
         block.author() == self.authority
             && (0..self.leader_count)
-                .any(|offset| self.elector.elect_leader(block.round() + offset) == self.authority)
+                .any(|offset| self.elector.elect_leader(block.round(), offset) == self.authority)
     }
 
     /// The same block under a different digest (last byte flipped).
@@ -72,6 +78,7 @@ impl Equivocator {
 
 #[cfg(test)]
 mod tests {
+    use consensus::leader::LeaderElection;
     use dag::authority::Authority;
     use dag::block::{Block, BlockReference, data::Data};
     use dag::crypto::BLOCK_DIGEST_SIZE;
@@ -113,7 +120,7 @@ mod tests {
     fn only_own_leader_blocks_are_rewritten() {
         // Committee of 4, authority 1, two leaders per round: leader slots at
         // rounds r with r % 4 == 1 (offset 0) or (r + 1) % 4 == 1 (offset 1).
-        let equivocator = Equivocator::new(1, 4, 2);
+        let equivocator = Equivocator::new(1, 4, 2, LeaderElection::RoundRobin);
         assert!(equivocator.is_leader_block(&block(1, 1)));
         assert!(equivocator.is_leader_block(&block(1, 4)));
         assert!(!equivocator.is_leader_block(&block(1, 2)));
@@ -122,7 +129,7 @@ mod tests {
 
     #[test]
     fn rewrite_orders_twins_by_peer_parity() {
-        let equivocator = Equivocator::new(1, 4, 2);
+        let equivocator = Equivocator::new(1, 4, 2, LeaderElection::RoundRobin);
         let original = block(1, 1);
         let twin_digest = Equivocator::twin(&original).digest();
 

@@ -5,7 +5,7 @@ use std::num::NonZeroUsize;
 
 use dag::committee::Stake;
 
-use super::Protocol;
+use super::{LeaderElection, Protocol};
 
 impl Protocol {
     /// Mysticeti
@@ -27,6 +27,7 @@ impl Protocol {
             pipeline: true,
             leader_wait: true,
             require_crypto: true,
+            leader_election: LeaderElection::RoundRobin,
         }
     }
 }

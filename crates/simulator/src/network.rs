@@ -14,6 +14,7 @@ use super::context::SimulatorContext;
 use super::equivocator::Equivocator;
 use super::executor::Sleep;
 use super::latency::{LatencyModel, LinkLatency};
+use consensus::leader::LeaderElection;
 use dag::committee::Committee;
 use dag::context::Ctx;
 use dag::sync::network::{Connection, Network, NetworkMessage};
@@ -48,15 +49,22 @@ impl SimulatedNetwork {
         )
     }
 
-    /// Make `leaders` equivocate in their leader rounds; `leader_count` is the cohort size.
-    pub fn with_equivocating_leaders(mut self, leaders: &[usize], leader_count: usize) -> Self {
+    /// Make `leaders` equivocate in their leader rounds; `leader_count` is the cohort size and
+    /// `leader_election` the protocol's election policy.
+    pub fn with_equivocating_leaders(
+        mut self,
+        leaders: &[usize],
+        leader_count: usize,
+        leader_election: LeaderElection,
+    ) -> Self {
         let committee_size = self.senders.len();
         for &index in leaders {
             assert!(
                 index < committee_size,
                 "equivocating leader {index} is not in the committee"
             );
-            let equivocator = Equivocator::new(index, committee_size, leader_count);
+            let equivocator =
+                Equivocator::new(index, committee_size, leader_count, leader_election);
             self.equivocators.insert(index, Arc::new(equivocator));
         }
         self

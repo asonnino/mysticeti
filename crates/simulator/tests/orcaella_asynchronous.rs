@@ -92,11 +92,9 @@ fn happy_path_mixed_n9() {
 
 #[test]
 fn crash_one_node_n3() {
-    // 2 active == commit threshold, and skip=3 leaves only the indirect rule. Wave 4 only:
-    // without a common coin, round-robin leaders at wave 3 = n make the crashed node the
-    // first anchor candidate of its own slots, so they are never decided.
-    let consensus = orcaella_asynchronous(0, 1, 2, 4);
-    assert_progress(&run(3, NetworkTopology::OneDown(0), 30, consensus), 10);
+    // 2 active == commit threshold, and skip=3 leaves only the indirect rule. With round-robin
+    // leaders, wave 3 = n stalled here; the fake coin keeps the anchor search terminating.
+    assert_progress_all_waves(3, NetworkTopology::OneDown(0), (0, 1, 2), 10);
 }
 
 #[test]

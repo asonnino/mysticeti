@@ -27,11 +27,11 @@ pub(crate) fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
         "[{spec}] expected {} decisions",
         10 * k
     );
-    let elector = LeaderElector::new(committee.len());
+    let elector = LeaderElector::new(committee.len(), protocol.leader_election);
     for (chunk_idx, chunk) in sequence.chunks(k).enumerate() {
         let leader_round = leader_rounds[chunk_idx];
         for (offset, decision) in chunk.iter().enumerate() {
-            let expected = elector.elect_leader(leader_round + offset as u64);
+            let expected = elector.elect_leader(leader_round, offset as u64);
             match decision {
                 LeaderStatus::DirectCommit(block, _) => {
                     assert_eq!(

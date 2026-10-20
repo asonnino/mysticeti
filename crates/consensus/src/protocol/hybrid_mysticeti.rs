@@ -5,7 +5,7 @@ use std::num::NonZeroUsize;
 
 use dag::committee::Stake;
 
-use super::{Protocol, ProtocolError};
+use super::{LeaderElection, Protocol, ProtocolError};
 
 impl Protocol {
     /// Hybrid Mysticeti: Mysticeti's three-round wave under `f` Byzantine and `c` crash faults;
@@ -47,6 +47,7 @@ impl Protocol {
             pipeline: true,
             leader_wait: true,
             require_crypto: f != 0,
+            leader_election: LeaderElection::RoundRobin,
         })
     }
 }

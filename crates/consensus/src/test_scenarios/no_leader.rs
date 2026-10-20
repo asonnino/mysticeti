@@ -17,13 +17,13 @@ use crate::{committer::Committer, leader::LeaderElector, protocol::ConsensusProt
 pub(crate) fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
     let protocol = spec.to_protocol(committee).expect("valid protocol");
     let k = protocol.leader_count.get();
-    let elector = LeaderElector::new(committee.len());
+    let elector = LeaderElector::new(committee.len(), protocol.leader_election);
 
     for target_offset in 0..k {
         let mut storage = Storage::new_for_test(committee);
         let mut committer = Committer::new_for_test(committee, &storage, spec);
         let l1 = committer.nth_leader_round(1);
-        let target_leader = elector.elect_leader(l1 + target_offset as u64);
+        let target_leader = elector.elect_leader(l1, target_offset as u64);
 
         let references_pre_leader = build_dag(committee, &mut storage, None, l1 - 1);
 
@@ -50,7 +50,7 @@ pub(crate) fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
         );
 
         for (offset, decision) in sequence.iter().enumerate() {
-            let expected = elector.elect_leader(l1 + offset as u64);
+            let expected = elector.elect_leader(l1, offset as u64);
             if offset == target_offset {
                 match decision {
                     LeaderStatus::DirectSkip(actual, round) => {

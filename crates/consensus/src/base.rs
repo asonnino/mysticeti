@@ -90,11 +90,12 @@ impl BaseCommitter {
             pipeline: false,
             leader_wait: false,
             require_crypto: false,
+            leader_election: crate::leader::LeaderElection::RoundRobin,
         };
         BaseCommitter::new(
             committee.clone(),
             block_reader,
-            LeaderElector::new(committee.len()),
+            LeaderElector::new(committee.len(), crate::leader::LeaderElection::RoundRobin),
             &protocol,
             leader_offset,
             0,
@@ -116,7 +117,7 @@ impl BaseCommitter {
             return None;
         }
         let offset = self.leader_offset as RoundNumber;
-        Some(self.leader_elector.elect_leader(round + offset))
+        Some(self.leader_elector.elect_leader(round, offset))
     }
 
     /// Find which block is supported at (author, round) by the given block.
@@ -468,7 +469,7 @@ mod tests {
 
     use crate::{
         base::BaseCommitter,
-        leader::LeaderElector,
+        leader::{LeaderElection, LeaderElector},
         protocol::{FastPath, Protocol},
     };
 
@@ -922,7 +923,7 @@ mod tests {
         let committer = BaseCommitter::new(
             committee.clone(),
             storage.block_reader().clone(),
-            LeaderElector::new(committee.len()),
+            LeaderElector::new(committee.len(), LeaderElection::RoundRobin),
             &protocol,
             0,
             0,
@@ -951,7 +952,7 @@ mod tests {
         BaseCommitter::new(
             committee.clone(),
             storage.block_reader().clone(),
-            LeaderElector::new(committee.len()),
+            LeaderElector::new(committee.len(), LeaderElection::RoundRobin),
             &protocol,
             0,
             0,

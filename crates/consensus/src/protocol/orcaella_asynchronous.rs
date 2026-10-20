@@ -5,7 +5,7 @@ use std::num::NonZeroUsize;
 
 use dag::{block::RoundNumber, committee::Stake};
 
-use super::{Protocol, ProtocolError};
+use super::{LeaderElection, Protocol, ProtocolError};
 
 impl Protocol {
     /// Orcaella (asynchronous variant): Orcaella's thresholds with one or two buffer
@@ -32,6 +32,7 @@ impl Protocol {
         Ok(Self {
             wave_length,
             leader_wait: false,
+            leader_election: LeaderElection::fake_coin(),
             ..orcaella
         })
     }

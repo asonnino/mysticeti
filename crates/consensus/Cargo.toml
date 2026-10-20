@@ -5,7 +5,9 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+blake2 = "0.11.0"
 dag.workspace = true
+digest = "0.11.3"
 serde = { workspace = true }
 thiserror.workspace = true
 tracing.workspace = true
