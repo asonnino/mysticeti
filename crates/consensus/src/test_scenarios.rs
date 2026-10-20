@@ -33,11 +33,15 @@ pub(crate) fn run_scenario(
     protocol: fn(NonZeroUsize) -> ConsensusProtocol,
 ) {
     let committee = committee(n);
-    // Protocols without a leader count (Cordial Miners) give the same spec every time.
+    // Cordial Miners ignores the requested leader count, so dedup on the count actually used.
     let mut seen = HashSet::new();
     for leader_count in [1, 2, 2 * n / 3 + 1, n] {
         let spec = protocol(NonZeroUsize::new(leader_count).unwrap());
-        if seen.insert(format!("{spec:?}")) {
+        let used_leader_count = spec
+            .to_protocol(&committee)
+            .expect("valid protocol")
+            .leader_count;
+        if seen.insert(used_leader_count) {
             scenario(&spec, &committee);
         }
     }
