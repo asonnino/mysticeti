@@ -51,14 +51,23 @@ up with a same-seed output diff built with the biased-select patch — see
   **rejected** by an untagged enum ("untagged and internally tagged enums do not support enum
   input"). `#[serde(with = "serde_yaml::with::singleton_map")]` writes `variant: value` instead
   and delegates unit variants unchanged (`fullMesh` stays a plain string); its deserializer
-  accepts a string or a single-key map but **not** a `!tag`. Consequence: any enum field on
-  `SimulationConfig` needs `singleton_map`, or the exported run config (cli `exporter.rs`, written
-  as YAML) cannot be replayed through `SimulationMode::load`. `#[serde(default, with = ...)]` is
-  sound: `with` is not consulted when the key is absent.
+  accepts a string or a single-key map but **not** a `!tag`. When #277 landed, `SimulationMode`
+  derived `#[serde(untagged)]`, so every enum field on `SimulationConfig` needed `singleton_map`
+  for the exported run config (cli `exporter.rs`) to replay through `SimulationMode::load`. That
+  constraint is gone: `SimulationMode` now has a hand-written `Deserialize`
+  (`crates/simulator/src/config.rs`) that reads a `serde_yaml::Value` and dispatches straight to a
+  config or a suite. `singleton_map` on `latency` / `topology` is now a format choice (configs and
+  exports use the `variant: value` map form, which its deserializer requires), not a requirement
+  for new enum fields; the comment above those fields in `config.rs` still states the old reason.
+  `#[serde(default, with = ...)]` is sound: `with` is not consulted when the key is absent.
 - Region placement is claimed to match the orchestrator's
   `settings.regions.iter().cycle()` in `select_instances`. That is exact only if every region's
   pool still has an instance on each lap — the loop *silently skips* an exhausted region and
   shifts every later committee index — and if `settings.regions` is listed in the same order as
   `latency.geographic.regions`.
-- `Geography::validate` only validates RTT entries for *listed* regions, while `Display` computes
-  min/max over the whole `rtt_ms` map and counts regions deduplicated through a `BTreeSet`.
+- **Display contract: listed regions only.** `Geography::validate` checks RTT entries for the
+  listed regions, and `Display` (`crates/simulator/src/latency/geography.rs`) matches it: min/max
+  RTT over listed region pairs via `round_trip_ms`, and `regions.len()` without deduplication.
+  Stale `rtt_ms` rows for unlisted regions never reach the summary; the test
+  `display_covers_listed_regions_only` pins this. (An earlier revision scanned the whole `rtt_ms`
+  map and deduplicated through a `BTreeSet`.)
