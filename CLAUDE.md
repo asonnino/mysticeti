@@ -30,7 +30,7 @@ design notes.
 ## Lean formalization
 
 `lean/` holds a Lean 4 + mathlib formalization of the safety and liveness
-arguments of Hydrozoan (`ConsensusProtocol::Hydrozoan`); the paper's
+arguments of Hydrozoan; the paper's
 theory-only variant Optimal-Hydrozoan lives in `gdanezis/lean-dag` as a peer
 arc of this development's mirror there. It is a separate lake project, not a Cargo crate:
 `cd lean && lake build`; `python3 lean/scripts/check_no_holes.py` scans for proof
