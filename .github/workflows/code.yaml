@@ -83,6 +83,8 @@ jobs:
             --exclude-files "crates/**/benches/**/*" \
             --exclude-files "crates/**/tests/**/*" \
             --exclude-files "crates/**/test_utils/**/*" \
+            --exclude-files "crates/consensus/src/test_scenarios.rs" \
+            --exclude-files "crates/consensus/src/test_scenarios/**/*" \
             -- --include-ignored --skip n20
   dependencies:
     name: Check dependencies
