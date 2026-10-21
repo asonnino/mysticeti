@@ -9,7 +9,7 @@ use dag::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::leader::LeaderElection;
+use crate::{leader::LeaderElection, union_certificate::MAX_AUTHORITIES};
 
 mod blue_bottle;
 mod blue_bottle_asynchronous;
@@ -20,6 +20,7 @@ mod hybrid_mysticeti;
 mod hydrozoan;
 mod mahi_mahi;
 mod mysticeti;
+mod mysticeti_union;
 mod nemo_nemo;
 mod nemo_nemo_asynchronous;
 mod orcaella;
@@ -36,6 +37,10 @@ pub enum ConsensusProtocol {
     CordialMinersPartiallySynchronous,
     CordialMinersAsynchronous,
     Mysticeti {
+        #[serde(default = "defaults::default_leader_count")]
+        leader_count: NonZeroUsize,
+    },
+    MysticetiUnion {
         #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
     },
@@ -189,6 +194,9 @@ impl fmt::Display for ConsensusProtocol {
             Self::Mysticeti { leader_count } => {
                 write!(fmt, "Mysticeti ({} leaders/round)", leader_count)
             }
+            Self::MysticetiUnion { leader_count } => {
+                write!(fmt, "Mysticeti Union ({} leaders/round)", leader_count)
+            }
             Self::HybridMysticeti { leader_count, f, c } => {
                 write!(
                     fmt,
@@ -272,6 +280,9 @@ impl fmt::Debug for ConsensusProtocol {
             Self::CordialMinersPartiallySynchronous => write!(fmt, "cordial-miners-ps"),
             Self::CordialMinersAsynchronous => write!(fmt, "cordial-miners-async"),
             Self::Mysticeti { leader_count } => write!(fmt, "mysticeti-l{leader_count}"),
+            Self::MysticetiUnion { leader_count } => {
+                write!(fmt, "mysticeti-union-l{leader_count}")
+            }
             Self::HybridMysticeti { leader_count, f, c } => {
                 write!(fmt, "hybrid-mysticeti-l{leader_count}-f{f}-c{c}")
             }
@@ -329,6 +340,7 @@ impl ConsensusProtocol {
         let user_leader_count = match self {
             Self::CordialMinersPartiallySynchronous | Self::CordialMinersAsynchronous => None,
             Self::Mysticeti { leader_count }
+            | Self::MysticetiUnion { leader_count }
             | Self::HybridMysticeti { leader_count, .. }
             | Self::BlueBottlePartiallySynchronous { leader_count }
             | Self::BlueBottleAsynchronous { leader_count }
@@ -348,6 +360,13 @@ impl ConsensusProtocol {
                 committee_size,
             });
         }
+        if matches!(self, Self::MysticetiUnion { .. }) && committee_size > MAX_AUTHORITIES {
+            return Err(ProtocolError::CommitteeTooLarge {
+                protocol: "Mysticeti Union",
+                max: MAX_AUTHORITIES,
+                committee_size,
+            });
+        }
 
         Ok(match *self {
             Self::CordialMinersPartiallySynchronous => {
@@ -355,6 +374,9 @@ impl ConsensusProtocol {
             }
             Self::CordialMinersAsynchronous => Protocol::cordial_miners_asynchronous(total_stake),
             Self::Mysticeti { leader_count } => Protocol::mysticeti(total_stake, leader_count),
+            Self::MysticetiUnion { leader_count } => {
+                Protocol::mysticeti_union(total_stake, leader_count)
+            }
             Self::HybridMysticeti { leader_count, f, c } => {
                 Protocol::hybrid_mysticeti(total_stake, f, c, leader_count)?
             }
@@ -422,6 +444,12 @@ pub enum ProtocolError {
         leader_count: NonZeroUsize,
         committee_size: usize,
     },
+    #[error("{protocol} supports at most {max} authorities, got {committee_size}")]
+    CommitteeTooLarge {
+        protocol: &'static str,
+        max: usize,
+        committee_size: usize,
+    },
 }
 
 impl ProtocolError {
@@ -474,6 +502,9 @@ pub struct Protocol {
     /// Whether decision-round votes are themselves the certificates (no certify
     /// round); forced by geometry at `wave_length == 2`.
     pub merged_certificates: bool,
+    /// Whether a leader's certificate is the union of the votes held by the decision-round
+    /// blocks, instead of one block that references a quorum of votes.
+    pub union_certificates: bool,
     /// The number of leaders per round.
     pub leader_count: NonZeroUsize,
     /// Whether the protocol commits one leader per round.
