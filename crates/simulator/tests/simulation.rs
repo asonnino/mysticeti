@@ -94,32 +94,38 @@ fn sampling_snapshots_without_changing_the_run() {
         SimulationRunner::new(config).run().unwrap()
     };
     let unsampled = run(None);
-    let sampled = run(NonZeroU64::new(7));
+    assert!(unsampled.samples.is_empty());
+    let unsampled = &unsampled.storages[0];
+    assert!(unsampled.iter_commits().count() > 0);
 
-    // Every 7 s of a 20 s run, plus the end.
-    let times: Vec<_> = sampled
-        .samples
-        .iter()
-        .map(|sample| sample.time.as_secs())
-        .collect();
-    assert_eq!(times, [7, 14, 20]);
-    assert!(
-        sampled
+    // A 20 s run: 5 s divides it, so the last interval ties with the end of the run.
+    for interval in [1, 5, 7] {
+        let sampled = run(NonZeroU64::new(interval));
+        let times: Vec<_> = sampled
             .samples
             .iter()
-            .all(|sample| sample.metrics.len() == 10)
-    );
-    assert!(unsampled.samples.is_empty());
+            .map(|sample| sample.time.as_secs())
+            .collect();
+        let mut expected: Vec<_> = (interval..20).step_by(interval as usize).collect();
+        expected.push(20);
+        assert_eq!(times, expected);
+        assert!(
+            sampled
+                .samples
+                .iter()
+                .all(|sample| sample.metrics.len() == 10)
+        );
 
-    // Same commits: equal counts, and the two streams agree on their shared prefix.
-    let (sampled, unsampled) = (&sampled.storages[0], &unsampled.storages[0]);
-    assert!(unsampled.iter_commits().count() > 0);
-    assert_eq!(
-        sampled.iter_commits().count(),
-        unsampled.iter_commits().count()
-    );
-    let streams = [sampled.iter_commits(), unsampled.iter_commits()];
-    assert_eq!(Outcome::from(streams.into_iter()), Outcome::Pass);
+        // Same commits: equal counts, and the two streams agree on their shared prefix.
+        let sampled = &sampled.storages[0];
+        assert_eq!(
+            sampled.iter_commits().count(),
+            unsampled.iter_commits().count(),
+            "interval {interval}"
+        );
+        let streams = [sampled.iter_commits(), unsampled.iter_commits()];
+        assert_eq!(Outcome::from(streams.into_iter()), Outcome::Pass);
+    }
 }
 
 #[test]
