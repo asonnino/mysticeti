@@ -283,7 +283,11 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
     async fn cleanup_task(inner: Arc<NetworkSyncerInner<C, D>>) -> Option<()> {
         let cleanup_interval = Duration::from_secs(10);
         loop {
+            // Biased: when the timer and the stop signal are ready together, an unbiased `select!`
+            // picks from a process-seeded RNG, so a run that ends on a cleanup tick would clean
+            // up in some runs and not in others.
             select! {
+                biased;
                 _sleep = C::sleep(cleanup_interval) => {
                     // Keep read lock for everything else
                     inner.syncer.cleanup().await;
