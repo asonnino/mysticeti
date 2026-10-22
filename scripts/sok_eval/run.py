@@ -46,15 +46,19 @@ def file_sha256(path):
     return digest.hexdigest()
 
 
+def config_hash(job):
+    return sha256(json.dumps(job.config(), sort_keys=True).encode())
+
+
 def identity(job, binary_hash):
     """What a cached run must match to be reused: its config and the binary that ran it."""
-    config = json.dumps(job.config(), sort_keys=True).encode()
-    return json.dumps({"config": sha256(config), "binary": binary_hash}, sort_keys=True)
+    return json.dumps({"config": config_hash(job), "binary": binary_hash}, sort_keys=True)
 
 
 def jobs_hash(jobs):
-    """Short hash of the job list, to check that every shard ran from the same matrix."""
-    return sha256("\n".join(sorted(job.name for job in jobs)).encode())[:12]
+    """Short hash of every job's config, to check that every shard ran the same matrix."""
+    configs = [job.config() for job in sorted(jobs, key=lambda job: job.name)]
+    return sha256(json.dumps(configs, sort_keys=True).encode())[:12]
 
 
 def run(job, binary, binary_hash, out):
