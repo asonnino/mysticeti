@@ -204,6 +204,7 @@ leaves each file either intact or absent — never half-written.
 | `<run>/config.yaml`        | The full `SimulationConfig` that produced the run, including any defaults filled in.                                                                      |
 | `<run>/meta.yaml`          | `{ outcome, duration_secs, kind: simulation, timestamp_unix }`.                                                                                           |
 | `<run>/metrics-<replica>.prom` | One Prometheus text exposition per replica (`metrics-A.prom`, `metrics-B.prom`, …), each self-contained and parseable by `promtool` and most TSDB ingesters. |
+| `<run>/samples/<t>s/metrics-<replica>.prom` | _(with `sample_interval_secs`)_ the same snapshots, taken `t` seconds into the run. |
 | `<run>/dag.ndjson`         | _(opt-in via `--export-dag`)_ every committed sub-DAG, one JSON object per line. Can be many GB; off by default.                                          |
 
 ## Programmatic Use

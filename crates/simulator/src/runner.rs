@@ -4,6 +4,7 @@
 use std::{
     io,
     path::{Path, PathBuf},
+    pin::pin,
     sync::Arc,
     time::Duration,
 };
@@ -25,7 +26,7 @@ use replica::{
     replica::ReplicaHandle,
     result::{MetricsSample, RunKind, RunResult},
 };
-use tokio::sync::mpsc;
+use tokio::{select, sync::mpsc};
 
 use crate::{
     config::{NetworkTopology, SimulationConfig},
@@ -205,30 +206,42 @@ impl SimulationState {
     }
 
     /// Run for the configured duration, snapshotting every replica's metrics every
-    /// `sample_interval_secs` when it is set.
+    /// `sample_interval_secs` and at the end, when it is set.
     async fn run_and_sample(&self) -> Vec<MetricsSample> {
-        let duration = self.config.duration();
+        // Register the end-of-run timer first in both modes, so sampling never reorders it
+        // against replica events due at the same time.
+        let mut end = pin!(SimulatorContext::sleep(self.config.duration()));
         let Some(interval) = self.config.sample_interval_secs else {
-            SimulatorContext::sleep(duration).await;
+            end.await;
             return Vec::new();
         };
         let interval = Duration::from_secs(interval.get());
         let mut samples = Vec::new();
         let mut elapsed = Duration::ZERO;
-        while elapsed < duration {
-            let step = interval.min(duration - elapsed);
-            SimulatorContext::sleep(step).await;
-            elapsed += step;
-            samples.push(MetricsSample {
-                time: elapsed,
-                metrics: self
-                    .metrics
-                    .iter()
-                    .map(|metrics| metrics.collect())
-                    .collect(),
-            });
+        loop {
+            // Biased: at a tie with the end of the run, take the final sample only once.
+            select! {
+                biased;
+                _ = &mut end => break,
+                _ = SimulatorContext::sleep(interval) => {
+                    elapsed += interval;
+                    samples.push(self.sample(elapsed));
+                }
+            }
         }
+        samples.push(self.sample(self.config.duration()));
         samples
+    }
+
+    fn sample(&self, time: Duration) -> MetricsSample {
+        MetricsSample {
+            time,
+            metrics: self
+                .metrics
+                .iter()
+                .map(|metrics| metrics.collect())
+                .collect(),
+        }
     }
 
     async fn apply_topology(&self) {

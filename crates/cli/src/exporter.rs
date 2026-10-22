@@ -166,10 +166,14 @@ impl Exporter {
         })?;
 
         Self::write_metrics(&dir, &result.metrics)?;
+        // A re-run replaces the whole samples tree, so no snapshot of an earlier run lingers.
+        let samples_dir = dir.join(SAMPLES_DIR);
+        if samples_dir.exists() {
+            std::fs::remove_dir_all(&samples_dir)
+                .wrap_err_with(|| format!("removing {}", samples_dir.display()))?;
+        }
         for sample in &result.samples {
-            let sample_dir = dir
-                .join(SAMPLES_DIR)
-                .join(format!("{}s", sample.time.as_secs()));
+            let sample_dir = samples_dir.join(format!("{}s", sample.time.as_secs()));
             std::fs::create_dir_all(&sample_dir)
                 .wrap_err_with(|| format!("creating {}", sample_dir.display()))?;
             Self::write_metrics(&sample_dir, &sample.metrics)?;
