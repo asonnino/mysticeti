@@ -202,7 +202,9 @@ impl SimulationState {
             }
             NetworkTopology::OneDown(node) => {
                 let excluded = *node;
-                self.network.connect_some(|a, _b| a != excluded).await;
+                self.network
+                    .connect_some(|a, b| a != excluded && b != excluded)
+                    .await;
             }
             NetworkTopology::Partition(groups) => {
                 self.network
