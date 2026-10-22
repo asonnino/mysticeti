@@ -1,7 +1,11 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{num::NonZeroUsize, ops::Range, path::PathBuf};
+use std::{
+    num::{NonZeroU64, NonZeroUsize},
+    ops::Range,
+    path::PathBuf,
+};
 
 use consensus::protocol::ConsensusProtocol;
 use dag::authority::Authority;
@@ -78,6 +82,44 @@ fn config_yaml_round_trip() {
     assert!(matches!(restored.topology, NetworkTopology::Star(0)));
     assert_eq!(restored.equivocating_leaders, vec![2, 5]);
     assert_eq!(restored.jitter, config.jitter);
+}
+
+#[test]
+fn sampling_snapshots_without_changing_the_run() {
+    let run = |sample_interval_secs| {
+        let config = SimulationConfig {
+            sample_interval_secs,
+            ..Default::default()
+        };
+        SimulationRunner::new(config).run().unwrap()
+    };
+    let unsampled = run(None);
+    let sampled = run(NonZeroU64::new(7));
+
+    // Every 7 s of a 20 s run, plus the end.
+    let times: Vec<_> = sampled
+        .samples
+        .iter()
+        .map(|sample| sample.time.as_secs())
+        .collect();
+    assert_eq!(times, [7, 14, 20]);
+    assert!(
+        sampled
+            .samples
+            .iter()
+            .all(|sample| sample.metrics.len() == 10)
+    );
+    assert!(unsampled.samples.is_empty());
+
+    // Same commits: equal counts, and the two streams agree on their shared prefix.
+    let (sampled, unsampled) = (&sampled.storages[0], &unsampled.storages[0]);
+    assert!(unsampled.iter_commits().count() > 0);
+    assert_eq!(
+        sampled.iter_commits().count(),
+        unsampled.iter_commits().count()
+    );
+    let streams = [sampled.iter_commits(), unsampled.iter_commits()];
+    assert_eq!(Outcome::from(streams.into_iter()), Outcome::Pass);
 }
 
 #[test]

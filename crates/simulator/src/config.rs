@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{fmt, time::Duration};
+use std::{fmt, num::NonZeroU64, time::Duration};
 
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -71,6 +71,9 @@ pub struct SimulationConfig {
     /// Authority indices that send twin blocks in their leader rounds (see docs/simulator.md).
     #[serde(default)]
     pub equivocating_leaders: Vec<usize>,
+    /// Snapshot every replica's metrics this often during the run (see docs/simulator.md).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_interval_secs: Option<NonZeroU64>,
 }
 
 impl Default for SimulationConfig {
@@ -86,6 +89,7 @@ impl Default for SimulationConfig {
             replica_parameters: ReplicaParameters::default(),
             load_generator: Some(LoadGeneratorConfig::new_for_test()),
             equivocating_leaders: Vec::new(),
+            sample_interval_secs: None,
         }
     }
 }

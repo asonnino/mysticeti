@@ -15,6 +15,9 @@
 //!   (e.g. `metrics-A.prom`, `metrics-B.prom`). Each file is a self-contained
 //!   Prometheus text exposition; consumers can `promtool check metrics` per
 //!   file or merge them into their analysis layer.
+//! - `<output_dir>/<run>/`[`SAMPLES_DIR`]`/<t>s/metrics-{authority}.prom` — in-run
+//!   snapshots, `t` seconds into the run, in the same per-replica layout. Only written
+//!   when the run was sampled (the simulator's `sample_interval_secs`).
 //! - `<output_dir>/<run>/`[`DAG_FILE`] — opt-in committed sub-DAG dump (one JSON
 //!   line per commit, `{"authority": …, "commit": …}`). Written by
 //!   [`Exporter::write_commit_log`] from the storages embedded in [`RunResult`].
@@ -36,6 +39,7 @@ use std::{
 
 use dag::{
     authority::Authority,
+    metrics::MetricsSnapshot,
     storage::{CommitData, Storage},
 };
 use eyre::{Result, WrapErr};
@@ -48,6 +52,7 @@ use tempfile::NamedTempFile;
 const CONFIG_FILE: &str = "config.yaml";
 const META_FILE: &str = "meta.yaml";
 const DAG_FILE: &str = "dag.ndjson";
+const SAMPLES_DIR: &str = "samples";
 const TRACING_LOG_FILE: &str = "tracing.log";
 
 #[derive(Serialize)]
@@ -160,12 +165,26 @@ impl Exporter {
             serde_yaml::to_writer(writer, &meta).map_err(|e| std::io::Error::other(e.to_string()))
         })?;
 
+        Self::write_metrics(&dir, &result.metrics)?;
+        for sample in &result.samples {
+            let sample_dir = dir
+                .join(SAMPLES_DIR)
+                .join(format!("{}s", sample.time.as_secs()));
+            std::fs::create_dir_all(&sample_dir)
+                .wrap_err_with(|| format!("creating {}", sample_dir.display()))?;
+            Self::write_metrics(&sample_dir, &sample.metrics)?;
+        }
+        Ok(())
+    }
+
+    /// Write one `metrics-{authority}.prom` per replica into `dir`.
+    fn write_metrics(dir: &Path, snapshots: &[MetricsSnapshot]) -> Result<()> {
         // One file per replica: each is self-contained valid Prometheus text. Combining
         // into a single file would duplicate `# HELP` / `# TYPE` blocks and yield
         // exposition that `promtool` rejects.
-        for (i, snapshot) in result.metrics.iter().enumerate() {
+        for (i, snapshot) in snapshots.iter().enumerate() {
             let filename = Self::metrics_filename(Authority::from(i));
-            Self::write_atomic(&dir, &filename, |writer| {
+            Self::write_atomic(dir, &filename, |writer| {
                 writer.write_all(snapshot.to_prometheus_text().as_bytes())
             })?;
         }

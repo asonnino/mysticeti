@@ -29,6 +29,8 @@ topology: fullMesh
 # Byzantine faults: authority indices that send twin blocks in their leader
 # rounds (see docs/simulator.md). Empty by default.
 # equivocating_leaders: [3]
+# Snapshot every replica's metrics every N seconds of the run (unset by default).
+# sample_interval_secs: 5
 # Replica-level tunable parameters (all optional, shown with defaults).
 replica_parameters:
   dag:
