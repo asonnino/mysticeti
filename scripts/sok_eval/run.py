@@ -10,6 +10,7 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 import zlib
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -18,6 +19,10 @@ import matrix
 
 # One hung run must not wedge the pool.
 TIMEOUT_SECS = 2 * 60 * 60
+# Written once the simulator has exported the whole run; meta.yaml alone may be partial.
+COMPLETE = "complete"
+# The simulator exports a diverged run, then exits with this error.
+DIVERGED = "simulation(s) diverged"
 
 
 def in_shard(job, shard, shards):
@@ -26,7 +31,7 @@ def in_shard(job, shard, shards):
 
 def run(job, binary, out):
     run_dir = out / "runs" / job.name
-    if (run_dir / "meta.yaml").exists():
+    if (run_dir / COMPLETE).exists():
         return "cached"
     config_path = out / "configs" / f"{job.name}.yaml"
     # JSON is valid YAML, and needs no third-party module.
@@ -41,6 +46,11 @@ def run(job, binary, out):
             return "timeout"
     # The tracing log is empty at the default level; drop it so archives stay small.
     (run_dir / "tracing.log").unlink(missing_ok=True)
+    diverged = DIVERGED in log_path.read_text()
+    if process.returncode == 0 or diverged:
+        (run_dir / COMPLETE).touch()
+    if diverged:
+        return "diverged"
     return "ok" if process.returncode == 0 else f"exit {process.returncode}"
 
 
@@ -67,6 +77,8 @@ def main():
         statuses = list(pool.map(task, jobs))
     failures = [status for status in statuses if status not in ("ok", "cached")]
     print(f"done: {len(statuses) - len(failures)} ok, {len(failures)} failed", flush=True)
+    if failures:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
