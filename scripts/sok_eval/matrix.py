@@ -9,7 +9,9 @@ COMMITTEE_SIZE = 46
 DURATION_SECS = 120
 SAMPLE_INTERVAL_SECS = 5
 SEEDS = range(7)
-LOAD_PER_REPLICA = 22  # about 1,000 tx/s system-wide
+# The load generator sends ceil(load / 10) transactions every 100 ms, so 22 means 30 tx/s per
+# replica: about 1,380 tx/s system-wide.
+LOAD_PER_REPLICA = 22
 TRANSACTION_SIZE = 20
 # Link delays and timeouts are 1.6 times steelhead's (25-50 ms links), so latencies land near
 # those of geo-distributed deployments (Mysticeti at about 330 ms).
@@ -90,13 +92,15 @@ MAIN = [
     *(hybrid(label, f, c, 5) for label, (f, c) in HYBRID_POINTS.items()),
 ]
 
-# c = 0 configurations with exactly the parameters of another protocol in MAIN.
-CONSISTENCY = [
-    orcaella("c0", 9, 0),
-    orcaella("c0", 9, 0, 3),
-    hybrid("c0", 15, 0),
-    hybrid("c0", 15, 0, 5),
+# c = 0 configurations with exactly the parameters of a protocol in MAIN, paired with its label:
+# at the same seed, both must commit exactly the same.
+CONSISTENCY_PAIRS = [
+    (orcaella("c0", 9, 0), "bb-ps"),
+    (orcaella("c0", 9, 0, 3), "bb-async"),
+    (hybrid("c0", 15, 0), "mysticeti"),
+    (hybrid("c0", 15, 0, 5), "mahi-mahi-w5"),
 ]
+CONSISTENCY_SEED = 0
 
 # Experiment 5: each asynchronous protocol at its primary and alternative wave length.
 BUFFER_ROUND_PAIRS = [
@@ -174,7 +178,7 @@ def sweep(maximum, step=2, start=0):
 def experiments():
     """Map each experiment to its jobs."""
     happy = [Job(protocol, seed) for protocol in MAIN for seed in SEEDS]
-    happy += [Job(protocol, 0) for protocol in CONSISTENCY]
+    happy += [Job(protocol, CONSISTENCY_SEED) for protocol, _ in CONSISTENCY_PAIRS]
 
     crashes = [
         Job(protocol, seed, crashes=k)
