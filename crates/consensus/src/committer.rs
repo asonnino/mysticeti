@@ -1,9 +1,14 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::Arc,
+};
 
-use crate::{base::BaseCommitter, leader::LeaderElector, protocol::Protocol};
+use crate::{
+    base::BaseCommitter, leader::LeaderElector, protocol::Protocol, support_cache::SupportCache,
+};
 use dag::{
     authority::Authority,
     block::RoundNumber,
@@ -24,6 +29,7 @@ use dag::storage::Storage;
 pub struct Committer {
     block_reader: BlockReader,
     base_committers: Vec<BaseCommitter>,
+    support_cache: SupportCache,
     quorum_threshold: Stake,
     leader_wait: bool,
     /// Fast commit quorum when larger than `quorum_threshold` (see `DagConsensus`).
@@ -34,11 +40,15 @@ pub struct Committer {
     has_fast_path: bool,
     /// Reusable buffer for commit decisions.
     leaders: VecDeque<LeaderStatus>,
+    /// Decided slots, keyed by base committer index and leader round, kept until the
+    /// last decided round passes them.
+    decided: HashMap<(usize, RoundNumber), LeaderStatus>,
 }
 
 impl Committer {
     pub fn new(committee: Arc<Committee>, block_reader: BlockReader, protocol: Protocol) -> Self {
         let mut base_committers = Vec::new();
+        let support_cache = SupportCache::default();
         let pipeline_stages = if protocol.pipeline {
             protocol.wave_length
         } else {
@@ -54,6 +64,7 @@ impl Committer {
                     &protocol,
                     leader_offset as RoundNumber,
                     round_offset,
+                    support_cache.clone(),
                 );
                 base_committers.push(committer);
             }
@@ -62,6 +73,7 @@ impl Committer {
         Self {
             block_reader,
             base_committers,
+            support_cache,
             quorum_threshold: protocol.quorum_threshold,
             leader_wait: protocol.leader_wait,
             fast_commit_quorum_above_clock: protocol
@@ -72,6 +84,7 @@ impl Committer {
             #[cfg(any(test, feature = "test-utils"))]
             has_fast_path: protocol.fast_path.is_some(),
             leaders: VecDeque::new(),
+            decided: HashMap::new(),
         }
     }
 
@@ -86,15 +99,23 @@ impl Committer {
     ) -> impl Iterator<Item = LeaderStatus> + '_ {
         let highest_known_round = self.block_reader.highest_round();
         let last_decided_round = last_decided.map(|(round, _)| round).unwrap_or(0);
+        self.support_cache.prune_below(last_decided_round);
+        self.decided
+            .retain(|&(_, round), _| round >= last_decided_round);
 
         // Try to decide as many leaders as possible, starting with the highest round.
         self.leaders.clear();
         for round in (last_decided_round..=highest_known_round).rev() {
-            for committer in self.base_committers.iter().rev() {
+            for (index, committer) in self.base_committers.iter().enumerate().rev() {
                 // Skip committers that don't have a leader for this round.
                 let Some(leader) = committer.elect_leader(round) else {
                     continue;
                 };
+                // A decision never changes once made.
+                if let Some(status) = self.decided.get(&(index, round)) {
+                    self.leaders.push_front(status.clone());
+                    continue;
+                }
                 tracing::debug!(
                     "Trying to decide {} with {committer}",
                     leader.with_round(round)
@@ -110,6 +131,9 @@ impl Committer {
                     tracing::debug!("Outcome of indirect rule: {status}");
                 }
 
+                if status.is_decided() {
+                    self.decided.insert((index, round), status.clone());
+                }
                 self.leaders.push_front(status);
             }
         }
