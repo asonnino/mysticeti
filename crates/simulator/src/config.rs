@@ -5,7 +5,7 @@ use std::{fmt, time::Duration};
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::latency::LatencyModel;
+use crate::latency::{ExponentialJitter, LatencyModel};
 use dag::config::ImportExport;
 use replica::config::{LoadGeneratorConfig, ReplicaParameters};
 
@@ -55,6 +55,9 @@ pub struct SimulationConfig {
     // exported runs use, rather than serde_yaml's default `!variant` tag.
     #[serde(default, with = "serde_yaml::with::singleton_map")]
     pub latency: LatencyModel,
+    /// Extra exponential delay on every message, on top of `latency`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jitter: Option<ExponentialJitter>,
     #[serde(default, with = "serde_yaml::with::singleton_map")]
     pub topology: NetworkTopology,
     #[serde(default = "defaults::duration_secs")]
@@ -76,6 +79,7 @@ impl Default for SimulationConfig {
             name: None,
             committee_size: defaults::committee_size(),
             latency: LatencyModel::default(),
+            jitter: None,
             topology: NetworkTopology::default(),
             duration_secs: defaults::duration_secs(),
             rng_seed: 0,

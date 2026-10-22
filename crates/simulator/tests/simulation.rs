@@ -12,8 +12,8 @@ use indoc::indoc;
 use replica::config::ReplicaParameters;
 use replica::result::Outcome;
 use simulator::{
-    Geography, LatencyModel, NetworkTopology, SimulatedNetwork, SimulationConfig, SimulationMode,
-    SimulationRunner, UniformLatency,
+    ExponentialJitter, Geography, LatencyModel, NetworkTopology, SimulatedNetwork,
+    SimulationConfig, SimulationMode, SimulationRunner, UniformLatency,
 };
 
 #[test]
@@ -61,6 +61,10 @@ fn config_yaml_round_trip() {
         duration_secs: 30,
         rng_seed: 42,
         equivocating_leaders: vec![2, 5],
+        jitter: Some(ExponentialJitter {
+            mean_ms: 75,
+            cap_ms: 400,
+        }),
         ..Default::default()
     };
 
@@ -73,6 +77,30 @@ fn config_yaml_round_trip() {
     assert_eq!(restored.rng_seed, 42);
     assert!(matches!(restored.topology, NetworkTopology::Star(0)));
     assert_eq!(restored.equivocating_leaders, vec![2, 5]);
+    assert_eq!(restored.jitter, config.jitter);
+}
+
+#[test]
+fn jitter_slows_commits() {
+    let committed_leaders = |jitter| {
+        let config = SimulationConfig {
+            jitter,
+            ..Default::default()
+        };
+        let result = SimulationRunner::new(config).run().unwrap();
+        assert_eq!(result.outcome, Outcome::Pass);
+        result
+            .metrics
+            .iter()
+            .map(MetricsSnapshot::total_committed_leaders)
+            .max()
+            .unwrap()
+    };
+    let jitter = ExponentialJitter {
+        mean_ms: 75,
+        cap_ms: 400,
+    };
+    assert!(committed_leaders(Some(jitter)) < committed_leaders(None));
 }
 
 #[test]

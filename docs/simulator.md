@@ -58,6 +58,7 @@ All fields are optional and fall back to the defaults shown.
 | `name`                              | _(unset)_                             | Optional label shown in logs and the suite summary table. |
 | `committee_size`                    | `10`                                  | Number of replicas. Stake is uniform. |
 | `latency`                           | `uniform` over 50–100 ms              | Link latency model — see below. |
+| `jitter`                            | _(unset)_                             | Extra exponential delay on every message — see below. |
 | `topology`                          | `fullMesh`                            | Network topology — see below. |
 | `duration_secs`                     | `20`                                  | Simulated time for which to run the simulation. |
 | `rng_seed`                          | `0`                                   | Seed for the deterministic RNG. Change this to get different per-run noise while keeping everything else fixed. |
@@ -105,6 +106,14 @@ constant and `start > end` is rejected.
 
   [`examples/geography.yaml`](../crates/simulator/examples/geography.yaml) is a 50-replica,
   six-region committee calibrated from an RTT matrix measured on the AWS testbed.
+
+The optional `jitter` field adds an exponentially distributed delay to every message, on top of
+the latency model, capped at `cap_ms`. Links stay FIFO, so a jittered message also holds back the
+messages behind it on its link.
+
+```yaml
+jitter: {mean_ms: 75, cap_ms: 400}
+```
 
 The latency model composes with `topology` and `equivocating_leaders`: crashing a region is a
 `partition` whose alive group leaves that region's indices out.

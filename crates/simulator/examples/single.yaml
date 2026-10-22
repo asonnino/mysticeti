@@ -14,6 +14,8 @@ committee_size: 10
 latency:
   uniform:
     range_ms: {start: 50, end: 100}
+# Optional extra exponential delay on every message, on top of `latency`.
+# jitter: {mean_ms: 75, cap_ms: 400}
 duration_secs: 20
 rng_seed: 0
 # Network topology. Options:

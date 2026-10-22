@@ -7,9 +7,11 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 mod geography;
+mod jitter;
 mod uniform;
 
 pub use geography::Geography;
+pub use jitter::ExponentialJitter;
 pub use uniform::UniformLatency;
 
 /// How long messages take on each directed link.
@@ -54,24 +56,39 @@ impl fmt::Display for LatencyModel {
     }
 }
 
-/// Latency of one directed link: a fixed base plus a uniformly drawn extra.
+/// Latency of one directed link: a fixed base plus a uniformly drawn extra, plus optional jitter.
 #[derive(Clone, Debug)]
 pub struct LinkLatency {
     base: Duration,
     extra: Range<Duration>,
+    jitter: Option<ExponentialJitter>,
 }
 
 impl LinkLatency {
     pub fn new(base: Duration, extra: Range<Duration>) -> Self {
-        Self { base, extra }
+        Self {
+            base,
+            extra,
+            jitter: None,
+        }
     }
 
-    /// An empty `extra` range draws nothing from `rng`.
+    pub fn with_jitter(mut self, jitter: Option<ExponentialJitter>) -> Self {
+        self.jitter = jitter;
+        self
+    }
+
+    /// An empty `extra` range and no jitter draw nothing from `rng`.
     pub fn sample(&self, rng: &mut impl Rng) -> Duration {
-        if self.extra.is_empty() {
-            return self.base + self.extra.start;
-        }
-        self.base + rng.gen_range(self.extra.clone())
+        let extra = if self.extra.is_empty() {
+            self.extra.start
+        } else {
+            rng.gen_range(self.extra.clone())
+        };
+        let jitter = self
+            .jitter
+            .map_or(Duration::ZERO, |jitter| jitter.sample(rng));
+        self.base + extra + jitter
     }
 }
 

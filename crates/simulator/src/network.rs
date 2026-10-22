@@ -13,7 +13,7 @@ use tokio::{select, sync::mpsc};
 use super::context::SimulatorContext;
 use super::equivocator::Equivocator;
 use super::executor::Sleep;
-use super::latency::{LatencyModel, LinkLatency};
+use super::latency::{ExponentialJitter, LatencyModel, LinkLatency};
 use consensus::leader::LeaderElection;
 use dag::committee::Committee;
 use dag::context::Ctx;
@@ -25,6 +25,7 @@ const MAX_IN_FLIGHT: usize = 1024;
 pub struct SimulatedNetwork {
     senders: Vec<mpsc::Sender<Connection>>,
     latency: LatencyModel,
+    jitter: Option<ExponentialJitter>,
     equivocators: HashMap<usize, Arc<Equivocator>>,
 }
 
@@ -43,6 +44,7 @@ impl SimulatedNetwork {
             Self {
                 senders,
                 latency,
+                jitter: None,
                 equivocators: HashMap::new(),
             },
             networks,
@@ -70,6 +72,12 @@ impl SimulatedNetwork {
         self
     }
 
+    /// Add `jitter` on top of every link's latency.
+    pub fn with_jitter(mut self, jitter: Option<ExponentialJitter>) -> Self {
+        self.jitter = jitter;
+        self
+    }
+
     pub async fn connect_all(&self) {
         for a in 0..self.senders.len() {
             for b in a + 1..self.senders.len() {
@@ -90,8 +98,9 @@ impl SimulatedNetwork {
 
     pub async fn connect(&self, a: usize, b: usize) {
         // `a_receiver` is what `a` hears, i.e. the `b -> a` direction.
-        let (a_sender, a_receiver) = Self::latency_channel(self.latency.link(b, a));
-        let (b_sender, b_receiver) = Self::latency_channel(self.latency.link(a, b));
+        let link = |from, to| self.latency.link(from, to).with_jitter(self.jitter);
+        let (a_sender, a_receiver) = Self::latency_channel(link(b, a));
+        let (b_sender, b_receiver) = Self::latency_channel(link(a, b));
         let (a_inbound, b_inbound) = (a_sender.clone(), b_sender.clone());
         let a_connection = Connection {
             peer_id: b,
