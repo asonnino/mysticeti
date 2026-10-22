@@ -20,7 +20,7 @@ from pathlib import Path
 import matrix
 
 # One hung run must not wedge the pool.
-TIMEOUT_SECS = 2 * 60 * 60
+TIMEOUT_SECS = 6 * 60 * 60
 # Written once the simulator has exported the whole run; meta.yaml alone may be partial. It
 # holds the run's identity (config and binary), so a run from other settings is not reused.
 COMPLETE = "complete"
