@@ -261,12 +261,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--workers", type=int, default=None)
+    parser.add_argument(
+        "--shard", default="0/1", help="index/count: summarise only this shard's jobs, as run.py"
+    )
     arguments = parser.parse_args()
+    shard, shards = map(int, arguments.shard.split("/"))
 
     summary_dir = arguments.out / "summary"
     summary_dir.mkdir(parents=True, exist_ok=True)
     # Summarise each distinct job once; experiments share many runs.
-    jobs = matrix.all_jobs()
+    jobs = [job for job in matrix.all_jobs() if run.in_shard(job, shard, shards)]
     task = functools.partial(summarise, out=arguments.out)
     if arguments.workers == 1:
         summaries = list(map(task, jobs))
@@ -275,7 +279,7 @@ def main():
             summaries = list(pool.map(task, jobs, chunksize=8))
     rows = {job.name: row for job, row in zip(jobs, summaries)}
     for experiment, experiment_jobs in matrix.experiments().items():
-        experiment_rows = [rows[job.name] for job in experiment_jobs]
+        experiment_rows = [rows[job.name] for job in experiment_jobs if job.name in rows]
         path = summary_dir / f"{experiment}.csv"
         write_csv(path, experiment_rows)
         statuses = [row["status"] for row in experiment_rows]
