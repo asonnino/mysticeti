@@ -21,11 +21,15 @@ where
     states: Vec<S>,
     time: Duration,
     events: BinaryHeap<ScheduledEvent<S::Event>>,
+    /// Sequence number of the next scheduled event; breaks ties between events due at the
+    /// same time in scheduling order.
+    next_sequence: u64,
     rng: Option<StdRng>,
 }
 
 pub struct Scheduler<E> {
-    events: Vec<ScheduledEvent<E>>,
+    /// Events scheduled while handling one event, in scheduling order: `(time, state, event)`.
+    events: Vec<(Duration, usize, E)>,
     rng: StdRng,
     time: Duration,
 }
@@ -45,13 +49,21 @@ where
             states,
             time: Default::default(),
             events: Default::default(),
+            next_sequence: 0,
             rng: Some(rng),
         }
     }
 
     pub fn schedule_event(&mut self, after: Duration, state: usize, event: S::Event) {
+        self.push_event(self.time.saturating_add(after), state, event);
+    }
+
+    fn push_event(&mut self, time: Duration, state: usize, event: S::Event) {
+        let sequence = self.next_sequence;
+        self.next_sequence += 1;
         self.events.push(ScheduledEvent {
-            time: self.time.saturating_add(after),
+            time,
+            sequence,
             state,
             event,
         });
@@ -96,7 +108,9 @@ impl<'a, E: SimulatorState + 'static> Drop for SchedulerEnterGuard<'a, E> {
     fn drop(&mut self) {
         let (events, rng) = Scheduler::exit();
         self.simulator.rng = Some(rng);
-        self.simulator.events.extend(events);
+        for (time, state, event) in events {
+            self.simulator.push_event(time, state, event);
+        }
     }
 }
 
@@ -113,7 +127,7 @@ impl<E: 'static> Scheduler<E> {
     pub fn schedule_event(after: Duration, state: usize, event: E) -> Duration {
         Self::with(|scheduler| {
             let time = scheduler.time.saturating_add(after);
-            scheduler.events.push(ScheduledEvent { time, state, event });
+            scheduler.events.push((time, state, event));
             time
         })
     }
@@ -143,7 +157,7 @@ impl<E: 'static> Scheduler<E> {
         });
     }
 
-    fn exit() -> (Vec<ScheduledEvent<E>>, StdRng) {
+    fn exit() -> (Vec<(Duration, usize, E)>, StdRng) {
         SCHEDULER.with(|cell| {
             let mut o = cell.borrow_mut();
             let scheduler = o.take().unwrap();
@@ -168,6 +182,7 @@ where
 
 struct ScheduledEvent<E> {
     time: Duration,
+    sequence: u64,
     state: usize,
     event: E,
 }
@@ -180,13 +195,15 @@ impl<E> PartialOrd for ScheduledEvent<E> {
 
 impl<E> PartialEq for ScheduledEvent<E> {
     fn eq(&self, other: &Self) -> bool {
-        self.time.eq(&other.time)
+        (self.time, self.sequence) == (other.time, other.sequence)
     }
 }
 
+/// Reversed, so that the max-heap pops the earliest event first, and the first scheduled
+/// among events due at the same time.
 impl<E> Ord for ScheduledEvent<E> {
     fn cmp(&self, other: &Self) -> Ordering {
-        other.time.cmp(&self.time)
+        (other.time, other.sequence).cmp(&(self.time, self.sequence))
     }
 }
 
@@ -202,6 +219,24 @@ mod test {
         fn handle_event(&mut self, event: Self::Event) {
             *self += event;
         }
+    }
+
+    impl SimulatorState for Vec<u64> {
+        type Event = u64;
+
+        fn handle_event(&mut self, event: Self::Event) {
+            self.push(event);
+        }
+    }
+
+    #[test]
+    fn same_time_events_run_in_scheduling_order() {
+        let mut simulator = Simulator::new(vec![Vec::new()], StdRng::from_seed(Default::default()));
+        for event in 0..100 {
+            simulator.schedule_event(Duration::from_secs(1), 0, event);
+        }
+        while !simulator.run_one() {}
+        assert_eq!(simulator.states[0], (0..100).collect::<Vec<_>>());
     }
 
     #[test]
