@@ -22,7 +22,8 @@ use super::names::{
 };
 use crate::authority::Authority;
 
-const LATENCY_SEC_BUCKETS: &[f64] = &[
+/// Default upper bounds (s) of the latency histograms.
+pub(super) const LATENCY_SEC_BUCKETS: &[f64] = &[
     0.1, 0.2, 0.3, 0.35, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1., 1.25, 1.5, 1.75, 2., 3.0, 5., 10.,
 ];
 
@@ -86,7 +87,8 @@ pub(super) struct CoarseMetrics {
 }
 
 impl CoarseMetrics {
-    pub fn new(registry: &Registry, committee_size: usize) -> Self {
+    /// `latency_buckets` are the upper bounds (s) of every latency histogram.
+    pub fn new(registry: &Registry, committee_size: usize, latency_buckets: &[f64]) -> Self {
         let committed_leaders_total = register_int_counter_vec_with_registry!(
             COMMITTED_LEADERS_TOTAL,
             "Committed leaders per authority",
@@ -115,7 +117,7 @@ impl CoarseMetrics {
             BLOCK_LATENCY_S,
             "Block proposal-to-commit latency (s), subject to cross-replica clock skew",
             &[LABEL_KIND],
-            LATENCY_SEC_BUCKETS.to_vec(),
+            latency_buckets.to_vec(),
             registry,
         )
         .unwrap();
@@ -142,7 +144,7 @@ impl CoarseMetrics {
                 latency_s: register_histogram_with_registry!(
                     LATENCY_S,
                     "End-to-end transaction commit latency (s)",
-                    LATENCY_SEC_BUCKETS.to_vec(),
+                    latency_buckets.to_vec(),
                     registry,
                 )
                 .unwrap(),
@@ -159,7 +161,7 @@ impl CoarseMetrics {
             inter_block_latency_s: register_histogram_with_registry!(
                 INTER_BLOCK_LATENCY_S,
                 "Inter-block latency (s)",
-                LATENCY_SEC_BUCKETS.to_vec(),
+                latency_buckets.to_vec(),
                 registry,
             )
             .unwrap(),

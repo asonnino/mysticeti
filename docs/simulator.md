@@ -207,6 +207,9 @@ leaves each file either intact or absent — never half-written.
 | `<run>/samples/<t>s/metrics-<replica>.prom` | _(with `sample_interval_secs`)_ the same snapshots, taken `t` seconds into the run. |
 | `<run>/dag.ndjson`         | _(opt-in via `--export-dag`)_ every committed sub-DAG, one JSON object per line. Can be many GB; off by default.                                          |
 
+Simulated replicas record their latency histograms with 10 ms buckets up to 1 s (then coarser
+up to 30 s), finer than a real replica's defaults, so percentiles stay precise.
+
 ## Programmatic Use
 
 The simulator is also usable as a library, which is how the integration tests in

@@ -37,6 +37,17 @@ use crate::{
     tracing::SimulatorTracing,
 };
 
+/// Upper bounds (s) of the simulated replicas' latency histograms: 10 ms steps up to 1 s, so
+/// percentiles stay precise wherever the link delays put them, then coarser out to 30 s. Real
+/// replicas keep the default, coarser buckets.
+fn latency_buckets() -> Vec<f64> {
+    let fine = (1..=100).map(|step| f64::from(step) / 100.0);
+    let tail = [
+        1.25, 1.5, 1.75, 2., 2.5, 3., 4., 5., 7.5, 10., 15., 20., 30.,
+    ];
+    fine.chain(tail).collect()
+}
+
 pub struct SimulationRunner {
     config: SimulationConfig,
 }
@@ -141,6 +152,7 @@ impl SimulationState {
         let mut replicas = Vec::with_capacity(committee_size);
         let mut load_generators = Vec::new();
         let mut metrics_handles = Vec::with_capacity(committee_size);
+        let latency_buckets = latency_buckets();
         for (i, ((node_network, private_config), commit_consumer)) in networks
             .into_iter()
             .zip(private_configs)
@@ -148,7 +160,8 @@ impl SimulationState {
             .enumerate()
         {
             let authority = Authority::from(i);
-            let metrics = Metrics::new_for_test(committee_size);
+            let metrics =
+                Metrics::new_for_test_with_latency_buckets(committee_size, &latency_buckets);
             metrics_handles.push(metrics.clone());
             let mut builder = ReplicaBuilder::new(authority, public_config.clone(), private_config)
                 .with_storage(StorageKind::Ephemeral)

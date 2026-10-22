@@ -129,6 +129,20 @@ fn sampling_snapshots_without_changing_the_run() {
 }
 
 #[test]
+fn latency_histograms_have_10ms_buckets() {
+    let result = SimulationRunner::new(SimulationConfig::default())
+        .run()
+        .unwrap();
+    let text = result.metrics[0].to_prometheus_text();
+    for bound in ["0.01", "0.29", "1", "30"] {
+        assert!(
+            text.contains(&format!("latency_s_bucket{{le=\"{bound}\"}}")),
+            "missing bucket {bound}"
+        );
+    }
+}
+
+#[test]
 fn jitter_slows_commits() {
     let committed_leaders = |jitter| {
         let config = SimulationConfig {

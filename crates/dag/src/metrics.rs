@@ -23,7 +23,10 @@ pub use self::names::{
 };
 pub use self::snapshot::MetricsSnapshot;
 pub use self::timers::{OwnedUtilizationTimer, UtilizationTimer};
-use self::{coarse::CoarseMetrics, precise::PreciseMetrics};
+use self::{
+    coarse::{CoarseMetrics, LATENCY_SEC_BUCKETS},
+    precise::PreciseMetrics,
+};
 use crate::{
     authority::Authority,
     consensus::{DirectCommitPath, IndirectCommitPath, LeaderStatus},
@@ -45,7 +48,7 @@ impl Metrics {
         committee_size: usize,
         report_interval: Option<Duration>,
     ) -> Arc<Self> {
-        let coarse = CoarseMetrics::new(registry, committee_size);
+        let coarse = CoarseMetrics::new(registry, committee_size, LATENCY_SEC_BUCKETS);
         let precise = PreciseMetrics::spawn(registry, committee_size, report_interval);
         Arc::new(Self {
             coarse,
@@ -58,8 +61,16 @@ impl Metrics {
     /// the precise channels synchronously before gathering, so snapshots are always
     /// up-to-date.
     pub fn new_for_test(committee_size: usize) -> Arc<Self> {
+        Self::new_for_test_with_latency_buckets(committee_size, LATENCY_SEC_BUCKETS)
+    }
+
+    /// Like [`Metrics::new_for_test`], with custom upper bounds (s) for the latency histograms.
+    pub fn new_for_test_with_latency_buckets(
+        committee_size: usize,
+        latency_buckets: &[f64],
+    ) -> Arc<Self> {
         let registry = Registry::new();
-        let coarse = CoarseMetrics::new(&registry, committee_size);
+        let coarse = CoarseMetrics::new(&registry, committee_size, latency_buckets);
         let precise = PreciseMetrics::new_for_test(&registry, committee_size);
         Arc::new(Self {
             coarse,
