@@ -179,11 +179,13 @@ impl SimulationState {
         )
         .await;
         // Connections are only wired in `apply_topology`, so the shim sees every link.
-        let network = network.with_equivocating_leaders(
-            &config.equivocating_leaders,
-            protocol.leader_count.get(),
-            protocol.leader_election,
-        );
+        let network = network
+            .with_equivocating_leaders(
+                &config.equivocating_leaders,
+                protocol.leader_count.get(),
+                protocol.leader_election,
+            )
+            .with_jitter(config.jitter);
 
         Self {
             config,
