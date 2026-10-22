@@ -98,7 +98,7 @@ def load(medians):
         for column in ("crashes", "equivocators", "done", "runs", "no-progress", "stalled"):
             row[column] = int(row[column])
         for column in (*MEDIAN_COLUMNS, "latency_min_ms", "latency_max_ms"):
-            row[column] = float(row[column]) if row[column] else None
+            row[column] = float(row[column]) if row.get(column) else None
     return rows
 
 
@@ -127,6 +127,8 @@ def bars(plt, rows, title, path):
         position += 1
     axes.set_xticks(positions, labels, rotation=60, ha="right", fontsize=7)
     axes.set_ylabel("mean latency (ms)")
+    axes.grid(axis="y", alpha=0.4)
+    axes.set_axisbelow(True)
     axes.set_title(f"{title} (blue: partially synchronous, orange: asynchronous)")
     figure.tight_layout()
     figure.savefig(path, dpi=150)
@@ -135,9 +137,13 @@ def bars(plt, rows, title, path):
 
 def sweep(plt, rows, x, title, path):
     """Mean latency against `x`, one panel per fault model, one line per protocol."""
+    from matplotlib.ticker import MaxNLocator
+
     figure, panels = plt.subplots(1, len(FAULT_MODELS), figsize=(20, 4.5), sharey=True)
+    markers = []
     for axes, fault_model in zip(panels, FAULT_MODELS):
         group = [row for row in rows if row["fault_model"] == fault_model]
+        stalled = []
         for protocol in sorted({row["protocol"] for row in group}):
             points = [row for row in group if row["protocol"] == protocol]
             points.sort(key=lambda row: row[x])
@@ -148,14 +154,22 @@ def sweep(plt, rows, x, title, path):
                 style, marker="o", markersize=3, label=protocol,
             )
             stalls = [row[x] for row in points if row["no-progress"] or row["stalled"]]
-            if stalls:
-                bottom = [axes.get_ylim()[0]] * len(stalls)
-                axes.scatter(stalls, bottom, marker="x", color=line.get_color())
+            stalled.append((stalls, line.get_color()))
+        axes.set_yscale("log")
+        markers.append((axes, stalled))
         axes.set_title(fault_model)
         axes.set_xlabel(x)
-        axes.set_yscale("log")
+        axes.xaxis.set_major_locator(MaxNLocator(integer=True))
+        axes.grid(True, which="both", alpha=0.4)
         if group:
             axes.legend(fontsize=6)
+    # Stalls have no latency: mark them along the bottom, once the shared limits are settled.
+    bottom, top = panels[0].get_ylim()
+    for axes, stalled in markers:
+        for stalls, colour in stalled:
+            if stalls:
+                axes.scatter(stalls, [bottom] * len(stalls), marker="x", color=colour, zorder=3)
+    panels[0].set_ylim(bottom, top)
     panels[0].set_ylabel("mean latency (ms), x = stalled")
     figure.suptitle(f"{title} (solid: partially synchronous, dashed: asynchronous)")
     figure.tight_layout()
@@ -180,6 +194,8 @@ def buffer_rounds(plt, rows, path):
             axes.bar(range(len(group)), values, color="tab:orange")
             axes.set_xticks(range(len(group)), labels, rotation=60, ha="right", fontsize=6)
             axes.set_title(f"{name}: {metric}")
+            axes.grid(axis="y", alpha=0.4)
+            axes.set_axisbelow(True)
     figure.tight_layout()
     figure.savefig(path, dpi=150)
     plt.close(figure)
