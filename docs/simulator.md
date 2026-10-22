@@ -65,6 +65,7 @@ All fields are optional and fall back to the defaults shown.
 | `replica_parameters`                | `ReplicaParameters::default()`        | Same tunables as a real replica: DAG round timeout, max block size, consensus protocol, leader count. |
 | `load_generator`                    | `LoadGeneratorConfig::new_for_test()` | Built-in transaction generator (`load` tx/s, `transaction_size`, `initial_delay`). `null` for empty blocks. |
 | `equivocating_leaders`              | `[]`                                  | Authority indices that behave as equivocating leaders — see below. |
+| `sample_interval_secs`              | _(unset)_                             | Snapshot every replica's metrics this often; written to `samples/<t>s/`. |
 
 ## Link Latency
 

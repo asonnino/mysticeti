@@ -4,6 +4,8 @@
 use std::{
     io,
     path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
 };
 
 use consensus::committer::Committer;
@@ -21,7 +23,7 @@ use replica::{
     builder::{ReplicaBuilder, StorageKind},
     config::{LoadGeneratorConfig, PrivateReplicaConfig, PublicReplicaConfig},
     replica::ReplicaHandle,
-    result::{RunKind, RunResult},
+    result::{MetricsSample, RunKind, RunResult},
 };
 use tokio::sync::mpsc;
 
@@ -67,8 +69,9 @@ impl SimulationRunner {
         SimulatorExecutor::run(rng, async move {
             let state = SimulationState::setup(config).await;
             state.apply_topology().await;
-            SimulatorContext::sleep(state.config.duration()).await;
-            state.collect_result().await
+            let samples = state.run_and_sample().await;
+            let result = state.collect_result().await?;
+            Ok(result.with_samples(samples))
         })
     }
 }
@@ -77,6 +80,8 @@ struct SimulationState {
     config: SimulationConfig,
     network: SimulatedNetwork,
     replicas: Vec<ReplicaHandle<SimulatorContext>>,
+    /// Each replica's live metrics, read by the in-run sampler.
+    metrics: Vec<Arc<Metrics>>,
     /// JoinHandles for any load generators we started, so they stay alive for the duration
     /// of the simulation.
     _load_generators: Vec<JoinHandle<()>>,
@@ -100,7 +105,7 @@ impl SimulatedNetwork {
     ) -> (Self, Vec<ReplicaHandle<SimulatorContext>>) {
         let public_config = PublicReplicaConfig::new_for_tests(commit_consumers.len());
         let latency = LatencyModel::default();
-        let (network, replicas, _) =
+        let (network, replicas, _, _) =
             SimulationState::build_replicas(public_config, latency, None, commit_consumers).await;
         network.connect_all().await;
         (network, replicas)
@@ -120,6 +125,7 @@ impl SimulationState {
         SimulatedNetwork,
         Vec<ReplicaHandle<SimulatorContext>>,
         Vec<JoinHandle<()>>,
+        Vec<Arc<Metrics>>,
     ) {
         let committee = public_config.committee();
         let committee_size = committee.len();
@@ -133,6 +139,7 @@ impl SimulationState {
 
         let mut replicas = Vec::with_capacity(committee_size);
         let mut load_generators = Vec::new();
+        let mut metrics_handles = Vec::with_capacity(committee_size);
         for (i, ((node_network, private_config), commit_consumer)) in networks
             .into_iter()
             .zip(private_configs)
@@ -141,6 +148,7 @@ impl SimulationState {
         {
             let authority = Authority::from(i);
             let metrics = Metrics::new_for_test(committee_size);
+            metrics_handles.push(metrics.clone());
             let mut builder = ReplicaBuilder::new(authority, public_config.clone(), private_config)
                 .with_storage(StorageKind::Ephemeral)
                 .with_simulated_crypto()
@@ -159,7 +167,7 @@ impl SimulationState {
             }
             replicas.push(handle);
         }
-        (network, replicas, load_generators)
+        (network, replicas, load_generators, metrics_handles)
     }
 
     async fn setup(config: SimulationConfig) -> Self {
@@ -171,7 +179,7 @@ impl SimulationState {
             .to_protocol(&public_config.committee())
             .expect("invalid consensus protocol");
         let commit_consumers = vec![None; config.committee_size];
-        let (network, replicas, load_generators) = Self::build_replicas(
+        let (network, replicas, load_generators, metrics) = Self::build_replicas(
             public_config,
             config.latency.clone(),
             config.load_generator.clone(),
@@ -191,8 +199,36 @@ impl SimulationState {
             config,
             network,
             replicas,
+            metrics,
             _load_generators: load_generators,
         }
+    }
+
+    /// Run for the configured duration, snapshotting every replica's metrics every
+    /// `sample_interval_secs` when it is set.
+    async fn run_and_sample(&self) -> Vec<MetricsSample> {
+        let duration = self.config.duration();
+        let Some(interval) = self.config.sample_interval_secs else {
+            SimulatorContext::sleep(duration).await;
+            return Vec::new();
+        };
+        let interval = Duration::from_secs(interval.get());
+        let mut samples = Vec::new();
+        let mut elapsed = Duration::ZERO;
+        while elapsed < duration {
+            let step = interval.min(duration - elapsed);
+            SimulatorContext::sleep(step).await;
+            elapsed += step;
+            samples.push(MetricsSample {
+                time: elapsed,
+                metrics: self
+                    .metrics
+                    .iter()
+                    .map(|metrics| metrics.collect())
+                    .collect(),
+            });
+        }
+        samples
     }
 
     async fn apply_topology(&self) {

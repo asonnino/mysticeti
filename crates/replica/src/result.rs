@@ -109,6 +109,13 @@ where
     }
 }
 
+/// Every replica's metrics at one point of a run.
+pub struct MetricsSample {
+    /// Time since the start of the run.
+    pub time: Duration,
+    pub metrics: Vec<MetricsSnapshot>,
+}
+
 /// Cross-replica summary of a single run: per-replica metrics, the derived outcome, the
 /// configuration that drove the run, the wall-clock duration, and the storages those
 /// metrics were drawn from. Generic over `C` so simulator, testbed, and smoke-test
@@ -124,6 +131,8 @@ pub struct RunResult<C> {
     pub duration: Duration,
     pub kind: RunKind,
     pub storages: Vec<Storage>,
+    /// In-run metrics snapshots, oldest first; empty unless the runner samples.
+    pub samples: Vec<MetricsSample>,
 }
 
 impl<C> RunResult<C> {
@@ -144,7 +153,13 @@ impl<C> RunResult<C> {
             duration,
             kind,
             storages,
+            samples: Vec::new(),
         }
+    }
+
+    pub fn with_samples(mut self, samples: Vec<MetricsSample>) -> Self {
+        self.samples = samples;
+        self
     }
 }
 
