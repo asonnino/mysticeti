@@ -15,6 +15,7 @@ import re
 from pathlib import Path
 
 import matrix
+import run
 
 MEASURE_FROM_SECS = 30
 # A run is stalled when fewer than this fraction of its windows commit a leader.
@@ -23,6 +24,7 @@ STALL_FRACTION = 0.1
 SERIES = re.compile(r"^(\w+)(?:\{([^}]*)\})? (\S+)$")
 LABEL = re.compile(r'(\w+)="([^"]*)"')
 DIRECT_COMMITS = ("slow-commit", "fast-commit")
+SKIPS = ("direct-skip", "indirect-skip")
 
 
 def read_prom(path):
@@ -55,6 +57,11 @@ def leaders(values, live=None):
             continue
         counts[labels["commit_type"]] = counts.get(labels["commit_type"], 0) + value
     return counts
+
+
+def committed(counts):
+    """Committed leaders among `leaders()` counts, leaving out skipped slots."""
+    return sum(value for kind, value in counts.items() if kind not in SKIPS)
 
 
 def histogram_quantile(start, end, quantile):
@@ -121,12 +128,12 @@ def summarise(job, run_dir):
         decided = sum(committed_end.values()) - sum(committed_start.values())
         rates.append(decided / span)
 
-        # Windows after warm-up with at least one decided leader.
+        # Windows after warm-up with at least one committed (not skipped) leader.
         window_times = [time for time in times if time > MEASURE_FROM_SECS]
         previous, committing = start, 0
         for time in window_times:
             current = samples[time]
-            if sum(leaders(current).values()) > sum(leaders(previous).values()):
+            if committed(leaders(current)) > committed(leaders(previous)):
                 committing += 1
             previous = current
         window_fractions.append(committing / max(len(window_times), 1))
@@ -176,7 +183,7 @@ def main():
         rows, missing = [], 0
         for job in jobs:
             run_dir = arguments.out / "runs" / job.name
-            if not (run_dir / "meta.yaml").exists():
+            if not (run_dir / run.COMPLETE).exists():
                 missing += 1
                 continue
             rows.append(summarise(job, run_dir))
