@@ -13,6 +13,7 @@ finish says why in its status.
 import argparse
 import csv
 import functools
+import json
 import re
 import statistics
 from concurrent.futures import ProcessPoolExecutor
@@ -116,10 +117,12 @@ def snapshots(run_dir, replica):
     return dict(sorted(samples.items()))
 
 
-def status_of(run_dir):
-    """'ok' for a finished run, otherwise why it did not finish."""
+def status_of(job, run_dir):
+    """'ok' for a finished run of the job's current config, otherwise what is wrong with it."""
     if (run_dir / run.COMPLETE).exists():
-        return "ok"
+        marker = json.loads((run_dir / run.COMPLETE).read_text())
+        # A run from other settings would be read with the current constants.
+        return "ok" if marker["config"] == run.config_hash(job) else "stale"
     if (run_dir / run.FAILED).exists():
         return (run_dir / run.FAILED).read_text().strip()
     return "missing"
@@ -137,7 +140,7 @@ def summarise(job, out):
         "seed": job.seed,
     }
     run_dir = out / "runs" / job.name
-    status = status_of(run_dir)
+    status = status_of(job, run_dir)
     if status != "ok":
         return {**row, "status": status}
     row["outcome"] = re.search(r"outcome: (\S+)", (run_dir / "meta.yaml").read_text()).group(1)
@@ -226,7 +229,7 @@ def summarise(job, out):
 def final_metrics(out, job):
     """Every replica's final snapshot, or None when the run did not finish."""
     run_dir = out / "runs" / job.name
-    if status_of(run_dir) != "ok":
+    if status_of(job, run_dir) != "ok":
         return None
     return {path.name: read_prom(path) for path in sorted(run_dir.glob("metrics-*.prom"))}
 
