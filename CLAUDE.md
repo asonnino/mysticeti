@@ -109,7 +109,9 @@ run log, citing each archive by sha256 (e.g. `hydrozoan-paper/data/evaluation/EV
   Data from different builds never shares a release or an archive, even within one paper.
 - **Assets:** one `.tar.gz` per day or kind (`aws-measurements-<date>`, `simulator-<date>`),
   each rooted at a single directory, plus a `SHA256SUMS` covering every archive. Archive the
-  files as produced, minus `.DS_Store` (`COPYFILE_DISABLE=1 tar czf ...` on macOS).
+  files as produced, minus `.DS_Store` (`COPYFILE_DISABLE=1 tar czf ...` on macOS). Large
+  simulator dumps use `.tar.xz` instead: their repeated snapshots compress about 170× with xz
+  against 12× with gzip, keeping each asset under GitHub's 2 GiB limit.
 - **Notes:** build, dates, testbed, what each archive holds and its layout, and anything left
   out and why.
 - **Verify before deleting local copies:** download every asset back and run
