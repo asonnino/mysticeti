@@ -41,6 +41,7 @@ replica_parameters:
     fsync: false
   # Consensus protocol variant. Options:
   #   mysticeti                            { leader_count }
+  #   mysticeti-union                      { leader_count }
   #   blue-bottle-partially-synchronous    { leader_count }
   #   blue-bottle-asynchronous             { leader_count }
   #   orcaella                             { leader_count, f, c }
