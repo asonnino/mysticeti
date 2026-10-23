@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{BTreeSet, HashMap, HashSet, VecDeque},
     sync::Arc,
 };
 
@@ -20,9 +20,11 @@ use crate::{
 pub struct BlockManager {
     /// Keeps all pending blocks.
     blocks_pending: HashMap<BlockReference, Data<Block>>,
-    /// Keeps all the blocks (`HashSet<BlockReference>`) waiting
-    /// for `BlockReference` to be processed.
-    block_references_waiting: HashMap<BlockReference, HashSet<BlockReference>>,
+    /// Keeps all the blocks (`BTreeSet<BlockReference>`) waiting
+    /// for `BlockReference` to be processed. Ordered so that blocks are unblocked in the same
+    /// order on every run: iterating a `HashSet` would make the processing order, and with it the
+    /// simulator, depend on the process-random hasher.
+    block_references_waiting: HashMap<BlockReference, BTreeSet<BlockReference>>,
     /// Keeps all blocks that need to be synced in order to unblock the processing of other pending
     /// blocks. The indices of the vector correspond the authority indices.
     missing: Vec<HashSet<BlockReference>>,
@@ -156,6 +158,34 @@ mod tests {
             assert_eq!(bm.block_reader.len_expensive(), dag.len());
             println!("======");
         }
+    }
+
+    #[test]
+    fn test_block_manager_unblocks_waiting_blocks_in_a_fixed_order() {
+        // Five blocks wait on A1. Which of them is processed first must not depend on the
+        // hasher's random keys, so a fresh manager must give the same order every time.
+        let dag = "A0:[]; A1:[A0]; B2:[A1]; C2:[A1]; D2:[A1]; E2:[A1]; F2:[A1]";
+        let blocks: Vec<_> = dag
+            .split(';')
+            .map(|block| Data::new(Dag::draw_block(block)))
+            .collect();
+        let committee = Committee::new_test(vec![1; 6]);
+
+        let mut orders = HashSet::new();
+        for _ in 0..32 {
+            let mut storage = Storage::new_for_test(&committee);
+            let mut bm = BlockManager::new(storage.block_reader().clone(), &committee);
+            bm.add_blocks(vec![blocks[0].clone()], &mut storage);
+            bm.add_blocks(blocks[2..].to_vec(), &mut storage);
+            let order: Vec<_> = bm
+                .add_blocks(vec![blocks[1].clone()], &mut storage)
+                .iter()
+                .map(|(_, block)| *block.reference())
+                .collect();
+            assert_eq!(order.len(), 6);
+            orders.insert(order);
+        }
+        assert_eq!(orders.len(), 1, "unblock order changed between runs");
     }
 
     fn rng(s: u8) -> StdRng {
