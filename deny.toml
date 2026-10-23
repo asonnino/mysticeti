@@ -12,6 +12,12 @@ ignore = [
   # We have a vulnerable version of `rustls` in our dependency tree through the old version of
   # jsonrpsee used by sui.
   "RUSTSEC-2024-0336",
+  # bincode 1.x is unmaintained. `dag` uses it for WAL payloads and commit batches, so replacing
+  # it changes the on-disk format.
+  "RUSTSEC-2025-0141",
+  # unsafe-libyaml is unmaintained. It is the YAML backend of serde_yaml 0.9, which loads our
+  # configuration files.
+  "RUSTSEC-2024-0449",
 ]
 
 # This section is considered when running `cargo deny check licenses`
