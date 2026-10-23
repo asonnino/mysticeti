@@ -168,6 +168,9 @@ def bars(plt, rows, statistic, title, path, log=False):
     plt.close(figure)
 
 
+X_LABELS = {"faulty": "faulty nodes (e equivocators + k crashes)"}
+
+
 def sweep(plt, rows, statistic, x, title, path, fault_models=FAULT_MODELS):
     """Latency against `x`, one panel per fault model, one line per protocol."""
     from matplotlib.ticker import MaxNLocator
@@ -195,7 +198,7 @@ def sweep(plt, rows, statistic, x, title, path, fault_models=FAULT_MODELS):
             stalled.append((stalls, container.lines[0].get_color()))
         markers.append((axes, stalled))
         axes.set_title(fault_model)
-        axes.set_xlabel(x)
+        axes.set_xlabel(X_LABELS.get(x, x))
         axes.xaxis.set_major_locator(MaxNLocator(integer=True))
         axes.grid(True, which="both", alpha=0.4)
         if group:
@@ -279,10 +282,8 @@ def plot(medians, figures):
     for row in rows:
         by_experiment[row["experiment"]].append(row)
     byzantine = by_experiment["byzantine"]
-    # Hybrid configurations add crashes at their full Byzantine budget.
-    budget = {}
     for row in byzantine:
-        budget[row["protocol"]] = max(budget.get(row["protocol"], 0), row["equivocators"])
+        row["faulty"] = row["equivocators"] + row["crashes"]
     for statistic in STATISTICS:
         def name(stem):
             return figures / f"{stem}{statistic.suffix}.png"
@@ -294,9 +295,9 @@ def plot(medians, figures):
             plt, [row for row in byzantine if row["crashes"] == 0], statistic, "equivocators",
             "Byzantine equivocators", name("3-byzantine"), fault_models=FAULT_MODELS[:-1],
         )
+        # Hybrid configurations add crashes once all f equivocate: one line per configuration.
         sweep(
-            plt, [row for row in byzantine if row["equivocators"] == budget[row["protocol"]]],
-            statistic, "crashes", "Crashes on top of f equivocators",
+            plt, byzantine, statistic, "faulty", "Equivocators, then crashes",
             name("3b-byzantine-crashes"), fault_models=("5f+3c+1", "3f+2c+1"),
         )
         bars(plt, by_experiment["jitter"], statistic, "Jitter", name("4-jitter"), log=True)
