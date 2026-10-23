@@ -62,6 +62,9 @@ def aggregate(out):
             for row in csv.DictReader(file):
                 key = (experiment, *(row[column] for column in KEYS[1:]))
                 groups.setdefault(key, []).append(row)
+    binaries = {run["binary"] for runs in groups.values() for run in runs if run["status"] == "ok"}
+    if len(binaries) > 1:
+        raise SystemExit(f"runs from different builds: {sorted(binaries)}")
     rows = []
     for key, runs in sorted(groups.items()):
         done = [run for run in runs if run["status"] == "ok"]

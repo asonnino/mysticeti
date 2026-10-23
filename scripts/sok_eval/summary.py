@@ -144,6 +144,8 @@ def summarise(job, out):
     if status != "ok":
         return {**row, "status": status}
     row["outcome"] = re.search(r"outcome: (\S+)", (run_dir / "meta.yaml").read_text()).group(1)
+    # Recorded so that aggregation can refuse to mix runs of different builds.
+    row["binary"] = json.loads((run_dir / run.COMPLETE).read_text())["binary"][:12]
 
     live = set(range(matrix.COMMITTEE_SIZE - job.crashes))
     replicas = sorted(path.stem.split("-")[1] for path in run_dir.glob("metrics-*.prom"))
