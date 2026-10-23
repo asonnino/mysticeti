@@ -36,7 +36,7 @@ SERIES = re.compile(r"^(\w+)(?:\{([^}]*)\})? (\S+)\s*$")
 LABEL = re.compile(r'(\w+)="([^"]*)"')
 SAMPLE_DIR = re.compile(r"^(\d+)s$")
 # The only metric families the summary reads.
-FAMILIES = ("latency_s_", "committed_leaders_total")
+FAMILIES = ("latency_s_", "latency_squared_s", "committed_leaders_total")
 DIRECT_COMMITS = ("slow-commit", "fast-commit")
 SKIPS = ("direct-skip", "indirect-skip")
 
@@ -151,7 +151,7 @@ def summarise(job, out):
     replicas = sorted(path.stem.split("-")[1] for path in run_dir.glob("metrics-*.prom"))
     replicas = [name for name in replicas if authority_index(name) in live]
 
-    latency_sum = latency_count = 0.0
+    latency_sum = latency_squares = latency_count = 0.0
     buckets = {}
     live_direct = live_decided = 0.0
     throughputs, committed_rates, skipped_rates, window_fractions = [], [], [], []
@@ -169,6 +169,8 @@ def summarise(job, out):
         latency_count += count
         latency_sum += end.get(("latency_s_sum", frozenset()), 0)
         latency_sum -= start.get(("latency_s_sum", frozenset()), 0)
+        latency_squares += end.get(("latency_squared_s", frozenset()), 0)
+        latency_squares -= start.get(("latency_squared_s", frozenset()), 0)
         for bound, delta in bucket_deltas(start, end).items():
             buckets[bound] = buckets.get(bound, 0) + delta
         throughputs.append(count / span)
@@ -203,7 +205,12 @@ def summarise(job, out):
     def mean(values):
         return sum(values) / len(values) if values else None
 
-    p90 = histogram_quantile(buckets, 0.9)
+    p50, p90 = histogram_quantile(buckets, 0.5), histogram_quantile(buckets, 0.9)
+    latency_mean = latency_sum / latency_count if latency_count else None
+    # Exact, unlike the quantiles, which the histogram buckets only bound.
+    latency_stdev = None
+    if latency_count:
+        latency_stdev = max(latency_squares / latency_count - latency_mean**2, 0) ** 0.5
     throughput = mean(throughputs)
     offered = OFFERED_PER_REPLICA * len(live)
     goodput = throughput / offered if throughput is not None else None
@@ -214,7 +221,9 @@ def summarise(job, out):
     return {
         **row,
         "status": status,
-        "latency_mean_ms": rounded(latency_sum / latency_count * 1000 if latency_count else None),
+        "latency_mean_ms": rounded(latency_mean * 1000 if latency_count else None),
+        "latency_stdev_ms": rounded(latency_stdev * 1000 if latency_count else None),
+        "latency_p50_ms": rounded(p50 * 1000 if p50 is not None else None),
         "latency_p90_ms": rounded(p90 * 1000 if p90 is not None else None),
         "throughput_tx_s": rounded(throughput),
         "offered_tx_s": offered,
