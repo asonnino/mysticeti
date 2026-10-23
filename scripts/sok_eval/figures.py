@@ -12,6 +12,7 @@ wherever matplotlib is installed, from the small medians file.
 
 import argparse
 import csv
+import re
 import statistics
 from pathlib import Path
 
@@ -19,6 +20,8 @@ EXPERIMENTS = ("happy", "crashes", "byzantine", "jitter", "buffer-rounds")
 KEYS = ("experiment", "protocol", "jitter", "crashes", "equivocators")
 MEDIAN_COLUMNS = (
     "latency_mean_ms",
+    "latency_stdev_ms",
+    "latency_p50_ms",
     "latency_p90_ms",
     "goodput",
     "committed_leaders_s",
@@ -105,10 +108,37 @@ def load(medians):
     return rows
 
 
-def bars(plt, rows, title, path):
-    """Mean latency per protocol (median across seeds, min-max as error bars), by fault model."""
+class Statistic:
+    """How a latency point is drawn: a centre column and the error bar around it."""
+
+    def __init__(self, name, centre, low, high, suffix):
+        self.name, self.centre, self.low, self.high, self.suffix = name, centre, low, high, suffix
+
+    def errors(self, row):
+        """(below, above) lengths of the error bar, clipped so it stays above zero."""
+        centre = row[self.centre]
+        return min(centre - self.low(row), 0.95 * centre), self.high(row) - centre
+
+
+STATISTICS = (
+    Statistic(
+        "p50, bar to p90", "latency_p50_ms",
+        lambda row: row["latency_p50_ms"], lambda row: row["latency_p90_ms"], "",
+    ),
+    Statistic(
+        "mean \u00b1 stdev", "latency_mean_ms",
+        lambda row: row["latency_mean_ms"] - row["latency_stdev_ms"],
+        lambda row: row["latency_mean_ms"] + row["latency_stdev_ms"], "-mean",
+    ),
+)
+
+
+def bars(plt, rows, statistic, title, path, log=False):
+    """Latency per protocol (medians across seeds), by fault model."""
     figure, axes = plt.subplots(figsize=(12, 4.5))
-    labels, positions, colours = [], [], []
+    if log:
+        axes.set_yscale("log")
+    labels, positions = [], []
     position = 0
     for fault_model in FAULT_MODELS:
         group = sorted(
@@ -116,12 +146,12 @@ def bars(plt, rows, title, path):
             key=lambda row: (row["synchrony"], row["protocol"]),
         )
         for row in group:
-            latency = row["latency_mean_ms"]
+            latency = row[statistic.centre]
             if latency is None:
                 continue
-            error = [[latency - row["latency_min_ms"]], [row["latency_max_ms"] - latency]]
+            below, above = statistic.errors(row)
             colour = "tab:blue" if row["synchrony"] == "ps" else "tab:orange"
-            axes.bar(position, latency, yerr=error, color=colour, capsize=2)
+            axes.bar(position, latency, yerr=[[below], [above]], color=colour, capsize=2)
             if row["stalled"] or row["no-progress"]:
                 axes.text(position, latency, "stall", ha="center", va="bottom", fontsize=7)
             labels.append(f"{row['protocol']} ({row['done']}/{row['runs']})")
@@ -129,8 +159,8 @@ def bars(plt, rows, title, path):
             position += 1
         position += 1
     axes.set_xticks(positions, labels, rotation=60, ha="right", fontsize=7)
-    axes.set_ylabel("mean latency (ms)")
-    axes.grid(axis="y", alpha=0.4)
+    axes.set_ylabel(f"latency (ms): {statistic.name}")
+    axes.grid(axis="y", which="both", alpha=0.4)
     axes.set_axisbelow(True)
     axes.set_title(f"{title} (blue: partially synchronous, orange: asynchronous)")
     figure.tight_layout()
@@ -138,27 +168,31 @@ def bars(plt, rows, title, path):
     plt.close(figure)
 
 
-def sweep(plt, rows, x, title, path):
-    """Mean latency against `x`, one panel per fault model, one line per protocol."""
+def sweep(plt, rows, statistic, x, title, path, fault_models=FAULT_MODELS):
+    """Latency against `x`, one panel per fault model, one line per protocol."""
     from matplotlib.ticker import MaxNLocator
 
-    figure, panels = plt.subplots(1, len(FAULT_MODELS), figsize=(20, 4.5), sharey=True)
+    figure, panels = plt.subplots(
+        1, len(fault_models), figsize=(4 * len(fault_models), 4.5), sharey=True, squeeze=False
+    )
+    panels = panels[0]
     markers = []
-    for axes, fault_model in zip(panels, FAULT_MODELS):
+    for axes, fault_model in zip(panels, fault_models):
         group = [row for row in rows if row["fault_model"] == fault_model]
         stalled = []
         for protocol in sorted({row["protocol"] for row in group}):
             points = [row for row in group if row["protocol"] == protocol]
             points.sort(key=lambda row: row[x])
-            live = [row for row in points if row["latency_mean_ms"] and not row["no-progress"]]
+            live = [row for row in points if row[statistic.centre] and not row["no-progress"]]
             style = "-" if live and live[0]["synchrony"] == "ps" else "--"
-            line, = axes.plot(
-                [row[x] for row in live], [row["latency_mean_ms"] for row in live],
-                style, marker="o", markersize=3, label=protocol,
+            errors = list(zip(*(statistic.errors(row) for row in live))) or [[], []]
+            container = axes.errorbar(
+                [row[x] for row in live], [row[statistic.centre] for row in live],
+                yerr=errors, fmt=style, marker="o", markersize=3, capsize=2, elinewidth=0.8,
+                label=protocol,
             )
             stalls = [row[x] for row in points if row["no-progress"] or row["stalled"]]
-            stalled.append((stalls, line.get_color()))
-        axes.set_yscale("log")
+            stalled.append((stalls, container.lines[0].get_color()))
         markers.append((axes, stalled))
         axes.set_title(fault_model)
         axes.set_xlabel(x)
@@ -167,41 +201,67 @@ def sweep(plt, rows, x, title, path):
         if group:
             axes.legend(fontsize=6)
     # Stalls have no latency: mark them along the bottom, once the shared limits are settled.
+    panels[0].set_ylim(bottom=0)
     bottom, top = panels[0].get_ylim()
     for axes, stalled in markers:
         for stalls, colour in stalled:
             if stalls:
                 axes.scatter(stalls, [bottom] * len(stalls), marker="x", color=colour, zorder=3)
     panels[0].set_ylim(bottom, top)
-    panels[0].set_ylabel("mean latency (ms), x = stalled")
+    panels[0].set_ylabel(f"latency (ms): {statistic.name}, x = stalled")
     figure.suptitle(f"{title} (solid: partially synchronous, dashed: asynchronous)")
     figure.tight_layout()
     figure.savefig(path, dpi=150)
     plt.close(figure)
 
 
+WAVE_COLOURS = {2: "tab:blue", 3: "tab:orange", 4: "tab:green", 5: "tab:red"}
+
+
+def wave_length(protocol):
+    """The wave length in an asynchronous protocol's label (`…-w<length>…`)."""
+    return int(re.search(r"-w(\d)", protocol).group(1))
+
+
 def buffer_rounds(plt, rows, path):
-    """Direct-commit rate and latency of each asynchronous protocol at both wave lengths."""
+    """Direct-commit rate and latency of each asynchronous protocol, coloured by wave length."""
+    from matplotlib.patches import Patch
+
     conditions = [
         ("happy", lambda row: not row["jitter"] == "True" and row["crashes"] == 0),
         ("jitter", lambda row: row["jitter"] == "True" and row["crashes"] == 0),
         ("jitter + crashes", lambda row: row["jitter"] == "True" and row["crashes"] > 0),
     ]
+    statistic = STATISTICS[0]
     figure, panels = plt.subplots(2, len(conditions), figsize=(18, 8))
     for column, (name, select) in enumerate(conditions):
         group = sorted((row for row in rows if select(row)), key=lambda row: row["protocol"])
         labels = [f"{row['protocol']} ({row['done']}/{row['runs']})" for row in group]
-        for line, metric in enumerate(("direct_commit_rate", "latency_mean_ms")):
+        colours = [WAVE_COLOURS[wave_length(row["protocol"])] for row in group]
+        for line, metric in enumerate(("direct_commit_rate", statistic.centre)):
             axes = panels[line][column]
             values = [row[metric] for row in group]
-            axes.bar(range(len(group)), [value or 0 for value in values], color="tab:orange")
+            errors = None
+            if metric == statistic.centre:
+                errors = list(zip(*(
+                    statistic.errors(row) if row[metric] else (0, 0) for row in group
+                )))
+            axes.bar(
+                range(len(group)), [value or 0 for value in values], yerr=errors,
+                color=colours, capsize=2,
+            )
             for position, value in enumerate(values):
                 if value is None:
                     axes.text(position, 0, "n/a", ha="center", va="bottom", fontsize=7)
             axes.set_xticks(range(len(group)), labels, rotation=60, ha="right", fontsize=6)
-            axes.set_title(f"{name}: {metric}")
+            title = metric if metric != statistic.centre else f"latency (ms): {statistic.name}"
+            axes.set_title(f"{name}: {title}")
             axes.grid(axis="y", alpha=0.4)
             axes.set_axisbelow(True)
+    handles = [
+        Patch(color=colour, label=f"w = {length}") for length, colour in WAVE_COLOURS.items()
+    ]
+    panels[0][0].legend(handles=handles, fontsize=7, loc="lower left")
     figure.tight_layout()
     figure.savefig(path, dpi=150)
     plt.close(figure)
@@ -218,11 +278,28 @@ def plot(medians, figures):
     by_experiment = {experiment: [] for experiment in EXPERIMENTS}
     for row in rows:
         by_experiment[row["experiment"]].append(row)
-    bars(plt, by_experiment["happy"], "Happy case", figures / "1-happy.png")
-    sweep(plt, by_experiment["crashes"], "crashes", "Crash sweep", figures / "2-crashes.png")
-    byzantine = [row for row in by_experiment["byzantine"] if row["crashes"] == 0]
-    sweep(plt, byzantine, "equivocators", "Byzantine equivocators", figures / "3-byzantine.png")
-    bars(plt, by_experiment["jitter"], "Jitter", figures / "4-jitter.png")
+    byzantine = by_experiment["byzantine"]
+    # Hybrid configurations add crashes at their full Byzantine budget.
+    budget = {}
+    for row in byzantine:
+        budget[row["protocol"]] = max(budget.get(row["protocol"], 0), row["equivocators"])
+    for statistic in STATISTICS:
+        def name(stem):
+            return figures / f"{stem}{statistic.suffix}.png"
+
+        bars(plt, by_experiment["happy"], statistic, "Happy case", name("1-happy"))
+        sweep(plt, by_experiment["crashes"], statistic, "crashes", "Crash sweep", name("2-crashes"))
+        # Crash-only protocols (2c+1) tolerate no equivocator.
+        sweep(
+            plt, [row for row in byzantine if row["crashes"] == 0], statistic, "equivocators",
+            "Byzantine equivocators", name("3-byzantine"), fault_models=FAULT_MODELS[:-1],
+        )
+        sweep(
+            plt, [row for row in byzantine if row["equivocators"] == budget[row["protocol"]]],
+            statistic, "crashes", "Crashes on top of f equivocators",
+            name("3b-byzantine-crashes"), fault_models=("5f+3c+1", "3f+2c+1"),
+        )
+        bars(plt, by_experiment["jitter"], statistic, "Jitter", name("4-jitter"), log=True)
     buffer_rounds(plt, by_experiment["buffer-rounds"], figures / "5-buffer-rounds.png")
     print(f"figures -> {figures}")
 
