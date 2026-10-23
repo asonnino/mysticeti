@@ -190,8 +190,11 @@ def buffer_rounds(plt, rows, path):
         labels = [f"{row['protocol']} ({row['done']}/{row['runs']})" for row in group]
         for line, metric in enumerate(("direct_commit_rate", "latency_mean_ms")):
             axes = panels[line][column]
-            values = [row[metric] or 0 for row in group]
-            axes.bar(range(len(group)), values, color="tab:orange")
+            values = [row[metric] for row in group]
+            axes.bar(range(len(group)), [value or 0 for value in values], color="tab:orange")
+            for position, value in enumerate(values):
+                if value is None:
+                    axes.text(position, 0, "n/a", ha="center", va="bottom", fontsize=7)
             axes.set_xticks(range(len(group)), labels, rotation=60, ha="right", fontsize=6)
             axes.set_title(f"{name}: {metric}")
             axes.grid(axis="y", alpha=0.4)
