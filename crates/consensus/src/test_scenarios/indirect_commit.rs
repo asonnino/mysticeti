@@ -17,7 +17,8 @@
 //!   `(direct_commit_quorum - 1)` certifiers fully link to the voters. When the
 //!   cap keeps the voters below `certificate_quorum`, no certificate forms and
 //!   the anchor decides the target through the weak indirect rung instead —
-//!   same assertion.
+//!   same assertion. With union certificates, `2f` certifiers (at most) keep
+//!   the blocks that skip voters numerous enough for an anchor to miss them.
 //!
 //! For multi-leader cohorts, we sweep `target_offset` over `0..K`: the targeted
 //! cohort leader is the one driven into indirect-commit, while the remaining
@@ -85,7 +86,14 @@ pub(crate) fn run(spec: &ConsensusProtocol, committee: &Arc<Committee>) {
                 voting_round,
                 blamers_count,
             );
-            let certifiers_count = (protocol.direct_commit_quorum - 1) as usize;
+            let certifiers_count = if protocol.union_certificates {
+                // Union certificates commit directly unless blocks of at least `n - 2f` stake can
+                // all be missed by a later anchor, so at least that many must skip some voters.
+                let faults = committee.total_stake() - protocol.quorum_threshold;
+                ((2 * faults).min(protocol.direct_commit_quorum - 1)) as usize
+            } else {
+                (protocol.direct_commit_quorum - 1) as usize
+            };
             let mut decision_refs = Vec::new();
             let certifier_connections = committee
                 .authorities()
