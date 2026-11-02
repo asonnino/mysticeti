@@ -20,6 +20,7 @@ mod hybrid_mysticeti;
 mod hydrozoan;
 mod mahi_mahi;
 mod mysticeti;
+mod mysticeti_wide_parents;
 mod nemo_nemo;
 mod nemo_nemo_asynchronous;
 mod orcaella;
@@ -36,6 +37,11 @@ pub enum ConsensusProtocol {
     CordialMinersPartiallySynchronous,
     CordialMinersAsynchronous,
     Mysticeti {
+        #[serde(default = "defaults::default_leader_count")]
+        leader_count: NonZeroUsize,
+    },
+    /// EXPERIMENT, never merge: isolates the parent-quorum effect (see `mysticeti_wide_parents`).
+    MysticetiWideParents {
         #[serde(default = "defaults::default_leader_count")]
         leader_count: NonZeroUsize,
     },
@@ -189,6 +195,11 @@ impl fmt::Display for ConsensusProtocol {
             Self::Mysticeti { leader_count } => {
                 write!(fmt, "Mysticeti ({} leaders/round)", leader_count)
             }
+            Self::MysticetiWideParents { leader_count } => write!(
+                fmt,
+                "Mysticeti wide parents (EXPERIMENT, {} leaders/round)",
+                leader_count
+            ),
             Self::HybridMysticeti { leader_count, f, c } => {
                 write!(
                     fmt,
@@ -272,6 +283,9 @@ impl fmt::Debug for ConsensusProtocol {
             Self::CordialMinersPartiallySynchronous => write!(fmt, "cordial-miners-ps"),
             Self::CordialMinersAsynchronous => write!(fmt, "cordial-miners-async"),
             Self::Mysticeti { leader_count } => write!(fmt, "mysticeti-l{leader_count}"),
+            Self::MysticetiWideParents { leader_count } => {
+                write!(fmt, "mysticeti-wide-parents-l{leader_count}")
+            }
             Self::HybridMysticeti { leader_count, f, c } => {
                 write!(fmt, "hybrid-mysticeti-l{leader_count}-f{f}-c{c}")
             }
@@ -329,6 +343,7 @@ impl ConsensusProtocol {
         let user_leader_count = match self {
             Self::CordialMinersPartiallySynchronous | Self::CordialMinersAsynchronous => None,
             Self::Mysticeti { leader_count }
+            | Self::MysticetiWideParents { leader_count }
             | Self::HybridMysticeti { leader_count, .. }
             | Self::BlueBottlePartiallySynchronous { leader_count }
             | Self::BlueBottleAsynchronous { leader_count }
@@ -355,6 +370,9 @@ impl ConsensusProtocol {
             }
             Self::CordialMinersAsynchronous => Protocol::cordial_miners_asynchronous(total_stake),
             Self::Mysticeti { leader_count } => Protocol::mysticeti(total_stake, leader_count),
+            Self::MysticetiWideParents { leader_count } => {
+                Protocol::mysticeti_wide_parents(total_stake, leader_count)
+            }
             Self::HybridMysticeti { leader_count, f, c } => {
                 Protocol::hybrid_mysticeti(total_stake, f, c, leader_count)?
             }
