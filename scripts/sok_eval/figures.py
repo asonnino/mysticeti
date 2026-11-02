@@ -16,7 +16,7 @@ import re
 import statistics
 from pathlib import Path
 
-EXPERIMENTS = ("happy", "crashes", "byzantine", "jitter", "buffer-rounds")
+EXPERIMENTS = ("happy", "crashes", "byzantine", "jitter", "buffer-rounds", "wide-parents")
 KEYS = ("experiment", "protocol", "jitter", "crashes", "equivocators")
 MEDIAN_COLUMNS = (
     "latency_mean_ms",
@@ -25,6 +25,7 @@ MEDIAN_COLUMNS = (
     "latency_p90_ms",
     "goodput",
     "committed_leaders_s",
+    "skipped_leaders_s",
     "commit_window_fraction",
     "direct_commit_rate",
 )
@@ -40,6 +41,7 @@ FAMILIES = [
     ("bb-async", "5f+1", "async"),
     ("bb-ps", "5f+1", "ps"),
     ("mahi-mahi", "3f+1", "async"),
+    ("mysticeti-wide", "3f+1", "ps"),
     ("mysticeti", "3f+1", "ps"),
     ("cm-async", "3f+1", "async"),
     ("cm-ps", "3f+1", "ps"),
@@ -270,6 +272,74 @@ def buffer_rounds(plt, rows, path):
     plt.close(figure)
 
 
+LARGE_QUORUM_PROTOCOLS = (
+    ("mysticeti", "Mysticeti", "tab:blue"),
+    ("mysticeti-wide", "Mysticeti, 4n/5 parents", "tab:green"),
+    ("bb-ps", "Blue Bottle PS", "tab:red"),
+)
+
+
+def large_quorums(plt, rows, path):
+    """Mysticeti, Mysticeti waiting for 4n/5 parents, and Blue Bottle PS under jitter."""
+    def point(protocol, crashes, timeout):
+        label = f"{protocol}-t{timeout}" if timeout else protocol
+        for row in rows:
+            if row["protocol"] == label and row["jitter"] == "True" and row["crashes"] == crashes:
+                return row
+        return None
+
+    conditions = [(f"jitter, {crashes} crashes", crashes, None) for crashes in (0, 4, 9)]
+    conditions.append(("jitter, 0 crashes, 400 ms timeout", 0, 400))
+    statistic = STATISTICS[0]
+    metrics = [
+        (f"latency (ms):\n{statistic.name}", lambda row: row[statistic.centre]),
+        ("direct-commit rate", lambda row: row["direct_commit_rate"]),
+        ("decided leaders / s\n(= rounds / s if all decided)", decided_leaders_s),
+    ]
+    names = [name for _, name, _ in LARGE_QUORUM_PROTOCOLS]
+    figure, panels = plt.subplots(
+        len(metrics), len(conditions), figsize=(16, 10), sharex=True, squeeze=False
+    )
+    for column, (condition, crashes, timeout) in enumerate(conditions):
+        for line, (metric, value_of) in enumerate(metrics):
+            axes = panels[line][column]
+            if line == 0:
+                axes.set_yscale("log")
+            # Text at a slot's foot: x in data, y in axes fraction, whatever the scale.
+            foot = axes.get_xaxis_transform()
+            for position, (protocol, _, colour) in enumerate(LARGE_QUORUM_PROTOCOLS):
+                row = point(protocol, crashes, timeout)
+                if row is None:
+                    axes.text(position, 0.02, "n/a", transform=foot, ha="center", fontsize=8)
+                    continue
+                if row["no-progress"] or row["stalled"]:
+                    axes.text(position, 0.02, "stall", transform=foot, ha="center", fontsize=8)
+                value = value_of(row)
+                if not value:
+                    continue
+                errors = None
+                if line == 0:
+                    below, above = statistic.errors(row)
+                    errors = [[below], [above]]
+                axes.bar(position, value, yerr=errors, color=colour, capsize=3)
+            axes.set_xlim(-0.6, len(LARGE_QUORUM_PROTOCOLS) - 0.4)
+            axes.set_xticks(range(len(names)), names, rotation=20, ha="right", fontsize=8)
+            axes.grid(axis="y", which="both", alpha=0.4)
+            axes.set_axisbelow(True)
+            if line == 0:
+                axes.set_title(condition, fontsize=10)
+            if column == 0:
+                axes.set_ylabel(metric)
+    figure.tight_layout()
+    figure.savefig(path, dpi=150)
+    plt.close(figure)
+
+
+def decided_leaders_s(row):
+    """Committed plus skipped leaders per second: one leader per round, so the round rate."""
+    return (row["committed_leaders_s"] or 0) + (row["skipped_leaders_s"] or 0)
+
+
 def plot(medians, figures):
     import matplotlib
 
@@ -302,6 +372,10 @@ def plot(medians, figures):
         )
         bars(plt, by_experiment["jitter"], statistic, "Jitter", name("4-jitter"), log=True)
     buffer_rounds(plt, by_experiment["buffer-rounds"], figures / "5-buffer-rounds.png")
+    if by_experiment["wide-parents"]:
+        large_quorums(
+            plt, by_experiment["wide-parents"], figures / "6-jitter-large-quorums.png"
+        )
     print(f"figures -> {figures}")
 
 

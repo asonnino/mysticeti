@@ -3,7 +3,7 @@
 
 """The lean-dag SoK simulation matrix: one simulator config per job."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 COMMITTEE_SIZE = 46
 DURATION_SECS = 120
@@ -30,9 +30,12 @@ class Protocol:
     asynchronous: bool
     byzantine: int  # f
     crashes: int  # crashes tolerated: f + c, or c for crash-only protocols
+    round_timeout_ms: int | None = None  # overrides the synchrony's default
 
     @property
     def timeout_ms(self):
+        if self.round_timeout_ms is not None:
+            return self.round_timeout_ms
         if self.asynchronous:
             return ASYNCHRONOUS_TIMEOUT_MS
         return PARTIALLY_SYNCHRONOUS_TIMEOUT_MS
@@ -109,6 +112,16 @@ MYSTICETI_WIDE_PARENTS = Protocol(
 )
 WIDE_PARENTS_BASELINES = [protocol for protocol in MAIN if protocol.label in ("mysticeti", "bb-ps")]
 WIDE_PARENTS_CRASHES = [0, 4, 9]
+# Under jitter the 160 ms timeout fires before most leaders arrive; 400 ms lets nodes wait.
+WIDE_PARENTS_LONG_TIMEOUT_MS = 400
+WIDE_PARENTS_LONG_TIMEOUT = [
+    replace(
+        protocol,
+        label=f"{protocol.label}-t{WIDE_PARENTS_LONG_TIMEOUT_MS}",
+        round_timeout_ms=WIDE_PARENTS_LONG_TIMEOUT_MS,
+    )
+    for protocol in [MYSTICETI_WIDE_PARENTS, *WIDE_PARENTS_BASELINES]
+]
 
 # Experiment 5: each asynchronous protocol at its primary and alternative wave length.
 BUFFER_ROUND_PAIRS = [
@@ -228,6 +241,9 @@ def experiments():
         for jitter in (False, True)
         for k in WIDE_PARENTS_CRASHES
         for seed in SEEDS
+    ]
+    wide_parents += [
+        Job(protocol, seed, jitter=True) for protocol in WIDE_PARENTS_LONG_TIMEOUT for seed in SEEDS
     ]
 
     return {

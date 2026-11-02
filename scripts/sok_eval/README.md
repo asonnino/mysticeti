@@ -45,14 +45,22 @@ indirect rule relies on its `4n/5` parents, so it can't run the opposite way.
 
 The `wide-parents` experiment in `matrix.py` runs `mysticeti-wide`, `mysticeti` and `bb-ps`,
 with and without jitter, at 0, 4 and 9 crashes (9 is the most the variant tolerates), over
-7 seeds: 126 runs. Run only those runs, from this branch's build, into a fresh directory:
+7 seeds. Under jitter the 160 ms round timeout fires before most leaders arrive, so it also runs
+the three protocols under jitter with a 400 ms timeout (`-t400` labels): 147 runs in all. Run only
+those runs, from this branch's build, into a fresh directory:
 
 ```sh
 cargo build --release --bin replica
 python3 scripts/sok_eval/run.py --binary target/release/replica --out results/wide-parents \
     --experiment wide-parents --workers 60
 python3 scripts/sok_eval/summary.py --out results/wide-parents --experiment wide-parents
+python3 scripts/sok_eval/figures.py aggregate --out results/wide-parents
+python3 scripts/sok_eval/figures.py plot --medians results/wide-parents/summary/medians.csv \
+    --figures results/wide-parents/figures
 ```
+
+`6-jitter-large-quorums.png` compares the three protocols under jitter (0, 4 and 9 crashes, and
+the 400 ms timeout): latency, direct-commit rate, and decided leaders per second.
 
 The baselines run again on purpose. Results from different builds are never compared or
 released together, and these runs reuse the main campaign's names, so they need their own
