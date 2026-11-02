@@ -40,6 +40,7 @@ impl Protocol {
             anchor_link_size: total_stake - 3 * f - 2 * c,
             wave_length: 2,
             merged_certificates: true,
+            union_certificates: false,
             leader_count,
             pipeline: true,
             leader_wait: true,
