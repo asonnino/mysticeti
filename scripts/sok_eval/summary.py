@@ -275,13 +275,20 @@ def main():
     parser.add_argument(
         "--shard", default="0/1", help="index/count: summarise only this shard's jobs, as run.py"
     )
+    parser.add_argument(
+        "--experiment", choices=matrix.experiments(), help="summarise only this one, as run.py"
+    )
     arguments = parser.parse_args()
     shard, shards = map(int, arguments.shard.split("/"))
 
     summary_dir = arguments.out / "summary"
     summary_dir.mkdir(parents=True, exist_ok=True)
     # Summarise each distinct job once; experiments share many runs.
-    jobs = [job for job in matrix.all_jobs() if run.in_shard(job, shard, shards)]
+    jobs = [
+        job
+        for job in matrix.all_jobs(arguments.experiment)
+        if run.in_shard(job, shard, shards)
+    ]
     task = functools.partial(summarise, out=arguments.out)
     if arguments.workers == 1:
         summaries = list(map(task, jobs))
@@ -290,6 +297,8 @@ def main():
             summaries = list(pool.map(task, jobs, chunksize=8))
     rows = {job.name: row for job, row in zip(jobs, summaries)}
     for experiment, experiment_jobs in matrix.experiments().items():
+        if arguments.experiment not in (None, experiment):
+            continue
         experiment_rows = [rows[job.name] for job in experiment_jobs if job.name in rows]
         path = summary_dir / f"{experiment}.csv"
         write_csv(path, experiment_rows)
@@ -305,6 +314,8 @@ def main():
             f"{flagged['unstable']} unstable -> {path}"
         )
 
+    if arguments.experiment is not None:
+        return
     consistency_rows = consistency(arguments.out)
     write_csv(summary_dir / "consistency.csv", consistency_rows)
     for row in consistency_rows:

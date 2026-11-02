@@ -102,6 +102,14 @@ CONSISTENCY_PAIRS = [
 ]
 CONSISTENCY_SEED = 0
 
+# EXPERIMENT (branch exp/mysticeti-wide-parents, never merged): Mysticeti waiting for 4n/5 + 1
+# parents, live only up to 9 crashes at n = 46; compared against its two parents' baselines.
+MYSTICETI_WIDE_PARENTS = Protocol(
+    "mysticeti-wide", consensus("mysticeti-wide-parents"), False, 15, 9
+)
+WIDE_PARENTS_BASELINES = [protocol for protocol in MAIN if protocol.label in ("mysticeti", "bb-ps")]
+WIDE_PARENTS_CRASHES = [0, 4, 9]
+
 # Experiment 5: each asynchronous protocol at its primary and alternative wave length.
 BUFFER_ROUND_PAIRS = [
     (mahi_mahi(5), mahi_mahi(4)),
@@ -214,19 +222,31 @@ def experiments():
                     Job(protocol, seed, crashes=protocol.crashes - 1, jitter=True),
                 ]
 
+    wide_parents = [
+        Job(protocol, seed, crashes=k, jitter=jitter)
+        for protocol in [MYSTICETI_WIDE_PARENTS, *WIDE_PARENTS_BASELINES]
+        for jitter in (False, True)
+        for k in WIDE_PARENTS_CRASHES
+        for seed in SEEDS
+    ]
+
     return {
         "happy": happy,
         "crashes": crashes,
         "byzantine": byzantine,
         "jitter": jitter,
         "buffer-rounds": buffer_rounds,
+        "wide-parents": wide_parents,
     }
 
 
-def all_jobs():
-    """Every distinct job across the experiments, in a stable order."""
+def all_jobs(experiment=None):
+    """Every distinct job across the experiments (or just one), in a stable order."""
+    selected = experiments()
+    if experiment is not None:
+        selected = {experiment: selected[experiment]}
     jobs = {}
-    for experiment_jobs in experiments().values():
+    for experiment_jobs in selected.values():
         for job in experiment_jobs:
             jobs.setdefault(job.name, job)
     return list(jobs.values())

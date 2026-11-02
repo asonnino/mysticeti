@@ -104,10 +104,11 @@ def main():
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--shard", default="0/1", help="index/count, e.g. 0/4")
     parser.add_argument("--workers", type=int, default=os.cpu_count())
+    parser.add_argument("--experiment", choices=matrix.experiments(), help="run only this one")
     arguments = parser.parse_args()
 
     shard, shards = map(int, arguments.shard.split("/"))
-    all_jobs = matrix.all_jobs()
+    all_jobs = matrix.all_jobs(arguments.experiment)
     jobs = [job for job in all_jobs if in_shard(job, shard, shards)]
     binary = arguments.binary.resolve()
     binary_hash = file_sha256(binary)
