@@ -460,6 +460,48 @@ fn mode_parses_suite_sequence() {
 }
 
 #[test]
+fn same_seed_gives_identical_results() {
+    // Jitter reorders arrivals, so blocks reach a replica before their parents. The 40 s duration
+    // ends on a cleanup tick. Neither may change the outcome of a seeded run.
+    let config = SimulationConfig {
+        committee_size: 20,
+        duration_secs: 40,
+        jitter: Some(ExponentialJitter {
+            mean_ms: 75,
+            cap_ms: 400,
+        }),
+        ..Default::default()
+    };
+    // Utilization timers measure the host's wall clock, and the global in-memory block gauges
+    // count every block alive in the test process, not just this simulation's.
+    let run = || {
+        let results = SimulationRunner::new(config.clone()).run().unwrap();
+        results
+            .metrics
+            .iter()
+            .flat_map(|metrics| {
+                let text = metrics.to_prometheus_text();
+                text.lines().map(String::from).collect::<Vec<_>>()
+            })
+            .filter(|line| {
+                !line.starts_with('#') && !line.contains("util") && !line.contains("global_")
+            })
+            .collect::<Vec<_>>()
+    };
+    let first = run();
+    assert!(!first.is_empty());
+    // A tie at the end of the run goes either way with equal odds, so repeat it.
+    for attempt in 1..=5 {
+        let again = run();
+        let differing = first.iter().zip(&again).find(|(a, b)| a != b);
+        assert!(
+            again == first,
+            "run {attempt} differs from the first: {differing:?}"
+        );
+    }
+}
+
+#[test]
 fn network_partition() {
     let config = SimulationConfig {
         topology: NetworkTopology::Partition(vec![vec![0, 1], vec![2, 3, 4, 5, 6, 7, 8, 9]]),
