@@ -274,7 +274,7 @@ impl<C: Ctx, D: DagConsensus + Send + 'static> BlockFetcherWorker<C, D> {
     }
 
     async fn sync_strategy(&mut self) {
-        if self.enable {
+        if !self.enable {
             return;
         }
 

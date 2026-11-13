@@ -73,7 +73,7 @@ pub mod dag_defaults {
     }
 
     pub fn default_enable_synchronizer() -> bool {
-        false
+        true
     }
 
     pub fn default_fsync() -> bool {
