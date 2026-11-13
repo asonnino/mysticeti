@@ -463,7 +463,7 @@ fn mode_parses_suite_sequence() {
 fn same_seed_gives_identical_results() {
     // Jitter reorders arrivals, so blocks reach a replica before their parents. The 40 s duration
     // ends on a cleanup tick. Neither may change the outcome of a seeded run.
-    let config = SimulationConfig {
+    let full_mesh = SimulationConfig {
         committee_size: 20,
         duration_secs: 40,
         jitter: Some(ExponentialJitter {
@@ -472,9 +472,18 @@ fn same_seed_gives_identical_results() {
         }),
         ..Default::default()
     };
+    // Overlapping partitions leave blocks missing long enough for replicas to fetch them.
+    let partition = SimulationConfig {
+        committee_size: 10,
+        topology: NetworkTopology::Partition(vec![
+            vec![0, 1, 2, 3, 4, 5, 6],
+            vec![0, 1, 2, 3, 7, 8, 9],
+        ]),
+        ..full_mesh.clone()
+    };
     // Utilization timers measure the host's wall clock, and the global in-memory block gauges
     // count every block alive in the test process, not just this simulation's.
-    let run = || {
+    let run = |config: &SimulationConfig| {
         let results = SimulationRunner::new(config.clone()).run().unwrap();
         results
             .metrics
@@ -488,16 +497,18 @@ fn same_seed_gives_identical_results() {
             })
             .collect::<Vec<_>>()
     };
-    let first = run();
-    assert!(!first.is_empty());
-    // A tie at the end of the run goes either way with equal odds, so repeat it.
-    for attempt in 1..=5 {
-        let again = run();
-        let differing = first.iter().zip(&again).find(|(a, b)| a != b);
-        assert!(
-            again == first,
-            "run {attempt} differs from the first: {differing:?}"
-        );
+    for config in [&full_mesh, &partition] {
+        let first = run(config);
+        assert!(!first.is_empty());
+        // A tie at the end of the run goes either way with equal odds, so repeat it.
+        for attempt in 1..=5 {
+            let again = run(config);
+            let differing = first.iter().zip(&again).find(|(a, b)| a != b);
+            assert!(
+                again == first,
+                "run {attempt} differs from the first: {differing:?}"
+            );
+        }
     }
 }
 
