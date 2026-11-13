@@ -4,17 +4,14 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use futures::future::join_all;
-use tokio::{
-    select,
-    sync::{Notify, mpsc, oneshot},
-};
+use tokio::sync::{Notify, mpsc, oneshot};
 
 use crate::{
     authority::Authority,
     committee::Committee,
     committee::Stake,
     consensus::{CommittedSubDag, DagConsensus},
-    context::Ctx,
+    context::{Ctx, ctx_select},
     core::{
         Core,
         block_handler::CommitHandler,
@@ -264,7 +261,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
                 .last_own_block_ref()
                 .map(|b| b.round())
                 .unwrap_or_default();
-            select! {
+            ctx_select! { C;
                 _sleep = C::sleep(round_timeout) => {
                     tracing::debug!("Timeout {round}");
                     // todo - more then one round timeout can happen, need to fix this
@@ -283,11 +280,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
     async fn cleanup_task(inner: Arc<NetworkSyncerInner<C, D>>) -> Option<()> {
         let cleanup_interval = Duration::from_secs(10);
         loop {
-            // Biased: when the timer and the stop signal are ready together, an unbiased `select!`
-            // picks from a process-seeded RNG, so a run that ends on a cleanup tick would clean
-            // up in some runs and not in others.
-            select! {
-                biased;
+            ctx_select! { C;
                 _sleep = C::sleep(cleanup_interval) => {
                     // Keep read lock for everything else
                     inner.syncer.cleanup().await;
@@ -307,7 +300,7 @@ impl<C: Ctx, D: DagConsensus> NetworkSyncer<C, D> {
 impl<C: Ctx, D: DagConsensus> NetworkSyncerInner<C, D> {
     // Returns None either if channel is closed or NetworkSyncerInner receives stop signal
     async fn recv_or_stopped<T>(&self, channel: &mut mpsc::Receiver<T>) -> Option<T> {
-        select! {
+        ctx_select! { C;
             stopped = self.stop.send(()) => {
                 assert!(stopped.is_err());
                 None

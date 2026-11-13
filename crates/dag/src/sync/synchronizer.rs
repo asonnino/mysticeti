@@ -11,7 +11,7 @@ use crate::{
     authority::Authority,
     block::{BlockReference, RoundNumber},
     consensus::DagConsensus,
-    context::Ctx,
+    context::{Ctx, ctx_select},
     core::core_thread::CoreDispatch,
     metrics::{Metrics, SyncRequestFulfilled},
     sync::{
@@ -251,7 +251,7 @@ impl<C: Ctx, D: DagConsensus + Send + 'static> BlockFetcherWorker<C, D> {
 
     async fn run(mut self) -> Option<()> {
         loop {
-            tokio::select! {
+            ctx_select! { C;
                 _ = C::sleep(self.parameters.sample_precision) => {
                     self.sync_strategy().await
                 }

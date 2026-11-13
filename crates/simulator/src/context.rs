@@ -79,6 +79,8 @@ impl SimulatorContext {
 }
 
 impl Ctx for SimulatorContext {
+    const DETERMINISTIC: bool = true;
+
     type Instant = SimulatorInstant;
     type Interval = Duration;
     type JoinHandle<T: Send + 'static> = JoinHandle<T>;

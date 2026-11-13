@@ -130,7 +130,9 @@ async fn task<F: Future>(
     ch: oneshot::Sender<Result<F::Output, JoinError>>,
     abort: Arc<Notify>,
 ) {
+    // Biased: an unbiased `select!` picks its branch from a process-seeded RNG.
     select! {
+        biased;
         r = f => {
             ch.send(Ok(r)).ok();
         }

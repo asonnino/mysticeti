@@ -11,6 +11,9 @@ use crate::core::syncer::Syncer;
 use crate::storage::WalSyncer;
 
 pub trait Ctx: Sized + Send + Sync + 'static {
+    /// True when a run must be reproducible from its seed (the simulator).
+    const DETERMINISTIC: bool;
+
     fn timestamp_utc() -> Duration;
     fn sleep(duration: Duration) -> impl Future<Output = ()> + Send;
 
@@ -40,9 +43,23 @@ pub trait Ctx: Sized + Send + Sync + 'static {
     fn start_wal_syncer(wal_syncer: WalSyncer, stop: mpsc::Sender<()>) -> oneshot::Receiver<()>;
 }
 
+/// `tokio::select!`, biased (source order) when `C::DETERMINISTIC`; unbiased otherwise.
+macro_rules! ctx_select {
+    ($ctx:ty; $($branches:tt)*) => {
+        if <$ctx as $crate::context::Ctx>::DETERMINISTIC {
+            tokio::select! { biased; $($branches)* }
+        } else {
+            tokio::select! { $($branches)* }
+        }
+    };
+}
+pub(crate) use ctx_select;
+
 pub struct TokioCtx;
 
 impl Ctx for TokioCtx {
+    const DETERMINISTIC: bool = false;
+
     type Instant = tokio::time::Instant;
     type Interval = tokio::time::Interval;
     type JoinHandle<T: Send + 'static> = tokio::task::JoinHandle<T>;
