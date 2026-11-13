@@ -3,7 +3,7 @@
 
 use std::{cell::RefCell, future::Future, pin::Pin, time::Duration};
 
-use rand::prelude::StdRng;
+use rand::{prelude::StdRng, seq::SliceRandom};
 use tokio::sync::{mpsc, oneshot};
 
 use super::event_simulator::{Scheduler, simulator_time};
@@ -131,5 +131,14 @@ impl Ctx for SimulatorContext {
 
     fn start_wal_syncer(_wal_syncer: WalSyncer, _stop: mpsc::Sender<()>) -> oneshot::Receiver<()> {
         oneshot::channel().1
+    }
+
+    fn shuffle_by_key<T, K: Ord>(items: &mut [T], key: impl FnMut(&T) -> K) {
+        items.sort_unstable_by_key(key);
+        Self::with_rng(|rng| items.shuffle(rng));
+    }
+
+    fn canonical_order<T: Ord>(items: &mut [T]) {
+        items.sort_unstable();
     }
 }
