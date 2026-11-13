@@ -103,7 +103,7 @@ impl TransactionGenerator {
         let intervals_per_second = 1000 / Self::TARGET_BLOCK_INTERVAL.as_millis() as usize;
         let transactions_per_interval = load.div_ceil(intervals_per_second);
         tracing::info!(
-            "Generating {transactions_per_interval} transactions per {} ms",
+            "Generating up to {transactions_per_interval} transactions per {} ms",
             Self::TARGET_BLOCK_INTERVAL.as_millis()
         );
         let block_capacity =
@@ -111,6 +111,7 @@ impl TransactionGenerator {
 
         let mut counter = 0u64;
         let mut transactions_to_report = 0u64;
+        let mut fractional_transactions = 0;
         let batch_size = transaction_size * transactions_per_interval;
         let mut buffer = vec![0u8; batch_size];
 
@@ -125,12 +126,20 @@ impl TransactionGenerator {
         C::sleep(config.initial_delay).await;
         loop {
             C::interval_tick(&mut interval).await;
+            fractional_transactions += load % intervals_per_second;
+            let transactions_this_interval =
+                load / intervals_per_second + fractional_transactions / intervals_per_second;
+            fractional_transactions %= intervals_per_second;
+            if transactions_this_interval == 0 {
+                continue;
+            }
+            buffer.resize(transaction_size * transactions_this_interval, 0);
             let timestamp_ms = (base_system_time + C::elapsed(&base_instant)).as_millis() as u64;
 
             let batch = Self::fill_batch(
                 &mut buffer,
                 transaction_size,
-                transactions_per_interval,
+                transactions_this_interval,
                 timestamp_ms,
                 &mut counter,
                 &mut random,
@@ -140,7 +149,7 @@ impl TransactionGenerator {
                 .ship_blocks(
                     &batch,
                     transaction_size,
-                    transactions_per_interval,
+                    transactions_this_interval,
                     block_capacity,
                 )
                 .await
@@ -149,12 +158,50 @@ impl TransactionGenerator {
                 return;
             }
 
-            transactions_to_report += transactions_per_interval as u64;
+            transactions_to_report += transactions_this_interval as u64;
             if counter.is_multiple_of(100) {
                 self.metrics
                     .inc_submitted_transactions(transactions_to_report);
                 transactions_to_report = 0;
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dag::context::TokioCtx;
+    use tokio::sync::mpsc;
+
+    #[tokio::test(start_paused = true)]
+    async fn sends_configured_number_of_transactions_per_second() {
+        for load in [0, 1, 7, 10, 11, 19, 1001] {
+            let (sender, mut receiver) = mpsc::channel(1024);
+            let client = TransactionClient::new(sender);
+            let config = LoadGeneratorConfig {
+                load,
+                ..LoadGeneratorConfig::new_for_test()
+            };
+            let handle = TransactionGenerator::start::<TokioCtx>(
+                client,
+                Authority::default(),
+                config,
+                1_000_000,
+                Metrics::new_for_test(4),
+            );
+            let mut count = 0;
+            for _ in 0..10 {
+                tokio::task::yield_now().await;
+                while let Ok(batch) = receiver.try_recv() {
+                    count += batch.len();
+                }
+                tokio::time::advance(Duration::from_millis(100)).await;
+            }
+            handle.abort();
+            let _ = handle.await;
+            println!("RATE requested={load} observed_in_one_second={count}");
+            assert_eq!(count, load, "incorrect transaction rate for load {load}");
         }
     }
 }
