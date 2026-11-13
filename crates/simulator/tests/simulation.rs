@@ -500,10 +500,10 @@ fn same_seed_gives_identical_results() {
     for config in [&full_mesh, &partition] {
         let first = run(config);
         assert!(!first.is_empty());
-        // A tie at the end of the run goes either way with equal odds, so repeat it.
+        // Each repeat gets fresh hasher keys and `select!` RNG state, so lost determinism shows.
         for attempt in 1..=5 {
             let again = run(config);
-            let differing = first.iter().zip(&again).find(|(a, b)| a != b);
+            let differing = first.iter().zip(&again).find(|(was, now)| was != now);
             assert!(
                 again == first,
                 "run {attempt} differs from the first: {differing:?}"
