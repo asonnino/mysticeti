@@ -37,7 +37,7 @@ replica_parameters:
     # Omit round_timeout to use the protocol-dependent default.
     round_timeout: null
     max_block_size: 4194304
-    enable_synchronizer: false
+    enable_synchronizer: true
     fsync: false
   # Consensus protocol variant. Options:
   #   mysticeti                            { leader_count }
