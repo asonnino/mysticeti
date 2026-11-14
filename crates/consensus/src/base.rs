@@ -10,6 +10,7 @@ use std::{
 use crate::{
     leader::LeaderElector,
     protocol::{FastPath, Protocol},
+    support_cache::SupportCache,
     wave::Wave,
 };
 use dag::{
@@ -39,6 +40,7 @@ pub(crate) struct BaseCommitter {
     anchor_link_size: Stake,
     pub(crate) wave: Wave,
     leader_offset: RoundNumber,
+    support_cache: SupportCache,
 }
 
 impl BaseCommitter {
@@ -49,6 +51,7 @@ impl BaseCommitter {
         protocol: &Protocol,
         leader_offset: RoundNumber,
         round_offset: RoundNumber,
+        support_cache: SupportCache,
     ) -> Self {
         Self {
             committee,
@@ -65,6 +68,7 @@ impl BaseCommitter {
                 protocol.merged_certificates,
             ),
             leader_offset,
+            support_cache,
         }
     }
 
@@ -99,6 +103,7 @@ impl BaseCommitter {
             &protocol,
             leader_offset,
             0,
+            SupportCache::default(),
         )
     }
 
@@ -131,6 +136,21 @@ impl BaseCommitter {
         if from.round() < round {
             return None;
         }
+        if let Some(support) = self.support_cache.get((author, round), from.reference()) {
+            return support;
+        }
+        let support = self.search_support((author, round), from);
+        self.support_cache
+            .insert((author, round), *from.reference(), support);
+        support
+    }
+
+    /// Uncached [`Self::find_support`]; the recursion goes through the cache.
+    fn search_support(
+        &self,
+        (author, round): (Authority, RoundNumber),
+        from: &Data<Block>,
+    ) -> Option<BlockReference> {
         for include in from.includes() {
             // Weak links may point to blocks with lower round numbers than strong links.
             if include.round() < round {
@@ -471,6 +491,7 @@ mod tests {
         base::BaseCommitter,
         leader::{LeaderElection, LeaderElector},
         protocol::{FastPath, Protocol},
+        support_cache::SupportCache,
     };
 
     /// `elect_leader` returns `None` outside leader rounds.
@@ -927,6 +948,7 @@ mod tests {
             &protocol,
             0,
             0,
+            SupportCache::default(),
         );
 
         match committer.decide_leader_from_anchor(&anchor, leader, 2) {
@@ -956,6 +978,7 @@ mod tests {
             &protocol,
             0,
             0,
+            SupportCache::default(),
         )
     }
 
@@ -1164,5 +1187,63 @@ mod tests {
             }
             other => panic!("expected Undecided after undecided anchor, got {other:?}"),
         }
+    }
+
+    /// The walk `find_support` did before it had a cache.
+    fn uncached_support(
+        reader: &dag::storage::BlockReader,
+        (author, round): (Authority, dag::block::RoundNumber),
+        from: &Data<Block>,
+    ) -> Option<dag::block::BlockReference> {
+        if from.round() < round {
+            return None;
+        }
+        for include in from.includes() {
+            if include.round() < round {
+                continue;
+            }
+            if include.author_round() == (author, round) {
+                return Some(*include);
+            }
+            let include = reader.get_block(*include).unwrap();
+            if let Some(support) = uncached_support(reader, (author, round), &include) {
+                return Some(support);
+            }
+        }
+        None
+    }
+
+    /// `find_support` returns what the plain walk returns for every block and slot, while the
+    /// DAG grows and the cache fills.
+    #[test]
+    fn cached_support_matches_the_plain_walk_on_random_dags() {
+        let committee = committee(7);
+        let (mut compared, mut supported) = (0, 0);
+        for (seed, shape) in crate::random_dag::shapes().into_iter().enumerate() {
+            let mut storage = Storage::new_for_test(&committee);
+            let committer =
+                BaseCommitter::new_for_test(&committee, storage.block_reader().clone(), 3, 0);
+            let reader = storage.block_reader().clone();
+            crate::random_dag::build_random_dag(
+                &committee,
+                &mut storage,
+                seed as u64,
+                16,
+                shape,
+                |_, block| {
+                    for author in committee.authorities() {
+                        // Slots within a wave of the block, as the commit rules ask for; the
+                        // plain walk is exponential in the depth.
+                        for round in block.round().saturating_sub(4)..=block.round() {
+                            let want = uncached_support(&reader, (author, round), block);
+                            assert_eq!(committer.find_support((author, round), block), want);
+                            compared += 1;
+                            supported += want.is_some() as usize;
+                        }
+                    }
+                },
+            );
+        }
+        assert!(compared > 10_000 && supported > 1_000);
     }
 }

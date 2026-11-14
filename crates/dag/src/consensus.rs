@@ -68,7 +68,7 @@ pub enum IndirectCommitPath {
 /// The status of every leader output by the committers. While the core only cares about committed
 /// leaders, providing a richer status allows for easier debugging, testing, and composition with
 /// advanced commit strategies.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum LeaderStatus {
     DirectCommit(Data<Block>, DirectCommitPath),
     IndirectCommit(Data<Block>, IndirectCommitPath),
