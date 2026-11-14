@@ -50,7 +50,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
             .protocol_commands
             .node_command(instances.clone(), parameters);
 
-        let repo = self.settings.repository_name();
+        let repo = self.settings.repository_name()?;
         let context = CommandContext::new()
             .run_background("node".into())
             .with_log_file("~/node.log".into())
@@ -89,7 +89,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
             .protocol_commands
             .client_command(clients.clone(), parameters);
 
-        let repo = self.settings.repository_name();
+        let repo = self.settings.repository_name()?;
         let context = CommandContext::new()
             .run_background("client".into())
             .with_log_file("~/client.log".into())

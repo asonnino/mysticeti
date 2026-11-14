@@ -82,7 +82,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
         let active = self.instances.iter().filter(|x| x.is_active()).cloned();
 
         let id = "update";
-        let repo_name = self.settings.repository_name();
+        let repo_name = self.settings.repository_name()?;
         let context = CommandContext::new()
             .run_background(id.into())
             .with_execute_from_path(repo_name.into());
@@ -111,7 +111,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
             .await;
 
         let id = "configure";
-        let repo_name = self.settings.repository_name();
+        let repo_name = self.settings.repository_name()?;
         let context = CommandContext::new()
             .run_background(id.into())
             .with_log_file(format!("~/{id}.log").into())
