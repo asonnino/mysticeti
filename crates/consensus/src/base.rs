@@ -22,6 +22,8 @@ use dag::{
     storage::BlockReader,
 };
 
+mod union;
+
 /// The [`BaseCommitter`] contains the bare bone commit
 /// logic. Once instantiated, the methods
 /// `try_direct_decide` and `try_indirect_decide` can be
@@ -35,8 +37,12 @@ pub(crate) struct BaseCommitter {
     direct_commit_quorum: Stake,
     direct_skip_quorum: Stake,
     certificate_quorum: Stake,
+    quorum_threshold: Stake,
     fast_path: Option<FastPath>,
     anchor_link_size: Stake,
+    union_certificates: bool,
+    /// The stake of each authority by index; only filled for union certificates.
+    stakes: Vec<Stake>,
     pub(crate) wave: Wave,
     leader_offset: RoundNumber,
 }
@@ -50,6 +56,14 @@ impl BaseCommitter {
         leader_offset: RoundNumber,
         round_offset: RoundNumber,
     ) -> Self {
+        let stakes = if protocol.union_certificates {
+            committee
+                .authorities()
+                .map(|authority| committee.get_stake(authority).unwrap_or(0))
+                .collect()
+        } else {
+            vec![]
+        };
         Self {
             committee,
             block_reader,
@@ -57,8 +71,11 @@ impl BaseCommitter {
             direct_commit_quorum: protocol.direct_commit_quorum,
             direct_skip_quorum: protocol.direct_skip_quorum,
             certificate_quorum: protocol.certificate_quorum,
+            quorum_threshold: protocol.quorum_threshold,
             fast_path: protocol.fast_path,
             anchor_link_size: protocol.anchor_link_size,
+            union_certificates: protocol.union_certificates,
+            stakes,
             wave: Wave::new(
                 protocol.wave_length,
                 round_offset,
@@ -86,6 +103,7 @@ impl BaseCommitter {
             anchor_link_size: 1,
             wave_length,
             merged_certificates: wave_length == 2,
+            union_certificates: false,
             leader_count: std::num::NonZeroUsize::new(1).unwrap(),
             pipeline: false,
             leader_wait: false,
@@ -229,6 +247,9 @@ impl BaseCommitter {
         // A weak (sub-majority) quorum lets two equivocating twins both qualify,
         // so break ties deterministically by digest.
         let certified = leader_blocks.iter().filter(|leader_block| {
+            if self.union_certificates {
+                return self.enough_votes_linked(anchor, leader_block, wave);
+            }
             if self.wave.merged_certificates() {
                 let linked_votes = decision_blocks
                     .iter()
@@ -311,6 +332,10 @@ impl BaseCommitter {
         decision_round: RoundNumber,
         leader_block: &Data<Block>,
     ) -> bool {
+        if self.union_certificates {
+            return self.enough_union_support(decision_round, leader_block);
+        }
+
         let decision_blocks = self.block_reader.get_blocks_by_round(decision_round);
 
         if self.wave.merged_certificates() {

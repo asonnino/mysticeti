@@ -16,7 +16,7 @@ storage. It also ships with a discrete-event simulator for exercising the protoc
 network and failure scenarios.
 
 This repository currently supports [Mysticeti](https://sonnino.com/papers/mysticeti.pdf) (plus a
-derived variant under mixed Byzantine and crash faults),
+derived variant under mixed Byzantine and crash faults, and one with union certificates),
 [Mahi-Mahi](https://sonnino.com/papers/mahi-mahi.pdf) (likewise),
 [Blue Bottle](https://sonnino.com/papers/bluebottle.pdf) (both the partially synchronous and asynchronous
 variants),

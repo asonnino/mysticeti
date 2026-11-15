@@ -58,6 +58,7 @@ impl Protocol {
             anchor_link_size: 1,
             wave_length: 3,
             merged_certificates: false,
+            union_certificates: false,
             leader_count,
             pipeline: true,
             leader_wait: true,
