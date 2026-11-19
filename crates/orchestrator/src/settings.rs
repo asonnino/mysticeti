@@ -31,6 +31,7 @@ pub struct Repository {
     pub commit: String,
 }
 
+#[cfg(test)]
 impl Default for Repository {
     fn default() -> Self {
         Self {
@@ -49,9 +50,28 @@ impl Repository {
     }
 
     /// Remove the Github access token from the repository url.
-    pub fn remove_access_token(&mut self) {
-        self.url.set_password(None).unwrap();
-        self.url.set_username("").unwrap();
+    pub fn remove_access_token(&mut self) -> SettingsResult<()> {
+        let cannot_hold_credentials = |()| SettingsError::InvalidRepositoryUrl {
+            message: "the url cannot hold credentials".into(),
+        };
+        self.url
+            .set_password(None)
+            .map_err(cannot_hold_credentials)?;
+        self.url.set_username("").map_err(cannot_hold_credentials)
+    }
+
+    /// The name of the repository: the second path segment of the url, without its extension
+    /// (`https://github.com/author/repo.git` gives `repo`).
+    pub fn name(&self) -> SettingsResult<String> {
+        self.url
+            .path_segments()
+            .and_then(|mut segments| segments.nth(1))
+            .and_then(|segment| segment.split('.').next())
+            .filter(|name| !name.is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| SettingsError::InvalidRepositoryUrl {
+                message: "expected a url of the form https://host/author/repo".into(),
+            })
     }
 }
 
@@ -104,7 +124,8 @@ impl Default for CloudProvider {
 
 /// The testbed settings. Those are topically specified in a file.
 #[serde_as]
-#[derive(Serialize, Deserialize, Clone, Default)]
+#[derive(Serialize, Deserialize, Clone)]
+#[cfg_attr(test, derive(Default))]
 pub struct Settings {
     /// The testbed unique id. This allows multiple users to run concurrent testbeds on the
     /// same cloud provider's account without interference with each others.
@@ -248,6 +269,7 @@ impl Settings {
             let data = fs::read(path.clone())?;
             let data = Self::resolve_env(&path, std::str::from_utf8(&data)?)?;
             let settings: Settings = serde_yaml::from_slice(data.as_bytes())?;
+            settings.repository.name()?;
 
             fs::create_dir_all(&settings.results_dir)?;
             fs::create_dir_all(&settings.logs_dir)?;
@@ -288,16 +310,8 @@ impl Settings {
     }
 
     /// Get the name of the repository (from its url).
-    pub(crate) fn repository_name(&self) -> String {
-        self.repository
-            .url
-            .path_segments()
-            .expect("Url should already be checked when loading settings")
-            .collect::<Vec<_>>()[1]
-            .split('.')
-            .next()
-            .unwrap()
-            .to_string()
+    pub(crate) fn repository_name(&self) -> SettingsResult<String> {
+        self.repository.name()
     }
 
     /// Resolve the SSH public key path: uses `ssh_public_key_file` when set,
@@ -352,9 +366,28 @@ impl Settings {
 
 #[cfg(test)]
 mod test {
+    use std::fs;
+
     use reqwest::Url;
 
     use crate::settings::Settings;
+
+    /// Write a settings file for the custom provider, deploying from `repository_url`.
+    fn write_settings(dir: &tempfile::TempDir, repository_url: &str) -> String {
+        let root = dir.path().display();
+        let settings = format!(
+            "testbed_id: test\n\
+            cloud_provider: !custom\n  ssh_username: ubuntu\n  instances: []\n\
+            ssh_private_key_file: /path/to/key\n\
+            regions: []\n\
+            results_dir: {root}/results\n\
+            logs_dir: {root}/logs\n\
+            repository:\n  url: {repository_url}\n  commit: main\n"
+        );
+        let path = dir.path().join("settings.yml");
+        fs::write(&path, settings).unwrap();
+        path.display().to_string()
+    }
 
     #[test]
     fn load_ssh_public_key() {
@@ -370,17 +403,51 @@ mod test {
     fn repository_name() {
         let mut settings = Settings::new_for_test();
         settings.repository.url = Url::parse("https://example.com/author/name").unwrap();
-        assert_eq!(settings.repository_name(), "name");
+        assert_eq!(settings.repository_name().unwrap(), "name");
+        settings.repository.url = Url::parse("https://example.com/author/name.git").unwrap();
+        assert_eq!(settings.repository_name().unwrap(), "name");
+    }
+
+    #[test]
+    fn repository_name_rejects_url_without_repository() {
+        let mut settings = Settings::new_for_test();
+        for url in [
+            "https://example.com",
+            "https://example.com/author",
+            "https://example.com/author/",
+            "mailto:author@example.com",
+        ] {
+            settings.repository.url = Url::parse(url).unwrap();
+            assert!(settings.repository_name().is_err(), "{url}");
+        }
     }
 
     #[test]
     fn remove_access_token() {
         let mut settings = Settings::new_for_test();
         settings.repository.url = Url::parse("https://TOKEN@example.com/author/name").unwrap();
-        settings.repository.remove_access_token();
+        settings.repository.remove_access_token().unwrap();
         assert_eq!(
             settings.repository.url,
             Url::parse("https://example.com/author/name").unwrap()
         );
+    }
+
+    #[test]
+    fn remove_access_token_rejects_url_that_cannot_hold_credentials() {
+        let mut settings = Settings::new_for_test();
+        settings.repository.url = Url::parse("mailto:author@example.com").unwrap();
+        assert!(settings.repository.remove_access_token().is_err());
+    }
+
+    #[test]
+    fn load_checks_the_repository_url() {
+        let dir = tempfile::tempdir().unwrap();
+        let valid = write_settings(&dir, "https://example.com/author/name.git");
+        assert!(Settings::load(valid).is_ok());
+
+        let invalid = write_settings(&dir, "https://example.com/author");
+        let error = Settings::load(invalid).err().unwrap();
+        assert!(error.to_string().contains("Invalid repository url"));
     }
 }

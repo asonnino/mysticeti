@@ -170,7 +170,7 @@ impl<N: ProtocolParameters, C: ProtocolParameters> Collector<N, C> {
         // The parameters end up serialised to disk via `save()`. Strip any
         // access token from the repository URL before storing so credentials
         // never leak into the results file.
-        parameters.settings.repository.remove_access_token();
+        parameters.settings.repository.remove_access_token()?;
         let client: PrometheusClient = prometheus_address
             .try_into()
             .map_err(MonitorError::PrometheusError)?;
