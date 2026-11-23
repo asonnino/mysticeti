@@ -57,6 +57,33 @@ fn one_down() {
 }
 
 #[test]
+fn one_down_isolates_every_node() {
+    let committee_size = 4;
+    for down in 0..committee_size {
+        let config = SimulationConfig {
+            committee_size,
+            topology: NetworkTopology::OneDown(down),
+            duration_secs: 30,
+            ..Default::default()
+        };
+        let results = SimulationRunner::new(config).run().unwrap();
+
+        assert_ne!(results.outcome, Outcome::Diverged);
+        for (node, metrics) in results.metrics.iter().enumerate() {
+            let committed = metrics.total_committed_leaders();
+            if node == down {
+                assert_eq!(committed, 0, "node {down} is down but committed leaders");
+            } else {
+                assert!(
+                    committed > 0,
+                    "node {node} made no progress with node {down} down"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn config_yaml_round_trip() {
     let config = SimulationConfig {
         committee_size: 7,
