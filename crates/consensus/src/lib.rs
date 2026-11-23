@@ -7,4 +7,5 @@ pub mod leader;
 pub mod protocol;
 #[cfg(test)]
 mod test_scenarios;
+mod union_certificate;
 pub(crate) mod wave;

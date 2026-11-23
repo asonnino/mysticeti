@@ -1,7 +1,7 @@
 # Mysticeti — uncertified DAG consensus
 
 Reference implementations of several uncertified DAG-based consensus protocols
-(Mysticeti, Mahi-Mahi, each with a Hybrid variant, Blue Bottle, Orcaella PS/Async, Cordial Miners
+(Mysticeti, Mahi-Mahi, each with a Hybrid variant, Mysticeti Union, Blue Bottle, Orcaella PS/Async, Cordial Miners
 PS/Async, Nemo-Nemo PS/Async, Hydrozoan). The codebase is deliberately small and modular, meant for benchmarking and
 experimentation — **not production** — but uses real networking, cryptography, and
 persistent storage. Ships with a discrete-event simulator and a cloud orchestrator for
@@ -70,7 +70,10 @@ protocols elect leaders round-robin; asynchronous ones use a `FakeCoin`, a PRF o
 validators share, which stands in for a real common coin and is sound for crash faults only. Dual-path
 protocols (Hydrozoan) set `fast_path: Some(..)`: a fast direct commit from votes at
 the voting round, reconciled with the certified slow path by a graded indirect rule
-(certificate → weak quorum → skip).
+(certificate → weak quorum → skip). Mysticeti Union sets `union_certificates`: instead of one
+decision-round block that references a quorum of votes, a leader commits when every set of
+decision-round blocks that a later anchor must share references a quorum of votes between them
+(`union_certificate.rs`; at most 64 authorities).
 
 ## Conventions
 

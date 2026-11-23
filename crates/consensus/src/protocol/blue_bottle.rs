@@ -27,6 +27,7 @@ impl Protocol {
             anchor_link_size: weak_quorum,
             wave_length: 2,
             merged_certificates: true,
+            union_certificates: false,
             leader_count,
             pipeline: true,
             leader_wait: true,
